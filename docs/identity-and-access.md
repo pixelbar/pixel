@@ -104,13 +104,15 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 
 - Commands can limit where they run: `access: { minTier: "member", contexts: ["dm"] }`.
 - Anything that shows personal or member-only information replies **ephemerally** (only visible to the caller).
-- Interactions from guilds other than `DISCORD_GUILD_ID` are refused, and the bot leaves those guilds. DMs with the bot are allowed: the tier comes from the user ID, not the guild.
+- Interactions from guilds other than `DISCORD_GUILD_ID` are refused, and the bot leaves those guilds.
+- **Phase 1 has no DMs.** Commands are registered to the guild only, and Discord doesn't offer guild commands in DMs. Every interaction therefore has the `group` context. Supporting DMs later means registering global commands. The access model already handles DMs, because tiers come from the user ID rather than the guild.
 
 ## Privacy (GDPR)
 
 - Phase 1 Pixel stores nothing on disk apart from the config files that operators maintain. It does not store message content.
 - `/whoami` shows a person their Discord ID and effective tier, so they can check what Pixel thinks.
-- Logs and Sentry never contain raw Discord IDs. Users are identified by an HMAC pseudonym (keyed with `PSEUDONYM_KEY`). Sentry has `sendDefaultPii: false`, and a `beforeSend` hook scrubs anything that looks like a token.
+- Logs and Sentry never contain raw Discord IDs. Users are identified by an HMAC pseudonym (keyed with `PSEUDONYM_KEY`).
+- Sentry's `dataCollection` options are all turned off: user info, headers, cookies, bodies, query params and stack-frame local variables. A `beforeSend` hook also scrubs anything that looks like a token or a Discord ID.
 - This needs a short privacy notice (linked from `/help`) before going live.
 
 ## Threats and mitigations (phase 1)

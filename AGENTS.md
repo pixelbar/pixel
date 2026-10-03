@@ -37,8 +37,10 @@ If you need a new repeatable task, add a `just` recipe instead of documenting a 
 ```
 src/
   instrument.ts         # Sentry init, loaded with --import before anything else
-  index.ts              # composition root: config, access lists, adapters, scheduler
+  index.ts              # entry point: config, Sentry reporter, adapters, health server, shutdown
+  app.ts                # buildCore(): access lists, registry, dispatcher (shared with scripts)
   config.ts             # zod-validated env; the ONLY place that reads process.env
+  testing/              # test fixtures (fake IDs, contexts); never imported by app code
   core/                 # platform-agnostic: access, command, dispatcher, registry,
                         #   identity, announcer, scheduler, errors, ports/
   features/<name>/      # one folder per feature; depends only on core/ and services/
@@ -67,8 +69,8 @@ docs/                   # architecture, identity, ADRs
 
 - **Dependency direction:** `adapters → core ← features → services`. `core` imports nothing from other folders. **discord.js is imported only in `src/adapters/discord/`.** When the core needs platform data, define a port in `core/ports/` and implement it in the adapter.
 - **Adding a feature:**
-  1. Create `src/features/<name>/index.ts` that exports a `Feature`.
-  2. Register it in `src/features/index.ts`.
+  1. Create `src/features/<name>/index.ts` that exports a `create<Name>Feature(deps)` factory returning a `Feature`. Dependencies come in through `deps`, never as module-level singletons.
+  2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register` so Discord sees it.
   3. Choose the lowest tier that is safe.
   4. Add tests.
 - **Announcements:** features call `services.announcer.announce({ kind, text, … })`. They never call a publisher directly. Routing is config. Never hard-code platform accounts or handles.

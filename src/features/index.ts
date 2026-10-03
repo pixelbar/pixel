@@ -1,0 +1,26 @@
+import type { Feature } from "../core/feature.ts";
+import type { AccessConfig } from "../services/access-config.ts";
+import { createAdminFeature } from "./admin/index.ts";
+import { createHelpFeature } from "./help/index.ts";
+import { createPingFeature } from "./ping/index.ts";
+import { createWhoamiFeature } from "./whoami/index.ts";
+
+export type FeatureDeps = {
+	version: string;
+	startedAt: Date;
+	access: AccessConfig;
+};
+
+/** Every feature Pixel runs. Add new features here. */
+export function buildFeatures(deps: FeatureDeps): Feature[] {
+	return [
+		createHelpFeature(),
+		createPingFeature({ version: deps.version }),
+		createWhoamiFeature(),
+		createAdminFeature({
+			version: deps.version,
+			startedAt: deps.startedAt,
+			accessCounts: deps.access.counts,
+		}),
+	];
+}

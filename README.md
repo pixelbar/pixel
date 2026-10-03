@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** early planning, phase 1: the core and a Discord adapter. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/whoami` and `/admin`. `/status`, `/events` and `/info` come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
 
 ## Stack
 
@@ -34,7 +34,7 @@ Pixel starts on Discord. Its core doesn't depend on any platform, so other platf
 
 ```sh
 pnpm install
-cp .env.example .env                                # fill in the values
+cp .env.example .env                                # fill in the values; PSEUDONYM_KEY: openssl rand -hex 32
 cp config/admins.example.yaml config/admins.yaml    # add yourself
 cp config/members.example.yaml config/members.yaml
 just validate-config
@@ -84,6 +84,8 @@ Run `just` to list every recipe.
 | `just dev`             | Run Pixel locally with hot reload             |
 | `just check`           | Lint, type-check and test (what CI runs)      |
 | `just test`            | Run the tests                                 |
+| `just coverage`        | Run the tests with a coverage report          |
+| `just build` / `just start` | Compile to `dist/` and run the build     |
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
 | `just register`        | Register slash commands with Discord          |

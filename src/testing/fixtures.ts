@@ -1,0 +1,45 @@
+import type { PlatformActor, Principal, Tier } from "../core/access.ts";
+import type { CommandContext, CommandDefinition } from "../core/command.ts";
+import { silentLogger } from "../core/logger.ts";
+
+/** Obviously fake Discord IDs. Never use real people's IDs in tests. */
+export const IDS = {
+	admin: "100000000000000001",
+	member: "100000000000000002",
+	friend: "100000000000000003",
+	guest: "100000000000000004",
+} as const;
+
+export function actor(overrides: Partial<PlatformActor> = {}): PlatformActor {
+	return {
+		platform: "discord",
+		userId: IDS.guest,
+		displayName: "Test User",
+		chat: "group",
+		...overrides,
+	};
+}
+
+export function principal(tier: Tier, overrides: Partial<PlatformActor> = {}): Principal {
+	return { ...actor(overrides), tier };
+}
+
+export function context(overrides: Partial<CommandContext> = {}): CommandContext {
+	return {
+		args: {},
+		principal: principal("guest"),
+		logger: silentLogger,
+		availableCommands: [],
+		...overrides,
+	};
+}
+
+export function command(overrides: Partial<CommandDefinition> = {}): CommandDefinition {
+	return {
+		name: "test",
+		description: "A test command",
+		access: { minTier: "guest" },
+		handler: async () => ({ text: "ok" }),
+		...overrides,
+	};
+}
