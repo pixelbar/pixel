@@ -1,9 +1,11 @@
 import type { Announcer } from "../core/announcer.ts";
+import type { Calendar } from "../core/calendar.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessConfig } from "../services/access-config.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
+import { createEventsFeature } from "./events/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createStatusFeature } from "./status/index.ts";
@@ -15,6 +17,9 @@ export type FeatureDeps = {
 	access: AccessConfig;
 	spaceStatus: SpaceStatus;
 	announcer: Announcer;
+	calendar: Calendar;
+	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
+	timezone: string;
 	logger: Logger;
 };
 
@@ -28,6 +33,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			announcer: deps.announcer,
 			logger: deps.logger,
 		}),
+		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createWhoamiFeature(),
 		createAdminFeature({
 			version: deps.version,

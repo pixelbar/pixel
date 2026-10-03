@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimeZone } from "./core/format.ts";
 
 /**
  * Environment configuration. This is the ONLY module that reads process.env.
@@ -18,6 +19,10 @@ const envSchema = z.object({
 	PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
 	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
 	PIXEL_DATA_DIR: z.string().min(1).default("data"),
+	PIXEL_TIMEZONE: z
+		.string()
+		.default("Europe/Amsterdam")
+		.refine(isValidTimeZone, { error: "must be a time zone name like Europe/Amsterdam" }),
 	HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
 	SENTRY_DSN: optional(z.url()),
 	SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
@@ -36,6 +41,8 @@ export type Config = {
 	access: { adminsFile: string; membersFile: string };
 	/** Where Pixel keeps small bits of runtime state (e.g. `space.state`). */
 	dataDir: string;
+	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
+	timezone: string;
 	healthPort: number;
 	sentryDsn: string | undefined;
 	spaceApiUrl: string;
@@ -71,6 +78,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		logLevel: e.LOG_LEVEL,
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
 		dataDir: e.PIXEL_DATA_DIR,
+		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
 		spaceApiUrl: e.SPACEAPI_URL,

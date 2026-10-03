@@ -26,6 +26,7 @@ describe("buildCore", () => {
 			logLevel: "info",
 			access: { adminsFile, membersFile },
 			dataDir: join(dir, "data"),
+			timezone: "Europe/Amsterdam",
 			healthPort: 0,
 			sentryDsn: undefined,
 			spaceApiUrl: "https://spaceapi.example/",
@@ -122,6 +123,40 @@ describe("buildCore", () => {
 			title: "🔴 Pixelbar is closed",
 			description: "Closed for 0m.",
 		});
+	});
+
+	it("/events shows the calendar once an adapter plugs its source in, and says so before that", async () => {
+		const core = buildCore(config, silentLogger, nullErrorReporter);
+		const events = () =>
+			core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.guest }),
+				command: "events",
+				args: {},
+			});
+
+		// No adapter has connected yet.
+		expect((await events()).reply.embeds?.[0]?.title).toBe("⚠️ Couldn't load the calendar");
+
+		const startsAt = new Date(Date.now() + 2 * 86_400_000);
+		core.calendar.use({
+			upcoming: async () => [
+				{
+					id: "1",
+					title: "Soldering workshop",
+					startsAt,
+					endsAt: null,
+					location: "Pixelbar",
+					url: "https://discord.com/events/1/2",
+					repeats: "weekly",
+				},
+			],
+		});
+		const result = await events();
+		expect(result.private).toBe(false);
+		expect(result.reply.embeds?.[0]?.description).toContain(
+			"[Soldering workshop](https://discord.com/events/1/2)",
+		);
+		expect(result.reply.embeds?.[0]?.description).toContain("🔁 weekly");
 	});
 
 	it("refuses to build with an invalid access file", () => {

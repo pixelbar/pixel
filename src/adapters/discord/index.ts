@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import type { Publisher } from "../../core/announcement.ts";
 import type { Announcer } from "../../core/announcer.ts";
+import type { Calendar } from "../../core/calendar.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import {
@@ -16,6 +17,7 @@ import {
 	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
 import { FileLivePostStore } from "./announce-state.ts";
+import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createCommandHandler, createGuildGuard } from "./handlers.ts";
 
 export type DiscordAdapterDeps = {
@@ -29,6 +31,8 @@ export type DiscordAdapterDeps = {
 	announceStateFile: string;
 	/** Where this adapter's announcement publishers register once they're ready. */
 	announcer: Pick<Announcer, "register">;
+	/** Where this adapter plugs in the server's scheduled events once it's ready. */
+	calendar: Pick<Calendar, "use">;
 	/** Reports errors that escape the dispatcher (e.g. Discord API failures). */
 	reportError: (error: unknown) => void;
 	/** Called once the client is connected and the announcement publishers are registered. */
@@ -111,6 +115,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			"connected to Discord",
 		);
 		await Promise.all(ready.guilds.cache.map(leaveIfForeign));
+		deps.calendar.use(createDiscordCalendarSource(ready, guildId));
 		try {
 			await registerPublishers(ready);
 		} catch (error) {
