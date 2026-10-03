@@ -161,11 +161,19 @@ type Feature = {
 | Service / port   | Purpose                              | Implementation                                                    |
 | ---------------- | ------------------------------------ | ----------------------------------------------------------------- |
 | `accessConfig`   | Admin and member lists               | Loads and validates the two YAML files at startup (`ConfigTierSource`) |
-| `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 60 s tracks when the state changed, and `onChange` fires on open↔closed flips. After 5 consecutive failures it reports once, and it logs when SpaceAPI recovers |
+| `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 60 s tracks when the state changed, and `onChange` fires on open↔closed flips. The last state and its time are saved to `space.state` and restored on startup (below). After 5 consecutive failures it reports once, and it logs when SpaceAPI recovers |
 | `CalendarPort`   | Upcoming events                      | Implemented by the Discord adapter                                |
 | `knowledge`      | Info topics                          | Markdown files in `content/`                                      |
 
-The SpaceAPI response has `state.open` but no `lastchange`, so Pixel records when it saw each change. That time is lost on restart, which is acceptable for phase 1.
+Pixelbar's SpaceAPI response has `state.open` but no `lastchange`, so Pixel records when it saw each change and remembers it in `space.state` (YAML, in `PIXEL_DATA_DIR`, default `data/`). It's written only when the state changes, atomically (temp file and rename).
+
+On startup the saved state is trusted only once a live reading agrees with it:
+- **Same state:** the saved "since" is kept, so a restart doesn't lose it.
+- **Different state:** the space changed while Pixel was down, so when is unknowable. "Since" is cleared and **no change event fires**, so a restart never announces a stale change (see #3).
+- **Missing, malformed or unreadable file:** Pixel starts fresh and logs a warning. Unlike the access lists this is not fail-closed: the file only affects the "open for 2h" text, so it must never stop the bot. A saved time in the future (clock change or hand-edit) is ignored.
+- **Can't write:** checks carry on, and the failure is logged, and reported to Sentry once.
+
+The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered as a source of "last changed", but its `lastSeen` is when the directory last *reached* the endpoint (about every minute), not when the state changed. It also keeps no history.
 
 ## Phase 1 features
 
@@ -204,6 +212,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`                  |
+| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state, e.g. `space.state`; gitignored |
 | `DISCORD_TOKEN`               | yes    |                                                |
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |
@@ -230,6 +239,7 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. That means max replicas = 1, and deploys should use a stop-then-start strategy, or a lock once a database exists.
 - **Images:** built by GitHub Actions and pushed to `ghcr.io/pixelbar/pixel:<sha>`. The images contain no secrets and no access lists.
 - **Secrets and access files:** Key Vault. The two YAML files are stored as secrets and mounted into the container as files.
+- **Runtime state:** the container writes `space.state` to `/app/data`. A container's own filesystem is thrown away on every deploy, so without a mounted volume (for example Azure Files) the "open for 2h" detail resets after each deploy. Pixel works fine either way, so a volume is optional (#9).
 - **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
 - **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC), `infra/modules/pixel`, and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state.
 - **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. Actions are pinned to commit SHAs, and the workflow can only read the repo.

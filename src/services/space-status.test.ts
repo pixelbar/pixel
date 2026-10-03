@@ -1,8 +1,34 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { silentLogger } from "../core/logger.ts";
+import type { PersistedSpaceState, SpaceStateStore } from "./space-state-store.ts";
 import { SpaceApiError, SpaceApiStatus, type SpaceChange } from "./space-status.ts";
 
 const URL = "https://spaceapi.example/";
+
+/** An in-memory store that records saves; `load`/`save` can be made to throw. */
+class FakeStore implements SpaceStateStore {
+	saved: PersistedSpaceState | undefined;
+	readonly saves: PersistedSpaceState[] = [];
+	loadError: unknown;
+	saveError: unknown;
+
+	constructor(initial?: PersistedSpaceState) {
+		this.saved = initial;
+	}
+
+	load(): PersistedSpaceState | undefined {
+		if (this.loadError) throw this.loadError;
+		return this.saved;
+	}
+
+	save(state: PersistedSpaceState): void {
+		if (this.saveError) throw this.saveError;
+		this.saved = state;
+		this.saves.push(state);
+	}
+}
+
+const fakeStore = (initial?: PersistedSpaceState) => new FakeStore(initial);
 
 /** A fake fetch whose responses can be scripted per call. */
 function fakeFetch() {
@@ -35,7 +61,7 @@ const open = (value: boolean | null) => ({
 	state: { open: value },
 });
 
-function setup(options: { failureThreshold?: number } = {}) {
+function setup(options: { failureThreshold?: number; store?: SpaceStateStore } = {}) {
 	const fetch = fakeFetch();
 	let now = new Date("2026-10-03T12:00:00Z");
 	const reportError = vi.fn();
@@ -286,5 +312,125 @@ describe("background polling", () => {
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(fetch.fn).toHaveBeenCalledTimes(2);
 		service.stop();
+	});
+});
+
+describe("persistence", () => {
+	// setup()'s clock starts at 2026-10-03T12:00:00Z.
+	const earlier = new Date("2026-10-03T09:30:00Z");
+
+	it("keeps the saved 'since' when the live state matches, and doesn't rewrite it", async () => {
+		const store = fakeStore({ state: "open", since: earlier });
+		const { service, fetch } = setup({ store });
+		fetch.json(open(true));
+		const listener = vi.fn();
+		service.onChange(listener);
+		expect(await service.checkNow()).toMatchObject({ state: "open", since: earlier });
+		expect(store.saves).toEqual([]);
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it("knows the saved time even before the first live check finishes", async () => {
+		const store = fakeStore({ state: "closed", since: earlier });
+		const { service, fetch } = setup({ store });
+		fetch.json(open(false)).json(open(false));
+		// Two checks in a row: the restored time must survive both.
+		await service.checkNow();
+		expect((await service.checkNow()).since).toEqual(earlier);
+	});
+
+	it("clears 'since' and stays quiet when the state changed while Pixel was down", async () => {
+		const store = fakeStore({ state: "open", since: earlier });
+		const { service, fetch } = setup({ store });
+		const listener = vi.fn();
+		service.onChange(listener);
+		fetch.json(open(false));
+		expect(await service.checkNow()).toMatchObject({ state: "closed", since: null });
+		expect(listener).not.toHaveBeenCalled();
+		expect(store.saves).toEqual([{ state: "closed", since: null }]);
+	});
+
+	it("announces changes that happen after startup once the saved state is confirmed", async () => {
+		const store = fakeStore({ state: "open", since: earlier });
+		const { service, fetch, advance } = setup({ store });
+		const changes: SpaceChange[] = [];
+		service.onChange((c) => changes.push(c));
+		fetch.json(open(true)).json(open(false));
+		await service.checkNow();
+		const at = advance(60_000);
+		await service.checkNow();
+		expect(changes).toEqual([{ from: "open", to: "closed", at }]);
+		expect(store.saves).toEqual([{ state: "closed", since: at }]);
+	});
+
+	it("doesn't treat an 'unknown' reading as confirming the saved state", async () => {
+		const store = fakeStore({ state: "open", since: earlier });
+		const { service, fetch } = setup({ store });
+		const listener = vi.fn();
+		service.onChange(listener);
+		fetch.json(open(null)).json(open(false));
+		await service.checkNow();
+		// Still unconfirmed, so a differing definite reading is "changed while down", not a live change.
+		expect(await service.checkNow()).toMatchObject({ state: "closed", since: null });
+		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it("saves the first observation when nothing was saved", async () => {
+		const store = fakeStore();
+		const { service, fetch } = setup({ store });
+		fetch.json(open(true));
+		await service.checkNow();
+		expect(store.saves).toEqual([{ state: "open", since: null }]);
+	});
+
+	it("saves every change with its time", async () => {
+		const store = fakeStore();
+		const { service, fetch, advance } = setup({ store });
+		fetch.json(open(false)).json(open(true)).json(open(true));
+		await service.checkNow();
+		const at = advance(60_000);
+		await service.checkNow();
+		advance(60_000);
+		await service.checkNow();
+		expect(store.saves).toEqual([
+			{ state: "closed", since: null },
+			{ state: "open", since: at },
+		]);
+	});
+
+	it("ignores a saved time in the future", async () => {
+		const store = fakeStore({ state: "open", since: new Date("2026-10-04T00:00:00Z") });
+		const { service, fetch } = setup({ store });
+		fetch.json(open(true));
+		expect(await service.checkNow()).toMatchObject({ state: "open", since: null });
+	});
+
+	it("starts fresh, without failing, when the saved state is unusable", async () => {
+		const store = fakeStore();
+		store.loadError = new Error("space.state has an unexpected shape");
+		const { service, fetch } = setup({ store });
+		fetch.json(open(true));
+		expect(await service.checkNow()).toMatchObject({ state: "open", since: null });
+		expect(store.saves).toEqual([{ state: "open", since: null }]);
+	});
+
+	it("keeps checking when saving fails, and reports the failure only once", async () => {
+		const store = fakeStore();
+		store.saveError = new Error("EROFS");
+		const { service, fetch, reportError, advance } = setup({ store });
+		fetch.json(open(false)).json(open(true)).json(open(false));
+		await expect(service.checkNow()).resolves.toMatchObject({ state: "closed" });
+		advance(60_000);
+		await expect(service.checkNow()).resolves.toMatchObject({ state: "open" });
+		advance(60_000);
+		await expect(service.checkNow()).resolves.toMatchObject({ state: "closed" });
+		expect(reportError).toHaveBeenCalledOnce();
+		expect(String(reportError.mock.calls[0]?.[0])).toMatch(/couldn't save space state/);
+	});
+
+	it("works without a store", async () => {
+		const { service, fetch } = setup();
+		fetch.json(open(true));
+		expect((await service.checkNow()).since).toBeNull();
 	});
 });

@@ -17,6 +17,7 @@ const envSchema = z.object({
 	LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 	PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
 	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
+	PIXEL_DATA_DIR: z.string().min(1).default("data"),
 	HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
 	SENTRY_DSN: optional(z.url()),
 	SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
@@ -31,6 +32,8 @@ export type Config = {
 	version: string;
 	logLevel: "debug" | "info" | "warn" | "error";
 	access: { adminsFile: string; membersFile: string };
+	/** Where Pixel keeps small bits of runtime state (e.g. `space.state`). */
+	dataDir: string;
 	healthPort: number;
 	sentryDsn: string | undefined;
 	spaceApiUrl: string;
@@ -55,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		version: e.PIXEL_VERSION,
 		logLevel: e.LOG_LEVEL,
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
+		dataDir: e.PIXEL_DATA_DIR,
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
 		spaceApiUrl: e.SPACEAPI_URL,

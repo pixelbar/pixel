@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import { IdentityService } from "./core/identity.ts";
@@ -7,6 +8,7 @@ import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { buildFeatures } from "./features/index.ts";
 import { type AccessConfig, ConfigTierSource, loadAccessConfig } from "./services/access-config.ts";
+import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
 export type Core = {
@@ -40,6 +42,7 @@ export function buildCore(
 		url: config.spaceApiUrl,
 		logger,
 		reportError: (error) => reporter.captureBackground(error, "spaceapi"),
+		store: new FileSpaceStateStore(join(config.dataDir, "space.state")),
 		...(options.fetch ? { fetch: options.fetch } : {}),
 	});
 

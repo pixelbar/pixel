@@ -14,10 +14,18 @@ describe("loadConfig", () => {
 			env: "local",
 			logLevel: "info",
 			access: { adminsFile: "config/admins.yaml", membersFile: "config/members.yaml" },
+			dataDir: "data",
 			healthPort: 8080,
 			sentryDsn: undefined,
 			spaceApiUrl: "https://spaceapi.pixelbar.nl/",
 		});
+	});
+
+	it("takes the data directory from PIXEL_DATA_DIR and rejects an empty one", () => {
+		expect(loadConfig({ ...VALID, PIXEL_DATA_DIR: "/var/lib/pixel" }).dataDir).toBe(
+			"/var/lib/pixel",
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_DATA_DIR: "" })).toThrow(/PIXEL_DATA_DIR/);
 	});
 
 	it("accepts a custom SpaceAPI URL but only over http(s)", () => {

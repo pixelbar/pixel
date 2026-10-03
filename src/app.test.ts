@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -25,6 +25,7 @@ describe("buildCore", () => {
 			version: "test",
 			logLevel: "info",
 			access: { adminsFile, membersFile },
+			dataDir: join(dir, "data"),
 			healthPort: 0,
 			sentryDsn: undefined,
 			spaceApiUrl: "https://spaceapi.example/",
@@ -80,6 +81,41 @@ describe("buildCore", () => {
 		expect(result).toMatchObject({
 			reply: { embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })] },
 			private: false,
+		});
+	});
+
+	it("remembers when the space last changed across restarts, in data/space.state", async () => {
+		const spaceApi = (...states: boolean[]) => {
+			const queue = [...states];
+			return vi.fn<typeof globalThis.fetch>(
+				async () => new Response(JSON.stringify({ state: { open: queue.shift() } })),
+			);
+		};
+		const status = (core: ReturnType<typeof buildCore>) =>
+			core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.guest }),
+				command: "status",
+				args: {},
+			});
+
+		// First run: Pixel sees the space open, then close.
+		const first = buildCore(config, silentLogger, nullErrorReporter, {
+			fetch: spaceApi(true, false),
+		});
+		await status(first);
+		await status(first);
+		expect(readFileSync(join(config.dataDir, "space.state"), "utf8")).toMatch(
+			/state: closed\nsince: \d{4}-\d\d-\d\dT[\d:.]+Z\n/,
+		);
+
+		// After a restart it still knows when that happened, without having seen it itself.
+		const second = buildCore(config, silentLogger, nullErrorReporter, {
+			fetch: spaceApi(false),
+		});
+		const result = await status(second);
+		expect(result.reply.embeds?.[0]).toMatchObject({
+			title: "🔴 Pixelbar is closed",
+			description: "Closed for 0m.",
 		});
 	});
 

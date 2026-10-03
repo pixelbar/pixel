@@ -72,6 +72,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
+| `PIXEL_DATA_DIR`              | Optional. Where Pixel remembers when the space last changed (`space.state`). Defaults to `data/` |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands
