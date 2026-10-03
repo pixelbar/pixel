@@ -46,7 +46,7 @@ src/
   features/<name>/      # one folder per feature; depends only on core/ and services/
   services/             # access-config, spaceapi, knowledge
   adapters/discord/     # interactive + publisher + CalendarPort
-  observability/        # logger, Sentry helpers, pseudonymisation
+  observability/        # logger, Sentry helpers, secret scrubbing, health
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 content/                # markdown for /info topics
 scripts/                # register-commands, validate-config
@@ -61,7 +61,7 @@ docs/                   # architecture, identity, ADRs
 4. **`admin` comes only from `config/admins.yaml`.** Never derive it from anything else.
 5. **Fail closed.** Invalid or missing access files, or an empty admin list, mean the bot does not start. Discord IDs must be quoted strings (`^\d{17,20}$`). Never coerce numbers to strings.
 6. **Never commit real access files, `.env`, tokens or Discord IDs of real people.** Use example files and obviously fake IDs in tests.
-7. **Never log or report secrets or raw Discord IDs.** Use the HMAC pseudonym helper. No `console.log`.
+7. **Never log or report secrets or display names.** To identify users in logs and Sentry, use `actorRef()` (`discord:<id>`). Platform IDs are allowed there, but names and nicknames are not. No `console.log`.
 8. **Private data gets private replies** (`Reply.private = true`, which is ephemeral on Discord).
 9. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*` need **tests and a human reviewer**. Call this out in the PR description.
 

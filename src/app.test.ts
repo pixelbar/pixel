@@ -26,7 +26,6 @@ describe("buildCore", () => {
 			logLevel: "info",
 			access: { adminsFile, membersFile },
 			healthPort: 0,
-			pseudonymKey: "k".repeat(32),
 			sentryDsn: undefined,
 			discord: { token: "x", appId: "100000000000000010", guildId: "100000000000000020" },
 		};

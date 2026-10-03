@@ -6,7 +6,6 @@ import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { buildFeatures } from "./features/index.ts";
-import { createPseudonymizer } from "./observability/pseudonym.ts";
 import { type AccessConfig, ConfigTierSource, loadAccessConfig } from "./services/access-config.ts";
 
 export type Core = {
@@ -39,7 +38,6 @@ export function buildCore(
 		rateLimiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.5 }),
 		logger,
 		reporter,
-		pseudonymize: createPseudonymizer(config.pseudonymKey),
 	});
 
 	return { access, registry, dispatcher };

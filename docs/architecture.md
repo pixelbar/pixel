@@ -177,8 +177,8 @@ There are no member-only features yet. The first one will be the real test of th
 ## Observability
 
 - **Sentry** (`@sentry/node`) is initialised in `src/instrument.ts`, which is loaded with `--import` before the app. If no DSN is set, it does nothing.
-  - Each command scope carries the tags `command`, `feature`, `platform`, `tier` and an HMAC user pseudonym.
-  - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a token or a Discord ID.
+  - Each command scope carries the tags `command`, `feature`, `platform` and `tier`. The Sentry user is the stable platform ID (`discord:<id>`), so a user's issues can be traced over time. Display names are never sent.
+  - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
   - Releases are tagged with the git SHA, and source maps are uploaded from CI later.
   - `environment` is `local`, `dev` or `prod`.
 - **Logs:** pino writes JSON to stdout. Locally, pino-pretty makes it readable.
@@ -198,7 +198,6 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
-| `PSEUDONYM_KEY`               | yes    | HMAC key for user pseudonyms, at least 32 characters |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |
 

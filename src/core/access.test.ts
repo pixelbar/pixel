@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { principal } from "../testing/fixtures.ts";
-import { checkAccess, highestTier, TIERS, tierAtLeast } from "./access.ts";
+import { actorRef, checkAccess, highestTier, TIERS, tierAtLeast } from "./access.ts";
+
+describe("actorRef", () => {
+	it("is the platform-prefixed user ID", () => {
+		expect(actorRef({ platform: "discord", userId: "100000000000000002" })).toBe(
+			"discord:100000000000000002",
+		);
+	});
+});
 
 describe("tiers", () => {
 	it("are ordered guest < friend < member < admin", () => {

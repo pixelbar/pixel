@@ -4,13 +4,12 @@ import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
-import { createPseudonymizer } from "./observability/pseudonym.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
 
 async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
-	const reporter = createSentryReporter(createPseudonymizer(config.pseudonymKey));
+	const reporter = createSentryReporter();
 	const { access, dispatcher, registry } = buildCore(config, logger, reporter);
 
 	logger.info(

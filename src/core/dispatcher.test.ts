@@ -45,7 +45,6 @@ function setup(commands: CommandDefinition[], opts: { capacity?: number } = {}) 
 		}),
 		logger,
 		reporter,
-		pseudonymize: (a) => `pseudo-${a.userId.slice(-1)}`,
 	});
 	return { dispatcher, entries, reporter };
 }
@@ -87,18 +86,27 @@ describe("Dispatcher", () => {
 			expect(result.reply.text).toBe(allowed ? "secret" : MESSAGES.deniedTier);
 		});
 
-		it("never calls the handler when denied, and logs the denial with a pseudonym only", async () => {
+		it("never calls the handler when denied, and logs the denial with the user's ID", async () => {
 			const handler = vi.fn(async () => ({ text: "secret" }));
 			const { dispatcher, entries } = setup([
 				command({ name: "a", access: { minTier: "admin" }, handler }),
 			]);
-			const result = await dispatcher.dispatch({ actor: as(IDS.member), command: "a", args: {} });
+			const result = await dispatcher.dispatch({
+				actor: as(IDS.member, { displayName: "Ada Lovelace" }),
+				command: "a",
+				args: {},
+			});
 
 			expect(handler).not.toHaveBeenCalled();
 			expect(result.private).toBe(true);
 			const denial = entries.find((e) => e.obj.event === "command.denied");
-			expect(denial?.obj).toMatchObject({ reason: "tier", tier: "member", required: "admin" });
-			expect(JSON.stringify(entries)).not.toContain(IDS.member);
+			expect(denial?.obj).toMatchObject({
+				user: `discord:${IDS.member}`,
+				reason: "tier",
+				tier: "member",
+				required: "admin",
+			});
+			expect(JSON.stringify(entries)).not.toContain("Ada Lovelace");
 		});
 
 		it("denies commands used in a disallowed context", async () => {

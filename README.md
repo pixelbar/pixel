@@ -34,7 +34,7 @@ Pixel starts on Discord. Its core doesn't depend on any platform, so other platf
 
 ```sh
 pnpm install
-cp .env.example .env                                # fill in the values; PSEUDONYM_KEY: openssl rand -hex 32
+cp .env.example .env                                # fill in the values
 cp config/admins.example.yaml config/admins.yaml    # add yourself
 cp config/members.example.yaml config/members.yaml
 just validate-config
@@ -72,7 +72,6 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
 | `DISCORD_ANNOUNCE_CHANNEL_ID` | Optional. Channel for space status announcements   |
-| `PSEUDONYM_KEY`               | Random secret used to pseudonymise users in logs   |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands

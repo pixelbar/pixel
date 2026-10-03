@@ -1,4 +1,4 @@
-import { checkAccess, type PlatformActor, type Principal } from "./access.ts";
+import { actorRef, checkAccess, type PlatformActor, type Principal } from "./access.ts";
 import type { Args, ArgValue, CommandDefinition, CommandSummary } from "./command.ts";
 import { UserFacingError } from "./errors.ts";
 import type { IdentityService } from "./identity.ts";
@@ -26,8 +26,6 @@ export type DispatcherDeps = {
 	rateLimiter: RateLimiter;
 	logger: Logger;
 	reporter: ErrorReporter;
-	/** Stable, non-reversible user identifier for logs. Never log raw platform IDs. */
-	pseudonymize: (actor: PlatformActor) => string;
 };
 
 export const MESSAGES = {
@@ -58,14 +56,14 @@ export class Dispatcher {
 
 	async dispatch({ actor, command, args }: DispatchRequest): Promise<DispatchResult> {
 		const { registry, identity, rateLimiter, reporter } = this.#deps;
-		const user = this.#deps.pseudonymize(actor);
+		const user = actorRef(actor);
 		const log = this.#deps.logger.child({ command, platform: actor.platform, user });
 
 		const registered = registry.get(command);
 		if (!registered) return privateText(MESSAGES.unknownCommand);
 		const { definition, feature } = registered;
 
-		if (!rateLimiter.tryTake(`${actor.platform}:${actor.userId}`)) {
+		if (!rateLimiter.tryTake(user)) {
 			log.warn({ event: "command.rate_limited" }, "rate limited");
 			return privateText(MESSAGES.rateLimited);
 		}

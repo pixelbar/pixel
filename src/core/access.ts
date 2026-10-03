@@ -30,6 +30,15 @@ export type PlatformActor = {
 /** An actor whose tier has been resolved by the IdentityService. */
 export type Principal = PlatformActor & { tier: Tier };
 
+/**
+ * Stable user identifier for logs and Sentry, e.g. "discord:494477157062672404".
+ * Prefixed with the platform so IDs stay unique once more platforms exist.
+ * Never includes display names.
+ */
+export function actorRef(actor: Pick<PlatformActor, "platform" | "userId">): string {
+	return `${actor.platform}:${actor.userId}`;
+}
+
 export function tierRank(tier: Tier): number {
 	return TIERS.indexOf(tier);
 }

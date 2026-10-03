@@ -18,7 +18,6 @@ const envSchema = z.object({
 	PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
 	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
 	HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
-	PSEUDONYM_KEY: z.string().min(32, { error: "must be at least 32 characters" }),
 	SENTRY_DSN: optional(z.url()),
 
 	DISCORD_TOKEN: z.string().min(1),
@@ -32,7 +31,6 @@ export type Config = {
 	logLevel: "debug" | "info" | "warn" | "error";
 	access: { adminsFile: string; membersFile: string };
 	healthPort: number;
-	pseudonymKey: string;
 	sentryDsn: string | undefined;
 	discord: { token: string; appId: string; guildId: string };
 };
@@ -56,7 +54,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		logLevel: e.LOG_LEVEL,
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
 		healthPort: e.HEALTH_PORT,
-		pseudonymKey: e.PSEUDONYM_KEY,
 		sentryDsn: e.SENTRY_DSN,
 		discord: { token: e.DISCORD_TOKEN, appId: e.DISCORD_APP_ID, guildId: e.DISCORD_GUILD_ID },
 	};

@@ -1,14 +1,13 @@
 /**
- * Redacts secrets and personal identifiers from strings before they leave the
- * process (Sentry events, mainly). Defence in depth: code should not be
- * logging these in the first place.
+ * Redacts secrets from strings before they leave the process (Sentry events,
+ * mainly). Defence in depth: code should not be logging these in the first
+ * place. Discord IDs are deliberately NOT redacted — they identify users in
+ * Sentry.
  */
 
 const PATTERNS: readonly [RegExp, string][] = [
 	// Discord bot tokens: base64 user ID . timestamp . HMAC
 	[/[\w-]{23,28}\.[\w-]{6,7}\.[\w-]{27,40}/g, "[redacted-token]"],
-	// Discord snowflakes (user, guild, channel IDs)
-	[/\b\d{17,20}\b/g, "[redacted-id]"],
 ];
 
 export function scrubString(input: string): string {
