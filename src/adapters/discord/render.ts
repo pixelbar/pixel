@@ -20,6 +20,10 @@ const ACCENT_COLORS: Record<Accent, number> = {
 	neutral: 0x95a5a6,
 };
 
+export function accentColor(accent: Accent): number {
+	return ACCENT_COLORS[accent];
+}
+
 export type DiscordReplyPayload = {
 	content?: string;
 	embeds?: APIEmbed[];

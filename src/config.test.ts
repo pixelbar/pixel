@@ -21,6 +21,47 @@ describe("loadConfig", () => {
 		});
 	});
 
+	it("has no announcement channels unless configured", () => {
+		expect(loadConfig(VALID).discord.announce).toEqual({
+			liveChannelId: undefined,
+			timelineChannelId: undefined,
+		});
+		expect(
+			loadConfig({
+				...VALID,
+				DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "",
+				DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "",
+			}).discord.announce,
+		).toEqual({ liveChannelId: undefined, timelineChannelId: undefined });
+	});
+
+	it("reads one channel for each announcement style, which may be the same channel", () => {
+		const announce = loadConfig({
+			...VALID,
+			DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "100000000000000031",
+			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "100000000000000032",
+		}).discord.announce;
+		expect(announce).toEqual({
+			liveChannelId: "100000000000000031",
+			timelineChannelId: "100000000000000032",
+		});
+		const same = loadConfig({
+			...VALID,
+			DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "100000000000000031",
+			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "100000000000000031",
+		}).discord.announce;
+		expect(same.liveChannelId).toBe(same.timelineChannelId);
+	});
+
+	it("rejects announcement channels that aren't Discord IDs", () => {
+		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "#status" })).toThrow(
+			/DISCORD_ANNOUNCE_LIVE_CHANNEL_ID/,
+		);
+		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "123" })).toThrow(
+			/DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID/,
+		);
+	});
+
 	it("takes the data directory from PIXEL_DATA_DIR and rejects an empty one", () => {
 		expect(loadConfig({ ...VALID, PIXEL_DATA_DIR: "/var/lib/pixel" }).dataDir).toBe(
 			"/var/lib/pixel",

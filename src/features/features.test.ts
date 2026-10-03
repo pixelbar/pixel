@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { Announcer } from "../core/announcer.ts";
 import { formatDuration } from "../core/format.ts";
+import { silentLogger } from "../core/logger.ts";
+import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, principal } from "../testing/fixtures.ts";
@@ -16,13 +19,21 @@ const access = {
 };
 
 const spaceStatus: SpaceStatus = {
+	pollIntervalMs: 30_000,
 	checkNow: async () => ({ state: "open", since: null, checkedAt: new Date() }),
 	start() {},
 	stop() {},
 	onChange: () => () => {},
 };
 
-const deps = () => ({ version: "1.0.0", startedAt: new Date(), access, spaceStatus });
+const deps = () => ({
+	version: "1.0.0",
+	startedAt: new Date(),
+	access,
+	spaceStatus,
+	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
+	logger: silentLogger,
+});
 
 function onlyCommand(feature: { commands?: readonly { handler: unknown }[] }) {
 	const cmd = feature.commands?.[0];

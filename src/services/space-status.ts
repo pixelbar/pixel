@@ -28,9 +28,18 @@ export type SpaceReading = {
 	checkedAt: Date;
 };
 
-export type SpaceChange = { from: "open" | "closed"; to: "open" | "closed"; at: Date };
+export type SpaceChange = {
+	from: "open" | "closed";
+	to: "open" | "closed";
+	/** When Pixel saw the change. */
+	at: Date;
+	/** When the state it changed *from* began, if Pixel knew (e.g. how long it had been open). */
+	previousSince: Date | null;
+};
 
 export type SpaceStatus = {
+	/** How often the background poll checks SpaceAPI. */
+	readonly pollIntervalMs: number;
 	checkNow(): Promise<SpaceReading>;
 	start(): void;
 	stop(): void;
@@ -90,11 +99,16 @@ export class SpaceApiStatus implements SpaceStatus {
 		this.#fetch = options.fetch ?? globalThis.fetch;
 		this.#now = options.now ?? (() => new Date());
 		this.#timeoutMs = options.timeoutMs ?? 5_000;
-		this.#pollIntervalMs = options.pollIntervalMs ?? 60_000;
-		this.#failureThreshold = options.failureThreshold ?? 5;
+		this.#pollIntervalMs = options.pollIntervalMs ?? 30_000;
+		// 10 failures at the default 30 s interval is about 5 minutes of SpaceAPI being down.
+		this.#failureThreshold = options.failureThreshold ?? 10;
 		this.#maxResponseBytes = options.maxResponseBytes ?? 64 * 1024;
 		this.#store = options.store;
 		this.#restore();
+	}
+
+	get pollIntervalMs(): number {
+		return this.#pollIntervalMs;
 	}
 
 	checkNow(): Promise<SpaceReading> {
@@ -211,12 +225,13 @@ export class SpaceApiStatus implements SpaceStatus {
 					"space state changed while Pixel was not running",
 				);
 			} else {
+				const previousSince = previous.since;
 				this.#remember({ state, since: now });
 				this.#logger.info(
 					{ event: "spaceapi.changed", from: previous.state, to: state },
 					"space state changed",
 				);
-				this.#emit({ from: previous.state, to: state, at: now });
+				this.#emit({ from: previous.state, to: state, at: now, previousSince });
 			}
 		}
 		this.#restored = false;

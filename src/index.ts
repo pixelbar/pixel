@@ -1,7 +1,9 @@
+import { join } from "node:path";
 import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { type Stop, startFeatures } from "./core/feature.ts";
 import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
@@ -10,19 +12,32 @@ async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry, spaceStatus } = buildCore(config, logger, reporter);
+	const { access, dispatcher, registry, spaceStatus, announcer, features } = buildCore(
+		config,
+		logger,
+		reporter,
+	);
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.counts },
 		"starting Pixel",
 	);
 
+	// Background work (e.g. announcing space changes) starts once Discord is ready,
+	// so the announcement publishers exist before the first change is announced.
+	let stopFeatures: Stop = () => {};
 	const discord = createDiscordAdapter({
 		token: config.discord.token,
 		guildId: config.discord.guildId,
 		dispatcher,
 		logger,
+		announce: config.discord.announce,
+		announceStateFile: join(config.dataDir, "announcements.state"),
+		announcer,
 		reportError: (error) => reporter.captureBackground(error, "discord"),
+		onReady: () => {
+			stopFeatures = startFeatures(features);
+		},
 	});
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	spaceStatus.start();
@@ -32,6 +47,7 @@ async function main(): Promise<void> {
 		if (stopping) return;
 		stopping = true;
 		logger.info({ event: "shutdown", signal }, "shutting down");
+		stopFeatures();
 		spaceStatus.stop();
 		await discord.stop();
 		health.close();

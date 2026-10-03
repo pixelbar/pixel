@@ -22,8 +22,9 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 # Access lists are mounted at runtime (Key Vault secret volume); never baked in.
-# Runtime state (space.state) goes in /app/data. Mount a volume there for it to
-# survive new deploys; without one it resets, which only costs the "open for 2h" detail.
+# Runtime state (space.state, announcements.state) goes in /app/data. Mount a volume
+# there for it to survive new deploys; without one it resets, which only costs the
+# "open for 2h" detail and the live post's remembered ID (Pixel then searches the channel).
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080

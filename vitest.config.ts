@@ -21,12 +21,13 @@ export default defineConfig({
 				"src/core/**": { lines: 98, statements: 98, functions: 90, branches: 95 },
 				"src/services/**": { lines: 98, statements: 98, functions: 98, branches: 85 },
 				"src/features/**": { lines: 95, statements: 95, functions: 95, branches: 90 },
-				"src/adapters/discord/{args,commands,handlers,render,respond}.ts": {
-					lines: 98,
-					statements: 98,
-					functions: 98,
-					branches: 85,
-				},
+				"src/adapters/discord/{args,commands,handlers,render,respond,announce-render,announce-publishers,announce-state}.ts":
+					{
+						lines: 98,
+						statements: 98,
+						functions: 98,
+						branches: 85,
+					},
 				"src/observability/{scrub,sentry-reporter,health}.ts": {
 					lines: 98,
 					statements: 98,
