@@ -71,6 +71,8 @@ describe("buildFeatures", () => {
 		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
 			["status", "admin"],
 			["reload", "admin"],
+			["set-level", "admin"],
+			["whois", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -111,7 +113,10 @@ describe("help", () => {
 	});
 });
 
-function adminSubcommand(name: string, store: Pick<AccessStore, "view" | "reload"> = access) {
+function adminSubcommand(
+	name: string,
+	store: Pick<AccessStore, "view" | "apply" | "reload"> = access,
+) {
 	const admin = createAdminFeature({
 		version: "1.0.0",
 		startedAt: new Date(0),
@@ -130,6 +135,7 @@ describe("admin", () => {
 		const caller = principal("admin", { userId: IDS.admin });
 		const reply = await adminSubcommand("reload", {
 			view: { ...access.view, warnings: ["x", "y"] },
+			apply: access.apply,
 			reload,
 		}).handler(context({ principal: caller }));
 		expect(reload).toHaveBeenCalledWith(caller);
@@ -148,6 +154,7 @@ describe("admin", () => {
 	it("lets a failed reload's message through", async () => {
 		const failing = {
 			view: access.view,
+			apply: access.apply,
 			reload: async () => {
 				throw new UserFacingError("Reload failed");
 			},

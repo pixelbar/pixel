@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeMarkdown, formatUntil, isValidTimeZone } from "./format.ts";
+import { escapeMarkdown, formatUntil, inlineCode, isValidTimeZone } from "./format.ts";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -55,5 +55,43 @@ describe("escapeMarkdown", () => {
 
 	it("turns line breaks and runs of spaces into single spaces, and trims", () => {
 		expect(escapeMarkdown("  one\n\ntwo \t three  ")).toBe("one two three");
+	});
+});
+
+describe("inlineCode", () => {
+	it("shows text as a code span", () => {
+		expect(inlineCode("paid yearly")).toBe("`paid yearly`");
+	});
+
+	it.each([
+		["a masked link", "[click](https://evil.example)"],
+		["an everyone mention", "@everyone <@123> <#456>"],
+		["a heading, list and quote", "# big\n- item\n> quote"],
+		["formatting", "**bold** __under__ ~~strike~~ ||spoiler||"],
+		["a custom emoji and timestamp", "<:wave:123> <t:1700000000:R>"],
+	])("keeps %s inert inside the code span", (_label, text) => {
+		const out = inlineCode(text);
+		expect(out.startsWith("`")).toBe(true);
+		expect(out.endsWith("`")).toBe(true);
+		expect(out.slice(1, -1)).not.toContain("`");
+		expect(out).not.toMatch(/\n/);
+	});
+
+	it("can't break out of the span with backticks", () => {
+		expect(inlineCode("a`b```c")).toBe("`a'b'''c`");
+	});
+
+	it("turns control, invisible and bidi characters and line breaks into spaces", () => {
+		expect(inlineCode("a\u0000b\u200bc\u202ed\n\re\u2028f")).toBe("`a b c d e f`");
+	});
+
+	it("cuts long text by characters, not code units", () => {
+		expect(inlineCode("😀".repeat(10), 5)).toBe(`\`${"😀".repeat(4)}…\``);
+		expect(inlineCode("abcde", 5)).toBe("`abcde`");
+	});
+
+	it("falls back when nothing is left", () => {
+		expect(inlineCode("  \u200b \n")).toBe("(empty)");
+		expect(inlineCode("", 10, "none")).toBe("none");
 	});
 });

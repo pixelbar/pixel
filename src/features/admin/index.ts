@@ -1,11 +1,12 @@
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
 import type { AccessStore } from "../../core/ports/access-store.ts";
+import { createMemberSubcommands } from "./members.ts";
 
 export type AdminDeps = {
 	version: string;
 	startedAt: Date;
-	access: Pick<AccessStore, "view" | "reload">;
+	access: Pick<AccessStore, "view" | "apply" | "reload">;
 	now?: () => Date;
 };
 
@@ -64,6 +65,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 							};
 						},
 					},
+					...createMemberSubcommands(deps.access),
 				],
 			},
 		],

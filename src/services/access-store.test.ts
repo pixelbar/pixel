@@ -412,6 +412,16 @@ describe("audit", () => {
 		});
 	});
 
+	it("logs the reason when one is given, and refuses one that is too long", async () => {
+		const store = open();
+		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", reason: "paid cash" }, by);
+		expect(entries("access.changed")[0]?.obj).toMatchObject({ reason: "paid cash" });
+		await expect(
+			store.apply({ kind: "set-tier", id: IDS.friend, tier: "member", reason: "x".repeat(201) }, by),
+		).rejects.toThrow(/at most 200 characters/);
+		expect(store.view.discord.get(IDS.friend)).toBe("friend");
+	});
+
 	it("doesn't audit a change that was refused", async () => {
 		await open()
 			.apply({ kind: "set-tier", id: IDS.admin, tier: "friend" }, by)
