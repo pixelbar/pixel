@@ -1,0 +1,30 @@
+# dependencies & build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# local env & secrets
+.env
+.env.*
+!.env.example
+
+# access lists contain personal data — only examples are committed
+config/*.yaml
+!config/*.example.yaml
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.example.tfvars
+
+# claude
+.claude/worktrees/
