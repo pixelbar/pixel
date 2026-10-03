@@ -44,12 +44,12 @@ src/
   core/                 # platform-agnostic: access, command, dispatcher, registry,
                         #   identity, announcer, announcement types, calendar, errors, ports/
   features/<name>/      # one folder per feature; depends only on core/ and services/
-  services/             # access-config, spaceapi, knowledge
+  services/             # access-config, space-status, info-content
   adapters/discord/     # interactive + publishers + calendar source
   observability/        # logger, Sentry helpers, secret scrubbing, health
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 data/                   # runtime state (space.state); gitignored, safe to delete
-content/                # markdown for /info topics
+content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # register-commands, validate-config
 docs/                   # architecture, identity, ADRs
 ```
@@ -76,6 +76,7 @@ docs/                   # architecture, identity, ADRs
   4. Add tests.
 - **Announcements:** features hand an announcement (a typed kind from `core/announcement.ts`) to the `Announcer` and never call a publisher or a platform directly. Publishers decide how each kind looks on their platform. Never hard-code platform accounts, handles or channels: they come from config. Announcement text must be safe to show anywhere, and Discord posts must keep mentions disabled.
 - **Calendar:** features read events from the core `Calendar` (neutral `CalendarEvent`s) and never touch a platform. An adapter plugs in a `CalendarSource` when it's ready. **Text written by other people** (event titles, locations and so on) must go through `escapeMarkdown` before it's put in a reply.
+- **Content:** `content/info/*.md` is committed to a **public** repository, so never put secrets (wifi passwords, door codes, tokens) or personal data in it, and don't add member-only topics. Keep topics short and link to the canonical page on pixelbar.nl rather than copying it. Don't invent facts: every claim should come from Pixelbar's own pages or from the board. Adding, removing or renaming a topic needs the commands re-registered (`just register`), and CI loads the real content, so keep it valid.
 - **Background work:** a feature that needs it declares `start()`, which returns a stop function. Don't start timers or listeners at import time or in a factory. Anything that runs from a timer must catch its own failures so none escapes as an unhandled rejection.
 - **Config:** a new environment variable must be added to `config.ts`, `.env.example` and the architecture doc's config table.
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.

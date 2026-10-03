@@ -21,6 +21,8 @@ WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+# Reviewed, public content (the /info topics) is baked into the image; changing it means a deploy.
+COPY content ./content
 # Access lists are mounted at runtime (Key Vault secret volume); never baked in.
 # Runtime state (space.state, announcements.state) goes in /app/data. Mount a volume
 # there for it to survive new deploys; without one it resets, which only costs the

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,12 +20,18 @@ describe("buildCore", () => {
 		const membersFile = join(dir, "members.yaml");
 		writeFileSync(adminsFile, `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`);
 		writeFileSync(membersFile, `members:\n  - discordId: "${IDS.member}"\n    tier: member\n`);
+		mkdirSync(join(dir, "content", "info"), { recursive: true });
+		writeFileSync(
+			join(dir, "content", "info", "membership.md"),
+			"---\ntitle: Becoming a member\nsummary: How to join\n---\nEmail the board.\n",
+		);
 		config = {
 			env: "local",
 			version: "test",
 			logLevel: "info",
 			access: { adminsFile, membersFile },
 			dataDir: join(dir, "data"),
+			contentDir: join(dir, "content"),
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
 			sentryDsn: undefined,
@@ -34,6 +40,7 @@ describe("buildCore", () => {
 				token: "x",
 				appId: "100000000000000010",
 				guildId: "100000000000000020",
+				announcementsChannelId: undefined,
 				announce: { liveChannelId: undefined, timelineChannelId: undefined },
 			},
 		};
@@ -157,6 +164,79 @@ describe("buildCore", () => {
 			"[Soldering workshop](https://discord.com/events/1/2)",
 		);
 		expect(result.reply.embeds?.[0]?.description).toContain("🔁 weekly");
+	});
+
+	it("/info answers from the content folder, for guests, in public", async () => {
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
+		const info = (args: Record<string, string>) =>
+			dispatcher.dispatch({ actor: actor({ userId: IDS.guest }), command: "info", args });
+
+		const topic = await info({ topic: "membership" });
+		expect(topic.private).toBe(false);
+		expect(topic.reply.embeds?.[0]).toMatchObject({
+			title: "Becoming a member",
+			description: "Email the board.",
+		});
+
+		const list = await info({});
+		expect(list.reply.embeds?.[0]?.description).toContain("**membership**: How to join");
+	});
+
+	it("/info points at this server's announcements channel, or says so in words if there isn't one", async () => {
+		writeFileSync(
+			join(dir, "content", "info", "visiting.md"),
+			"---\ntitle: Visiting\nsummary: Dropping by\n---\nCheck {{announcements-channel}} for the poll.\n",
+		);
+		const visiting = async (announcementsChannelId?: string) => {
+			const { dispatcher } = buildCore(
+				{ ...config, discord: { ...config.discord, announcementsChannelId } },
+				silentLogger,
+				nullErrorReporter,
+			);
+			const result = await dispatcher.dispatch({
+				actor: actor({ userId: IDS.guest }),
+				command: "info",
+				args: { topic: "visiting" },
+			});
+			return result.reply.embeds?.[0]?.description;
+		};
+
+		expect(await visiting("100000000000000031")).toBe("Check <#100000000000000031> for the poll.");
+		expect(await visiting()).toBe("Check the announcements channel for the poll.");
+	});
+
+	it("refuses to build when /info content uses a placeholder that doesn't exist", () => {
+		writeFileSync(
+			join(dir, "content", "info", "oops.md"),
+			"---\ntitle: Oops\nsummary: Typo\n---\nSee {{announcement-channel}}.\n",
+		);
+		expect(() => buildCore(config, silentLogger, nullErrorReporter)).toThrow(
+			/oops\.md: \{\{announcement-channel\}\} isn't a known placeholder/,
+		);
+	});
+
+	it("rejects a topic that isn't in the content folder", async () => {
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
+		const result = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.guest }),
+			command: "info",
+			args: { topic: "wifi-password" },
+		});
+		expect(result.reply.text).toMatch(/Invalid value for option "topic"/);
+	});
+
+	it("refuses to build with invalid /info content", () => {
+		writeFileSync(join(dir, "content", "info", "broken.md"), "no front matter here");
+		expect(() => buildCore(config, silentLogger, nullErrorReporter)).toThrow(
+			/broken\.md: must start with a --- block/,
+		);
+	});
+
+	it("refuses to build when there is no content folder", () => {
+		rmSync(join(dir, "content"), { recursive: true });
+		expect(() => buildCore(config, silentLogger, nullErrorReporter)).toThrow(
+			/Invalid info content/,
+		);
 	});
 
 	it("refuses to build with an invalid access file", () => {

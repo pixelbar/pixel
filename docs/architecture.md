@@ -54,7 +54,7 @@ Pixel follows a **ports-and-adapters** design. Adapters translate between a plat
                        ▼
    ┌──────────────────────────────────────────┐
    │ services/*  spaceapi · access config ·   │
-   │             knowledge                    │
+   │             info content                 │
    └──────────────────────────────────────────┘
 
    observability/ (Sentry + pino) wraps every layer
@@ -173,7 +173,7 @@ type Feature = {
 | `accessConfig`   | Admin and member lists               | Loads and validates the two YAML files at startup (`ConfigTierSource`) |
 | `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 30 s tracks when the state changed, and `onChange` fires on open↔closed flips, with how long the previous state lasted. The last state and its time are saved to `space.state` and restored on startup (below). After 10 consecutive failures (about 5 minutes) it reports once, and it logs when SpaceAPI recovers |
 | `calendar`       | Upcoming events                      | `core/calendar.ts`. A neutral `CalendarEvent` and a `CalendarSource` that an adapter plugs in once it's ready (like announcement publishers), so before that `/events` says the calendar isn't available. **Nothing is cached**: every call asks the source, so a renamed or rescheduled event shows up straight away. If the source fails that's an error (`CalendarUnavailableError`), never an out-of-date list; it's logged, and reported to Sentry once per outage rather than on every command |
-| `knowledge`      | Info topics                          | Markdown files in `content/`                                      |
+| `infoContent`    | `/info` topics                       | `services/info-content.ts`. Loads and validates the markdown files in `content/info/` at startup (see below). Invalid content stops startup, and CI loads the real content too |
 
 Pixelbar's SpaceAPI response has `state.open` but no `lastchange`, so Pixel records when it saw each change and remembers it in `space.state` (YAML, in `PIXEL_DATA_DIR`, default `data/`). It's written only when the state changes, atomically (temp file and rename).
 
@@ -196,7 +196,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
-| `info`    | `/info <topic>`              | guest  |       | Address, membership, contact (from `content/`)      |
+| `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
 
 ### The events list
 
@@ -208,6 +208,29 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 - **Event titles, locations and repeat text are written by whoever made the event**, so they are escaped: they can't add formatting, fake a link, or inject a mention marker.
 - The reply is public, like `/status`. It asks Discord live on every use, which takes about 200 ms, so it needs no "Checking…" box. If Discord is slow, the adapter defers the reply itself.
 - If Discord can't be reached, the reply is a friendly error. It never shows an earlier list.
+
+### The info topics
+
+`/info` answers common questions from markdown files, one per topic, in `content/info/` (found through `PIXEL_CONTENT_DIR`):
+
+```markdown
+---
+title: Becoming a member
+summary: Member and Friend memberships, what they cost and how to join
+order: 30        # optional; lower comes first, default 100
+---
+The text of the answer, in markdown…
+```
+
+- **The file name is the topic's ID**: lowercase letters, digits and single dashes, up to 32 characters (`membership.md`). It's what people pick in `/info topic:`.
+- **Short answers that link to the canonical page.** Pixelbar's website is the source of truth for prices, rules and opening times, so each topic is a few lines plus a link. That way the bot doesn't become a second copy to keep up to date.
+- **Everything is checked at startup**, and Pixel refuses to start if anything is wrong, listing every problem at once: a bad file name, a missing title or summary, unknown keys, empty text, text over 4,000 characters, or more than 25 topics (Discord's limit for choices). CI loads the real `content/info/` folder in a test, so a broken edit fails the PR.
+- **`/info` with no topic lists them all** with their summaries. The topic choices are built from the files, so they're registered with Discord: **editing a topic's text goes live on the next deploy**, and **adding, removing or renaming a topic also needs the commands re-registered** (`just register`; the deploy pipeline will do it, #10).
+- **Content is baked into the Docker image** (`COPY content ./content`), so changing it means a deploy.
+- **The content is public.** This repository is public, so never put secrets (wifi passwords, door codes) or personal data in `content/`. That's why there are no member-only topics yet.
+- The text is shown as written, since it comes from this reviewed repository. (Text written by other people, like event titles, is always escaped.)
+- **Placeholders:** topic text can use `{{name}}`, filled in when the topics are loaded, so the same reviewed text works in every environment. Today there's one, `{{announcements-channel}}`, which becomes a clickable channel link in Discord when `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` is set, and the plain words "the announcements channel" otherwise. An unknown placeholder or a stray `{{` stops startup (and fails CI), so a typo can't show up in a reply. The length limit applies to the text after filling in. Values are Discord-flavoured for now, because Discord is the only platform.
+- **Opening hours** come from the board: "Normally Wednesday evening until late, check the announcements channel and vote in the weekly poll so someone knows you're interested!" Pixelbar's own pages disagree about the times, so `/info` doesn't state fixed hours.
 
 ### Announcing changes
 
@@ -242,9 +265,11 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`                  |
 | `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state (`space.state`, `announcements.state`); gitignored |
 | `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in |
+| `PIXEL_CONTENT_DIR`           |        | Default `content`. The reviewed content Pixel reads (`info/*.md` for `/info`). Read-only |
 | `DISCORD_TOKEN`               | yes    |                                                |
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |
+| `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` |    | Optional. The channel where announcements and the weekly poll are posted. `/info` points people at it. (Not the space-status posts below) |
 | `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` |   | Optional. Live style: one post per opening, edited to "closed" |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
 | `SENTRY_DSN`                  | yes    | Optional                                       |

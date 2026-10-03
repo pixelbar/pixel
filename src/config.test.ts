@@ -21,6 +21,14 @@ describe("loadConfig", () => {
 		});
 	});
 
+	it("reads content from ./content unless told otherwise", () => {
+		expect(loadConfig(VALID).contentDir).toBe("content");
+		expect(loadConfig({ ...VALID, PIXEL_CONTENT_DIR: "/srv/pixel/content" }).contentDir).toBe(
+			"/srv/pixel/content",
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_CONTENT_DIR: "" })).toThrow(/PIXEL_CONTENT_DIR/);
+	});
+
 	it("shows times in Amsterdam unless told otherwise, and rejects unknown time zones", () => {
 		expect(loadConfig(VALID).timezone).toBe("Europe/Amsterdam");
 		expect(loadConfig({ ...VALID, PIXEL_TIMEZONE: "UTC" }).timezone).toBe("UTC");
@@ -28,6 +36,20 @@ describe("loadConfig", () => {
 			/PIXEL_TIMEZONE/,
 		);
 		expect(() => loadConfig({ ...VALID, PIXEL_TIMEZONE: "" })).toThrow(/PIXEL_TIMEZONE/);
+	});
+
+	it("has no announcements channel unless configured, and rejects one that isn't a Discord ID", () => {
+		expect(loadConfig(VALID).discord.announcementsChannelId).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "" }).discord.announcementsChannelId,
+		).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000031" }).discord
+				.announcementsChannelId,
+		).toBe("100000000000000031");
+		expect(() =>
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "#announcements" }),
+		).toThrow(/DISCORD_ANNOUNCEMENTS_CHANNEL_ID/);
 	});
 
 	it("has no announcement channels unless configured", () => {

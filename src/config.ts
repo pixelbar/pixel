@@ -19,6 +19,7 @@ const envSchema = z.object({
 	PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
 	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
 	PIXEL_DATA_DIR: z.string().min(1).default("data"),
+	PIXEL_CONTENT_DIR: z.string().min(1).default("content"),
 	PIXEL_TIMEZONE: z
 		.string()
 		.default("Europe/Amsterdam")
@@ -30,6 +31,7 @@ const envSchema = z.object({
 	DISCORD_TOKEN: z.string().min(1),
 	DISCORD_APP_ID: snowflake,
 	DISCORD_GUILD_ID: snowflake,
+	DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
 	DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
 	DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
 });
@@ -41,6 +43,8 @@ export type Config = {
 	access: { adminsFile: string; membersFile: string };
 	/** Where Pixel keeps small bits of runtime state (e.g. `space.state`). */
 	dataDir: string;
+	/** Where the reviewed content lives (e.g. `info/*.md` for `/info`). Read-only. */
+	contentDir: string;
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
 	healthPort: number;
@@ -50,6 +54,11 @@ export type Config = {
 		token: string;
 		appId: string;
 		guildId: string;
+		/**
+		 * The channel where people post and read announcements and the weekly poll.
+		 * `/info` points people at it. (Not the space-status posts: those are `announce`.)
+		 */
+		announcementsChannelId: string | undefined;
 		announce: {
 			/** One post per opening, edited to "closed" when the space closes. */
 			liveChannelId: string | undefined;
@@ -78,6 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		logLevel: e.LOG_LEVEL,
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
 		dataDir: e.PIXEL_DATA_DIR,
+		contentDir: e.PIXEL_CONTENT_DIR,
 		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
@@ -86,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			token: e.DISCORD_TOKEN,
 			appId: e.DISCORD_APP_ID,
 			guildId: e.DISCORD_GUILD_ID,
+			announcementsChannelId: e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 			announce: {
 				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
 				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,

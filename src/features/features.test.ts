@@ -34,6 +34,9 @@ const deps = () => ({
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
+	infoTopics: [
+		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
+	],
 	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
 });
@@ -53,15 +56,16 @@ describe("buildFeatures", () => {
 				.all()
 				.map((c) => c.definition.name)
 				.sort(),
-		).toEqual(["admin", "events", "help", "ping", "status", "whoami"]);
+		).toEqual(["admin", "events", "help", "info", "ping", "status", "whoami"]);
 	});
 
-	it("restricts /admin to admins and opens /status and /events to guests", () => {
+	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {
 		const registry = new CommandRegistry();
 		for (const f of buildFeatures(deps())) registry.register(f);
 		expect(registry.get("admin")?.definition.access.minTier).toBe("admin");
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
+		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
 	});
 });
 

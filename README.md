@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`, plus open/closed announcements in Discord and `/events` (from the server's scheduled events). `/info` comes next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`, plus open/closed announcements in Discord, `/events` (from the server's scheduled events) and `/info` (short answers about Pixelbar). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
 
 ## Stack
 
@@ -62,6 +62,26 @@ A change is posted once it has held for two checks in a row (about 30–60 secon
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
+### Editing the `/info` topics
+
+`/info` answers from markdown files in [`content/info/`](content/info), one per topic. You can edit them right in GitHub, and you don't need to know any code. A file looks like this:
+
+```markdown
+---
+title: Becoming a member
+summary: Member and Friend memberships, what they cost and how to join
+order: 30
+---
+The text of the answer, in markdown…
+```
+
+- The **file name** is the topic's name (`membership.md`): lowercase letters, digits and dashes.
+- `{{announcements-channel}}` in the text becomes a link to the announcements channel (set by `DISCORD_ANNOUNCEMENTS_CHANNEL_ID`). It's the only placeholder so far, and a misspelt one fails the checks.
+- Keep answers **short** and link to the full page on the website, which stays the source of truth for prices, rules and opening times.
+- **This repository is public.** Never put passwords, door codes or personal details in these files.
+- A broken file fails the checks on your pull request, with a message saying what's wrong.
+- Changes go live on the next deploy. **Adding, removing or renaming a topic** also needs `just register`.
+
 ### Access lists
 
 Tiers come from two YAML files. **They are gitignored, because they contain personal data.**
@@ -82,11 +102,13 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_TOKEN`               | Bot token                                          |
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
+| `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` | Optional. Where announcements and the weekly poll are posted. `/info` points people at it |
 | `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` | Optional. Channel for the **live** style: one post per opening, edited to "closed" when the space closes |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
 | `PIXEL_DATA_DIR`              | Optional. Where Pixel keeps small bits of state (`space.state`, `announcements.state`). Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
+| `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands
