@@ -223,7 +223,8 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 - **Secrets and access files:** Key Vault. The two YAML files are stored as secrets and mounted into the container as files.
 - **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
 - **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC), `infra/modules/pixel`, and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state.
-- **CI:** `just check` on every PR. On `main`: build, push, create a Sentry release, deploy to dev.
+- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. Actions are pinned to commit SHAs, and the workflow can only read the repo.
+- **CD (planned):** on `main`, push the image to GHCR, create a Sentry release with source maps, and deploy to dev. Prod deploys need approval.
 
 ## Adding a platform (later)
 

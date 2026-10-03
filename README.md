@@ -91,6 +91,10 @@ Run `just` to list every recipe.
 | `just register`        | Register slash commands with Discord          |
 | `just docker-build`    | Build the container image                     |
 
+## CI
+
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds.
+
 ## Deployment
 
 Not set up yet. The plan is a single container on Azure Container Apps, with `dev` and `prod` environments provisioned by Terraform. See [Deployment](docs/architecture.md#deployment-designed-not-built-in-phase-1).
