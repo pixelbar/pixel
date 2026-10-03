@@ -8,9 +8,9 @@ import {
 import { silentLogger } from "./logger.ts";
 import type { ErrorReporter } from "./ports/error-reporter.ts";
 
-const event = (id: string): CalendarEvent => ({
+const event = (id: string, title = `Event ${id}`): CalendarEvent => ({
 	id,
-	title: `Event ${id}`,
+	title,
 	startsAt: new Date("2026-10-04T18:00:00Z"),
 	endsAt: null,
 	location: null,
@@ -20,18 +20,11 @@ const event = (id: string): CalendarEvent => ({
 
 /** A source whose answers are scripted: events to return, or an error to throw. */
 function setup() {
-	let now = 1_000_000;
 	const reporter = {
 		capture: vi.fn(),
 		captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
 	};
-	const calendar = new Calendar({
-		logger: silentLogger,
-		reporter,
-		now: () => now,
-		ttlMs: 60_000,
-		maxStaleMs: 600_000,
-	});
+	const calendar = new Calendar({ logger: silentLogger, reporter });
 	const answers: (CalendarEvent[] | Error)[] = [];
 	const source = {
 		upcoming: vi.fn(async () => {
@@ -47,9 +40,6 @@ function setup() {
 		source,
 		reporter,
 		answer: (...next: (CalendarEvent[] | Error)[]) => answers.push(...next),
-		advance: (ms: number) => {
-			now += ms;
-		},
 	};
 }
 
@@ -73,36 +63,35 @@ describe("Calendar", () => {
 		expect((await calendar.events()).map((e) => e.id)).toEqual(["a", "b"]);
 	});
 
-	describe("caching", () => {
-		it("reuses a fresh list instead of asking again", async () => {
-			const { calendar, source, answer, advance } = setup();
-			answer([event("a")]);
-			await calendar.events();
-			advance(59_999);
-			await calendar.events();
-			expect(source.upcoming).toHaveBeenCalledOnce();
-		});
+	describe("never serves anything out of date", () => {
+		it("asks the source every time, so a renamed event shows its new name straight away", async () => {
+			const { calendar, source, answer } = setup();
+			answer([event("a", "Soldering workshop")], [event("a", "Soldering night")]);
 
-		it("asks again once the list is no longer fresh", async () => {
-			const { calendar, source, answer, advance } = setup();
-			answer([event("a")], [event("b")]);
-			await calendar.events();
-			advance(60_000);
-			expect((await calendar.events()).map((e) => e.id)).toEqual(["b"]);
+			expect((await calendar.events())[0]?.title).toBe("Soldering workshop");
+			expect((await calendar.events())[0]?.title).toBe("Soldering night");
 			expect(source.upcoming).toHaveBeenCalledTimes(2);
 		});
 
-		it("shares one request between overlapping calls", async () => {
+		it("doesn't reuse a recent list, however close together the calls are", async () => {
 			const { calendar, source, answer } = setup();
-			answer([event("a")]);
-			const [first, second] = await Promise.all([calendar.events(), calendar.events()]);
-			expect(first).toBe(second);
-			expect(source.upcoming).toHaveBeenCalledOnce();
+			answer([event("a")], [event("a")], [event("a")]);
+			await calendar.events();
+			await calendar.events();
+			await calendar.events();
+			expect(source.upcoming).toHaveBeenCalledTimes(3);
+		});
+
+		it("gives an error rather than an earlier list when the source then fails", async () => {
+			const { calendar, answer } = setup();
+			answer([event("a")], new Error("Discord is down"));
+			await calendar.events();
+			await expect(calendar.events()).rejects.toThrow(CalendarUnavailableError);
 		});
 	});
 
 	describe("when the source fails", () => {
-		it("is unavailable if there's nothing earlier to fall back on", async () => {
+		it("is unavailable, with the cause kept for the logs", async () => {
 			const { calendar, answer } = setup();
 			const boom = new Error("Discord is down");
 			answer(boom);
@@ -111,35 +100,22 @@ describe("Calendar", () => {
 			expect((error as Error).cause).toBe(boom);
 		});
 
-		it("shows an earlier list that's recent enough", async () => {
-			const { calendar, answer, advance } = setup();
-			answer([event("a")], new Error("Discord is down"));
-			await calendar.events();
-			advance(600_000);
+		it("recovers as soon as the source does", async () => {
+			const { calendar, answer } = setup();
+			answer(new Error("Discord is down"), [event("a")]);
+			await expect(calendar.events()).rejects.toThrow(CalendarUnavailableError);
 			expect((await calendar.events()).map((e) => e.id)).toEqual(["a"]);
 		});
 
-		it("gives up on an earlier list that's too old", async () => {
-			const { calendar, answer, advance } = setup();
-			answer([event("a")], new Error("Discord is down"));
-			await calendar.events();
-			advance(600_001);
-			await expect(calendar.events()).rejects.toThrow(CalendarUnavailableError);
-		});
-
-		it("reports an outage once, not on every failed load, and again after recovering", async () => {
-			const { calendar, reporter, answer, advance } = setup();
+		it("reports an outage once, not on every failed command, and again after recovering", async () => {
+			const { calendar, reporter, answer } = setup();
 			const down = new Error("Discord is down");
-			answer(down, down, [event("a")], down);
-			for (let i = 0; i < 2; i++) {
-				await calendar.events().catch(() => {});
-				advance(60_000);
-			}
+			answer(down, down, down, [event("a")], down);
+			for (let i = 0; i < 3; i++) await calendar.events().catch(() => {});
 			expect(reporter.captureBackground).toHaveBeenCalledOnce();
 			expect(reporter.captureBackground).toHaveBeenCalledWith(down, "calendar");
 
 			await calendar.events(); // recovers
-			advance(60_000);
 			await calendar.events().catch(() => {});
 			expect(reporter.captureBackground).toHaveBeenCalledTimes(2);
 		});

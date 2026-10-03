@@ -34,11 +34,6 @@ export class CalendarUnavailableError extends Error {
 export type CalendarOptions = {
 	logger: Logger;
 	reporter: ErrorReporter;
-	now?: () => number;
-	/** How long a loaded list counts as fresh. */
-	ttlMs?: number;
-	/** How long an old list may still be shown when the source is failing. */
-	maxStaleMs?: number;
 };
 
 /**
@@ -47,29 +42,21 @@ export type CalendarOptions = {
  * publishers register with the announcer); until then the calendar is
  * unavailable.
  *
- * - Results are cached briefly, so a busy channel doesn't hit the platform on
- *   every command, and concurrent loads share one request.
- * - If the source fails, a recent enough earlier list is shown instead of an
- *   error. The failure is logged, and reported once per outage.
+ * Nothing is cached: every call asks the source, so a renamed or rescheduled
+ * event shows up straight away. If the source fails, that's an error
+ * ({@link CalendarUnavailableError}), never an out-of-date list. The failure is
+ * logged, and reported once per outage rather than on every command.
  */
 export class Calendar {
 	readonly #logger: Logger;
 	readonly #reporter: ErrorReporter;
-	readonly #now: () => number;
-	readonly #ttlMs: number;
-	readonly #maxStaleMs: number;
 
 	#source: CalendarSource | undefined;
-	#cache: { events: CalendarEvent[]; loadedAt: number } | undefined;
-	#inFlight: Promise<CalendarEvent[]> | undefined;
 	#reported = false;
 
-	constructor({ logger, reporter, now, ttlMs, maxStaleMs }: CalendarOptions) {
+	constructor({ logger, reporter }: CalendarOptions) {
 		this.#logger = logger.child({ component: "calendar" });
 		this.#reporter = reporter;
-		this.#now = now ?? Date.now;
-		this.#ttlMs = ttlMs ?? 60_000;
-		this.#maxStaleMs = maxStaleMs ?? 10 * 60_000;
 	}
 
 	/** Plugs in where events come from. There can only be one source. */
@@ -78,24 +65,13 @@ export class Calendar {
 		this.#source = source;
 	}
 
-	/** The calendar's events, or throws {@link CalendarUnavailableError}. */
+	/** The calendar's events, as they are right now, or throws {@link CalendarUnavailableError}. */
 	async events(): Promise<CalendarEvent[]> {
 		const source = this.#source;
 		if (!source) throw new CalendarUnavailableError("The calendar isn't connected yet");
 
-		const cache = this.#cache;
-		if (cache && this.#now() - cache.loadedAt < this.#ttlMs) return cache.events;
-
-		this.#inFlight ??= this.#load(source).finally(() => {
-			this.#inFlight = undefined;
-		});
-		return this.#inFlight;
-	}
-
-	async #load(source: CalendarSource): Promise<CalendarEvent[]> {
 		try {
 			const events = await source.upcoming();
-			this.#cache = { events, loadedAt: this.#now() };
 			this.#reported = false;
 			return events;
 		} catch (error) {
@@ -104,8 +80,6 @@ export class Calendar {
 				this.#reported = true;
 				this.#reporter.captureBackground(error, "calendar");
 			}
-			const cache = this.#cache;
-			if (cache && this.#now() - cache.loadedAt <= this.#maxStaleMs) return cache.events;
 			throw new CalendarUnavailableError("The calendar couldn't be loaded", { cause: error });
 		}
 	}
