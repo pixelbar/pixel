@@ -50,6 +50,22 @@ describe("toSlashCommand without options", () => {
 	});
 });
 
+describe("toSlashCommand visibility", () => {
+	it("hides admin-tier commands by default, and leaves the rest visible", () => {
+		expect(
+			toSlashCommand(command({ access: { minTier: "admin" } })).default_member_permissions,
+		).toBe("0");
+		expect(toSlashCommand(group({ access: { minTier: "admin" } })).default_member_permissions).toBe(
+			"0",
+		);
+		for (const minTier of ["guest", "friend", "member"] as const) {
+			expect(toSlashCommand(command({ access: { minTier } }))).not.toHaveProperty(
+				"default_member_permissions",
+			);
+		}
+	});
+});
+
 describe("toSlashCommand with subcommands and users", () => {
 	it("maps a group to native subcommands with their own options", () => {
 		const json = toSlashCommand(
