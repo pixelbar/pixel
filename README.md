@@ -125,6 +125,7 @@ Run `just` to list every recipe.
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
 | `just register`        | Register slash commands with Discord          |
+| `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docker-build`    | Build the container image                     |
 
 ## CI
