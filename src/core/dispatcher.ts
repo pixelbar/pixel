@@ -1,11 +1,19 @@
 import {
+	type Access,
 	actorLogFields,
 	actorRef,
 	checkAccess,
 	type PlatformActor,
 	type Principal,
 } from "./access.ts";
-import type { Args, ArgValue, CommandDefinition, CommandSummary } from "./command.ts";
+import {
+	type Args,
+	type ArgValue,
+	type CommandSummary,
+	isGroup,
+	type ResolvedUser,
+	type SubcommandDefinition,
+} from "./command.ts";
 import { UserFacingError } from "./errors.ts";
 import type { IdentityService } from "./identity.ts";
 import type { Logger } from "./logger.ts";
@@ -17,7 +25,11 @@ import type { Reply } from "./reply.ts";
 export type DispatchRequest = {
 	actor: PlatformActor;
 	command: string;
+	/** Set when `command` is a group, e.g. `status` for `/admin status`. */
+	subcommand?: string;
 	args: Args;
+	/** Users picked through `user` options, by option name, as resolved by the adapter. */
+	users?: Readonly<Record<string, ResolvedUser>>;
 };
 
 export type DispatchResult = {
@@ -66,25 +78,27 @@ export class Dispatcher {
 	}
 
 	/** Lets adapters choose visibility before the reply exists (e.g. when deferring). */
-	defaultPrivacy(command: string): boolean {
-		return this.#deps.registry.get(command)?.definition.private ?? false;
+	defaultPrivacy(command: string, subcommand?: string): boolean {
+		return this.#lookup(command, subcommand)?.runnable.private ?? false;
 	}
 
 	async dispatch(
-		{ actor, command, args }: DispatchRequest,
+		{ actor, command: commandName, subcommand, args, users = {} }: DispatchRequest,
 		hooks: DispatchHooks = {},
 	): Promise<DispatchResult> {
-		const { registry, identity, rateLimiter, reporter } = this.#deps;
+		const { identity, rateLimiter, reporter } = this.#deps;
 		const user = actorRef(actor);
+		// Logged and tagged by full name, e.g. "admin status".
+		const command = subcommand === undefined ? commandName : `${commandName} ${subcommand}`;
 		const log = this.#deps.logger.child({
 			command,
 			platform: actor.platform,
 			...actorLogFields(actor),
 		});
 
-		const registered = registry.get(command);
-		if (!registered) return privateText(MESSAGES.unknownCommand);
-		const { definition, feature } = registered;
+		const found = this.#lookup(commandName, subcommand);
+		if (!found) return privateText(MESSAGES.unknownCommand);
+		const { runnable: definition, gates, feature } = found;
 
 		if (!rateLimiter.tryTake(user)) {
 			log.warn({ event: "command.rate_limited" }, "rate limited");
@@ -92,14 +106,16 @@ export class Dispatcher {
 		}
 
 		const principal = await identity.resolve(actor);
-		const decision = checkAccess(definition.access, principal);
-		if (!decision.allowed) {
+		// A subcommand sits behind its group, so every gate must pass.
+		for (const access of gates) {
+			const decision = checkAccess(access, principal);
+			if (decision.allowed) continue;
 			log.warn(
 				{
 					event: "command.denied",
 					reason: decision.reason,
 					tier: principal.tier,
-					required: definition.access.minTier,
+					required: access.minTier,
 				},
 				"command denied",
 			);
@@ -120,7 +136,7 @@ export class Dispatcher {
 			);
 
 		try {
-			const validArgs = validateArgs(definition, args);
+			const valid = validateArgs(definition, args, users);
 			if (definition.placeholder && hooks.onPending) {
 				const { placeholder } = definition;
 				await hooks.onPending({
@@ -129,7 +145,8 @@ export class Dispatcher {
 				});
 			}
 			const reply = await definition.handler({
-				args: validArgs,
+				args: valid.args,
+				users: valid.users,
 				principal,
 				logger: log,
 				availableCommands: this.#available(principal),
@@ -148,11 +165,31 @@ export class Dispatcher {
 		}
 	}
 
+	/** Finds what to run, plus every access gate on the way (group first). */
+	#lookup(command: string, subcommand?: string) {
+		const registered = this.#deps.registry.get(command);
+		if (!registered) return undefined;
+		const { definition, feature } = registered;
+		if (!isGroup(definition)) {
+			if (subcommand !== undefined) return undefined;
+			return { runnable: definition, gates: [definition.access], feature };
+		}
+		const sub = definition.subcommands.find((s) => s.name === subcommand);
+		if (!sub) return undefined;
+		return { runnable: sub, gates: [definition.access, sub.access], feature };
+	}
+
 	#available(principal: Principal): CommandSummary[] {
-		return this.#deps.registry
-			.all()
-			.filter(({ definition }) => checkAccess(definition.access, principal).allowed)
-			.map(({ definition }) => ({ name: definition.name, description: definition.description }));
+		const allowed = (...gates: Access[]) => gates.every((a) => checkAccess(a, principal).allowed);
+		return this.#deps.registry.all().flatMap(({ definition }): CommandSummary[] => {
+			if (!isGroup(definition)) {
+				if (!allowed(definition.access)) return [];
+				return [{ name: definition.name, description: definition.description }];
+			}
+			return definition.subcommands
+				.filter((sub) => allowed(definition.access, sub.access))
+				.map((sub) => ({ name: `${definition.name} ${sub.name}`, description: sub.description }));
+		});
 	}
 }
 
@@ -160,13 +197,24 @@ function privateText(text: string): DispatchResult {
 	return { reply: { text, private: true }, private: true };
 }
 
+export type ValidInput = {
+	args: Args;
+	users: Readonly<Record<string, ResolvedUser>>;
+};
+
 /**
  * Checks args against the command's declared options. Platforms like Discord
  * already enforce this, but adapters are untrusted input boundaries, so the
- * core checks again. Unknown args are dropped.
+ * core checks again. Unknown args are dropped. `user` options must carry the
+ * ID of a user the adapter resolved, and bots are refused unless allowed.
  */
-export function validateArgs(definition: CommandDefinition, args: Args): Args {
+export function validateArgs(
+	definition: Pick<SubcommandDefinition, "options">,
+	args: Args,
+	users: Readonly<Record<string, ResolvedUser>> = {},
+): ValidInput {
 	const result: Record<string, ArgValue> = {};
+	const resolved: Record<string, ResolvedUser> = {};
 	for (const option of definition.options ?? []) {
 		const value = args[option.name];
 		if (value === undefined) {
@@ -184,10 +232,19 @@ export function validateArgs(definition: CommandDefinition, args: Args): Args {
 			case "boolean":
 				if (typeof value !== "boolean") throw invalid(option.name);
 				break;
+			case "user": {
+				const user = users[option.name];
+				if (typeof value !== "string" || user?.id !== value) throw invalid(option.name);
+				if (user.isBot && !option.allowBots) {
+					throw new UserFacingError(`"${option.name}" can't be a bot.`);
+				}
+				resolved[option.name] = user;
+				break;
+			}
 		}
 		result[option.name] = value;
 	}
-	return result;
+	return { args: result, users: resolved };
 }
 
 function invalid(name: string): UserFacingError {

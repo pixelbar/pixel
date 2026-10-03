@@ -16,29 +16,36 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 		commands: [
 			{
 				name: "admin",
-				description: "Bot health and access list overview (admins only)",
+				description: "Administration (admins only)",
 				access: { minTier: "admin" },
-				private: true,
-				handler: async () => ({
-					embeds: [
-						{
-							title: "Pixel status",
-							fields: [
-								{ name: "Version", value: deps.version, inline: true },
-								{ name: "Node.js", value: process.version, inline: true },
+				subcommands: [
+					{
+						name: "status",
+						description: "Bot health and access list overview",
+						access: { minTier: "admin" },
+						private: true,
+						handler: async () => ({
+							embeds: [
 								{
-									name: "Uptime",
-									value: formatDuration(now().getTime() - deps.startedAt.getTime()),
-									inline: true,
-								},
-								{
-									name: "Access lists",
-									value: `${deps.accessCounts.admins} admins · ${deps.accessCounts.members} members · ${deps.accessCounts.friends} friends`,
+									title: "Pixel status",
+									fields: [
+										{ name: "Version", value: deps.version, inline: true },
+										{ name: "Node.js", value: process.version, inline: true },
+										{
+											name: "Uptime",
+											value: formatDuration(now().getTime() - deps.startedAt.getTime()),
+											inline: true,
+										},
+										{
+											name: "Access lists",
+											value: `${deps.accessCounts.admins} admins · ${deps.accessCounts.members} members · ${deps.accessCounts.friends} friends`,
+										},
+									],
 								},
 							],
-						},
-					],
-				}),
+						}),
+					},
+				],
 			},
 		],
 	};

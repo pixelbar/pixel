@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
+import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
 import { silentLogger } from "../core/logger.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
-import { context, IDS, principal } from "../testing/fixtures.ts";
+import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { buildFeatures } from "./index.ts";
@@ -41,10 +42,8 @@ const deps = () => ({
 	logger: silentLogger,
 });
 
-function onlyCommand(feature: { commands?: readonly { handler: unknown }[] }) {
-	const cmd = feature.commands?.[0];
-	if (!cmd) throw new Error("feature has no commands");
-	return cmd as NonNullable<ReturnType<typeof createPingFeature>["commands"]>[number];
+function onlyCommand(feature: Feature) {
+	return plain(feature.commands?.[0]);
 }
 
 describe("buildFeatures", () => {
@@ -62,7 +61,11 @@ describe("buildFeatures", () => {
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {
 		const registry = new CommandRegistry();
 		for (const f of buildFeatures(deps())) registry.register(f);
-		expect(registry.get("admin")?.definition.access.minTier).toBe("admin");
+		const admin = registry.get("admin")?.definition;
+		expect(admin?.access.minTier).toBe("admin");
+		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
+			["status", "admin"],
+		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
@@ -104,14 +107,16 @@ describe("help", () => {
 
 describe("admin", () => {
 	it("shows counts but no IDs", async () => {
-		const reply = await onlyCommand(
-			createAdminFeature({
-				version: "1.0.0",
-				startedAt: new Date(0),
-				accessCounts: access.counts,
-				now: () => new Date(90 * 60_000),
-			}),
-		).handler(context({ principal: principal("admin") }));
+		const admin = createAdminFeature({
+			version: "1.0.0",
+			startedAt: new Date(0),
+			accessCounts: access.counts,
+			now: () => new Date(90 * 60_000),
+		}).commands?.[0];
+		const status = admin?.subcommands?.[0];
+		if (!status) throw new Error("no /admin status");
+		expect(status.private).toBe(true);
+		const reply = await status.handler(context({ principal: principal("admin") }));
 		const fields = reply.embeds?.[0]?.fields ?? [];
 		expect(fields.find((f) => f.name === "Uptime")?.value).toBe("1h 30m");
 		expect(fields.find((f) => f.name === "Access lists")?.value).toBe(

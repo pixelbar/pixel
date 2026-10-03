@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { command } from "../testing/fixtures.ts";
+import { command, group, subcommand } from "../testing/fixtures.ts";
 import type { CommandDefinition } from "./command.ts";
 import { CommandRegistry, RegistryError } from "./registry.ts";
 
@@ -72,5 +72,94 @@ describe("CommandRegistry", () => {
 			{ name: "b", description: "b", type: "string", required: true },
 		] as const;
 		expect(() => register(command({ options }))).toThrow(/Required options/);
+	});
+});
+
+describe("CommandRegistry subcommands", () => {
+	it("registers a group under its own name", () => {
+		const registry = register(group({ name: "admin" }));
+		expect(registry.get("admin")?.definition.subcommands).toHaveLength(1);
+	});
+
+	it("rejects a group without subcommands, or with too many", () => {
+		expect(() => register(group({ subcommands: [] }))).toThrow(/Subcommands must number/);
+		const many = Array.from({ length: 26 }, (_, i) => subcommand({ name: `s${i}` }));
+		expect(() => register(group({ subcommands: many }))).toThrow(/Subcommands must number/);
+		const missing = { ...group(), subcommands: null } as unknown as CommandDefinition;
+		expect(() => register(missing)).toThrow(/Subcommands must number/);
+	});
+
+	it("rejects a group that also has a handler or options", () => {
+		const withHandler = { ...group(), handler: async () => ({}) } as unknown as CommandDefinition;
+		expect(() => register(withHandler)).toThrow(/can't have a handler or options/);
+		const withOptions = { ...group(), options: [] } as unknown as CommandDefinition;
+		expect(() => register(withOptions)).toThrow(/can't have a handler or options/);
+	});
+
+	it("validates each subcommand like a command", () => {
+		expect(() => register(group({ subcommands: [subcommand({ name: "Bad Name" })] }))).toThrow(
+			/Invalid name/,
+		);
+		const noAccess = { ...subcommand(), access: undefined } as never;
+		expect(() => register(group({ subcommands: [noAccess] }))).toThrow(/access\.minTier/);
+		const noHandler = { ...subcommand(), handler: undefined } as never;
+		expect(() => register(group({ subcommands: [noHandler] }))).toThrow(/Missing handler/);
+		const options = [{ name: "a", description: "a", type: "user" }] as const;
+		expect(() =>
+			register(group({ subcommands: [subcommand({ options: [...options, ...options] })] })),
+		).toThrow(/Duplicate option/);
+	});
+
+	it("rejects more than 25 options on a command or subcommand", () => {
+		const options = Array.from({ length: 26 }, (_, i) => ({
+			name: `o${i}`,
+			description: "o",
+			type: "string" as const,
+		}));
+		expect(() => register(command({ options }))).toThrow(/At most 25 options/);
+		expect(() => register(group({ subcommands: [subcommand({ options })] }))).toThrow(
+			/At most 25 options/,
+		);
+	});
+
+	it("rejects duplicate subcommand names", () => {
+		expect(() => register(group({ subcommands: [subcommand(), subcommand()] }))).toThrow(
+			/Duplicate subcommand/,
+		);
+	});
+
+	it("never lets a subcommand be looser than its group", () => {
+		const strict = group({
+			access: { minTier: "member" },
+			subcommands: [subcommand({ access: { minTier: "friend" } })],
+		});
+		expect(() => register(strict)).toThrow(/lower tier than its command/);
+		register(
+			group({
+				access: { minTier: "member" },
+				subcommands: [subcommand({ access: { minTier: "admin" } })],
+			}),
+		);
+	});
+
+	it("never lets a subcommand be allowed in more contexts than its group", () => {
+		const dmOnly = { minTier: "guest", contexts: ["dm"] } as const;
+		expect(() => register(group({ access: dmOnly, subcommands: [subcommand()] }))).toThrow(
+			/more contexts/,
+		);
+		expect(() =>
+			register(
+				group({
+					access: dmOnly,
+					subcommands: [subcommand({ access: { minTier: "guest", contexts: ["dm", "group"] } })],
+				}),
+			),
+		).toThrow(/more contexts/);
+		register(
+			group({
+				access: { minTier: "guest", contexts: ["dm", "group"] },
+				subcommands: [subcommand({ access: { minTier: "guest", contexts: ["dm"] } })],
+			}),
+		);
 	});
 });

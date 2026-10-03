@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { actor, command, IDS } from "../testing/fixtures.ts";
+import { actor, command, group, IDS, subcommand } from "../testing/fixtures.ts";
 import type { PlatformActor, Tier } from "./access.ts";
-import type { CommandDefinition } from "./command.ts";
+import type { CommandDefinition, ResolvedUser } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
 import { UserFacingError } from "./errors.ts";
 import { IdentityService } from "./identity.ts";
@@ -343,9 +343,8 @@ describe("validateArgs", () => {
 
 	it("accepts valid args and drops unknown ones", () => {
 		expect(validateArgs(def, { topic: "a", count: 3, loud: true, extra: "x" })).toEqual({
-			topic: "a",
-			count: 3,
-			loud: true,
+			args: { topic: "a", count: 3, loud: true },
+			users: {},
 		});
 	});
 
@@ -358,5 +357,183 @@ describe("validateArgs", () => {
 		[{ topic: "a", loud: "yes" }, /Invalid value for option "loud"/],
 	])("rejects %j", (args, message) => {
 		expect(() => validateArgs(def, args)).toThrow(message);
+	});
+});
+
+describe("subcommands", () => {
+	function adminGroup(handler = vi.fn(async () => ({ text: "ran" }))) {
+		return {
+			handler,
+			def: group({
+				name: "admin",
+				access: { minTier: "member" },
+				subcommands: [
+					subcommand({ name: "open", access: { minTier: "member" }, handler }),
+					subcommand({ name: "closed", access: { minTier: "admin" }, private: true, handler }),
+				],
+			}),
+		};
+	}
+
+	it("runs a subcommand and logs its full name", async () => {
+		const { def, handler } = adminGroup();
+		const { dispatcher, entries, reporter } = setup([def]);
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "admin",
+			subcommand: "open",
+			args: {},
+		});
+		expect(result.reply.text).toBe("ran");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(entries.find((e) => e.obj.event === "command.executed")?.obj).toMatchObject({
+			command: "admin open",
+		});
+		expect(reporter.capture).not.toHaveBeenCalled();
+	});
+
+	it("checks the subcommand's own access as well as the group's", async () => {
+		const { def, handler } = adminGroup();
+		const { dispatcher, entries } = setup([def]);
+		const denied = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "admin",
+			subcommand: "closed",
+			args: {},
+		});
+		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+		expect(handler).not.toHaveBeenCalled();
+		expect(entries.find((e) => e.obj.event === "command.denied")?.obj).toMatchObject({
+			command: "admin closed",
+			required: "admin",
+		});
+
+		const outsider = await dispatcher.dispatch({
+			actor: as(IDS.friend),
+			command: "admin",
+			subcommand: "open",
+			args: {},
+		});
+		expect(outsider.reply.text).toBe(MESSAGES.deniedTier);
+		expect(entries.filter((e) => e.obj.event === "command.denied").at(-1)?.obj).toMatchObject({
+			required: "member",
+		});
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["a missing subcommand", { command: "admin" }],
+		["an unknown subcommand", { command: "admin", subcommand: "nope" }],
+		["a subcommand on a plain command", { command: "plain", subcommand: "x" }],
+	])("treats %s as an unknown command", async (_label, req) => {
+		const { dispatcher } = setup([adminGroup().def, command({ name: "plain" })]);
+		const result = await dispatcher.dispatch({ actor: as(IDS.admin), args: {}, ...req });
+		expect(result.reply.text).toBe(MESSAGES.unknownCommand);
+	});
+
+	it("uses the subcommand's privacy", async () => {
+		const { dispatcher } = setup([adminGroup().def, command({ name: "plain" })]);
+		expect(dispatcher.defaultPrivacy("admin", "closed")).toBe(true);
+		expect(dispatcher.defaultPrivacy("admin", "open")).toBe(false);
+		expect(dispatcher.defaultPrivacy("admin")).toBe(false);
+		expect(dispatcher.defaultPrivacy("plain", "x")).toBe(false);
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.admin),
+			command: "admin",
+			subcommand: "closed",
+			args: {},
+		});
+		expect(result.private).toBe(true);
+	});
+
+	it("lists only the subcommands the caller may use, by full name", async () => {
+		let seen: string[] = [];
+		const help = command({
+			name: "help",
+			handler: async (ctx) => {
+				seen = ctx.availableCommands.map((c) => c.name);
+				return {};
+			},
+		});
+		const { dispatcher } = setup([help, adminGroup().def]);
+		await dispatcher.dispatch({ actor: as(IDS.member), command: "help", args: {} });
+		expect(seen).toEqual(["help", "admin open"]);
+		await dispatcher.dispatch({ actor: as(IDS.admin), command: "help", args: {} });
+		expect(seen).toEqual(["help", "admin open", "admin closed"]);
+		await dispatcher.dispatch({ actor: as(IDS.guest), command: "help", args: {} });
+		expect(seen).toEqual(["help"]);
+	});
+
+	it("passes resolved users to the handler", async () => {
+		let users: Record<string, ResolvedUser> = {};
+		const who = {
+			id: IDS.friend,
+			displayName: "Friend",
+			handle: "friend_h",
+			isBot: false,
+		};
+		const { dispatcher } = setup([
+			group({
+				name: "g",
+				subcommands: [
+					subcommand({
+						name: "pick",
+						options: [{ name: "who", description: "w", type: "user", required: true }],
+						handler: async (ctx) => {
+							users = { ...ctx.users };
+							return {};
+						},
+					}),
+				],
+			}),
+		]);
+		await dispatcher.dispatch({
+			actor: as(IDS.admin),
+			command: "g",
+			subcommand: "pick",
+			args: { who: IDS.friend },
+			users: { who },
+		});
+		expect(users).toEqual({ who });
+	});
+});
+
+describe("user options", () => {
+	const pick = (allowBots?: boolean) =>
+		command({
+			options: [
+				{
+					name: "who",
+					description: "w",
+					type: "user",
+					required: true,
+					...(allowBots === undefined ? {} : { allowBots }),
+				},
+			],
+		});
+	const human: ResolvedUser = { id: IDS.friend, displayName: "F", isBot: false };
+	const bot: ResolvedUser = { id: IDS.guest, displayName: "B", isBot: true };
+
+	it("accepts a resolved user and exposes the ID as the arg", () => {
+		expect(validateArgs(pick(), { who: IDS.friend }, { who: human })).toEqual({
+			args: { who: IDS.friend },
+			users: { who: human },
+		});
+	});
+
+	it.each([
+		["a non-string", { who: 5 }, { who: human }],
+		["an unresolved user", { who: IDS.friend }, {}],
+		["an ID that doesn't match the resolved user", { who: IDS.admin }, { who: human }],
+	])("rejects %s", (_label, args, users) => {
+		expect(() => validateArgs(pick(), args, users)).toThrow(/Invalid value for option "who"/);
+	});
+
+	it("refuses bots unless allowed", () => {
+		expect(() => validateArgs(pick(), { who: IDS.guest }, { who: bot })).toThrow(/can't be a bot/);
+		expect(() => validateArgs(pick(false), { who: IDS.guest }, { who: bot })).toThrow(
+			/can't be a bot/,
+		);
+		expect(validateArgs(pick(true), { who: IDS.guest }, { who: bot }).users).toEqual({ who: bot });
 	});
 });

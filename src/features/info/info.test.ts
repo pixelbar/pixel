@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { CommandDefinition } from "../../core/command.ts";
+import type { PlainCommand } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { InfoTopic } from "../../services/info-content.ts";
-import { context } from "../../testing/fixtures.ts";
+import { context, plain } from "../../testing/fixtures.ts";
 import { createInfoFeature } from "./index.ts";
 
 const TOPICS: InfoTopic[] = [
@@ -20,10 +20,8 @@ const TOPICS: InfoTopic[] = [
 	},
 ];
 
-function infoCommand(topics: readonly InfoTopic[] = TOPICS): CommandDefinition {
-	const command = createInfoFeature({ topics }).commands?.[0];
-	if (!command) throw new Error("no info command");
-	return command;
+function infoCommand(topics: readonly InfoTopic[] = TOPICS): PlainCommand {
+	return plain(createInfoFeature({ topics }).commands?.[0]);
 }
 
 describe("/info", () => {

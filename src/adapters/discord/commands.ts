@@ -1,11 +1,17 @@
 import {
 	type APIApplicationCommandBasicOption,
+	type APIApplicationCommandSubcommandOption,
 	ApplicationCommandOptionType,
 	ApplicationIntegrationType,
 	InteractionContextType,
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
-import type { CommandDefinition, CommandOption } from "../../core/command.ts";
+import {
+	type CommandDefinition,
+	type CommandOption,
+	isGroup,
+	type SubcommandDefinition,
+} from "../../core/command.ts";
 
 /**
  * Maps core command definitions to Discord slash command JSON. Commands are
@@ -17,9 +23,18 @@ export function toSlashCommand(
 	return {
 		name: def.name,
 		description: def.description,
-		options: (def.options ?? []).map(toOption),
+		options: isGroup(def) ? def.subcommands.map(toSubcommand) : (def.options ?? []).map(toOption),
 		contexts: [InteractionContextType.Guild],
 		integration_types: [ApplicationIntegrationType.GuildInstall],
+	};
+}
+
+function toSubcommand(sub: SubcommandDefinition): APIApplicationCommandSubcommandOption {
+	return {
+		type: ApplicationCommandOptionType.Subcommand,
+		name: sub.name,
+		description: sub.description,
+		options: (sub.options ?? []).map(toOption),
 	};
 }
 
@@ -40,5 +55,7 @@ function toOption(option: CommandOption): APIApplicationCommandBasicOption {
 			return { ...base, type: ApplicationCommandOptionType.Integer };
 		case "boolean":
 			return { ...base, type: ApplicationCommandOptionType.Boolean };
+		case "user":
+			return { ...base, type: ApplicationCommandOptionType.User };
 	}
 }
