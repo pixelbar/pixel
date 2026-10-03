@@ -268,7 +268,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_ENV`                   |        | `local`, `dev` or `prod` (default `local`)     |
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
-| `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`                  |
+| `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`. Pixel writes to it (and to `<file>.bak` and a temp file in the same folder), so the folder must be writable |
 | `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state (`space.state`, `announcements.state`); gitignored |
 | `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in |
 | `PIXEL_CONTENT_DIR`           |        | Default `content`. The reviewed content Pixel reads (`info/*.md` for `/info`). Read-only |

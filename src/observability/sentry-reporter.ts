@@ -26,5 +26,8 @@ export function createSentryReporter(): ErrorReporter {
 				Sentry.captureException(error);
 			});
 		},
+		breadcrumb(category, message, data) {
+			Sentry.addBreadcrumb({ category, message, level: "info", ...(data ? { data } : {}) });
+		},
 	};
 }

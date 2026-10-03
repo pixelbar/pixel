@@ -34,7 +34,7 @@ const TIMEOUT_MS = 5 * 60_000;
 const config = loadConfig();
 const { registry, access } = buildCore(config, silentLogger, nullErrorReporter);
 const names = hiddenCommandNames(registry.all().map((c) => c.definition));
-const overrides = adminOverrides(access.discord);
+const overrides = adminOverrides(access.view.discord);
 const { appId, guildId } = config.discord;
 
 const state = randomBytes(16).toString("hex");

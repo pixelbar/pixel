@@ -6,7 +6,7 @@ import {
 	CalendarUnavailableError,
 } from "./calendar.ts";
 import { silentLogger } from "./logger.ts";
-import type { ErrorReporter } from "./ports/error-reporter.ts";
+import { type ErrorReporter, nullErrorReporter } from "./ports/error-reporter.ts";
 
 const event = (id: string, title = `Event ${id}`): CalendarEvent => ({
 	id,
@@ -23,6 +23,7 @@ function setup() {
 	const reporter = {
 		capture: vi.fn(),
 		captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
+		breadcrumb: vi.fn<ErrorReporter["breadcrumb"]>(),
 	};
 	const calendar = new Calendar({ logger: silentLogger, reporter });
 	const answers: (CalendarEvent[] | Error)[] = [];
@@ -47,7 +48,7 @@ describe("Calendar", () => {
 	it("is unavailable until a source is plugged in", async () => {
 		const calendar = new Calendar({
 			logger: silentLogger,
-			reporter: { capture() {}, captureBackground() {} },
+			reporter: nullErrorReporter,
 		});
 		await expect(calendar.events()).rejects.toThrow(CalendarUnavailableError);
 	});

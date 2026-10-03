@@ -16,6 +16,7 @@ function setup() {
 	const reporter = {
 		capture: vi.fn(),
 		captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
+		breadcrumb: vi.fn<ErrorReporter["breadcrumb"]>(),
 	};
 	return { announcer: new Announcer({ logger: silentLogger, reporter }), reporter };
 }

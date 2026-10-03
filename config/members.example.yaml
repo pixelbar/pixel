@@ -1,8 +1,12 @@
 # Paying memberships. Anyone not listed here (or in admins.yaml) is a guest.
 #
 # Copy to config/members.yaml (gitignored — it contains personal data).
+# Pixel rewrites this file when admins change tiers (keeping the previous
+# version as members.yaml.bak), so it must be writable. Hand edits are fine:
+# run /admin reload afterwards, or restart.
 #
-# tier: member | friend
+# tier: member | friend | guest   (guest keeps the entry, but no tier)
+# capabilities: optional named permissions (lowercase words joined by '-')
 # IDs MUST be quoted strings.
 members:
   - discordId: "100000000000000002"
@@ -10,3 +14,5 @@ members:
     note: optional, for humans
   - discordId: "100000000000000003"
     tier: friend
+    # capabilities:
+    #   - front-door
