@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { command, group, subcommand } from "../testing/fixtures.ts";
+import { command, group, subcommand, subgroup } from "../testing/fixtures.ts";
 import type { CommandDefinition } from "./command.ts";
 import { CommandRegistry, RegistryError } from "./registry.ts";
 
@@ -133,7 +133,7 @@ describe("CommandRegistry subcommands", () => {
 			access: { minTier: "member" },
 			subcommands: [subcommand({ access: { minTier: "friend" } })],
 		});
-		expect(() => register(strict)).toThrow(/lower tier than its command/);
+		expect(() => register(strict)).toThrow(/lower tier than its parent/);
 		register(
 			group({
 				access: { minTier: "member" },
@@ -145,7 +145,7 @@ describe("CommandRegistry subcommands", () => {
 	it("never lets a subcommand be allowed in more contexts than its group", () => {
 		const dmOnly = { minTier: "guest", contexts: ["dm"] } as const;
 		expect(() => register(group({ access: dmOnly, subcommands: [subcommand()] }))).toThrow(
-			/more contexts/,
+			/more contexts than its parent/,
 		);
 		expect(() =>
 			register(
@@ -154,12 +154,83 @@ describe("CommandRegistry subcommands", () => {
 					subcommands: [subcommand({ access: { minTier: "guest", contexts: ["dm", "group"] } })],
 				}),
 			),
-		).toThrow(/more contexts/);
+		).toThrow(/more contexts than its parent/);
 		register(
 			group({
 				access: { minTier: "guest", contexts: ["dm", "group"] },
 				subcommands: [subcommand({ access: { minTier: "guest", contexts: ["dm"] } })],
 			}),
 		);
+	});
+});
+
+describe("CommandRegistry subgroups", () => {
+	it("registers a subgroup of subcommands inside a group", () => {
+		const registry = register(group({ name: "admin", subcommands: [subgroup({ name: "caps" })] }));
+		expect(registry.get("admin")).toBeDefined();
+	});
+
+	it("validates the subgroup and its subcommands like commands", () => {
+		expect(() => register(group({ subcommands: [subgroup({ name: "Bad Name" })] }))).toThrow(
+			/Invalid name/,
+		);
+		expect(() => register(group({ subcommands: [subgroup({ subcommands: [] })] }))).toThrow(
+			/Subcommands must number/,
+		);
+		const noHandler = { ...subcommand(), handler: undefined } as never;
+		expect(() => register(group({ subcommands: [subgroup({ subcommands: [noHandler] })] }))).toThrow(
+			/Missing handler/,
+		);
+		const noAccess = { ...subgroup(), access: undefined } as never;
+		expect(() => register(group({ subcommands: [noAccess] }))).toThrow(/access\.minTier/);
+	});
+
+	it("rejects a subgroup nested inside a subgroup", () => {
+		const deep = { ...subgroup({ name: "inner" }) };
+		const outer = subgroup({ name: "outer", subcommands: [deep as never] });
+		expect(() => register(group({ subcommands: [outer] }))).toThrow(/nested too deeply/);
+	});
+
+	it("shares one namespace between subcommands and subgroups, and between subgroup members", () => {
+		expect(() =>
+			register(
+				group({ subcommands: [subcommand({ name: "x" }), subgroup({ name: "x" })] }),
+			),
+		).toThrow(/Duplicate subgroup/);
+		expect(() =>
+			register(
+				group({
+					subcommands: [subgroup({ subcommands: [subcommand({ name: "a" }), subcommand({ name: "a" })] })],
+				}),
+			),
+		).toThrow(/Duplicate subcommand/);
+	});
+
+	it("never lets a subcommand be looser than its subgroup, or the subgroup than the group", () => {
+		const looseSub = subgroup({
+			access: { minTier: "admin" },
+			subcommands: [subcommand({ access: { minTier: "member" } })],
+		});
+		expect(() => register(group({ subcommands: [looseSub] }))).toThrow(
+			/lower tier than its parent/,
+		);
+		const looseGroup = group({
+			access: { minTier: "member" },
+			subcommands: [subgroup({ access: { minTier: "friend" } })],
+		});
+		expect(() => register(looseGroup)).toThrow(/lower tier than its parent/);
+		const dmOnly = subgroup({
+			access: { minTier: "guest", contexts: ["dm"] },
+			subcommands: [subcommand({ access: { minTier: "guest", contexts: ["dm"] } })],
+		});
+		expect(() => register(group({ subcommands: [dmOnly] }))).not.toThrow();
+		expect(() =>
+			register(
+				group({
+					access: { minTier: "guest", contexts: ["dm"] },
+					subcommands: [subgroup({ subcommands: [subcommand()] })],
+				}),
+			),
+		).toThrow(/more contexts than its parent/);
 	});
 });

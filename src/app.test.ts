@@ -18,8 +18,11 @@ describe("buildCore", () => {
 		dir = mkdtempSync(join(tmpdir(), "pixel-app-"));
 		const adminsFile = join(dir, "admins.yaml");
 		const membersFile = join(dir, "members.yaml");
-		writeFileSync(adminsFile, `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`);
-		writeFileSync(membersFile, `members:\n  - discordId: "${IDS.member}"\n    tier: member\n`);
+		writeFileSync(adminsFile, `admins:\n  - "${IDS.admin}"\n`);
+		writeFileSync(
+			membersFile,
+			`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n`,
+		);
 		mkdirSync(join(dir, "content", "info"), { recursive: true });
 		writeFileSync(
 			join(dir, "content", "info", "membership.md"),

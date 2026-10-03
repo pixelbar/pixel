@@ -5,6 +5,7 @@ import type {
 	GroupCommand,
 	PlainCommand,
 	SubcommandDefinition,
+	SubgroupDefinition,
 } from "../core/command.ts";
 import { silentLogger } from "../core/logger.ts";
 
@@ -58,6 +59,16 @@ export function subcommand(overrides: Partial<SubcommandDefinition> = {}): Subco
 		description: "A test subcommand",
 		access: { minTier: "guest" },
 		handler: async () => ({ text: "ok" }),
+		...overrides,
+	};
+}
+
+export function subgroup(overrides: Partial<SubgroupDefinition> = {}): SubgroupDefinition {
+	return {
+		name: "sg",
+		description: "A test subgroup",
+		access: { minTier: "guest" },
+		subcommands: [subcommand()],
 		...overrides,
 	};
 }

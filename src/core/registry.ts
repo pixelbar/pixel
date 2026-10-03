@@ -1,5 +1,12 @@
-import { TIERS, type Tier, tierRank } from "./access.ts";
-import { type CommandDefinition, isGroup, type SubcommandDefinition } from "./command.ts";
+import { type Access, TIERS, type Tier, tierRank } from "./access.ts";
+import {
+	type CommandDefinition,
+	type GroupCommand,
+	isGroup,
+	isSubgroup,
+	type SubcommandDefinition,
+	type SubgroupDefinition,
+} from "./command.ts";
 import type { Feature } from "./feature.ts";
 
 export type RegisteredCommand = {
@@ -52,27 +59,49 @@ function validate(feature: string, def: CommandDefinition): void {
 		validateRunnable(where, def);
 		return;
 	}
-	const subs: unknown = def.subcommands;
-	if (!Array.isArray(subs) || subs.length < 1 || subs.length > MAX_SUBCOMMANDS) {
-		throw new RegistryError(`Subcommands must number 1–${MAX_SUBCOMMANDS} for ${where}`);
-	}
 	if (def.handler !== undefined || def.options !== undefined) {
 		throw new RegistryError(`A command with subcommands can't have a handler or options: ${where}`);
 	}
+	validateChildren(where, def, 0);
+}
+
+/** Checks the subcommands and subgroups of a group (depth 0) or of a subgroup (depth 1). */
+function validateChildren(
+	where: string,
+	parent: GroupCommand | SubgroupDefinition,
+	depth: number,
+): void {
+	const children: unknown = parent.subcommands;
+	if (!Array.isArray(children) || children.length < 1 || children.length > MAX_SUBCOMMANDS) {
+		throw new RegistryError(`Subcommands must number 1–${MAX_SUBCOMMANDS} for ${where}`);
+	}
+	// Subcommands and subgroups share one namespace in Discord.
 	const seen = new Set<string>();
-	for (const sub of def.subcommands) {
-		const subWhere = `subcommand "${sub.name}" of ${where}`;
-		validateCommon(subWhere, sub);
-		validateRunnable(subWhere, sub);
-		if (seen.has(sub.name)) throw new RegistryError(`Duplicate ${subWhere}`);
-		seen.add(sub.name);
-		if (tierRank(sub.access.minTier) < tierRank(def.access.minTier)) {
-			throw new RegistryError(`${subWhere} can't be open to a lower tier than its command`);
+	for (const child of parent.subcommands) {
+		const isNested = isSubgroup(child);
+		const childWhere = `${isNested ? "subgroup" : "subcommand"} "${child.name}" of ${where}`;
+		validateCommon(childWhere, child);
+		if (isNested) {
+			// Discord allows one level of subgroup: command → subgroup → subcommand.
+			if (depth > 0) throw new RegistryError(`${childWhere} is nested too deeply`);
+			validateChildren(childWhere, child, depth + 1);
+		} else {
+			validateRunnable(childWhere, child);
 		}
-		const allowed = def.access.contexts;
-		if (allowed && !sub.access.contexts?.every((c) => allowed.includes(c))) {
-			throw new RegistryError(`${subWhere} can't be allowed in more contexts than its command`);
-		}
+		if (seen.has(child.name)) throw new RegistryError(`Duplicate ${childWhere}`);
+		seen.add(child.name);
+		assertNotLooser(childWhere, parent.access, child.access);
+	}
+}
+
+/** A child may tighten its parent's access but never loosen it. */
+function assertNotLooser(childWhere: string, parent: Access, child: Access): void {
+	if (tierRank(child.minTier) < tierRank(parent.minTier)) {
+		throw new RegistryError(`${childWhere} can't be open to a lower tier than its parent`);
+	}
+	const allowed = parent.contexts;
+	if (allowed && !child.contexts?.every((c) => allowed.includes(c))) {
+		throw new RegistryError(`${childWhere} can't be allowed in more contexts than its parent`);
 	}
 }
 

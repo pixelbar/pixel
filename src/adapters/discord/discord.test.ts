@@ -1,7 +1,7 @@
 import { ApplicationCommandOptionType, InteractionContextType, MessageFlags } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchResult } from "../../core/dispatcher.ts";
-import { command, group, subcommand } from "../../testing/fixtures.ts";
+import { command, group, subcommand, subgroup } from "../../testing/fixtures.ts";
 import { parseOptions } from "./args.ts";
 import { toSlashCommand } from "./commands.ts";
 import { renderEdit, renderReply, truncate } from "./render.ts";
@@ -100,7 +100,96 @@ describe("toSlashCommand with subcommands and users", () => {
 	});
 });
 
+describe("toSlashCommand with subgroups", () => {
+	it("maps a subgroup to a native subcommand group holding subcommands", () => {
+		const json = toSlashCommand(
+			group({
+				name: "admin",
+				subcommands: [
+					subcommand({ name: "status", description: "Status" }),
+					subgroup({
+						name: "caps",
+						description: "Capabilities",
+						subcommands: [
+							subcommand({
+								name: "grant",
+								description: "Grant",
+								options: [{ name: "who", description: "Person", type: "user", required: true }],
+							}),
+						],
+					}),
+				],
+			}),
+		);
+		expect(json.options).toEqual([
+			{
+				type: ApplicationCommandOptionType.Subcommand,
+				name: "status",
+				description: "Status",
+				options: [],
+			},
+			{
+				type: ApplicationCommandOptionType.SubcommandGroup,
+				name: "caps",
+				description: "Capabilities",
+				options: [
+					{
+						type: ApplicationCommandOptionType.Subcommand,
+						name: "grant",
+						description: "Grant",
+						options: [
+							{
+								type: ApplicationCommandOptionType.User,
+								name: "who",
+								description: "Person",
+								required: true,
+							},
+						],
+					},
+				],
+			},
+		]);
+	});
+});
+
 describe("parseOptions", () => {
+	it("unwraps a subgroup, its subcommand and their options", () => {
+		const user = { id: "100000000000000001", displayName: "G", username: "h", bot: false };
+		expect(
+			parseOptions([
+				{
+					name: "caps",
+					type: ApplicationCommandOptionType.SubcommandGroup,
+					options: [
+						{
+							name: "grant",
+							type: ApplicationCommandOptionType.Subcommand,
+							options: [
+								{ name: "who", type: ApplicationCommandOptionType.User, value: user.id, user },
+								{ name: "capability", type: ApplicationCommandOptionType.String, value: "door" },
+							],
+						},
+					],
+				},
+			]),
+		).toEqual({
+			subgroup: "caps",
+			subcommand: "grant",
+			args: { who: user.id, capability: "door" },
+			users: { who: { id: user.id, displayName: "G", handle: "h", isBot: false } },
+		});
+	});
+
+	it("leaves the subcommand out when a subgroup has none", () => {
+		const bare = { name: "caps", type: ApplicationCommandOptionType.SubcommandGroup } as const;
+		expect(parseOptions([bare])).toEqual({ subgroup: "caps", args: {}, users: {} });
+		expect(
+			parseOptions([
+				{ ...bare, options: [{ name: "x", type: ApplicationCommandOptionType.String, value: "y" }] },
+			]),
+		).toEqual({ subgroup: "caps", args: {}, users: {} });
+	});
+
 	it("keeps primitive values and ignores other option types", () => {
 		expect(
 			parseOptions([

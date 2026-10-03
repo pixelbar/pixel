@@ -20,7 +20,9 @@ import { AccessStoreError, FileAccessStore, type FileOps, nodeFileOps } from "./
 
 const NEW_ID = "100000000000000050";
 
-const ADMINS = `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - "${IDS.admin}"\n`;
+/** Every admin has a members entry too. */
+const ADMIN_ENTRY = `  - discordId: "${IDS.admin}"\n    tier: friend\n    note: Ada\n`;
 const MEMBERS = `# Paying members. Edited by Pixel and by hand.
 members:
   # Ada's friend
@@ -32,7 +34,7 @@ members:
 
   - discordId: "${IDS.friend}"
     tier: friend
-`;
+${ADMIN_ENTRY}`;
 
 const by: PlatformActor = actor({
 	userId: IDS.admin,
@@ -105,9 +107,14 @@ describe("opening", () => {
 		expect(() => open()).toThrow(AccessConfigError);
 	});
 
-	it("accepts an empty members list", () => {
-		writeFileSync(membersFile, "members: []\n");
+	it("accepts a members list that holds only the admin", () => {
+		writeFileSync(membersFile, `members:\n${ADMIN_ENTRY}`);
 		expect(open().view.counts).toEqual({ admins: 1, members: 0, friends: 0 });
+	});
+
+	it("fails closed when an admin has no members entry", () => {
+		writeFileSync(membersFile, "members: []\n");
+		expect(() => open()).toThrow(/admins\[0\] has no entry/);
 	});
 });
 
@@ -125,11 +132,13 @@ describe("changing a tier", () => {
 		expect(store.view.counts).toEqual({ admins: 1, members: 1, friends: 2 });
 	});
 
-	it("adds the first person to an empty flow-style list", async () => {
-		writeFileSync(membersFile, "members: []\n");
+	it("adds a person after the admin entry, as a quoted ID", async () => {
+		writeFileSync(membersFile, `members:\n${ADMIN_ENTRY}`);
 		const store = open();
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", note: "new" }, by);
-		expect(read()).toBe(`members:\n  - discordId: "${NEW_ID}"\n    tier: member\n    note: new\n`);
+		expect(read()).toBe(
+			`members:\n${ADMIN_ENTRY}  - discordId: "${NEW_ID}"\n    tier: member\n    note: new\n`,
+		);
 		expect(open().view.discord.get(NEW_ID)).toBe("member");
 	});
 
@@ -170,6 +179,21 @@ describe("changing a tier", () => {
 		expect(result.before).toEqual(result.after);
 		expect(existsSync(`${membersFile}.bak`)).toBe(false);
 		expect(entries("access.changed")).toHaveLength(0);
+	});
+
+	it("lets an admin's members entry hold capabilities, though not change their level", async () => {
+		const store = open();
+		const result = await store.apply(
+			{ kind: "set-capabilities", id: IDS.admin, capabilities: ["front-door"] },
+			by,
+		);
+		expect(result.after).toMatchObject({
+			tier: "friend",
+			note: "Ada",
+			capabilities: ["front-door"],
+		});
+		expect(store.view.discord.get(IDS.admin)).toBe("admin");
+		expect(open().view.records.get(IDS.admin)?.capabilities).toEqual(["front-door"]);
 	});
 
 	it("refuses to touch an admin: admins come only from admins.yaml", async () => {
@@ -436,11 +460,11 @@ describe("audit", () => {
 describe("reload", () => {
 	it("picks up hand edits, including new admins, and reports the counts", async () => {
 		const store = open();
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - "${IDS.guest}"\n`);
 		writeFileSync(
-			join(dir, "admins.yaml"),
-			`${ADMINS}  - name: Grace\n    discordId: "${IDS.guest}"\n`,
+			membersFile,
+			`members:\n${ADMIN_ENTRY}  - discordId: "${IDS.guest}"\n    tier: friend\n`,
 		);
-		writeFileSync(membersFile, "members: []\n");
 
 		const result = await store.reload(by);
 
@@ -455,13 +479,6 @@ describe("reload", () => {
 		expect(reporter.breadcrumb).toHaveBeenCalledWith("access", "reloaded", {
 			actor: `discord:${IDS.admin}`,
 		});
-	});
-
-	it("logs the warnings of the new data", async () => {
-		const store = open();
-		writeFileSync(membersFile, `members:\n  - discordId: "${IDS.admin}"\n    tier: friend\n`);
-		await store.reload(by);
-		expect(entries("access_config.warning")).toHaveLength(1);
 	});
 
 	it("keeps the current data when the files are now invalid, and says why", async () => {
@@ -488,10 +505,8 @@ describe("reload", () => {
 
 	it("lets the next change use an admin added by reload", async () => {
 		const store = open();
-		writeFileSync(
-			join(dir, "admins.yaml"),
-			`${ADMINS}  - name: Grace\n    discordId: "${IDS.guest}"\n`,
-		);
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - "${IDS.guest}"\n`);
+		writeFileSync(membersFile, `${MEMBERS}  - discordId: "${IDS.guest}"\n    tier: friend\n`);
 		await store.reload(by);
 		await expect(
 			store.apply({ kind: "set-tier", id: IDS.guest, tier: "friend" }, by),

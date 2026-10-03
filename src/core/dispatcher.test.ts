@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { actor, command, group, IDS, subcommand } from "../testing/fixtures.ts";
+import { actor, command, group, IDS, subcommand, subgroup } from "../testing/fixtures.ts";
 import type { PlatformActor, Tier } from "./access.ts";
 import type { CommandDefinition, ResolvedUser } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
@@ -536,5 +536,133 @@ describe("user options", () => {
 			/can't be a bot/,
 		);
 		expect(validateArgs(pick(true), { who: IDS.guest }, { who: bot }).users).toEqual({ who: bot });
+	});
+});
+
+describe("subgroups", () => {
+	function nested() {
+		const handler = vi.fn(async () => ({ text: "ran" }));
+		const def = group({
+			name: "admin",
+			access: { minTier: "member" },
+			subcommands: [
+				subcommand({ name: "plain", access: { minTier: "member" }, handler }),
+				subgroup({
+					name: "caps",
+					access: { minTier: "member" },
+					subcommands: [
+						subcommand({ name: "grant", access: { minTier: "member" }, handler }),
+						subcommand({ name: "revoke", access: { minTier: "admin" }, private: true, handler }),
+					],
+				}),
+			],
+		});
+		return { def, handler };
+	}
+
+	it("runs a subcommand inside a subgroup and logs its full name", async () => {
+		const { def, handler } = nested();
+		const { dispatcher, entries } = setup([def]);
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "admin",
+			subgroup: "caps",
+			subcommand: "grant",
+			args: {},
+		});
+		expect(result.reply.text).toBe("ran");
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(entries.find((e) => e.obj.event === "command.executed")?.obj).toMatchObject({
+			command: "admin caps grant",
+		});
+	});
+
+	it("checks the group, the subgroup and the subcommand", async () => {
+		const { def, handler } = nested();
+		const { dispatcher, entries } = setup([def]);
+		const denied = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "admin",
+			subgroup: "caps",
+			subcommand: "revoke",
+			args: {},
+		});
+		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+		expect(entries.find((e) => e.obj.event === "command.denied")?.obj).toMatchObject({
+			command: "admin caps revoke",
+			required: "admin",
+		});
+		const outsider = await dispatcher.dispatch({
+			actor: as(IDS.friend),
+			command: "admin",
+			subgroup: "caps",
+			subcommand: "grant",
+			args: {},
+		});
+		expect(outsider.reply.text).toBe(MESSAGES.deniedTier);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("denies on the subgroup's own access", async () => {
+		const handler = vi.fn(async () => ({}));
+		const { dispatcher } = setup([
+			group({
+				name: "g",
+				subcommands: [
+					subgroup({
+						name: "s",
+						access: { minTier: "admin" },
+						subcommands: [subcommand({ name: "x", access: { minTier: "admin" }, handler })],
+					}),
+				],
+			}),
+		]);
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "g",
+			subgroup: "s",
+			subcommand: "x",
+			args: {},
+		});
+		expect(result.reply.text).toBe(MESSAGES.deniedTier);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["a subgroup without its subcommand", { command: "admin", subgroup: "caps" }],
+		["an unknown subgroup", { command: "admin", subgroup: "nope", subcommand: "grant" }],
+		["an unknown subcommand in a subgroup", { command: "admin", subgroup: "caps", subcommand: "nope" }],
+		["a subgroup's name used as a subcommand", { command: "admin", subcommand: "caps" }],
+		["a subcommand's name used as a subgroup", { command: "admin", subgroup: "plain", subcommand: "grant" }],
+		["a subgroup on a plain command", { command: "p", subgroup: "caps", subcommand: "grant" }],
+	])("treats %s as an unknown command", async (_label, req) => {
+		const { dispatcher } = setup([nested().def, command({ name: "p" })]);
+		const result = await dispatcher.dispatch({ actor: as(IDS.admin), args: {}, ...req });
+		expect(result.reply.text).toBe(MESSAGES.unknownCommand);
+	});
+
+	it("uses the subcommand's privacy", async () => {
+		const { dispatcher } = setup([nested().def]);
+		expect(dispatcher.defaultPrivacy("admin", "revoke", "caps")).toBe(true);
+		expect(dispatcher.defaultPrivacy("admin", "grant", "caps")).toBe(false);
+		expect(dispatcher.defaultPrivacy("admin", "revoke")).toBe(false);
+	});
+
+	it("lists subgroup subcommands by full name, only to people who may use them", async () => {
+		let seen: string[] = [];
+		const help = command({
+			name: "help",
+			handler: async (ctx) => {
+				seen = ctx.availableCommands.map((c) => c.name);
+				return {};
+			},
+		});
+		const { dispatcher } = setup([help, nested().def]);
+		await dispatcher.dispatch({ actor: as(IDS.member), command: "help", args: {} });
+		expect(seen).toEqual(["help", "admin plain", "admin caps grant"]);
+		await dispatcher.dispatch({ actor: as(IDS.admin), command: "help", args: {} });
+		expect(seen).toEqual(["help", "admin plain", "admin caps grant", "admin caps revoke"]);
+		await dispatcher.dispatch({ actor: as(IDS.friend), command: "help", args: {} });
+		expect(seen).toEqual(["help"]);
 	});
 });

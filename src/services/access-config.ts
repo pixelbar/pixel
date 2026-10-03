@@ -19,15 +19,10 @@ const discordId = z
 	.string({ error: 'must be a quoted string, e.g. "123456789012345678"' })
 	.regex(DISCORD_ID, { error: "must be a Discord user ID (17–20 digits)" });
 
+// Admins are just IDs. Each one must also have an entry in the members file, which
+// holds everything else about them (membership level, capabilities, note).
 const adminsSchema = z.strictObject({
-	admins: z
-		.array(
-			z.strictObject({
-				name: z.string().trim().min(1),
-				discordId,
-			}),
-		)
-		.min(1, { error: "at least one admin is required" }),
+	admins: z.array(discordId).min(1, { error: "at least one admin is required" }),
 });
 
 /** Lowercase words joined by '-', e.g. "front-door". What the capability is called is up to #28. */
@@ -72,7 +67,7 @@ export function loadAccessFiles(paths: AccessConfigPaths) {
 	return { admins, view: buildAccessConfig(admins, members, paths) };
 }
 
-export function parseAdmins(source: string, file: string): { name: string; discordId: string }[] {
+export function parseAdmins(source: string, file: string): string[] {
 	return parseSource(file, source, adminsSchema).admins;
 }
 
@@ -91,46 +86,53 @@ export function toRecord(entry: MemberEntry): MemberRecord {
 }
 
 export function buildAccessConfig(
-	admins: readonly { discordId: string }[],
+	admins: readonly string[],
 	members: readonly MemberEntry[],
 	paths: AccessConfigPaths,
 ): AccessConfig {
 	assertUnique(admins, paths.adminsFile, "admins");
-	assertUnique(members, paths.membersFile, "members");
+	assertUnique(
+		members.map((m) => m.discordId),
+		paths.membersFile,
+		"members",
+	);
 
+	const records = new Map<string, MemberRecord>(members.map((m) => [m.discordId, toRecord(m)]));
+	admins.forEach((id, index) => {
+		if (!records.has(id)) {
+			throw new AccessConfigError(
+				`${paths.adminsFile}: admins[${index}] has no entry in ${paths.membersFile}. Add them there first, with a tier of member, friend or guest`,
+			);
+		}
+	});
+
+	const adminIds = new Set(admins);
 	const discord = new Map<string, Exclude<Tier, "guest">>();
-	const records = new Map<string, MemberRecord>();
-	const warnings: string[] = [];
 	const counts = { admins: admins.length, members: 0, friends: 0 };
 
-	for (const admin of admins) discord.set(admin.discordId, "admin");
-	members.forEach((member, index) => {
-		records.set(member.discordId, toRecord(member));
-		if (discord.has(member.discordId)) {
-			warnings.push(
-				`${paths.membersFile}: members[${index}] is also listed as an admin; admin takes precedence`,
-			);
-			return;
-		}
+	for (const member of members) {
+		// Admins keep their members entry (capabilities, note), but count once, as admins.
+		if (adminIds.has(member.discordId)) continue;
 		// A guest entry is someone who was demoted: no tier, so they're left out.
 		const tier: MemberTier = member.tier;
-		if (tier === "guest") return;
+		if (tier === "guest") continue;
 		discord.set(member.discordId, tier);
 		if (tier === "member") counts.members++;
 		else counts.friends++;
-	});
+	}
+	for (const id of admins) discord.set(id, "admin");
 
-	return { discord, records, counts, warnings };
+	return { discord, records, counts, warnings: [] };
 }
 
-function assertUnique(entries: readonly { discordId: string }[], file: string, key: string): void {
+function assertUnique(ids: readonly string[], file: string, key: string): void {
 	const firstIndex = new Map<string, number>();
-	entries.forEach((entry, index) => {
-		const first = firstIndex.get(entry.discordId);
+	ids.forEach((id, index) => {
+		const first = firstIndex.get(id);
 		if (first !== undefined) {
 			throw new AccessConfigError(`${file}: ${key}[${index}] duplicates ${key}[${first}]`);
 		}
-		firstIndex.set(entry.discordId, index);
+		firstIndex.set(id, index);
 	});
 }
 

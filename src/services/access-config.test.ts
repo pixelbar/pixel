@@ -22,14 +22,16 @@ function write(admins: string, members: string) {
 	writeFileSync(paths.membersFile, members);
 }
 
-const ADMINS = `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`;
-const MEMBERS = `members:
-  - discordId: "${IDS.member}"
+const ADMINS = `admins:\n  - "${IDS.admin}"\n`;
+/** Every admin needs a members entry too. */
+const ADMIN_ENTRY = `  - discordId: "${IDS.admin}"\n    tier: member\n    note: Ada\n`;
+const members = (rest = "") => `members:\n${ADMIN_ENTRY}${rest}`;
+const MEMBERS = members(`  - discordId: "${IDS.member}"
     tier: member
     note: paid yearly
   - discordId: "${IDS.friend}"
     tier: friend
-`;
+`);
 
 describe("loadAccessConfig", () => {
 	it("loads valid files", () => {
@@ -43,58 +45,87 @@ describe("loadAccessConfig", () => {
 		expect(config.warnings).toEqual([]);
 	});
 
-	it("accepts an empty members list", () => {
-		write(ADMINS, "members: []\n");
+	it("keeps an admin's members entry (capabilities, note) while counting them once, as admin", () => {
+		write(
+			ADMINS,
+			`members:\n  - discordId: "${IDS.admin}"\n    tier: friend\n    note: Ada\n    capabilities:\n      - front-door\n`,
+		);
+		const config = loadAccessConfig(paths);
+		expect(config.discord.get(IDS.admin)).toBe("admin");
+		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
+		expect(config.records.get(IDS.admin)).toEqual({
+			discordId: IDS.admin,
+			tier: "friend",
+			note: "Ada",
+			capabilities: ["front-door"],
+		});
+		expect(config.warnings).toEqual([]);
+	});
+
+	it("accepts a members list that holds only the admins", () => {
+		write(ADMINS, members());
 		expect(loadAccessConfig(paths).counts).toEqual({ admins: 1, members: 0, friends: 0 });
 	});
 
+	it("refuses an admin who has no members entry, without echoing the ID", () => {
+		write(ADMINS, "members: []\n");
+		const error = (() => {
+			try {
+				loadAccessConfig(paths);
+			} catch (e) {
+				return e as Error;
+			}
+		})();
+		expect(error).toBeInstanceOf(AccessConfigError);
+		expect(error?.message).toMatch(/admins\[0\] has no entry in .*members\.yaml/);
+		expect(error?.message).not.toContain(IDS.admin);
+	});
+
+	it("refuses the old admins format, which had names and objects", () => {
+		write(`admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`, MEMBERS);
+		expect(() => loadAccessConfig(paths)).toThrow(/admins\[0\]: must be a quoted string/);
+	});
+
 	it("rejects unquoted (numeric) IDs, which would silently lose precision", () => {
-		write(`admins:\n  - name: Ada\n    discordId: ${IDS.admin}\n`, "members: []\n");
-		expect(() => loadAccessConfig(paths)).toThrow(
-			/admins\[0\]\.discordId: must be a quoted string/,
-		);
+		write(`admins:\n  - ${IDS.admin}\n`, MEMBERS);
+		expect(() => loadAccessConfig(paths)).toThrow(/admins\[0\]: must be a quoted string/);
 	});
 
 	it("rejects IDs that aren't snowflakes", () => {
-		write(`admins:\n  - name: Ada\n    discordId: "ada#1234"\n`, "members: []\n");
+		write(`admins:\n  - "ada#1234"\n`, MEMBERS);
 		expect(() => loadAccessConfig(paths)).toThrow(/must be a Discord user ID/);
 	});
 
 	it("rejects an empty admin list", () => {
-		write("admins: []\n", "members: []\n");
+		write("admins: []\n", MEMBERS);
 		expect(() => loadAccessConfig(paths)).toThrow(/at least one admin is required/);
 	});
 
+	it("rejects duplicate admins", () => {
+		write(`admins:\n  - "${IDS.admin}"\n  - "${IDS.admin}"\n`, MEMBERS);
+		expect(() => loadAccessConfig(paths)).toThrow(/admins\[1\] duplicates admins\[0\]/);
+	});
+
 	it("rejects unknown tiers", () => {
-		write(ADMINS, `members:\n  - discordId: "${IDS.member}"\n    tier: admin\n`);
-		expect(() => loadAccessConfig(paths)).toThrow(/members\[0\]\.tier/);
+		write(ADMINS, members(`  - discordId: "${IDS.member}"\n    tier: admin\n`));
+		expect(() => loadAccessConfig(paths)).toThrow(/members\[1\]\.tier/);
 	});
 
 	it("rejects unknown keys, catching typos", () => {
-		write(ADMINS, `members:\n  - discordId: "${IDS.member}"\n    teir: member\n`);
+		write(ADMINS, members(`  - discordId: "${IDS.member}"\n    teir: member\n`));
 		expect(() => loadAccessConfig(paths)).toThrow(AccessConfigError);
 	});
 
 	it("rejects duplicate IDs within a file", () => {
 		write(
 			ADMINS,
-			`members:
-  - discordId: "${IDS.member}"
+			members(`  - discordId: "${IDS.member}"
     tier: member
   - discordId: "${IDS.member}"
     tier: friend
-`,
+`),
 		);
-		expect(() => loadAccessConfig(paths)).toThrow(/members\[1\] duplicates members\[0\]/);
-	});
-
-	it("lets admin win over a members entry, with a warning that contains no IDs", () => {
-		write(ADMINS, `members:\n  - discordId: "${IDS.admin}"\n    tier: friend\n`);
-		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.admin)).toBe("admin");
-		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
-		expect(config.warnings).toHaveLength(1);
-		expect(config.warnings[0]).not.toContain(IDS.admin);
+		expect(() => loadAccessConfig(paths)).toThrow(/members\[2\] duplicates members\[1\]/);
 	});
 
 	it("fails on a missing file", () => {
@@ -103,23 +134,23 @@ describe("loadAccessConfig", () => {
 	});
 
 	it("reports root-level problems clearly", () => {
-		write(`- "${IDS.admin}"\n`, "members: []\n");
+		write(`- "${IDS.admin}"\n`, MEMBERS);
 		expect(() => loadAccessConfig(paths)).toThrow(/\(root\)/);
 	});
 
 	it("fails on an empty file", () => {
-		write("", "members: []\n");
+		write("", MEMBERS);
 		expect(() => loadAccessConfig(paths)).toThrow(/admins\.yaml: invalid access list/);
 	});
 
 	it("fails when the path is a directory", () => {
-		writeFileSync(paths.membersFile, "members: []\n");
+		writeFileSync(paths.membersFile, MEMBERS);
 		paths.adminsFile = dir;
 		expect(() => loadAccessConfig(paths)).toThrow(/cannot read file \(EISDIR\)/);
 	});
 
 	it("fails on invalid YAML without echoing file contents", () => {
-		write(`admins:\n  - name: "${IDS.admin}\n    discordId: [\n`, "members: []\n");
+		write(`admins:\n  - "${IDS.admin}\n  - [\n`, MEMBERS);
 		let message = "";
 		try {
 			loadAccessConfig(paths);
@@ -131,10 +162,7 @@ describe("loadAccessConfig", () => {
 	});
 
 	it("never echoes values in validation errors", () => {
-		write(
-			`admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n    extra: "${IDS.guest}"\n`,
-			"members: []\n",
-		);
+		write(`admins:\n  - "${IDS.admin}"\nextra: "${IDS.guest}"\n`, MEMBERS);
 		expect(() => loadAccessConfig(paths)).toThrow(AccessConfigError);
 		try {
 			loadAccessConfig(paths);
@@ -147,7 +175,7 @@ describe("loadAccessConfig", () => {
 
 describe("guests and capabilities", () => {
 	const withEntry = (lines: string) =>
-		write(ADMINS, `members:\n  - discordId: "${IDS.member}"\n${lines}`);
+		write(ADMINS, members(`  - discordId: "${IDS.member}"\n${lines}`));
 
 	it("keeps a guest entry but gives it no tier and doesn't count it", () => {
 		withEntry("    tier: guest\n    capabilities:\n      - front-door\n");

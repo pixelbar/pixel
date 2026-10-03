@@ -17,7 +17,7 @@ import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 import { createMemberSubcommands } from "./members.ts";
 
-const ADMINS = `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - "${IDS.admin}"\n`;
 const MEMBERS = `members:
   - discordId: "${IDS.member}"
     tier: member
@@ -26,6 +26,8 @@ const MEMBERS = `members:
       - front-door
   - discordId: "${IDS.friend}"
     tier: friend
+  - discordId: "${IDS.admin}"
+    tier: member
 `;
 const TARGET = "100000000000000050";
 
@@ -345,6 +347,7 @@ describe("/admin whois", () => {
 		expect(fieldsOf(result)).toMatchObject({
 			"Access level": "Pixel admin",
 			"Comes from": "config/admins.yaml",
+			"Also listed as": "Pixelbar member",
 			Capabilities: "None",
 		});
 		expect(fieldsOf(result)).not.toHaveProperty("Note");
@@ -399,7 +402,7 @@ describe("/admin whois", () => {
 		it("is shown as an inert code span", async () => {
 			writeFileSync(
 				membersFile,
-				`members:\n  - discordId: "${IDS.member}"\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
+				`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
 			);
 			const { dispatcher } = setup();
 			const result = await run(dispatcher, "whois", {}, human(IDS.member));

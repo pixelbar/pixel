@@ -109,12 +109,9 @@ export class FileAccessStore implements AccessStore {
 	readonly #reporter: ErrorReporter;
 	readonly #ops: FileOps;
 	#view: AccessView;
-	#admins: { discordId: string }[];
+	#admins: string[];
 
-	private constructor(
-		deps: FileAccessStoreDeps,
-		loaded: { admins: { discordId: string }[]; view: AccessView },
-	) {
+	private constructor(deps: FileAccessStoreDeps, loaded: { admins: string[]; view: AccessView }) {
 		this.#paths = deps.paths;
 		this.#logger = deps.logger;
 		this.#reporter = deps.reporter;
@@ -170,9 +167,10 @@ export class FileAccessStore implements AccessStore {
 		const file = this.#paths.membersFile;
 		const { id } = change;
 		validateChange(change);
-		if (this.#view.discord.get(id) === "admin") {
+		// Admins come only from admins.yaml. Their members entry may still hold capabilities.
+		if (change.kind === "set-tier" && this.#view.discord.get(id) === "admin") {
 			throw new AccessStoreError(
-				"That person is an admin. Admins are managed in admins.yaml only.",
+				"That person is an admin. Admins come from admins.yaml, so their level can't be changed here.",
 			);
 		}
 

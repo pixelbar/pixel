@@ -20,18 +20,25 @@ const PRIMITIVE_TYPES = new Set([
 ]);
 
 export type ParsedOptions = {
+	subgroup?: string;
 	subcommand?: string;
 	args: Args;
 	users: Record<string, ResolvedUser>;
 };
 
 /**
- * Flattens a slash command's options: unwraps a leading subcommand, reads
+ * Flattens a slash command's options: unwraps a leading subgroup and subcommand, reads
  * primitive values, and turns User options into the immutable ID plus a
  * resolved description. The dispatcher validates the result.
  */
 export function parseOptions(options: readonly DiscordOption[]): ParsedOptions {
 	const first = options[0];
+	if (first?.type === ApplicationCommandOptionType.SubcommandGroup) {
+		const inner = first.options?.[0];
+		if (inner?.type !== ApplicationCommandOptionType.Subcommand)
+			return { subgroup: first.name, args: {}, users: {} };
+		return { subgroup: first.name, subcommand: inner.name, ...collect(inner.options ?? []) };
+	}
 	if (first?.type === ApplicationCommandOptionType.Subcommand) {
 		return { subcommand: first.name, ...collect(first.options ?? []) };
 	}

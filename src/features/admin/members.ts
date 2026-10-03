@@ -136,6 +136,10 @@ export function createMemberSubcommands(access: MemberCommandDeps): SubcommandDe
 								...identity,
 								{ name: "Access level", value: TIER_LABELS[tier] },
 								{ name: "Comes from", value: source(tier, record !== undefined) },
+								// Admins are members too: their members entry still holds their level and capabilities.
+								...(tier === "admin" && record
+									? [{ name: "Also listed as", value: TIER_LABELS[record.tier] }]
+									: []),
 								{
 									name: "Capabilities",
 									value:

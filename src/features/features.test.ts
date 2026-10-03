@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
 import { UserFacingError } from "../core/errors.ts";
+import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
 import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
 import { silentLogger } from "../core/logger.ts";
@@ -123,7 +124,7 @@ function adminSubcommand(
 		access: store,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
-	const sub = admin?.subcommands?.find((s) => s.name === name);
+	const sub = admin?.subcommands?.find((s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name);
 	if (!sub) throw new Error(`no /admin ${name}`);
 	return sub;
 }
