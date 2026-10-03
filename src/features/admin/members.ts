@@ -1,4 +1,5 @@
 import { TIER_LABELS, type Tier } from "../../core/access.ts";
+import type { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser, SubcommandDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
@@ -19,7 +20,10 @@ export type MemberCommandDeps = Pick<AccessStore, "view" | "apply">;
 
 const LEVELS: readonly MemberTier[] = ["member", "friend", "guest"];
 
-export function createMemberSubcommands(access: MemberCommandDeps): SubcommandDefinition[] {
+export function createMemberSubcommands(
+	access: MemberCommandDeps,
+	capabilities: Pick<CapabilityRegistry, "has">,
+): SubcommandDefinition[] {
 	return [
 		{
 			name: "set-level",
@@ -127,7 +131,7 @@ export function createMemberSubcommands(access: MemberCommandDeps): SubcommandDe
 				const view = access.view;
 				const record = view.records.get(target.id);
 				const tier: Tier = view.discord.get(target.id) ?? "guest";
-				const capabilities = record?.capabilities ?? [];
+				const held = record?.capabilities ?? [];
 				return {
 					embeds: [
 						{
@@ -143,9 +147,13 @@ export function createMemberSubcommands(access: MemberCommandDeps): SubcommandDe
 								{
 									name: "Capabilities",
 									value:
-										capabilities.length === 0
+										held.length === 0
 											? "None"
-											: `${capabilities.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
+											: `${held
+													.map((name) =>
+														capabilities.has(name) ? name : `${name} (not registered, ignored)`,
+													)
+													.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
 								},
 								...(record?.note ? [{ name: "Note", value: inlineCode(record.note, 300) }] : []),
 							],

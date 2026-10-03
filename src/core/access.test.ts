@@ -87,4 +87,59 @@ describe("checkAccess", () => {
 			checkAccess({ minTier: "admin", contexts: ["dm"] }, principal("guest", { chat: "group" })),
 		).toEqual({ allowed: false, reason: "tier" });
 	});
+
+	describe("capabilities", () => {
+		const needsDoor = { minTier: "member", capability: "door" } as const;
+
+		it("needs both the tier and the capability", () => {
+			expect(checkAccess(needsDoor, principal("member", {}, ["door"]))).toEqual({ allowed: true });
+			expect(checkAccess(needsDoor, principal("member"))).toEqual({
+				allowed: false,
+				reason: "capability",
+			});
+			expect(checkAccess(needsDoor, principal("member", {}, ["other"]))).toEqual({
+				allowed: false,
+				reason: "capability",
+			});
+		});
+
+		it("is refused below the tier even with the capability", () => {
+			expect(checkAccess(needsDoor, principal("friend", {}, ["door"]))).toEqual({
+				allowed: false,
+				reason: "tier",
+			});
+		});
+
+		it("is never implied by a tier, admin included", () => {
+			expect(checkAccess(needsDoor, principal("admin"))).toEqual({
+				allowed: false,
+				reason: "capability",
+			});
+			expect(checkAccess(needsDoor, principal("admin", {}, ["door"]))).toEqual({ allowed: true });
+		});
+
+		it("never lets a guest through, whatever they hold", () => {
+			expect(
+				checkAccess({ minTier: "guest", capability: "door" }, principal("guest", {}, ["door"])),
+			).toEqual({
+				allowed: false,
+				reason: "tier",
+			});
+		});
+
+		it("checks the context before the capability", () => {
+			expect(
+				checkAccess(
+					{ minTier: "member", contexts: ["dm"], capability: "door" },
+					principal("member", { chat: "group" }, ["door"]),
+				),
+			).toEqual({ allowed: false, reason: "context" });
+		});
+
+		it("doesn't matter when the command names no capability", () => {
+			expect(checkAccess({ minTier: "member" }, principal("member", {}, ["door"]))).toEqual({
+				allowed: true,
+			});
+		});
+	});
 });

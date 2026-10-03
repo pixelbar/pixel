@@ -1,12 +1,17 @@
+import { type CapabilityRegistry, reportUnknownCapabilities } from "../../core/capabilities.ts";
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
 import type { AccessStore } from "../../core/ports/access-store.ts";
+import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
+import { createCapabilitySubgroup } from "./capabilities.ts";
 import { createMemberSubcommands } from "./members.ts";
 
 export type AdminDeps = {
 	version: string;
 	startedAt: Date;
 	access: Pick<AccessStore, "view" | "apply" | "reload">;
+	capabilities: CapabilityRegistry;
+	reporter: ErrorReporter;
 	now?: () => Date;
 };
 
@@ -52,20 +57,29 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 						description: "Re-read the admin and member lists after editing the files by hand",
 						access: { minTier: "admin" },
 						private: true,
-						handler: async ({ principal }) => {
+						handler: async ({ principal, logger }) => {
 							const { before, after } = await deps.access.reload(principal);
 							const warnings = deps.access.view.warnings.length;
+							const unknown = reportUnknownCapabilities(
+								deps.access.view.records.values(),
+								deps.capabilities,
+								{ logger, reporter: deps.reporter },
+							);
 							return {
 								text: [
 									"Reloaded the access lists.",
 									`Before: ${describeCounts(before)}`,
 									`Now: ${describeCounts(after)}`,
 									...(warnings > 0 ? [`${warnings} warning(s), see the logs.`] : []),
+									...(unknown.length > 0
+										? [`These capabilities don't exist and are ignored: ${unknown.join(", ")}.`]
+										: []),
 								].join("\n"),
 							};
 						},
 					},
-					...createMemberSubcommands(deps.access),
+					...createMemberSubcommands(deps.access, deps.capabilities),
+					createCapabilitySubgroup({ access: deps.access, capabilities: deps.capabilities }),
 				],
 			},
 		],

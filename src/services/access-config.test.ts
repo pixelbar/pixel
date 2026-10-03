@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { actor, IDS } from "../testing/fixtures.ts";
-import { AccessConfigError, ConfigTierSource, loadAccessConfig } from "./access-config.ts";
+import {
+	AccessConfigError,
+	ConfigTierSource,
+	loadAccessConfig,
+	StoreCapabilitySource,
+} from "./access-config.ts";
 
 let dir: string;
 let paths: { adminsFile: string; membersFile: string };
@@ -216,6 +221,40 @@ describe("guests and capabilities", () => {
 		const names = Array.from({ length: 51 }, (_, i) => `c${i}`).join(", ");
 		withEntry(`    tier: member\n    capabilities: [${names}]\n`);
 		expect(() => loadAccessConfig(paths)).toThrow(/at most 50/);
+	});
+});
+
+describe("StoreCapabilitySource", () => {
+	const withCapabilities = () =>
+		write(
+			ADMINS,
+			members(
+				`  - discordId: "${IDS.member}"\n    tier: member\n    capabilities:\n      - front-door\n`,
+			),
+		);
+
+	it("reports a person's capabilities, and none for someone unlisted", async () => {
+		withCapabilities();
+		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		expect(await source.capabilitiesFor(actor({ userId: IDS.member }))).toEqual(["front-door"]);
+		expect(await source.capabilitiesFor(actor({ userId: IDS.guest }))).toEqual([]);
+		expect(await source.capabilitiesFor(actor({ userId: IDS.admin }))).toEqual([]);
+	});
+
+	it("reads the store's current view each time", async () => {
+		withCapabilities();
+		const store = { view: loadAccessConfig(paths) };
+		const source = new StoreCapabilitySource(store);
+		write(ADMINS, MEMBERS);
+		store.view = loadAccessConfig(paths);
+		expect(await source.capabilitiesFor(actor({ userId: IDS.member }))).toEqual([]);
+	});
+
+	it("only speaks for Discord identities", async () => {
+		withCapabilities();
+		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		const telegramUser = actor({ userId: IDS.member, platform: "telegram" as never });
+		expect(await source.capabilitiesFor(telegramUser)).toEqual([]);
 	});
 });
 

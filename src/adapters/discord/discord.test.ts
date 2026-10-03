@@ -185,7 +185,10 @@ describe("parseOptions", () => {
 		expect(parseOptions([bare])).toEqual({ subgroup: "caps", args: {}, users: {} });
 		expect(
 			parseOptions([
-				{ ...bare, options: [{ name: "x", type: ApplicationCommandOptionType.String, value: "y" }] },
+				{
+					...bare,
+					options: [{ name: "x", type: ApplicationCommandOptionType.String, value: "y" }],
+				},
 			]),
 		).toEqual({ subgroup: "caps", args: {}, users: {} });
 	});

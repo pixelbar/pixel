@@ -12,6 +12,7 @@ import {
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
 import { actorLogFields, actorRef, type PlatformActor } from "../core/access.ts";
+import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import type {
@@ -28,7 +29,6 @@ import {
 	AccessConfigError,
 	type AccessConfigPaths,
 	buildAccessConfig,
-	CAPABILITY_NAME,
 	DISCORD_ID,
 	loadAccessFiles,
 	MAX_CAPABILITIES,

@@ -123,10 +123,14 @@ export class Dispatcher {
 					reason: decision.reason,
 					tier: principal.tier,
 					required: access.minTier,
+					// The reply is generic, so the log is where "no capability" is visible.
+					...(access.capability === undefined ? {} : { capability: access.capability }),
 				},
 				"command denied",
 			);
-			return privateText(decision.reason === "tier" ? MESSAGES.deniedTier : MESSAGES.deniedContext);
+			return privateText(
+				decision.reason === "context" ? MESSAGES.deniedContext : MESSAGES.deniedTier,
+			);
 		}
 
 		// Every executed command is logged as an action, so abuse can be traced to a user.

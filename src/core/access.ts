@@ -23,6 +23,12 @@ export type Access = {
 	minTier: Tier;
 	/** Where the command may run. Omitted means everywhere. */
 	contexts?: readonly ChatContext[];
+	/**
+	 * A named permission the person must also hold, on top of `minTier`. Not
+	 * implied by any tier (admin included) or by a Discord role. Guests never
+	 * pass, whatever they hold. See `core/capabilities.ts`.
+	 */
+	capability?: string;
 };
 
 /** Who is talking to Pixel, as reported by a platform adapter. */
@@ -37,8 +43,12 @@ export type PlatformActor = {
 	chat: ChatContext;
 };
 
-/** An actor whose tier has been resolved by the IdentityService. */
-export type Principal = PlatformActor & { tier: Tier };
+/** An actor whose tier and capabilities have been resolved by the IdentityService. */
+export type Principal = PlatformActor & {
+	tier: Tier;
+	/** Granted capabilities. Always empty for a guest. */
+	capabilities: readonly string[];
+};
 
 /**
  * Stable user identifier, e.g. "discord:494477157062672404". Prefixed with
@@ -80,12 +90,22 @@ export function highestTier(tiers: Iterable<Tier>): Tier {
 	return best;
 }
 
-export type AccessDecision = { allowed: true } | { allowed: false; reason: "tier" | "context" };
+export type AccessDecision =
+	| { allowed: true }
+	| { allowed: false; reason: "tier" | "context" | "capability" };
 
+/** Both the tier and, if the command names one, the capability must hold. */
 export function checkAccess(access: Access, principal: Principal): AccessDecision {
 	if (!tierAtLeast(principal.tier, access.minTier)) return { allowed: false, reason: "tier" };
 	if (access.contexts && !access.contexts.includes(principal.chat)) {
 		return { allowed: false, reason: "context" };
+	}
+	if (access.capability !== undefined) {
+		// A guest has no valid tier, so a capability on its own gets them nowhere.
+		if (principal.tier === "guest") return { allowed: false, reason: "tier" };
+		if (!principal.capabilities.includes(access.capability)) {
+			return { allowed: false, reason: "capability" };
+		}
 	}
 	return { allowed: true };
 }

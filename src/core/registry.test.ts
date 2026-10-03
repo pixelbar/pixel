@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { command, group, subcommand, subgroup } from "../testing/fixtures.ts";
+import { CapabilityRegistry } from "./capabilities.ts";
 import type { CommandDefinition } from "./command.ts";
 import { CommandRegistry, RegistryError } from "./registry.ts";
 
@@ -178,9 +179,9 @@ describe("CommandRegistry subgroups", () => {
 			/Subcommands must number/,
 		);
 		const noHandler = { ...subcommand(), handler: undefined } as never;
-		expect(() => register(group({ subcommands: [subgroup({ subcommands: [noHandler] })] }))).toThrow(
-			/Missing handler/,
-		);
+		expect(() =>
+			register(group({ subcommands: [subgroup({ subcommands: [noHandler] })] })),
+		).toThrow(/Missing handler/);
 		const noAccess = { ...subgroup(), access: undefined } as never;
 		expect(() => register(group({ subcommands: [noAccess] }))).toThrow(/access\.minTier/);
 	});
@@ -193,14 +194,14 @@ describe("CommandRegistry subgroups", () => {
 
 	it("shares one namespace between subcommands and subgroups, and between subgroup members", () => {
 		expect(() =>
-			register(
-				group({ subcommands: [subcommand({ name: "x" }), subgroup({ name: "x" })] }),
-			),
+			register(group({ subcommands: [subcommand({ name: "x" }), subgroup({ name: "x" })] })),
 		).toThrow(/Duplicate subgroup/);
 		expect(() =>
 			register(
 				group({
-					subcommands: [subgroup({ subcommands: [subcommand({ name: "a" }), subcommand({ name: "a" })] })],
+					subcommands: [
+						subgroup({ subcommands: [subcommand({ name: "a" }), subcommand({ name: "a" })] }),
+					],
 				}),
 			),
 		).toThrow(/Duplicate subcommand/);
@@ -232,5 +233,70 @@ describe("CommandRegistry subgroups", () => {
 				}),
 			),
 		).toThrow(/more contexts than its parent/);
+	});
+});
+
+describe("CommandRegistry capabilities", () => {
+	const capabilities = new CapabilityRegistry([{ name: "door", description: "Open the door" }]);
+	const registerWith = (...commands: CommandDefinition[]) => {
+		const registry = new CommandRegistry({ capabilities });
+		registry.register({ name: "test-feature", commands });
+		return registry;
+	};
+
+	it("accepts a command that requires a capability that exists", () => {
+		const registry = registerWith(
+			command({ name: "open", access: { minTier: "member", capability: "door" } }),
+		);
+		expect(registry.get("open")?.definition.access.capability).toBe("door");
+	});
+
+	it("stops startup for a capability that doesn't exist, so a typo can't make a silent grant", () => {
+		expect(() =>
+			registerWith(command({ access: { minTier: "member", capability: "dor" } })),
+		).toThrow(/Unknown capability/);
+	});
+
+	it("knows no capabilities unless given some", () => {
+		expect(() => register(command({ access: { minTier: "member", capability: "door" } }))).toThrow(
+			/Unknown capability/,
+		);
+	});
+
+	it("rejects a capability that isn't a string", () => {
+		const bad = command({ access: { minTier: "member", capability: 5 as never } });
+		expect(() => registerWith(bad)).toThrow(/Unknown capability/);
+	});
+
+	it("rejects a capability on a guest-tier command, which could never pass", () => {
+		expect(() =>
+			registerWith(command({ access: { minTier: "guest", capability: "door" } })),
+		).toThrow(/minTier above guest/);
+	});
+
+	it("checks subcommands and subgroups too", () => {
+		const unknown = { minTier: "member", capability: "nope" } as const;
+		const ok = { minTier: "member", capability: "door" } as const;
+		expect(() => registerWith(group({ subcommands: [subcommand({ access: unknown })] }))).toThrow(
+			/Unknown capability/,
+		);
+		expect(() =>
+			registerWith(
+				group({ subcommands: [subgroup({ subcommands: [subcommand({ access: unknown })] })] }),
+			),
+		).toThrow(/Unknown capability/);
+		expect(() => registerWith(group({ subcommands: [subgroup({ access: unknown })] }))).toThrow(
+			/Unknown capability/,
+		);
+		expect(() =>
+			registerWith(
+				group({
+					access: { minTier: "member" },
+					subcommands: [
+						subgroup({ access: { minTier: "member" }, subcommands: [subcommand({ access: ok })] }),
+					],
+				}),
+			),
+		).not.toThrow();
 	});
 });

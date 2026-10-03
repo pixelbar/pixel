@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { actor, command, group, IDS, subcommand, subgroup } from "../testing/fixtures.ts";
 import type { PlatformActor, Tier } from "./access.ts";
+import { CapabilityRegistry } from "./capabilities.ts";
 import type { CommandDefinition, ResolvedUser } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
 import { UserFacingError } from "./errors.ts";
@@ -631,9 +632,15 @@ describe("subgroups", () => {
 	it.each([
 		["a subgroup without its subcommand", { command: "admin", subgroup: "caps" }],
 		["an unknown subgroup", { command: "admin", subgroup: "nope", subcommand: "grant" }],
-		["an unknown subcommand in a subgroup", { command: "admin", subgroup: "caps", subcommand: "nope" }],
+		[
+			"an unknown subcommand in a subgroup",
+			{ command: "admin", subgroup: "caps", subcommand: "nope" },
+		],
 		["a subgroup's name used as a subcommand", { command: "admin", subcommand: "caps" }],
-		["a subcommand's name used as a subgroup", { command: "admin", subgroup: "plain", subcommand: "grant" }],
+		[
+			"a subcommand's name used as a subgroup",
+			{ command: "admin", subgroup: "plain", subcommand: "grant" },
+		],
 		["a subgroup on a plain command", { command: "p", subgroup: "caps", subcommand: "grant" }],
 	])("treats %s as an unknown command", async (_label, req) => {
 		const { dispatcher } = setup([nested().def, command({ name: "p" })]);
@@ -662,6 +669,153 @@ describe("subgroups", () => {
 		expect(seen).toEqual(["help", "admin plain", "admin caps grant"]);
 		await dispatcher.dispatch({ actor: as(IDS.admin), command: "help", args: {} });
 		expect(seen).toEqual(["help", "admin plain", "admin caps grant", "admin caps revoke"]);
+		await dispatcher.dispatch({ actor: as(IDS.friend), command: "help", args: {} });
+		expect(seen).toEqual(["help"]);
+	});
+});
+
+describe("capabilities", () => {
+	const GRANTED: Record<string, string[]> = {
+		[IDS.admin]: ["door"],
+		[IDS.member]: ["door"],
+		[IDS.friend]: ["door"],
+		[IDS.guest]: ["door"],
+	};
+
+	function capabilitySetup(commands: CommandDefinition[], grants = GRANTED) {
+		const capabilities = new CapabilityRegistry([{ name: "door", description: "Open the door" }]);
+		const registry = new CommandRegistry({ capabilities });
+		registry.register({ name: "feat", commands });
+		const { logger, entries } = recordingLogger();
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService(
+				[{ name: "test", tierFor: async (a: PlatformActor) => TIERS_BY_ID[a.userId] ?? null }],
+				[{ name: "test", capabilitiesFor: async (a: PlatformActor) => grants[a.userId] ?? [] }],
+			),
+			rateLimiter: new RateLimiter({ capacity: 100, refillPerSecond: 0, now: () => 0 }),
+			logger,
+			reporter: {
+				capture: vi.fn(),
+				captureBackground: vi.fn(),
+				breadcrumb: vi.fn(),
+			},
+		});
+		return { dispatcher, entries };
+	}
+
+	const open = (handler = vi.fn(async () => ({ text: "opened" }))) =>
+		command({ name: "open", access: { minTier: "member", capability: "door" }, handler });
+
+	it.each([
+		["a member who has it", IDS.member, GRANTED, true],
+		["a member without it", IDS.member, {}, false],
+		["a friend below the tier, even with it", IDS.friend, GRANTED, false],
+		["a guest, even with it", IDS.guest, GRANTED, false],
+		["an admin without it: admin doesn't imply it", IDS.admin, {}, false],
+		["an admin who granted themselves it", IDS.admin, GRANTED, true],
+	])("%s → allowed=%s", async (_label, userId, grants, allowed) => {
+		const handler = vi.fn(async () => ({ text: "opened" }));
+		const { dispatcher } = capabilitySetup([open(handler)], grants);
+		const result = await dispatcher.dispatch({ actor: as(userId), command: "open", args: {} });
+		expect(handler).toHaveBeenCalledTimes(allowed ? 1 : 0);
+		expect(result.reply.text).toBe(allowed ? "opened" : MESSAGES.deniedTier);
+	});
+
+	it("refuses generically, and logs the capability so the real reason is visible", async () => {
+		const { dispatcher, entries } = capabilitySetup([open()], {});
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.member, { displayName: "Ada", handle: "ada_l" }),
+			command: "open",
+			args: {},
+		});
+		expect(result.private).toBe(true);
+		expect(result.reply.text).toBe("You don't have access to this command.");
+		expect(entries.find((e) => e.obj.event === "command.denied")?.obj).toMatchObject({
+			reason: "capability",
+			capability: "door",
+			required: "member",
+			user: `discord:${IDS.member}`,
+			userName: "Ada",
+		});
+		expect(entries.some((e) => e.obj.event === "command.executed")).toBe(false);
+	});
+
+	it("doesn't add a capability field to ordinary denials", async () => {
+		const { dispatcher, entries } = capabilitySetup([
+			command({ name: "a", access: { minTier: "admin" } }),
+		]);
+		await dispatcher.dispatch({ actor: as(IDS.member), command: "a", args: {} });
+		expect(entries.find((e) => e.obj.event === "command.denied")?.obj).not.toHaveProperty(
+			"capability",
+		);
+	});
+
+	it("takes effect straight away when someone is demoted or loses the grant", async () => {
+		const grants: Record<string, string[]> = { [IDS.member]: ["door"] };
+		const { dispatcher } = capabilitySetup([open()], grants);
+		const run = () => dispatcher.dispatch({ actor: as(IDS.member), command: "open", args: {} });
+		expect((await run()).reply.text).toBe("opened");
+		grants[IDS.member] = [];
+		expect((await run()).reply.text).toBe(MESSAGES.deniedTier);
+	});
+
+	it("is enforced on subcommands, and the parent's gate still applies", async () => {
+		const handler = vi.fn(async () => ({ text: "ran" }));
+		const { dispatcher } = capabilitySetup([
+			group({
+				name: "doors",
+				access: { minTier: "member" },
+				subcommands: [
+					subcommand({ name: "open", access: { minTier: "member", capability: "door" }, handler }),
+					subcommand({ name: "list", access: { minTier: "member" }, handler }),
+				],
+			}),
+		]);
+		const call = (userId: string, sub: string) =>
+			dispatcher.dispatch({ actor: as(userId), command: "doors", subcommand: sub, args: {} });
+		expect((await call(IDS.member, "open")).reply.text).toBe("ran");
+		expect((await call(IDS.friend, "open")).reply.text).toBe(MESSAGES.deniedTier);
+
+		const { dispatcher: without } = capabilitySetup(
+			[
+				group({
+					name: "doors",
+					subcommands: [
+						subcommand({
+							name: "open",
+							access: { minTier: "member", capability: "door" },
+							handler,
+						}),
+					],
+				}),
+			],
+			{},
+		);
+		const denied = await without.dispatch({
+			actor: as(IDS.member),
+			command: "doors",
+			subcommand: "open",
+			args: {},
+		});
+		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+	});
+
+	it("hides the command from /help for people who lack the capability", async () => {
+		let seen: string[] = [];
+		const help = command({
+			name: "help",
+			handler: async (ctx) => {
+				seen = ctx.availableCommands.map((c) => c.name);
+				return {};
+			},
+		});
+		const grants: Record<string, string[]> = { [IDS.member]: ["door"] };
+		const { dispatcher } = capabilitySetup([help, open()], grants);
+		await dispatcher.dispatch({ actor: as(IDS.member), command: "help", args: {} });
+		expect(seen).toEqual(["help", "open"]);
+		await dispatcher.dispatch({ actor: as(IDS.admin), command: "help", args: {} });
+		expect(seen).toEqual(["help"]);
 		await dispatcher.dispatch({ actor: as(IDS.friend), command: "help", args: {} });
 		expect(seen).toEqual(["help"]);
 	});

@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import type { PlatformActor, Tier } from "../core/access.ts";
+import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import type { AccessView, MemberRecord, MemberTier } from "../core/ports/access-store.ts";
+import type { CapabilitySource } from "../core/ports/capability-source.ts";
 import type { TierSource } from "../core/ports/tier-source.ts";
 
 /**
@@ -25,8 +27,6 @@ const adminsSchema = z.strictObject({
 	admins: z.array(discordId).min(1, { error: "at least one admin is required" }),
 });
 
-/** Lowercase words joined by '-', e.g. "front-door". What the capability is called is up to #28. */
-export const CAPABILITY_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 export const MAX_CAPABILITIES = 50;
 
 const capabilities = z
@@ -190,5 +190,20 @@ export class ConfigTierSource implements TierSource {
 	async tierFor(actor: PlatformActor): Promise<Tier | null> {
 		if (actor.platform !== "discord") return null;
 		return this.#store.view.discord.get(actor.userId) ?? null;
+	}
+}
+
+/** Capabilities straight from the access store's members entries. The dispatcher decides whether they count. */
+export class StoreCapabilitySource implements CapabilitySource {
+	readonly name = "access-config";
+	readonly #store: { readonly view: AccessView };
+
+	constructor(store: { readonly view: AccessView }) {
+		this.#store = store;
+	}
+
+	async capabilitiesFor(actor: PlatformActor): Promise<readonly string[]> {
+		if (actor.platform !== "discord") return [];
+		return this.#store.view.records.get(actor.userId)?.capabilities ?? [];
 	}
 }

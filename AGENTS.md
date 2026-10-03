@@ -59,14 +59,15 @@ docs/                   # architecture, identity, ADRs
 1. **Every command declares `access.minTier`.** There is no default. The registry rejects commands without it.
 2. **Authorisation happens only in the dispatcher.** Do not add tier checks inside adapters, and do not skip the dispatcher. A handler may add finer checks, but it must never loosen the dispatcher's decision.
 3. **Identify users only by their immutable Discord user ID.** Never authorise based on usernames, display names or nicknames.
-4. **`admin` comes only from `config/admins.yaml`.** Never derive it from anything else.
+4. **`admin` comes only from `config/admins.yaml`** (a list of IDs, each also present in `members.yaml`). Never derive it from anything else.
 5. **Fail closed.** Invalid or missing access files, or an empty admin list, mean the bot does not start. Discord IDs must be quoted strings (`^\d{17,20}$`). Never coerce numbers to strings.
 6. **Never commit real access files, `.env`, tokens or Discord IDs of real people.** Use example files and obviously fake IDs in tests.
 7. **Never log or report secrets.** When logging an action, identify the user with `actorLogFields()`, which gives `user` (`discord:<id>`), `userName` and `userHandle`, so moderators can recognise and ban them. Names are for humans only: act on the ID, never the name. Don't log message content or command arguments unless an ADR says so. No `console.log`.
 8. **Private data gets private replies** (`Reply.private = true`, which is ephemeral on Discord).
 9. **Commands that target a person use a `user` option** and act on the ID the handler receives, never on a name. A subcommand can't be looser than its group (the registry enforces it).
 10. **`config/members.yaml` is changed only through the `AccessStore`** (`apply`). Never write that file from anywhere else, and never add a way to change `admins.yaml` at runtime. The store audits every change, so don't bypass it.
-11. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*`, `services/access-store*` or `core/ports/access-store*` need **tests and a human reviewer**. Call this out in the PR description.
+11. **Capabilities are declared in `src/features/capabilities.ts` and enforced only in the dispatcher.** A command that needs one says `access: { minTier, capability }` and both must hold. A capability is never implied by a tier, a role or being an admin, and a guest never passes. Don't check capabilities in handlers or adapters.
+12. Changes to `core/access*`, `core/identity*`, `core/capabilities*`, `core/dispatcher*`, `core/registry*` or `services/access-config*`, `services/access-store*` or `core/ports/access-store*` need **tests and a human reviewer**. Call this out in the PR description.
 
 ## Conventions
 

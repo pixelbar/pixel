@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `set-level`, `whois`), plus open/closed announcements in Discord, `/events` (from the server's scheduled events) and `/info` (short answers about Pixelbar). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `set-level`, `whois`, `capabilities`), plus open/closed announcements in Discord, `/events` (from the server's scheduled events) and `/info` (short answers about Pixelbar). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
 ## Stack
 
@@ -49,7 +49,7 @@ Never develop against the production bot.
 1. Create an application at <https://discord.com/developers/applications>.
 2. Under **Bot**, reset the token and put it in `DISCORD_TOKEN`. Put the application ID in `DISCORD_APP_ID`.
 3. Create a test server, invite the bot with the `bot` and `applications.commands` scopes, and put the server ID in `DISCORD_GUILD_ID`.
-4. Turn on Developer Mode in Discord, right-click yourself, choose **Copy User ID**, and add yourself to `config/admins.yaml`.
+4. Turn on Developer Mode in Discord, right-click yourself, choose **Copy User ID**, and add yourself to `config/admins.yaml` and to `config/members.yaml` (admins are members too).
 
 ### Announcements
 
@@ -86,7 +86,7 @@ The text of the answer, in markdown…
 
 Tiers come from two YAML files. **They are gitignored, because they contain personal data.**
 
-- `config/admins.yaml`: Pixel admins (name and Discord ID).
+- `config/admins.yaml`: Pixel admins, as a list of Discord IDs. Each admin also needs an entry in `members.yaml`.
 - `config/members.yaml`: paying `member` and `friend` memberships (Discord ID and tier), plus optional capabilities. **Pixel rewrites this file** when admins change tiers, keeping a `.bak` of the previous version, so it needs a writable location. Hand edits are still fine, and `/admin reload` picks them up.
 
 Everyone else is a `guest`.

@@ -28,8 +28,12 @@ export function actor(overrides: Partial<PlatformActor> = {}): PlatformActor {
 	};
 }
 
-export function principal(tier: Tier, overrides: Partial<PlatformActor> = {}): Principal {
-	return { ...actor(overrides), tier };
+export function principal(
+	tier: Tier,
+	overrides: Partial<PlatformActor> = {},
+	capabilities: readonly string[] = [],
+): Principal {
+	return { ...actor(overrides), tier, capabilities };
 }
 
 export function context(overrides: Partial<CommandContext> = {}): CommandContext {

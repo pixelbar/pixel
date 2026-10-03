@@ -2,6 +2,11 @@ import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { Announcer } from "./core/announcer.ts";
 import { Calendar } from "./core/calendar.ts";
+import {
+	type CapabilityDefinition,
+	CapabilityRegistry,
+	reportUnknownCapabilities,
+} from "./core/capabilities.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { IdentityService } from "./core/identity.ts";
@@ -10,8 +15,9 @@ import type { AccessStore } from "./core/ports/access-store.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
+import { CAPABILITIES } from "./features/capabilities.ts";
 import { buildFeatures } from "./features/index.ts";
-import { ConfigTierSource } from "./services/access-config.ts";
+import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
@@ -19,6 +25,7 @@ import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
 export type Core = {
 	access: AccessStore;
+	capabilities: CapabilityRegistry;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -35,6 +42,8 @@ export type BuildCoreOptions = {
 	startedAt?: Date;
 	/** Overrides HTTP for services (tests). */
 	fetch?: typeof globalThis.fetch;
+	/** Overrides the capabilities declared in `features/capabilities.ts` (tests). */
+	capabilities?: readonly CapabilityDefinition[];
 };
 
 /**
@@ -52,6 +61,9 @@ export function buildCore(
 	for (const warning of access.view.warnings) {
 		logger.warn({ event: "access_config.warning" }, warning);
 	}
+	// Capabilities are declared in code. Names in the file that aren't are ignored, but reported.
+	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
+	reportUnknownCapabilities(access.view.records.values(), capabilities, { logger, reporter });
 
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,
@@ -71,11 +83,13 @@ export function buildCore(
 	);
 	logger.info({ event: "info.loaded", topics: infoTopics.length }, "loaded /info topics");
 
-	const registry = new CommandRegistry();
+	const registry = new CommandRegistry({ capabilities });
 	const features = buildFeatures({
 		version: config.version,
 		startedAt: options.startedAt ?? new Date(),
 		access,
+		capabilities,
+		reporter,
 		spaceStatus,
 		announcer,
 		calendar,
@@ -87,11 +101,14 @@ export function buildCore(
 
 	const dispatcher = new Dispatcher({
 		registry,
-		identity: new IdentityService([new ConfigTierSource(access)]),
+		identity: new IdentityService(
+			[new ConfigTierSource(access)],
+			[new StoreCapabilitySource(access)],
+		),
 		rateLimiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.5 }),
 		logger,
 		reporter,
 	});
 
-	return { access, registry, dispatcher, spaceStatus, announcer, calendar, features };
+	return { access, capabilities, registry, dispatcher, spaceStatus, announcer, calendar, features };
 }

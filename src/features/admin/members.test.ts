@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor } from "../../core/access.ts";
+import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
@@ -30,6 +31,9 @@ const MEMBERS = `members:
     tier: member
 `;
 const TARGET = "100000000000000050";
+const CAPABILITIES = new CapabilityRegistry([
+	{ name: "front-door", description: "Open the front door" },
+]);
 
 let dir: string;
 let membersFile: string;
@@ -64,6 +68,8 @@ function setup(ops = nodeFileOps) {
 			version: "1",
 			startedAt: new Date(),
 			access: store,
+			capabilities: CAPABILITIES,
+			reporter,
 		}),
 	);
 	const dispatcher = new Dispatcher({
@@ -374,6 +380,16 @@ describe("/admin whois", () => {
 		});
 	});
 
+	it("flags capability names that no longer exist, which are ignored", async () => {
+		writeFileSync(
+			membersFile,
+			`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n    capabilities:\n      - front-door\n      - old-thing\n`,
+		);
+		const { dispatcher } = setup();
+		const result = await run(dispatcher, "whois", {}, human(IDS.member));
+		expect(fieldsOf(result).Capabilities).toBe("front-door, old-thing (not registered, ignored)");
+	});
+
 	it("shows a bot as a bot", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "whois", {}, { ...human(TARGET), isBot: true });
@@ -432,7 +448,9 @@ describe("/admin whois", () => {
 
 describe("handler guard", () => {
 	it("fails loudly if a required user wasn't resolved (the dispatcher prevents this)", async () => {
-		const sub = createMemberSubcommands(openStore()).find((s) => s.name === "whois");
+		const sub = createMemberSubcommands(openStore(), new CapabilityRegistry()).find(
+			(s) => s.name === "whois",
+		);
 		await expect(sub?.handler(context())).rejects.toThrow(/missing resolved user/);
 	});
 });
