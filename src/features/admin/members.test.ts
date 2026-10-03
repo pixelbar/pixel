@@ -177,7 +177,10 @@ describe("/admin set-level", () => {
 	it("upgrades a friend to a member", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "set-level", { level: "member" }, human(IDS.friend));
-		expect(fieldsOf(result)).toMatchObject({ Before: "Friend of Pixelbar", Now: "Pixelbar member" });
+		expect(fieldsOf(result)).toMatchObject({
+			Before: "Friend of Pixelbar",
+			Now: "Pixelbar member",
+		});
 		expect(openStore().view.discord.get(IDS.friend)).toBe("member");
 	});
 
@@ -240,10 +243,15 @@ describe("/admin set-level", () => {
 
 	it("refuses a bot", async () => {
 		const { dispatcher } = setup();
-		const result = await run(dispatcher, "set-level", { level: "member" }, {
-			...human(TARGET),
-			isBot: true,
-		});
+		const result = await run(
+			dispatcher,
+			"set-level",
+			{ level: "member" },
+			{
+				...human(TARGET),
+				isBot: true,
+			},
+		);
 		expect(result.reply.text).toMatch(/can't be a bot/);
 		expect(read()).toBe(MEMBERS);
 	});
@@ -404,10 +412,15 @@ describe("/admin whois", () => {
 
 		it("escapes the name in the title and the handle in its span", async () => {
 			const { dispatcher } = setup();
-			const result = await run(dispatcher, "whois", {}, {
-				...human(IDS.member, "# **@everyone**"),
-				handle: "`x`",
-			});
+			const result = await run(
+				dispatcher,
+				"whois",
+				{},
+				{
+					...human(IDS.member, "# **@everyone**"),
+					handle: "`x`",
+				},
+			);
 			expect(result.reply.embeds?.[0]?.title).toBe("# \\*\\*@everyone\\*\\*");
 			expect(fieldsOf(result).Handle).toBe("`'x'`");
 		});

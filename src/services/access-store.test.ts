@@ -417,7 +417,10 @@ describe("audit", () => {
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", reason: "paid cash" }, by);
 		expect(entries("access.changed")[0]?.obj).toMatchObject({ reason: "paid cash" });
 		await expect(
-			store.apply({ kind: "set-tier", id: IDS.friend, tier: "member", reason: "x".repeat(201) }, by),
+			store.apply(
+				{ kind: "set-tier", id: IDS.friend, tier: "member", reason: "x".repeat(201) },
+				by,
+			),
 		).rejects.toThrow(/at most 200 characters/);
 		expect(store.view.discord.get(IDS.friend)).toBe("friend");
 	});
