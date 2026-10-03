@@ -8,7 +8,13 @@ export type ErrorReportContext = {
 
 /** Reports unexpected errors (Sentry in production). */
 export type ErrorReporter = {
+	/** An error while running a command for a user. */
 	capture(error: unknown, context: ErrorReportContext): void;
+	/**
+	 * An error outside any command — a background job, a platform client, an
+	 * external service. `source` names where it came from (e.g. "spaceapi").
+	 */
+	captureBackground(error: unknown, source: string): void;
 };
 
-export const nullErrorReporter: ErrorReporter = { capture() {} };
+export const nullErrorReporter: ErrorReporter = { capture() {}, captureBackground() {} };

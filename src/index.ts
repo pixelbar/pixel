@@ -10,7 +10,7 @@ async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry } = buildCore(config, logger, reporter);
+	const { access, dispatcher, registry, spaceStatus } = buildCore(config, logger, reporter);
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.counts },
@@ -22,15 +22,17 @@ async function main(): Promise<void> {
 		guildId: config.discord.guildId,
 		dispatcher,
 		logger,
-		reportError: (error) => Sentry.captureException(error),
+		reportError: (error) => reporter.captureBackground(error, "discord"),
 	});
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
+	spaceStatus.start();
 
 	let stopping = false;
 	const shutdown = async (signal: string) => {
 		if (stopping) return;
 		stopping = true;
 		logger.info({ event: "shutdown", signal }, "shutting down");
+		spaceStatus.stop();
 		await discord.stop();
 		health.close();
 		await Sentry.flush(2000);

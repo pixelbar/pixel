@@ -50,12 +50,15 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 		await respond(interaction, {
 			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName),
 			deferAfterMs,
-			work: () =>
-				dispatcher.dispatch({
-					actor,
-					command: interaction.commandName,
-					args: optionsToArgs(interaction.options.data),
-				}),
+			work: (showPending) =>
+				dispatcher.dispatch(
+					{
+						actor,
+						command: interaction.commandName,
+						args: optionsToArgs(interaction.options.data),
+					},
+					{ onPending: showPending },
+				),
 		});
 	};
 }

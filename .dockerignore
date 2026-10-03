@@ -4,6 +4,7 @@ coverage
 .env
 .env.*
 config/*.yaml
+data
 .git
 .claude
 docs

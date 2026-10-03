@@ -26,6 +26,15 @@ export type DispatchResult = {
 	private: boolean;
 };
 
+export type DispatchHooks = {
+	/**
+	 * Called with the command's placeholder after access and argument checks
+	 * pass, before the handler runs. Adapters show it immediately and later
+	 * replace it with the result.
+	 */
+	onPending?: (pending: DispatchResult) => Promise<void>;
+};
+
 export type DispatcherDeps = {
 	registry: CommandRegistry;
 	identity: IdentityService;
@@ -46,7 +55,8 @@ export const MESSAGES = {
  * The single place where commands are authorised and run. Every adapter goes
  * through `dispatch`; nothing else may call a command handler.
  *
- * Order: rate limit → resolve identity → check access → validate args → run.
+ * Order: rate limit → resolve identity → check access → validate args →
+ * placeholder (if any) → run.
  */
 export class Dispatcher {
 	readonly #deps: DispatcherDeps;
@@ -60,7 +70,10 @@ export class Dispatcher {
 		return this.#deps.registry.get(command)?.definition.private ?? false;
 	}
 
-	async dispatch({ actor, command, args }: DispatchRequest): Promise<DispatchResult> {
+	async dispatch(
+		{ actor, command, args }: DispatchRequest,
+		hooks: DispatchHooks = {},
+	): Promise<DispatchResult> {
 		const { registry, identity, rateLimiter, reporter } = this.#deps;
 		const user = actorRef(actor);
 		const log = this.#deps.logger.child({
@@ -108,6 +121,13 @@ export class Dispatcher {
 
 		try {
 			const validArgs = validateArgs(definition, args);
+			if (definition.placeholder && hooks.onPending) {
+				const { placeholder } = definition;
+				await hooks.onPending({
+					reply: placeholder,
+					private: placeholder.private ?? definition.private ?? false,
+				});
+			}
 			const reply = await definition.handler({
 				args: validArgs,
 				principal,

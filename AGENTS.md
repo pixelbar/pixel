@@ -48,6 +48,7 @@ src/
   adapters/discord/     # interactive + publisher + CalendarPort
   observability/        # logger, Sentry helpers, secret scrubbing, health
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
+data/                   # runtime state (space.state); gitignored, safe to delete
 content/                # markdown for /info topics
 scripts/                # register-commands, validate-config
 docs/                   # architecture, identity, ADRs

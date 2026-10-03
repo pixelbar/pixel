@@ -13,6 +13,9 @@ coverage/
 config/*.yaml
 !config/*.example.yaml
 
+# runtime state (e.g. data/space.state)
+data/
+
 # os / editor
 .DS_Store
 .idea/

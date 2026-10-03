@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCore } from "./app.ts";
 import type { Config } from "./config.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
@@ -25,8 +25,10 @@ describe("buildCore", () => {
 			version: "test",
 			logLevel: "info",
 			access: { adminsFile, membersFile },
+			dataDir: join(dir, "data"),
 			healthPort: 0,
 			sentryDsn: undefined,
+			spaceApiUrl: "https://spaceapi.example/",
 			discord: { token: "x", appId: "100000000000000010", guildId: "100000000000000020" },
 		};
 	});
@@ -57,6 +59,64 @@ describe("buildCore", () => {
 			args: {},
 		});
 		expect(result.reply.embeds?.[0]?.fields?.[0]?.value).toBe("Pixelbar member");
+	});
+
+	it("/status shows a placeholder, then the live SpaceAPI state, for guests", async () => {
+		const fetch = vi.fn<typeof globalThis.fetch>(
+			async () => new Response(JSON.stringify({ state: { open: true } })),
+		);
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const onPending = vi.fn(async () => {});
+		const result = await dispatcher.dispatch(
+			{ actor: actor({ userId: IDS.guest }), command: "status", args: {} },
+			{ onPending },
+		);
+		expect(onPending).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reply: { embeds: [expect.objectContaining({ title: "Checking…" })] },
+				private: false,
+			}),
+		);
+		expect(fetch).toHaveBeenCalledWith("https://spaceapi.example/", expect.anything());
+		expect(result).toMatchObject({
+			reply: { embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })] },
+			private: false,
+		});
+	});
+
+	it("remembers when the space last changed across restarts, in data/space.state", async () => {
+		const spaceApi = (...states: boolean[]) => {
+			const queue = [...states];
+			return vi.fn<typeof globalThis.fetch>(
+				async () => new Response(JSON.stringify({ state: { open: queue.shift() } })),
+			);
+		};
+		const status = (core: ReturnType<typeof buildCore>) =>
+			core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.guest }),
+				command: "status",
+				args: {},
+			});
+
+		// First run: Pixel sees the space open, then close.
+		const first = buildCore(config, silentLogger, nullErrorReporter, {
+			fetch: spaceApi(true, false),
+		});
+		await status(first);
+		await status(first);
+		expect(readFileSync(join(config.dataDir, "space.state"), "utf8")).toMatch(
+			/state: closed\nsince: \d{4}-\d\d-\d\dT[\d:.]+Z\n/,
+		);
+
+		// After a restart it still knows when that happened, without having seen it itself.
+		const second = buildCore(config, silentLogger, nullErrorReporter, {
+			fetch: spaceApi(false),
+		});
+		const result = await status(second);
+		expect(result.reply.embeds?.[0]).toMatchObject({
+			title: "🔴 Pixelbar is closed",
+			description: "Closed for 0m.",
+		});
 	});
 
 	it("refuses to build with an invalid access file", () => {

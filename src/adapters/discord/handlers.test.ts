@@ -1,6 +1,6 @@
 import { ApplicationCommandOptionType, MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
-import type { DispatchRequest, DispatchResult } from "../../core/dispatcher.ts";
+import type { DispatchHooks, DispatchRequest, DispatchResult } from "../../core/dispatcher.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { IDS } from "../../testing/fixtures.ts";
 import {
@@ -15,7 +15,7 @@ const OTHER_GUILD = "100000000000000099";
 
 function fakeDispatcher(result: DispatchResult = { reply: { text: "ok" }, private: false }) {
 	return {
-		dispatch: vi.fn(async (_req: DispatchRequest) => result),
+		dispatch: vi.fn(async (_req: DispatchRequest, _hooks?: DispatchHooks) => result),
 		defaultPrivacy: vi.fn((_name: string) => false),
 	};
 }
@@ -68,18 +68,40 @@ describe("createCommandHandler", () => {
 
 		await handle(interaction, "Server Nick");
 
-		expect(dispatcher.dispatch).toHaveBeenCalledWith({
-			actor: {
-				platform: "discord",
-				userId: IDS.member,
-				displayName: "Server Nick",
-				handle: "member_handle",
-				chat: "group",
+		expect(dispatcher.dispatch).toHaveBeenCalledWith(
+			{
+				actor: {
+					platform: "discord",
+					userId: IDS.member,
+					displayName: "Server Nick",
+					handle: "member_handle",
+					chat: "group",
+				},
+				command: "info",
+				args: { topic: "hours" },
 			},
-			command: "info",
-			args: { topic: "hours" },
-		});
+			{ onPending: expect.any(Function) },
+		);
 		expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: "ok" }));
+	});
+
+	it("posts a placeholder from the dispatcher, then edits in the result", async () => {
+		const dispatcher = fakeDispatcher();
+		dispatcher.dispatch.mockImplementation(async (_req, hooks) => {
+			await hooks?.onPending?.({ reply: { text: "Checking…" }, private: false });
+			return { reply: { text: "Open" }, private: false };
+		});
+		const handle = createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 });
+		const interaction = fakeInteraction({ commandName: "status" });
+
+		await handle(interaction);
+
+		expect(interaction.reply).toHaveBeenCalledWith(
+			expect.objectContaining({ content: "Checking…" }),
+		);
+		expect(interaction.editReply).toHaveBeenCalledWith(
+			expect.objectContaining({ content: "Open" }),
+		);
 	});
 
 	it("falls back to the user's global display name", async () => {
