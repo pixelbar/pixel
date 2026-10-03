@@ -35,9 +35,12 @@ export type AccessView = {
 
 export type AccessChange =
 	/** Sets (or creates) someone's tier. Keeps their note and capabilities unless `note` is given. */
-	| { kind: "set-tier"; id: string; tier: MemberTier; note?: string }
+	| { kind: "set-tier"; id: string; tier: MemberTier; note?: string; reason?: string }
 	/** Replaces someone's capabilities. They must already have an entry. */
-	| { kind: "set-capabilities"; id: string; capabilities: readonly string[] };
+	| { kind: "set-capabilities"; id: string; capabilities: readonly string[]; reason?: string };
+
+/** Longest reason accepted. It goes into the audit log, not the file. */
+export const MAX_REASON_LENGTH = 200;
 
 export type AccessChangeResult = {
 	before: MemberRecord | null;

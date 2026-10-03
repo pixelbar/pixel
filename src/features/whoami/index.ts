@@ -1,12 +1,5 @@
-import type { Tier } from "../../core/access.ts";
+import { TIER_LABELS } from "../../core/access.ts";
 import type { Feature } from "../../core/feature.ts";
-
-const TIER_LABELS: Record<Tier, string> = {
-	guest: "Guest",
-	friend: "Friend of Pixelbar",
-	member: "Pixelbar member",
-	admin: "Pixel admin",
-};
 
 export function createWhoamiFeature(): Feature {
 	return {

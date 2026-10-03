@@ -22,6 +22,7 @@ import type {
 	MemberRecord,
 	ReloadResult,
 } from "../core/ports/access-store.ts";
+import { MAX_REASON_LENGTH } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import {
 	AccessConfigError,
@@ -272,6 +273,7 @@ export class FileAccessStore implements AccessStore {
 				target,
 				before: summarise(before),
 				after: summarise(after),
+				...(change.reason ? { reason: change.reason } : {}),
 			},
 			"access changed",
 		);
@@ -292,6 +294,9 @@ function summarise(record: MemberRecord | null) {
 
 function validateChange(change: AccessChange): void {
 	if (!DISCORD_ID.test(change.id)) throw new AccessStoreError("That isn't a valid user ID.");
+	if (change.reason !== undefined && [...change.reason].length > MAX_REASON_LENGTH) {
+		throw new AccessStoreError(`A reason can be at most ${MAX_REASON_LENGTH} characters.`);
+	}
 	if (change.kind === "set-capabilities") {
 		const names = change.capabilities;
 		if (names.length > MAX_CAPABILITIES || new Set(names).size !== names.length) {

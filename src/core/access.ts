@@ -6,6 +6,14 @@ export const TIERS = ["guest", "friend", "member", "admin"] as const;
 
 export type Tier = (typeof TIERS)[number];
 
+/** How a tier is shown to people. */
+export const TIER_LABELS: Record<Tier, string> = {
+	guest: "Guest",
+	friend: "Friend of Pixelbar",
+	member: "Pixelbar member",
+	admin: "Pixel admin",
+};
+
 export type ChatContext = "dm" | "group";
 
 export type Platform = "discord";

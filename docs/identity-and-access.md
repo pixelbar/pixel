@@ -86,6 +86,7 @@ If any step fails, both the file and the view are unchanged, and the caller gets
 
 - **Admins are never written here.** Changing an admin's entry is refused.
 - **Every change is audited**: an `access.changed` log event with who did it (ID, name, handle), who it was done to (ID), and the tier and capabilities before and after. Notes are never logged. The change also becomes a Sentry breadcrumb, so error reports show recent access changes. Sentry is not the audit record; a dedicated admin audit log is planned (#31).
+- **Admin commands** use the store: `/admin set-level user: level: [reason:]` sets someone to `member`, `friend` or `guest`, and `/admin whois user:` shows what Pixel knows. Both are admin-only and private, act on the immutable user ID, refuse admins and bots, and say so when nothing would change. `guest` keeps the entry and capabilities; removing someone completely means editing the file by hand, then `/admin reload`. The optional reason goes into the audit log only (200 characters at most). Text from the file, such as a note, is shown as a code span, and names are escaped, so none of it can render as formatting, a link or a mention.
 - **Hand edits made while the bot runs** are picked up by the next change, or by `/admin reload` (admins only), which re-reads both files and keeps the old data if they are now invalid. Restarting also works. In local development, `just dev` restarts automatically when the files change.
 
 ### Request flow

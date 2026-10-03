@@ -46,3 +46,21 @@ export function escapeMarkdown(text: string): string {
 		.trim()
 		.replace(/[\\*_~`|<>[\]]/g, "\\$&");
 }
+
+/**
+ * Shows text written by someone else as a code span, so nothing in it can act
+ * as formatting, a link, a mention, a heading or a list. Control and invisible
+ * characters become spaces, backticks become apostrophes, and long text is cut
+ * to `max` characters. Returns `fallback` when nothing is left.
+ */
+export function inlineCode(text: string, max = 200, fallback = "(empty)"): string {
+	const clean = text
+		.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/`/g, "'");
+	if (clean === "") return fallback;
+	const chars = [...clean];
+	const shown = chars.length > max ? `${chars.slice(0, max - 1).join("")}…` : clean;
+	return `\`${shown}\``;
+}
