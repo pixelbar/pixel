@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 	);
 
 	logger.info(
-		{ event: "startup", commands: registry.all().length, access: access.counts },
+		{ event: "startup", commands: registry.all().length, access: access.view.counts },
 		"starting Pixel",
 	);
 

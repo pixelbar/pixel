@@ -145,17 +145,63 @@ describe("loadAccessConfig", () => {
 	});
 });
 
+describe("guests and capabilities", () => {
+	const withEntry = (lines: string) =>
+		write(ADMINS, `members:\n  - discordId: "${IDS.member}"\n${lines}`);
+
+	it("keeps a guest entry but gives it no tier and doesn't count it", () => {
+		withEntry("    tier: guest\n    capabilities:\n      - front-door\n");
+		const config = loadAccessConfig(paths);
+		expect(config.discord.has(IDS.member)).toBe(false);
+		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
+		expect(config.records.get(IDS.member)).toEqual({
+			discordId: IDS.member,
+			tier: "guest",
+			capabilities: ["front-door"],
+		});
+	});
+
+	it("defaults to no capabilities and passes the note through", () => {
+		withEntry("    tier: member\n    note: hi\n");
+		expect(loadAccessConfig(paths).records.get(IDS.member)).toEqual({
+			discordId: IDS.member,
+			tier: "member",
+			note: "hi",
+			capabilities: [],
+		});
+	});
+
+	it.each([
+		[
+			"a bad name",
+			"    tier: member\n    capabilities:\n      - Front Door\n",
+			/capabilities\[0\]/,
+		],
+		["a repeated name", "    tier: member\n    capabilities: [a, a]\n", /must not repeat/],
+		["a non-list", "    tier: member\n    capabilities: front-door\n", /capabilities/],
+	])("rejects %s", (_label, lines, message) => {
+		withEntry(lines);
+		expect(() => loadAccessConfig(paths)).toThrow(message);
+	});
+
+	it("rejects more capabilities than the limit", () => {
+		const names = Array.from({ length: 51 }, (_, i) => `c${i}`).join(", ");
+		withEntry(`    tier: member\n    capabilities: [${names}]\n`);
+		expect(() => loadAccessConfig(paths)).toThrow(/at most 50/);
+	});
+});
+
 describe("ConfigTierSource", () => {
 	it("returns tiers for listed Discord users and null otherwise", async () => {
 		write(ADMINS, MEMBERS);
-		const source = new ConfigTierSource(loadAccessConfig(paths));
+		const source = new ConfigTierSource({ view: loadAccessConfig(paths) });
 		expect(await source.tierFor(actor({ userId: IDS.member }))).toBe("member");
 		expect(await source.tierFor(actor({ userId: IDS.guest }))).toBeNull();
 	});
 
 	it("only vouches for Discord identities", async () => {
 		write(ADMINS, MEMBERS);
-		const source = new ConfigTierSource(loadAccessConfig(paths));
+		const source = new ConfigTierSource({ view: loadAccessConfig(paths) });
 		// Another platform's user with a colliding numeric ID must not inherit a Discord tier.
 		const telegramUser = actor({ userId: IDS.admin, platform: "telegram" as never });
 		expect(await source.tierFor(telegramUser)).toBeNull();

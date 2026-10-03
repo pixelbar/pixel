@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
+import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
 import { silentLogger } from "../core/logger.ts";
+import type { AccessStore } from "../core/ports/access-store.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
@@ -14,10 +16,13 @@ import { buildFeatures } from "./index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 
-const access = {
-	discord: new Map(),
-	counts: { admins: 2, members: 10, friends: 3 },
-	warnings: [],
+const counts = { admins: 2, members: 10, friends: 3 };
+const access: AccessStore = {
+	view: { discord: new Map(), records: new Map(), counts, warnings: [] },
+	apply: async () => {
+		throw new Error("unused");
+	},
+	reload: async () => ({ before: counts, after: counts }),
 };
 
 const spaceStatus: SpaceStatus = {
@@ -65,6 +70,7 @@ describe("buildFeatures", () => {
 		expect(admin?.access.minTier).toBe("admin");
 		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
 			["status", "admin"],
+			["reload", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -105,16 +111,54 @@ describe("help", () => {
 	});
 });
 
+function adminSubcommand(name: string, store: Pick<AccessStore, "view" | "reload"> = access) {
+	const admin = createAdminFeature({
+		version: "1.0.0",
+		startedAt: new Date(0),
+		access: store,
+		now: () => new Date(90 * 60_000),
+	}).commands?.[0];
+	const sub = admin?.subcommands?.find((s) => s.name === name);
+	if (!sub) throw new Error(`no /admin ${name}`);
+	return sub;
+}
+
 describe("admin", () => {
+	it("reloads the access lists as the caller, and reports before and after", async () => {
+		const after = { admins: 2, members: 11, friends: 3 };
+		const reload = vi.fn(async () => ({ before: counts, after }));
+		const caller = principal("admin", { userId: IDS.admin });
+		const reply = await adminSubcommand("reload", {
+			view: { ...access.view, warnings: ["x", "y"] },
+			reload,
+		}).handler(context({ principal: caller }));
+		expect(reload).toHaveBeenCalledWith(caller);
+		expect(reply.text).toContain("Before: 2 admins · 10 members · 3 friends");
+		expect(reply.text).toContain("Now: 2 admins · 11 members · 3 friends");
+		expect(reply.text).toContain("2 warning(s)");
+	});
+
+	it("doesn't mention warnings when there are none", async () => {
+		const reply = await adminSubcommand("reload").handler(
+			context({ principal: principal("admin") }),
+		);
+		expect(reply.text).not.toContain("warning");
+	});
+
+	it("lets a failed reload's message through", async () => {
+		const failing = {
+			view: access.view,
+			reload: async () => {
+				throw new UserFacingError("Reload failed");
+			},
+		};
+		await expect(
+			adminSubcommand("reload", failing).handler(context({ principal: principal("admin") })),
+		).rejects.toThrow("Reload failed");
+	});
+
 	it("shows counts but no IDs", async () => {
-		const admin = createAdminFeature({
-			version: "1.0.0",
-			startedAt: new Date(0),
-			accessCounts: access.counts,
-			now: () => new Date(90 * 60_000),
-		}).commands?.[0];
-		const status = admin?.subcommands?.[0];
-		if (!status) throw new Error("no /admin status");
+		const status = adminSubcommand("status");
 		expect(status.private).toBe(true);
 		const reply = await status.handler(context({ principal: principal("admin") }));
 		const fields = reply.embeds?.[0]?.fields ?? [];

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import type { PlatformActor, Tier } from "../core/access.ts";
+import type { AccessView, MemberRecord, MemberTier } from "../core/ports/access-store.ts";
 import type { TierSource } from "../core/ports/tier-source.ts";
 
 /**
@@ -12,9 +13,11 @@ import type { TierSource } from "../core/ports/tier-source.ts";
  * the files contain personal data.
  */
 
+export const DISCORD_ID = /^\d{17,20}$/;
+
 const discordId = z
 	.string({ error: 'must be a quoted string, e.g. "123456789012345678"' })
-	.regex(/^\d{17,20}$/, { error: "must be a Discord user ID (17–20 digits)" });
+	.regex(DISCORD_ID, { error: "must be a Discord user ID (17–20 digits)" });
 
 const adminsSchema = z.strictObject({
 	admins: z
@@ -27,25 +30,30 @@ const adminsSchema = z.strictObject({
 		.min(1, { error: "at least one admin is required" }),
 });
 
+/** Lowercase words joined by '-', e.g. "front-door". What the capability is called is up to #28. */
+export const CAPABILITY_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+export const MAX_CAPABILITIES = 50;
+
+const capabilities = z
+	.array(z.string().regex(CAPABILITY_NAME, { error: "must be lowercase words joined by '-'" }))
+	.max(MAX_CAPABILITIES, { error: `at most ${MAX_CAPABILITIES} capabilities` })
+	.refine((names) => new Set(names).size === names.length, { error: "must not repeat a name" });
+
 const membersSchema = z.strictObject({
 	members: z.array(
 		z.strictObject({
 			discordId,
-			tier: z.enum(["member", "friend"]),
+			// `guest` keeps the entry (and its capabilities) for someone who was demoted.
+			tier: z.enum(["member", "friend", "guest"]),
 			note: z.string().optional(),
+			capabilities: capabilities.optional(),
 		}),
 	),
 });
 
-export type PaidTier = "member" | "friend";
+type MemberEntry = z.infer<typeof membersSchema>["members"][number];
 
-export type AccessConfig = {
-	/** Discord user ID → tier. Only non-guest tiers appear. */
-	readonly discord: ReadonlyMap<string, Exclude<Tier, "guest">>;
-	readonly counts: { readonly admins: number; readonly members: number; readonly friends: number };
-	/** Non-fatal issues, safe to log (no IDs). */
-	readonly warnings: readonly string[];
-};
+export type AccessConfig = AccessView;
 
 export class AccessConfigError extends Error {
 	override name = "AccessConfigError";
@@ -54,37 +62,65 @@ export class AccessConfigError extends Error {
 export type AccessConfigPaths = { adminsFile: string; membersFile: string };
 
 export function loadAccessConfig(paths: AccessConfigPaths): AccessConfig {
-	const admins = parseFile(paths.adminsFile, adminsSchema).admins;
-	const members = parseFile(paths.membersFile, membersSchema).members;
-	return buildAccessConfig(admins, members, paths);
+	return loadAccessFiles(paths).view;
 }
 
-function buildAccessConfig(
+/** Like `loadAccessConfig`, but also returns the parsed admins so a store can rebuild its view. */
+export function loadAccessFiles(paths: AccessConfigPaths) {
+	const admins = parseAdmins(readFile(paths.adminsFile), paths.adminsFile);
+	const members = parseMembers(readFile(paths.membersFile), paths.membersFile);
+	return { admins, view: buildAccessConfig(admins, members, paths) };
+}
+
+export function parseAdmins(source: string, file: string): { name: string; discordId: string }[] {
+	return parseSource(file, source, adminsSchema).admins;
+}
+
+/** Parses and validates the text of the members file. Throws `AccessConfigError`. */
+export function parseMembers(source: string, file: string): MemberEntry[] {
+	return parseSource(file, source, membersSchema).members;
+}
+
+export function toRecord(entry: MemberEntry): MemberRecord {
+	return {
+		discordId: entry.discordId,
+		tier: entry.tier,
+		...(entry.note !== undefined ? { note: entry.note } : {}),
+		capabilities: entry.capabilities ?? [],
+	};
+}
+
+export function buildAccessConfig(
 	admins: readonly { discordId: string }[],
-	members: readonly { discordId: string; tier: PaidTier }[],
+	members: readonly MemberEntry[],
 	paths: AccessConfigPaths,
 ): AccessConfig {
 	assertUnique(admins, paths.adminsFile, "admins");
 	assertUnique(members, paths.membersFile, "members");
 
 	const discord = new Map<string, Exclude<Tier, "guest">>();
+	const records = new Map<string, MemberRecord>();
 	const warnings: string[] = [];
 	const counts = { admins: admins.length, members: 0, friends: 0 };
 
 	for (const admin of admins) discord.set(admin.discordId, "admin");
 	members.forEach((member, index) => {
+		records.set(member.discordId, toRecord(member));
 		if (discord.has(member.discordId)) {
 			warnings.push(
 				`${paths.membersFile}: members[${index}] is also listed as an admin; admin takes precedence`,
 			);
 			return;
 		}
-		discord.set(member.discordId, member.tier);
-		if (member.tier === "member") counts.members++;
+		// A guest entry is someone who was demoted: no tier, so they're left out.
+		const tier: MemberTier = member.tier;
+		if (tier === "guest") return;
+		discord.set(member.discordId, tier);
+		if (tier === "member") counts.members++;
 		else counts.friends++;
 	});
 
-	return { discord, counts, warnings };
+	return { discord, records, counts, warnings };
 }
 
 function assertUnique(entries: readonly { discordId: string }[], file: string, key: string): void {
@@ -98,15 +134,16 @@ function assertUnique(entries: readonly { discordId: string }[], file: string, k
 	});
 }
 
-function parseFile<T>(file: string, schema: z.ZodType<T>): T {
-	let source: string;
+export function readFile(file: string): string {
 	try {
-		source = readFileSync(file, "utf8");
+		return readFileSync(file, "utf8");
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code ?? "unknown error";
 		throw new AccessConfigError(`${file}: cannot read file (${code})`);
 	}
+}
 
+function parseSource<T>(file: string, source: string, schema: z.ZodType<T>): T {
 	let data: unknown;
 	try {
 		data = parse(source);
@@ -136,17 +173,20 @@ function formatPath(path: readonly PropertyKey[]): string {
 		.join("");
 }
 
-/** Phase 1 tier source: tiers straight from the access config files. */
+/**
+ * Phase 1 tier source: tiers straight from the access store. It reads the
+ * store's current view on every call, so changes apply immediately.
+ */
 export class ConfigTierSource implements TierSource {
 	readonly name = "access-config";
-	readonly #config: AccessConfig;
+	readonly #store: { readonly view: AccessView };
 
-	constructor(config: AccessConfig) {
-		this.#config = config;
+	constructor(store: { readonly view: AccessView }) {
+		this.#store = store;
 	}
 
 	async tierFor(actor: PlatformActor): Promise<Tier | null> {
 		if (actor.platform !== "discord") return null;
-		return this.#config.discord.get(actor.userId) ?? null;
+		return this.#store.view.discord.get(actor.userId) ?? null;
 	}
 }

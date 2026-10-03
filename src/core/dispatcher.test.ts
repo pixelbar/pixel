@@ -35,6 +35,7 @@ function setup(commands: CommandDefinition[], opts: { capacity?: number } = {}) 
 	const reporter = {
 		capture: vi.fn<ErrorReporter["capture"]>(),
 		captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
+		breadcrumb: vi.fn<ErrorReporter["breadcrumb"]>(),
 	};
 	const dispatcher = new Dispatcher({
 		registry,

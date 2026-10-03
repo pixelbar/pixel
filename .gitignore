@@ -11,6 +11,7 @@ coverage/
 
 # access lists contain personal data — only examples are committed
 config/*.yaml
+config/*.bak
 !config/*.example.yaml
 
 # runtime state (e.g. data/space.state)

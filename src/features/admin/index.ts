@@ -1,13 +1,17 @@
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
-import type { AccessConfig } from "../../services/access-config.ts";
+import type { AccessStore } from "../../core/ports/access-store.ts";
 
 export type AdminDeps = {
 	version: string;
 	startedAt: Date;
-	accessCounts: AccessConfig["counts"];
+	access: Pick<AccessStore, "view" | "reload">;
 	now?: () => Date;
 };
+
+function describeCounts(counts: AccessStore["view"]["counts"]): string {
+	return `${counts.admins} admins · ${counts.members} members · ${counts.friends} friends`;
+}
 
 export function createAdminFeature(deps: AdminDeps): Feature {
 	const now = deps.now ?? (() => new Date());
@@ -36,14 +40,29 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 											value: formatDuration(now().getTime() - deps.startedAt.getTime()),
 											inline: true,
 										},
-										{
-											name: "Access lists",
-											value: `${deps.accessCounts.admins} admins · ${deps.accessCounts.members} members · ${deps.accessCounts.friends} friends`,
-										},
+										{ name: "Access lists", value: describeCounts(deps.access.view.counts) },
 									],
 								},
 							],
 						}),
+					},
+					{
+						name: "reload",
+						description: "Re-read the admin and member lists after editing the files by hand",
+						access: { minTier: "admin" },
+						private: true,
+						handler: async ({ principal }) => {
+							const { before, after } = await deps.access.reload(principal);
+							const warnings = deps.access.view.warnings.length;
+							return {
+								text: [
+									"Reloaded the access lists.",
+									`Before: ${describeCounts(before)}`,
+									`Now: ${describeCounts(after)}`,
+									...(warnings > 0 ? [`${warnings} warning(s), see the logs.`] : []),
+								].join("\n"),
+							};
+						},
 					},
 				],
 			},

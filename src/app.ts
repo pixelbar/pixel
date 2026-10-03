@@ -6,17 +6,19 @@ import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
+import type { AccessStore } from "./core/ports/access-store.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { buildFeatures } from "./features/index.ts";
-import { type AccessConfig, ConfigTierSource, loadAccessConfig } from "./services/access-config.ts";
+import { ConfigTierSource } from "./services/access-config.ts";
+import { FileAccessStore } from "./services/access-store.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
 export type Core = {
-	access: AccessConfig;
+	access: AccessStore;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -45,8 +47,11 @@ export function buildCore(
 	reporter: ErrorReporter,
 	options: BuildCoreOptions = {},
 ): Core {
-	const access = loadAccessConfig(config.access);
-	for (const warning of access.warnings) logger.warn({ event: "access_config.warning" }, warning);
+	// Missing or invalid files throw here, so Pixel never starts with "everyone is a guest".
+	const access = FileAccessStore.open({ paths: config.access, logger, reporter });
+	for (const warning of access.view.warnings) {
+		logger.warn({ event: "access_config.warning" }, warning);
+	}
 
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,

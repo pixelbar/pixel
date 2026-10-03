@@ -65,7 +65,8 @@ docs/                   # architecture, identity, ADRs
 7. **Never log or report secrets.** When logging an action, identify the user with `actorLogFields()`, which gives `user` (`discord:<id>`), `userName` and `userHandle`, so moderators can recognise and ban them. Names are for humans only: act on the ID, never the name. Don't log message content or command arguments unless an ADR says so. No `console.log`.
 8. **Private data gets private replies** (`Reply.private = true`, which is ephemeral on Discord).
 9. **Commands that target a person use a `user` option** and act on the ID the handler receives, never on a name. A subcommand can't be looser than its group (the registry enforces it).
-10. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*` need **tests and a human reviewer**. Call this out in the PR description.
+10. **`config/members.yaml` is changed only through the `AccessStore`** (`apply`). Never write that file from anywhere else, and never add a way to change `admins.yaml` at runtime. The store audits every change, so don't bypass it.
+11. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*`, `services/access-store*` or `core/ports/access-store*` need **tests and a human reviewer**. Call this out in the PR description.
 
 ## Conventions
 

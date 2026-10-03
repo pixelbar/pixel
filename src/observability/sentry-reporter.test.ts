@@ -3,16 +3,35 @@ import { IDS, principal } from "../testing/fixtures.ts";
 
 const scope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
 const captureException = vi.fn();
+const addBreadcrumb = vi.fn();
 
 vi.mock("@sentry/node", () => ({
 	withScope: (callback: (s: typeof scope) => void) => callback(scope),
 	captureException: (error: unknown) => captureException(error),
+	addBreadcrumb: (crumb: unknown) => addBreadcrumb(crumb),
 }));
 
 const { createSentryReporter } = await import("./sentry-reporter.ts");
 
 describe("createSentryReporter", () => {
 	beforeEach(() => vi.clearAllMocks());
+
+	it("leaves breadcrumbs with their data, or without", () => {
+		const reporter = createSentryReporter();
+		reporter.breadcrumb("access", "tier changed", { target: "discord:1" });
+		reporter.breadcrumb("access", "reloaded");
+		expect(addBreadcrumb).toHaveBeenNthCalledWith(1, {
+			category: "access",
+			message: "tier changed",
+			level: "info",
+			data: { target: "discord:1" },
+		});
+		expect(addBreadcrumb).toHaveBeenNthCalledWith(2, {
+			category: "access",
+			message: "reloaded",
+			level: "info",
+		});
+	});
 
 	it("captures background errors tagged with their source and no user", () => {
 		const error = new Error("SpaceAPI down");

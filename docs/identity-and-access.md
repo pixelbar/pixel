@@ -47,20 +47,24 @@ admins:
 ```yaml
 # config/members.yaml
 # Paying memberships. Anyone not listed is a guest.
+# Managed by Pixel (admin commands rewrite it) and still safe to edit by hand.
 members:
   - discordId: "234567890123456789"
-    tier: member                # member | friend
+    tier: member                # member | friend | guest
     note: "optional, for humans"
+    capabilities:               # optional named permissions, see the capability system
+      - front-door
 ```
 
 - Paths: `PIXEL_ADMINS_FILE` and `PIXEL_MEMBERS_FILE`, defaulting to `config/admins.yaml` and `config/members.yaml`.
 - **The real files are gitignored**, because they link Discord accounts to membership, which is personal data. The repo contains `config/admins.example.yaml` and `config/members.example.yaml`.
-- In Azure (later), the files will be stored as Key Vault secrets and mounted into the container as files. Changing them means updating the secret and restarting the app.
+- **`members.yaml` is bot-managed.** Admin commands change it, so it needs a **writable, persistent, snapshotted volume**, not a read-only mount. `admins.yaml` stays hand-edited (read-only is fine) and no command can touch it.
+- `tier: guest` keeps the entry and its capabilities for someone who was demoted. They are treated as unlisted: no tier, not counted, and every tier-gated command refuses them.
 
 ### Validation (at startup, with zod)
 
 - `discordId` must be a **string** matching `^\d{17,20}$`. If it's an unquoted YAML number, Pixel **refuses to start**. Snowflakes are larger than JavaScript's safe integer range, so an unquoted ID would be silently rounded to a different user.
-- `tier` must be `member` or `friend`. Unknown keys are rejected, which catches typos like `teir`.
+- `tier` must be `member`, `friend` or `guest`. `capabilities` is an optional list of unique names (lowercase words joined by `-`, at most 50). Unknown keys are rejected, which catches typos like `teir`.
 - A duplicate `discordId` within a file is an error.
 - If an ID appears in both files, admin wins. Pixel logs a warning.
 - `admins` must contain at least one entry.
@@ -68,7 +72,21 @@ members:
 
 ### Reloading
 
-The files are loaded once, at startup, into an immutable in-memory map. Changing them requires a restart. That keeps things simple and predictable. In local development, `just dev` restarts automatically when the files change.
+Both files are loaded at startup into an in-memory view that is replaced as a whole, never edited in place. A missing or invalid file still stops startup, so a lost file is a loud outage, never "everyone is a guest".
+
+**Changes go through the access store** (`core/ports/access-store.ts`, implemented by `services/access-store.ts`). One change at a time it:
+
+1. re-reads `members.yaml`, so edits made by hand aren't lost, and refuses if it has become invalid,
+2. edits the YAML document, so comments, order and quoting survive (IDs are written as quoted strings),
+3. re-validates the result and writes it to a temp file next to the original, then flushes it to disk,
+4. checks the file wasn't edited in the meantime, keeps the old one as `members.yaml.bak`, and renames the temp file over the original (atomic),
+5. only then swaps the in-memory view and records the change.
+
+If any step fails, both the file and the view are unchanged, and the caller gets a message that contains no personal data. Steps 1 to 5 contain no `await`, so Node can't interleave two changes. That is why no lock is needed (Pixel runs as a single instance).
+
+- **Admins are never written here.** Changing an admin's entry is refused.
+- **Every change is audited**: an `access.changed` log event with who did it (ID, name, handle), who it was done to (ID), and the tier and capabilities before and after. Notes are never logged. The change also becomes a Sentry breadcrumb, so error reports show recent access changes. Sentry is not the audit record; a dedicated admin audit log is planned (#31).
+- **Hand edits made while the bot runs** are picked up by the next change, or by `/admin reload` (admins only), which re-reads both files and keeps the old data if they are now invalid. Restarting also works. In local development, `just dev` restarts automatically when the files change.
 
 ### Request flow
 

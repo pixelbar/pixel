@@ -2,7 +2,7 @@ import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Logger } from "../core/logger.ts";
-import type { AccessConfig } from "../services/access-config.ts";
+import type { AccessStore } from "../core/ports/access-store.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -16,7 +16,7 @@ import { createWhoamiFeature } from "./whoami/index.ts";
 export type FeatureDeps = {
 	version: string;
 	startedAt: Date;
-	access: AccessConfig;
+	access: AccessStore;
 	spaceStatus: SpaceStatus;
 	announcer: Announcer;
 	calendar: Calendar;
@@ -42,7 +42,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createAdminFeature({
 			version: deps.version,
 			startedAt: deps.startedAt,
-			accessCounts: deps.access.counts,
+			access: deps.access,
 		}),
 	];
 }
