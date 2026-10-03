@@ -19,6 +19,7 @@ const envSchema = z.object({
 	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
 	HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
 	SENTRY_DSN: optional(z.url()),
+	SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
 
 	DISCORD_TOKEN: z.string().min(1),
 	DISCORD_APP_ID: snowflake,
@@ -32,6 +33,7 @@ export type Config = {
 	access: { adminsFile: string; membersFile: string };
 	healthPort: number;
 	sentryDsn: string | undefined;
+	spaceApiUrl: string;
 	discord: { token: string; appId: string; guildId: string };
 };
 
@@ -55,6 +57,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
+		spaceApiUrl: e.SPACEAPI_URL,
 		discord: { token: e.DISCORD_TOKEN, appId: e.DISCORD_APP_ID, guildId: e.DISCORD_GUILD_ID },
 	};
 }

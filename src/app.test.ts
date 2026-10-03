@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCore } from "./app.ts";
 import type { Config } from "./config.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
@@ -27,6 +27,7 @@ describe("buildCore", () => {
 			access: { adminsFile, membersFile },
 			healthPort: 0,
 			sentryDsn: undefined,
+			spaceApiUrl: "https://spaceapi.example/",
 			discord: { token: "x", appId: "100000000000000010", guildId: "100000000000000020" },
 		};
 	});
@@ -57,6 +58,29 @@ describe("buildCore", () => {
 			args: {},
 		});
 		expect(result.reply.embeds?.[0]?.fields?.[0]?.value).toBe("Pixelbar member");
+	});
+
+	it("/status shows a placeholder, then the live SpaceAPI state, for guests", async () => {
+		const fetch = vi.fn<typeof globalThis.fetch>(
+			async () => new Response(JSON.stringify({ state: { open: true } })),
+		);
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const onPending = vi.fn(async () => {});
+		const result = await dispatcher.dispatch(
+			{ actor: actor({ userId: IDS.guest }), command: "status", args: {} },
+			{ onPending },
+		);
+		expect(onPending).toHaveBeenCalledWith(
+			expect.objectContaining({
+				reply: { embeds: [expect.objectContaining({ title: "Checking…" })] },
+				private: false,
+			}),
+		);
+		expect(fetch).toHaveBeenCalledWith("https://spaceapi.example/", expect.anything());
+		expect(result).toMatchObject({
+			reply: { embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })] },
+			private: false,
+		});
 	});
 
 	it("refuses to build with an invalid access file", () => {

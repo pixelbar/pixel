@@ -39,5 +39,10 @@ export type CommandDefinition = {
 	options?: readonly CommandOption[];
 	/** Default reply visibility. Replies can override it with `Reply.private`. */
 	private?: boolean;
+	/**
+	 * Shown straight away while the handler runs (e.g. "Checking…"), then
+	 * replaced by the handler's reply. Only sent once access checks pass.
+	 */
+	placeholder?: Reply;
 	handler: (ctx: CommandContext) => Promise<Reply>;
 };

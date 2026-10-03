@@ -32,7 +32,10 @@ function setup(commands: CommandDefinition[], opts: { capacity?: number } = {}) 
 	const registry = new CommandRegistry();
 	registry.register({ name: "feat", commands });
 	const { logger, entries } = recordingLogger();
-	const reporter = { capture: vi.fn<ErrorReporter["capture"]>() };
+	const reporter = {
+		capture: vi.fn<ErrorReporter["capture"]>(),
+		captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
+	};
 	const dispatcher = new Dispatcher({
 		registry,
 		identity: new IdentityService([
@@ -207,6 +210,85 @@ describe("Dispatcher", () => {
 			expect(
 				(await dispatcher.dispatch({ actor: as(IDS.guest), command: "p", args: {} })).private,
 			).toBe(true);
+		});
+	});
+
+	describe("placeholders", () => {
+		const placeholder = { text: "Checking…" };
+
+		it("sends the placeholder before the handler runs, with the command's visibility", async () => {
+			const order: string[] = [];
+			const { dispatcher } = setup([
+				command({
+					name: "slow",
+					placeholder,
+					handler: async () => {
+						order.push("handler");
+						return { text: "done" };
+					},
+				}),
+			]);
+			const onPending = vi.fn(async () => {
+				order.push("pending");
+			});
+			const result = await dispatcher.dispatch(
+				{ actor: as(IDS.guest), command: "slow", args: {} },
+				{ onPending },
+			);
+			expect(onPending).toHaveBeenCalledWith({ reply: placeholder, private: false });
+			expect(order).toEqual(["pending", "handler"]);
+			expect(result.reply.text).toBe("done");
+		});
+
+		it("inherits private visibility from the command", async () => {
+			const { dispatcher } = setup([command({ name: "p", placeholder, private: true })]);
+			const onPending = vi.fn(async () => {});
+			await dispatcher.dispatch({ actor: as(IDS.guest), command: "p", args: {} }, { onPending });
+			expect(onPending).toHaveBeenCalledWith({ reply: placeholder, private: true });
+		});
+
+		it("is never sent to callers who are denied", async () => {
+			const { dispatcher } = setup([
+				command({ name: "a", placeholder, access: { minTier: "admin" } }),
+			]);
+			const onPending = vi.fn(async () => {});
+			await dispatcher.dispatch({ actor: as(IDS.member), command: "a", args: {} }, { onPending });
+			expect(onPending).not.toHaveBeenCalled();
+		});
+
+		it("is not sent when arguments are invalid", async () => {
+			const { dispatcher } = setup([
+				command({
+					name: "args",
+					placeholder,
+					options: [{ name: "n", description: "n", type: "integer", required: true }],
+				}),
+			]);
+			const onPending = vi.fn(async () => {});
+			await dispatcher.dispatch({ actor: as(IDS.guest), command: "args", args: {} }, { onPending });
+			expect(onPending).not.toHaveBeenCalled();
+		});
+
+		it("is skipped for commands without one", async () => {
+			const { dispatcher } = setup([command({ name: "plain" })]);
+			const onPending = vi.fn(async () => {});
+			await dispatcher.dispatch(
+				{ actor: as(IDS.guest), command: "plain", args: {} },
+				{ onPending },
+			);
+			expect(onPending).not.toHaveBeenCalled();
+		});
+
+		it("turns a failure to show the placeholder into a reported internal error", async () => {
+			const handler = vi.fn(async () => ({ text: "x" }));
+			const { dispatcher, reporter } = setup([command({ name: "x", placeholder, handler })]);
+			const result = await dispatcher.dispatch(
+				{ actor: as(IDS.guest), command: "x", args: {} },
+				{ onPending: async () => Promise.reject(new Error("discord down")) },
+			);
+			expect(handler).not.toHaveBeenCalled();
+			expect(result.reply.text).toBe(MESSAGES.internalError);
+			expect(reporter.capture).toHaveBeenCalled();
 		});
 	});
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IDS, principal } from "../testing/fixtures.ts";
 
-const scope = { setTags: vi.fn(), setUser: vi.fn() };
+const scope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
 const captureException = vi.fn();
 
 vi.mock("@sentry/node", () => ({
@@ -13,6 +13,14 @@ const { createSentryReporter } = await import("./sentry-reporter.ts");
 
 describe("createSentryReporter", () => {
 	beforeEach(() => vi.clearAllMocks());
+
+	it("captures background errors tagged with their source and no user", () => {
+		const error = new Error("SpaceAPI down");
+		createSentryReporter().captureBackground(error, "spaceapi");
+		expect(scope.setTag).toHaveBeenCalledWith("source", "spaceapi");
+		expect(scope.setUser).not.toHaveBeenCalled();
+		expect(captureException).toHaveBeenCalledWith(error);
+	});
 
 	const caller = principal("member", { userId: IDS.member, displayName: "Ada Lovelace" });
 

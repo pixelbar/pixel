@@ -16,7 +16,17 @@ describe("loadConfig", () => {
 			access: { adminsFile: "config/admins.yaml", membersFile: "config/members.yaml" },
 			healthPort: 8080,
 			sentryDsn: undefined,
+			spaceApiUrl: "https://spaceapi.pixelbar.nl/",
 		});
+	});
+
+	it("accepts a custom SpaceAPI URL but only over http(s)", () => {
+		expect(loadConfig({ ...VALID, SPACEAPI_URL: "https://example.org/space" }).spaceApiUrl).toBe(
+			"https://example.org/space",
+		);
+		expect(() => loadConfig({ ...VALID, SPACEAPI_URL: "file:///etc/passwd" })).toThrow(
+			/SPACEAPI_URL/,
+		);
 	});
 
 	it("treats an empty SENTRY_DSN as unset", () => {

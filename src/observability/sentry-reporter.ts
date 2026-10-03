@@ -20,5 +20,11 @@ export function createSentryReporter(): ErrorReporter {
 				Sentry.captureException(error);
 			});
 		},
+		captureBackground(error, source) {
+			Sentry.withScope((scope) => {
+				scope.setTag("source", source);
+				Sentry.captureException(error);
+			});
+		},
 	};
 }

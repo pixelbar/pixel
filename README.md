@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/whoami` and `/admin`. `/status`, `/events` and `/info` come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`. `/events`, `/info` and open/closed announcements come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
 
 ## Stack
 
@@ -71,7 +71,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_TOKEN`               | Bot token                                          |
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
-| `DISCORD_ANNOUNCE_CHANNEL_ID` | Optional. Channel for space status announcements   |
+| `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands

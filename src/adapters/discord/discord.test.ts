@@ -4,8 +4,8 @@ import type { DispatchResult } from "../../core/dispatcher.ts";
 import { command } from "../../testing/fixtures.ts";
 import { optionsToArgs } from "./args.ts";
 import { toSlashCommand } from "./commands.ts";
-import { renderReply, truncate } from "./render.ts";
-import { type Respondable, respond } from "./respond.ts";
+import { renderEdit, renderReply, truncate } from "./render.ts";
+import { type Respondable, type RespondOptions, respond } from "./respond.ts";
 
 describe("toSlashCommand", () => {
 	it("maps a command and its options to guild-only slash command JSON", () => {
@@ -122,6 +122,45 @@ describe("renderReply", () => {
 		expect(truncate("abc", 3)).toBe("abc");
 		expect(truncate("abcd", 3)).toBe("ab…");
 	});
+
+	it("maps accents to embed colours, defaulting to the brand colour", () => {
+		const payload = renderReply(
+			{
+				embeds: [
+					{ title: "a" },
+					{ title: "b", accent: "positive" },
+					{ title: "c", accent: "negative" },
+				],
+			},
+			false,
+		);
+		const [brand, positive, negative] = payload.embeds?.map((e) => e.color) ?? [];
+		expect(new Set([brand, positive, negative]).size).toBe(3);
+		expect(
+			renderReply({ embeds: [{ title: "x", accent: "brand" }] }, false).embeds?.[0]?.color,
+		).toBe(brand);
+	});
+});
+
+describe("renderEdit", () => {
+	it("clears content when the new reply is embed-only", () => {
+		expect(renderEdit({ embeds: [{ title: "T" }] })).toMatchObject({
+			content: null,
+			embeds: [expect.objectContaining({ title: "T" })],
+		});
+	});
+
+	it("clears embeds when the new reply is text-only", () => {
+		expect(renderEdit({ text: "hi" })).toEqual({
+			content: "hi",
+			embeds: [],
+			allowedMentions: { parse: [] },
+		});
+	});
+
+	it("never produces an empty message", () => {
+		expect(renderEdit({}).content).toBe("Done.");
+	});
 });
 
 describe("respond", () => {
@@ -186,5 +225,105 @@ describe("respond", () => {
 		expect(i.followUp).toHaveBeenCalledWith(
 			expect.objectContaining({ content: "secret", flags: MessageFlags.Ephemeral }),
 		);
+	});
+
+	describe("with a placeholder", () => {
+		const checking: DispatchResult = {
+			reply: { embeds: [{ title: "Checking…" }] },
+			private: false,
+		};
+		const statusResult: DispatchResult = {
+			reply: { embeds: [{ title: "🟢 Pixelbar is open" }] },
+			private: false,
+		};
+
+		function pendingThen(
+			pending: DispatchResult,
+			result: DispatchResult,
+			ms: number,
+			pendingAfterMs = 0,
+		): RespondOptions["work"] {
+			return async (showPending) => {
+				await new Promise((r) => setTimeout(r, pendingAfterMs));
+				await showPending(pending);
+				await new Promise((r) => setTimeout(r, ms));
+				return result;
+			};
+		}
+
+		it("posts the placeholder straight away, then edits it into the result", async () => {
+			const i = fakeInteraction();
+			const done = respond(i, {
+				defaultPrivate: false,
+				deferAfterMs: 1500,
+				work: pendingThen(checking, statusResult, 3000),
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			expect(i.reply).toHaveBeenCalledWith(
+				expect.objectContaining({ embeds: [expect.objectContaining({ title: "Checking…" })] }),
+			);
+			await vi.advanceTimersByTimeAsync(3000);
+			await done;
+			// The placeholder acknowledged the interaction, so no deferral is needed.
+			expect(i.deferReply).not.toHaveBeenCalled();
+			expect(i.editReply).toHaveBeenCalledWith({
+				content: null,
+				embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })],
+				allowedMentions: { parse: [] },
+			});
+		});
+
+		it("replaces the placeholder's embed when the result is text-only", async () => {
+			const i = fakeInteraction();
+			const done = respond(i, {
+				defaultPrivate: false,
+				deferAfterMs: 1500,
+				work: pendingThen(checking, publicResult, 10),
+			});
+			await vi.advanceTimersByTimeAsync(10);
+			await done;
+			expect(i.editReply).toHaveBeenCalledWith(
+				expect.objectContaining({ content: "hi", embeds: [] }),
+			);
+		});
+
+		it("moves a private result out of a public placeholder", async () => {
+			const i = fakeInteraction();
+			const done = respond(i, {
+				defaultPrivate: false,
+				deferAfterMs: 1500,
+				work: pendingThen(checking, privateResult, 10),
+			});
+			await vi.advanceTimersByTimeAsync(10);
+			await done;
+			expect(i.editReply).not.toHaveBeenCalled();
+			expect(i.deleteReply).toHaveBeenCalled();
+			expect(i.followUp).toHaveBeenCalledWith(
+				expect.objectContaining({ content: "secret", flags: MessageFlags.Ephemeral }),
+			);
+		});
+
+		it("shows the placeholder inside an earlier deferral", async () => {
+			const i = fakeInteraction();
+			const done = respond(i, {
+				defaultPrivate: false,
+				deferAfterMs: 1500,
+				work: pendingThen(checking, statusResult, 10, 2000),
+			});
+			await vi.advanceTimersByTimeAsync(2010);
+			await done;
+			expect(i.deferReply).toHaveBeenCalledOnce();
+			expect(i.reply).not.toHaveBeenCalled();
+			expect(i.editReply).toHaveBeenNthCalledWith(
+				1,
+				expect.objectContaining({ embeds: [expect.objectContaining({ title: "Checking…" })] }),
+			);
+			expect(i.editReply).toHaveBeenNthCalledWith(
+				2,
+				expect.objectContaining({
+					embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })],
+				}),
+			);
+		});
 	});
 });
