@@ -11,6 +11,7 @@ import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { buildFeatures } from "./features/index.ts";
 import { type AccessConfig, ConfigTierSource, loadAccessConfig } from "./services/access-config.ts";
+import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
@@ -58,6 +59,13 @@ export function buildCore(
 	const announcer = new Announcer({ logger, reporter });
 	const calendar = new Calendar({ logger, reporter });
 
+	// Invalid content stops startup, like the access lists. CI loads the real content too.
+	const infoTopics = loadInfoTopics(
+		join(config.contentDir, "info"),
+		infoVariables({ announcementsChannelId: config.discord.announcementsChannelId }),
+	);
+	logger.info({ event: "info.loaded", topics: infoTopics.length }, "loaded /info topics");
+
 	const registry = new CommandRegistry();
 	const features = buildFeatures({
 		version: config.version,
@@ -66,6 +74,7 @@ export function buildCore(
 		spaceStatus,
 		announcer,
 		calendar,
+		infoTopics,
 		timezone: config.timezone,
 		logger,
 	});
