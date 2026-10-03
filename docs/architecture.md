@@ -35,7 +35,7 @@ Pixel follows a **ports-and-adapters** design. Adapters translate between a plat
    │  interactions → PlatformActor + command  │   │ adapters/telegram │ (interactive)
    │  Reply → Discord messages                │   │ adapters/mastodon │ (publisher only)
    │  Publishers (live + timeline channels)   │   └───────────────────┘
-   │  CalendarPort (guild scheduled events)   │
+   │  CalendarSource (guild scheduled events) │
    └───────┬──────────────────────────▲───────┘
            │                          │ Announcement
            ▼                          │
@@ -148,7 +148,7 @@ type Feature = {
 
 ## Discord adapter
 
-- **discord.js v14, slash commands only.** Intents: `Guilds` and `GuildScheduledEvents`, neither of which is privileged. No `MessageContent`.
+- **discord.js v14, slash commands only.** Intents: `Guilds` only, which isn't privileged. No `MessageContent`. Scheduled events are read over REST, which needs no intent.
 - **Guild allow-list:** interactions from any guild other than `DISCORD_GUILD_ID` are refused, and the bot leaves other guilds. There are no DMs in phase 1, because guild commands aren't available in DMs.
 - **Mapping:** `CommandDefinition.options` become Discord slash command options. `Reply` becomes the message content plus embeds, truncated to Discord's limits. `private` becomes the ephemeral flag. **Mentions are always disabled** (`allowedMentions: { parse: [] }`), so no reply can ping `@everyone`.
 - **Acknowledging within 3 seconds:** Discord requires a response within 3 s. Pixel acknowledges with whichever comes first:
@@ -164,7 +164,7 @@ type Feature = {
   - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a new "🟢 Pixelbar is open" post; closing **edits that same post** to "🔴 Pixelbar is closed: was open from … to …". Opening again makes another new post. A closed post is never turned back into an open one, so nobody is confused by a message that flips back.
   - **Finding the open post to edit.** Pixel uses the message ID it remembered in `announcements.state` (so it works even if the post is buried in a busy channel), and also looks through its own recent messages in the channel (so it still works if the remembered ID was lost, for example after a deploy, and a deleted post simply isn't found). Only posts carrying the live footer count, so a `/status` reply can't be mistaken for one. Pixel keeps the invariant that at most one post, the newest, says "open".
   - **Startup checks.** For each channel, Pixel checks it exists, is a text channel in the Pixelbar server, and that the bot has the permissions it needs: View Channel, Send Messages and Embed Links, plus Read Message History for the live style. If not, that publisher stays off with a clear log and a Sentry report, and everything else keeps working. No new Discord intents are needed.
-- **CalendarPort:** lists the guild's scheduled events through REST, with a short cache.
+- **Calendar source:** once connected, the adapter plugs the server's Discord scheduled events into the core `Calendar`. It reads them over REST on every call, needing no extra intents or permissions. (discord.js only skips the request when asked for one event by ID, which this never does.) Voice and stage channel names come from discord.js's channel cache, which Discord keeps current through gateway updates, so a renamed channel is right immediately. `calendar-map.ts` (pure, fully tested) maps each Discord event to a neutral `CalendarEvent`: external events use their location text, voice and stage events use the channel's name, finished and cancelled events are dropped, and recurrence rules become plain words ("weekly on Tuesday"). Discord returns a recurring event once, showing its next occurrence.
 
 ## Services and ports
 
@@ -172,7 +172,7 @@ type Feature = {
 | ---------------- | ------------------------------------ | ----------------------------------------------------------------- |
 | `accessConfig`   | Admin and member lists               | Loads and validates the two YAML files at startup (`ConfigTierSource`) |
 | `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 30 s tracks when the state changed, and `onChange` fires on open↔closed flips, with how long the previous state lasted. The last state and its time are saved to `space.state` and restored on startup (below). After 10 consecutive failures (about 5 minutes) it reports once, and it logs when SpaceAPI recovers |
-| `CalendarPort`   | Upcoming events                      | Implemented by the Discord adapter                                |
+| `calendar`       | Upcoming events                      | `core/calendar.ts`. A neutral `CalendarEvent` and a `CalendarSource` that an adapter plugs in once it's ready (like announcement publishers), so before that `/events` says the calendar isn't available. **Nothing is cached**: every call asks the source, so a renamed or rescheduled event shows up straight away. If the source fails that's an error (`CalendarUnavailableError`), never an out-of-date list; it's logged, and reported to Sentry once per outage rather than on every command |
 | `knowledge`      | Info topics                          | Markdown files in `content/`                                      |
 
 Pixelbar's SpaceAPI response has `state.open` but no `lastchange`, so Pixel records when it saw each change and remembers it in `space.state` (YAML, in `PIXEL_DATA_DIR`, default `data/`). It's written only when the state changes, atomically (temp file and rename).
@@ -195,10 +195,19 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `admin`   | `/admin`                     | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
-| `events`  | `/events`                    | guest  |       | The next few Discord scheduled events               |
+| `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
 | `info`    | `/info <topic>`              | guest  |       | Address, membership, contact (from `content/`)      |
 
-The CalendarPort arrives with `events` (#4).
+### The events list
+
+`/events` reads the calendar and shows:
+- **What's on now first** (🟢, with when it ends, or how long it's been going if it has no end time), then **upcoming events soonest first**, at most 5, plus "…and N more." if there are others.
+- Each event has a linked title, when it is, how soon (`in 25m`, `in 3h 20m`, `in 2 days`), where, and 🔁 how often it repeats.
+- **Times are plain text in one time zone** (`PIXEL_TIMEZONE`, default Europe/Amsterdam) with the zone shown, like `Sun 4 Oct, 20:00–23:00 CEST`. That reads the same on every platform and is unambiguous. The end time is shown only when it ends the same day. A per-reader local time, using Discord's timestamp markup, would need a small neutral mechanism in the core, and is worth adding if members are often in other time zones.
+- Anything that has already ended is dropped, even if Discord still lists it as running.
+- **Event titles, locations and repeat text are written by whoever made the event**, so they are escaped: they can't add formatting, fake a link, or inject a mention marker.
+- The reply is public, like `/status`. It asks Discord live on every use, which takes about 200 ms, so it needs no "Checking…" box. If Discord is slow, the adapter defers the reply itself.
+- If Discord can't be reached, the reply is a friendly error. It never shows an earlier list.
 
 ### Announcing changes
 
@@ -232,6 +241,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`                  |
 | `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state (`space.state`, `announcements.state`); gitignored |
+| `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in |
 | `DISCORD_TOKEN`               | yes    |                                                |
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |

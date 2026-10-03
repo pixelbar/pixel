@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Announcer } from "../core/announcer.ts";
+import { Calendar } from "../core/calendar.ts";
 import { formatDuration } from "../core/format.ts";
 import { silentLogger } from "../core/logger.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
@@ -32,6 +33,8 @@ const deps = () => ({
 	access,
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
+	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
+	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
 });
 
@@ -50,14 +53,15 @@ describe("buildFeatures", () => {
 				.all()
 				.map((c) => c.definition.name)
 				.sort(),
-		).toEqual(["admin", "help", "ping", "status", "whoami"]);
+		).toEqual(["admin", "events", "help", "ping", "status", "whoami"]);
 	});
 
-	it("restricts /admin to admins and opens /status to guests", () => {
+	it("restricts /admin to admins and opens /status and /events to guests", () => {
 		const registry = new CommandRegistry();
 		for (const f of buildFeatures(deps())) registry.register(f);
 		expect(registry.get("admin")?.definition.access.minTier).toBe("admin");
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
+		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 	});
 });
 

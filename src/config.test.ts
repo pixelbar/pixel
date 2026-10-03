@@ -21,6 +21,15 @@ describe("loadConfig", () => {
 		});
 	});
 
+	it("shows times in Amsterdam unless told otherwise, and rejects unknown time zones", () => {
+		expect(loadConfig(VALID).timezone).toBe("Europe/Amsterdam");
+		expect(loadConfig({ ...VALID, PIXEL_TIMEZONE: "UTC" }).timezone).toBe("UTC");
+		expect(() => loadConfig({ ...VALID, PIXEL_TIMEZONE: "Europe/Atlantis" })).toThrow(
+			/PIXEL_TIMEZONE/,
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_TIMEZONE: "" })).toThrow(/PIXEL_TIMEZONE/);
+	});
+
 	it("has no announcement channels unless configured", () => {
 		expect(loadConfig(VALID).discord.announce).toEqual({
 			liveChannelId: undefined,

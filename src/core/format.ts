@@ -8,3 +8,41 @@ export function formatDuration(ms: number): string {
 	if (hours > 0) return `${hours}h ${minutes}m`;
 	return `${minutes}m`;
 }
+
+/**
+ * How far away something still ahead is, in words: "starting now", "in 25m",
+ * "in 3h 20m" or "in 2 days".
+ */
+export function formatUntil(ms: number): string {
+	const minutes = Math.floor(ms / 60_000);
+	if (minutes < 1) return "starting now";
+	if (minutes < 60) return `in ${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) {
+		const rest = minutes % 60;
+		return rest > 0 ? `in ${hours}h ${rest}m` : `in ${hours}h`;
+	}
+	const days = Math.floor(hours / 24);
+	return `in ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** Whether `zone` is a time zone name that Intl knows, e.g. "Europe/Amsterdam". */
+export function isValidTimeZone(zone: string): boolean {
+	try {
+		new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Escapes text written by someone else so it can't be read as formatting, a
+ * link or a mention marker. Line breaks become spaces.
+ */
+export function escapeMarkdown(text: string): string {
+	return text
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/[\\*_~`|<>[\]]/g, "\\$&");
+}

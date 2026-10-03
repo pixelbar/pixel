@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { Announcer } from "./core/announcer.ts";
+import { Calendar } from "./core/calendar.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { IdentityService } from "./core/identity.ts";
@@ -21,6 +22,8 @@ export type Core = {
 	spaceStatus: SpaceStatus;
 	/** Platform adapters register their publishers here once they're ready. */
 	announcer: Announcer;
+	/** A platform adapter plugs its events in here once it's ready. */
+	calendar: Calendar;
 	/** Not started here — the bot calls `startFeatures()` once the adapters are ready. */
 	features: readonly Feature[];
 };
@@ -53,6 +56,7 @@ export function buildCore(
 	});
 
 	const announcer = new Announcer({ logger, reporter });
+	const calendar = new Calendar({ logger, reporter });
 
 	const registry = new CommandRegistry();
 	const features = buildFeatures({
@@ -61,6 +65,8 @@ export function buildCore(
 		access,
 		spaceStatus,
 		announcer,
+		calendar,
+		timezone: config.timezone,
 		logger,
 	});
 	for (const feature of features) registry.register(feature);
@@ -73,5 +79,5 @@ export function buildCore(
 		reporter,
 	});
 
-	return { access, registry, dispatcher, spaceStatus, announcer, features };
+	return { access, registry, dispatcher, spaceStatus, announcer, calendar, features };
 }

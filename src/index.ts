@@ -12,7 +12,7 @@ async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry, spaceStatus, announcer, features } = buildCore(
+	const { access, dispatcher, registry, spaceStatus, announcer, calendar, features } = buildCore(
 		config,
 		logger,
 		reporter,
@@ -34,6 +34,7 @@ async function main(): Promise<void> {
 		announce: config.discord.announce,
 		announceStateFile: join(config.dataDir, "announcements.state"),
 		announcer,
+		calendar,
 		reportError: (error) => reporter.captureBackground(error, "discord"),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
