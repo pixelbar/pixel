@@ -31,3 +31,4 @@ data/
 
 # claude
 .claude/worktrees/
+.dev-data/
