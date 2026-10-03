@@ -1,16 +1,7 @@
-import {
-	type ChatInputCommandInteraction,
-	Client,
-	Events,
-	GatewayIntentBits,
-	type Guild,
-	MessageFlags,
-} from "discord.js";
-import type { PlatformActor } from "../../core/access.ts";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
-import { optionsToArgs } from "./args.ts";
-import { respond } from "./respond.ts";
+import { createCommandHandler, createGuildGuard } from "./handlers.ts";
 
 export type DiscordAdapterDeps = {
 	token: string;
@@ -29,29 +20,21 @@ export type DiscordAdapter = {
 
 const DEFER_AFTER_MS = 1500;
 
-export const WRONG_GUILD_MESSAGE = "Pixel only works in the Pixelbar Discord server.";
-
+/**
+ * Thin wiring between the discord.js Client and the handlers in handlers.ts,
+ * which hold all the logic and are unit-tested.
+ */
 export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	const { guildId, dispatcher, reportError } = deps;
 	const logger = deps.logger.child({ adapter: "discord" });
+	const handleCommand = createCommandHandler({ guildId, dispatcher, deferAfterMs: DEFER_AFTER_MS });
+	const leaveIfForeign = createGuildGuard({ guildId, logger, reportError });
 
 	const client = new Client({
 		// Non-privileged only. See AGENTS.md before adding intents.
 		intents: [GatewayIntentBits.Guilds],
 		allowedMentions: { parse: [] },
 	});
-
-	const leaveIfForeign = async (guild: Guild) => {
-		if (guild.id === guildId) return;
-		logger.warn(
-			{ event: "discord.foreign_guild" },
-			"leaving a guild that isn't the configured one",
-		);
-		await guild.leave().catch((error: unknown) => {
-			logger.error({ err: error }, "failed to leave foreign guild");
-			reportError(error);
-		});
-	};
 
 	client.once(Events.ClientReady, async (ready) => {
 		logger.info(
@@ -68,7 +51,8 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 
 	client.on(Events.InteractionCreate, (interaction) => {
 		if (!interaction.isChatInputCommand()) return;
-		handleCommand(interaction).catch((error: unknown) => {
+		const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+		handleCommand(interaction, displayName).catch((error: unknown) => {
 			logger.error(
 				{ err: error, command: interaction.commandName },
 				"failed to handle interaction",
@@ -76,31 +60,6 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			reportError(error);
 		});
 	});
-
-	async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
-		if (interaction.guildId !== guildId) {
-			await interaction.reply({ content: WRONG_GUILD_MESSAGE, flags: MessageFlags.Ephemeral });
-			return;
-		}
-		const actor: PlatformActor = {
-			platform: "discord",
-			userId: interaction.user.id,
-			displayName: interaction.inCachedGuild()
-				? interaction.member.displayName
-				: interaction.user.displayName,
-			chat: "group",
-		};
-		await respond(interaction, {
-			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName),
-			deferAfterMs: DEFER_AFTER_MS,
-			work: () =>
-				dispatcher.dispatch({
-					actor,
-					command: interaction.commandName,
-					args: optionsToArgs(interaction.options.data),
-				}),
-		});
-	}
 
 	return {
 		async start() {

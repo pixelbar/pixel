@@ -102,6 +102,22 @@ describe("loadAccessConfig", () => {
 		expect(() => loadAccessConfig(paths)).toThrow(/members\.yaml: cannot read file \(ENOENT\)/);
 	});
 
+	it("reports root-level problems clearly", () => {
+		write(`- "${IDS.admin}"\n`, "members: []\n");
+		expect(() => loadAccessConfig(paths)).toThrow(/\(root\)/);
+	});
+
+	it("fails on an empty file", () => {
+		write("", "members: []\n");
+		expect(() => loadAccessConfig(paths)).toThrow(/admins\.yaml: invalid access list/);
+	});
+
+	it("fails when the path is a directory", () => {
+		writeFileSync(paths.membersFile, "members: []\n");
+		paths.adminsFile = dir;
+		expect(() => loadAccessConfig(paths)).toThrow(/cannot read file \(EISDIR\)/);
+	});
+
 	it("fails on invalid YAML without echoing file contents", () => {
 		write(`admins:\n  - name: "${IDS.admin}\n    discordId: [\n`, "members: []\n");
 		let message = "";
@@ -135,5 +151,13 @@ describe("ConfigTierSource", () => {
 		const source = new ConfigTierSource(loadAccessConfig(paths));
 		expect(await source.tierFor(actor({ userId: IDS.member }))).toBe("member");
 		expect(await source.tierFor(actor({ userId: IDS.guest }))).toBeNull();
+	});
+
+	it("only vouches for Discord identities", async () => {
+		write(ADMINS, MEMBERS);
+		const source = new ConfigTierSource(loadAccessConfig(paths));
+		// Another platform's user with a colliding numeric ID must not inherit a Discord tier.
+		const telegramUser = actor({ userId: IDS.admin, platform: "telegram" as never });
+		expect(await source.tierFor(telegramUser)).toBeNull();
 	});
 });

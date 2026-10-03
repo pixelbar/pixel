@@ -170,6 +170,12 @@ describe("Dispatcher", () => {
 			expect(dispatcher.defaultPrivacy("p")).toBe(true);
 		});
 
+		it("defaults to public, including for unknown commands", () => {
+			const { dispatcher } = setup([command({ name: "p" })]);
+			expect(dispatcher.defaultPrivacy("p")).toBe(false);
+			expect(dispatcher.defaultPrivacy("missing")).toBe(false);
+		});
+
 		it("lets the reply override the default", async () => {
 			const { dispatcher } = setup([
 				command({ name: "p", handler: async () => ({ text: "x", private: true }) }),

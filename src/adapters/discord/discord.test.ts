@@ -44,6 +44,12 @@ describe("toSlashCommand", () => {
 	});
 });
 
+describe("toSlashCommand without options", () => {
+	it("emits an empty option list", () => {
+		expect(toSlashCommand(command()).options).toEqual([]);
+	});
+});
+
 describe("optionsToArgs", () => {
 	it("keeps primitive values and ignores other option types", () => {
 		expect(
@@ -75,6 +81,28 @@ describe("renderReply", () => {
 		const payload = renderReply({ embeds: [{ title: "T" }] }, false);
 		expect(payload.content).toBeUndefined();
 		expect(payload.embeds?.[0]?.title).toBe("T");
+	});
+
+	it("renders embed description, url and inline fields", () => {
+		const payload = renderReply(
+			{
+				embeds: [
+					{
+						title: "T",
+						description: "D",
+						url: "https://pixelbar.nl",
+						fields: [{ name: "n", value: "v", inline: true }],
+					},
+				],
+			},
+			false,
+		);
+		expect(payload.embeds?.[0]).toMatchObject({
+			title: "T",
+			description: "D",
+			url: "https://pixelbar.nl",
+			fields: [{ name: "n", value: "v", inline: true }],
+		});
 	});
 
 	it("enforces Discord's length limits", () => {

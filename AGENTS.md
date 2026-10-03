@@ -24,7 +24,7 @@ Always go through `just`:
 
 ```sh
 just dev              # run locally with hot reload
-just check            # lint + typecheck + test; must pass before you call a change done
+just check            # lint + typecheck + tests with coverage thresholds; must pass before you call a change done
 just test             # tests only
 just fmt              # auto-format
 just validate-config  # validate the access list files
@@ -78,6 +78,7 @@ docs/                   # architecture, identity, ADRs
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.
 - **Types:** `strict`, no `any` (use `unknown` and narrow it). Prefer `type` over `interface`.
 - **Tests:** Vitest. Test features against a fake `CommandContext`. Test the Discord adapter's mapping logic with plain objects, never against a live Discord connection. Mock HTTP (SpaceAPI) at the service boundary.
+- **Coverage:** `vitest.config.ts` sets an 80% overall floor, with strict floors (about 98%) for `core/`, `services/`, the Discord handlers and the observability helpers. Keep platform client code thin: put decisions in plain functions (see `adapters/discord/handlers.ts`) so they can be tested. Never lower a threshold to make a change pass. Add tests instead, or explain why in the PR.
 - **Style:** Biome. Don't hand-format.
 - **Dependencies:** keep them minimal. Explain why in the PR when you add one.
 

@@ -48,6 +48,16 @@ describe("CommandRegistry", () => {
 		expect(() => register(command({ description: "x".repeat(101) }))).toThrow(/Description/);
 	});
 
+	it("rejects invalid option names", () => {
+		const options = [{ name: "Bad Name", description: "a", type: "string" }] as const;
+		expect(() => register(command({ options }))).toThrow(/Invalid option name/);
+	});
+
+	it("rejects a command without a handler", () => {
+		const noHandler = { ...command(), handler: undefined } as unknown as CommandDefinition;
+		expect(() => register(noHandler)).toThrow(/Missing handler/);
+	});
+
 	it("rejects duplicate option names", () => {
 		const options = [
 			{ name: "a", description: "a", type: "string" },

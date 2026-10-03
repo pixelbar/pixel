@@ -25,7 +25,7 @@ start:
 test *args:
     pnpm exec vitest run {{args}}
 
-# Run tests with coverage
+# Run tests with coverage; fails below the thresholds in vitest.config.ts
 coverage:
     pnpm exec vitest run --coverage
 
@@ -41,8 +41,8 @@ fmt:
 typecheck:
     pnpm exec tsc --noEmit
 
-# Everything CI runs
-check: lint typecheck test
+# Everything CI runs: lint, types, tests with coverage thresholds
+check: lint typecheck coverage
 
 # Validate the access list files
 validate-config:

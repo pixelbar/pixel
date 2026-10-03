@@ -24,6 +24,11 @@ export class RateLimiter {
 		this.#now = now;
 	}
 
+	/** Number of keys currently tracked. */
+	get size(): number {
+		return this.#buckets.size;
+	}
+
 	/** Takes a token for `key`. Returns false if the key is rate limited. */
 	tryTake(key: string): boolean {
 		const now = this.#now();

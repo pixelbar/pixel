@@ -82,9 +82,9 @@ Run `just` to list every recipe.
 | Command                | What it does                                  |
 | ---------------------- | --------------------------------------------- |
 | `just dev`             | Run Pixel locally with hot reload             |
-| `just check`           | Lint, type-check and test (what CI runs)      |
+| `just check`           | Lint, type-check, test and enforce coverage (what CI runs) |
 | `just test`            | Run the tests                                 |
-| `just coverage`        | Run the tests with a coverage report          |
+| `just coverage`        | Run the tests with coverage; fails below the thresholds in `vitest.config.ts` |
 | `just build` / `just start` | Compile to `dist/` and run the build     |
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
