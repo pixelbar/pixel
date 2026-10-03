@@ -1,0 +1,12 @@
+# Pixel admins: full control of the bot.
+#
+# Copy to config/admins.yaml (gitignored — it contains personal data).
+#
+# To find a Discord ID: enable Developer Mode in Discord settings,
+# right-click the user and choose "Copy User ID".
+#
+# IDs MUST be quoted strings. Unquoted numbers lose precision and Pixel will
+# refuse to start.
+admins:
+  - name: Example Admin # for humans only; never used for authorisation
+    discordId: "100000000000000001"

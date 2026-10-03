@@ -1,0 +1,12 @@
+# Paying memberships. Anyone not listed here (or in admins.yaml) is a guest.
+#
+# Copy to config/members.yaml (gitignored — it contains personal data).
+#
+# tier: member | friend
+# IDs MUST be quoted strings.
+members:
+  - discordId: "100000000000000002"
+    tier: member
+    note: optional, for humans
+  - discordId: "100000000000000003"
+    tier: friend

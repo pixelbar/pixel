@@ -98,19 +98,21 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 ### Audit in phase 1
 
 - **Tier changes:** the config files are the record of who has which tier. Editors should keep a private change history (for example a private repo or Key Vault secret versions).
-- **Denied commands, and every admin-tier command:** logged as structured events (`{ event, command, tier, pseudonymousUser }`).
+- **Every action:** each executed command (`command.executed`, with its outcome), denial (`command.denied`) and rate limit (`command.rate_limited`) is logged as a structured event that names who did it: `{ event, command, tier, user: "discord:<id>", userName, userHandle }`. This means abusive users can be identified and banned. **Ban by `user` (the ID).** Names can change and can be faked to look like someone else.
 
 ## Context rules
 
 - Commands can limit where they run: `access: { minTier: "member", contexts: ["dm"] }`.
 - Anything that shows personal or member-only information replies **ephemerally** (only visible to the caller).
-- Interactions from guilds other than `DISCORD_GUILD_ID` are refused, and the bot leaves those guilds. DMs with the bot are allowed: the tier comes from the user ID, not the guild.
+- Interactions from guilds other than `DISCORD_GUILD_ID` are refused, and the bot leaves those guilds.
+- **Phase 1 has no DMs.** Commands are registered to the guild only, and Discord doesn't offer guild commands in DMs. Every interaction therefore has the `group` context. Supporting DMs later means registering global commands. The access model already handles DMs, because tiers come from the user ID rather than the guild.
 
 ## Privacy (GDPR)
 
 - Phase 1 Pixel stores nothing on disk apart from the config files that operators maintain. It does not store message content.
 - `/whoami` shows a person their Discord ID and effective tier, so they can check what Pixel thinks.
-- Logs and Sentry never contain raw Discord IDs. Users are identified by an HMAC pseudonym (keyed with `PSEUDONYM_KEY`). Sentry has `sendDefaultPii: false`, and a `beforeSend` hook scrubs anything that looks like a token.
+- Logs and Sentry identify users by their platform ID (`discord:<id>`). We chose this over pseudonyms because pseudonyms change whenever the key is rotated, which breaks tracking one user's issues over time. Logs and Sentry also record the user's display name and Discord handle, so people can recognise who did something. IDs and names count as personal data under GDPR, so the privacy notice must mention that they are stored in logs and Sentry, and log and Sentry retention apply. Message content and command arguments are never logged.
+- Sentry's `dataCollection` options are all turned off: user info, headers, cookies, bodies, query params and stack-frame local variables. A `beforeSend` hook also scrubs anything that looks like a bot token.
 - This needs a short privacy notice (linked from `/help`) before going live.
 
 ## Threats and mitigations (phase 1)

@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** early planning, phase 1: the core and a Discord adapter. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/whoami` and `/admin`. `/status`, `/events` and `/info` come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
 
 ## Stack
 
@@ -72,7 +72,6 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
 | `DISCORD_ANNOUNCE_CHANNEL_ID` | Optional. Channel for space status announcements   |
-| `PSEUDONYM_KEY`               | Random secret used to pseudonymise users in logs   |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands
@@ -82,12 +81,18 @@ Run `just` to list every recipe.
 | Command                | What it does                                  |
 | ---------------------- | --------------------------------------------- |
 | `just dev`             | Run Pixel locally with hot reload             |
-| `just check`           | Lint, type-check and test (what CI runs)      |
+| `just check`           | Lint, type-check, test and enforce coverage (what CI runs) |
 | `just test`            | Run the tests                                 |
+| `just coverage`        | Run the tests with coverage; fails below the thresholds in `vitest.config.ts` |
+| `just build` / `just start` | Compile to `dist/` and run the build     |
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
 | `just register`        | Register slash commands with Discord          |
 | `just docker-build`    | Build the container image                     |
+
+## CI
+
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds.
 
 ## Deployment
 

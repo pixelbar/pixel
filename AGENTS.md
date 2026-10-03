@@ -24,7 +24,7 @@ Always go through `just`:
 
 ```sh
 just dev              # run locally with hot reload
-just check            # lint + typecheck + test; must pass before you call a change done
+just check            # lint + typecheck + tests with coverage thresholds; must pass before you call a change done
 just test             # tests only
 just fmt              # auto-format
 just validate-config  # validate the access list files
@@ -37,14 +37,16 @@ If you need a new repeatable task, add a `just` recipe instead of documenting a 
 ```
 src/
   instrument.ts         # Sentry init, loaded with --import before anything else
-  index.ts              # composition root: config, access lists, adapters, scheduler
+  index.ts              # entry point: config, Sentry reporter, adapters, health server, shutdown
+  app.ts                # buildCore(): access lists, registry, dispatcher (shared with scripts)
   config.ts             # zod-validated env; the ONLY place that reads process.env
+  testing/              # test fixtures (fake IDs, contexts); never imported by app code
   core/                 # platform-agnostic: access, command, dispatcher, registry,
                         #   identity, announcer, scheduler, errors, ports/
   features/<name>/      # one folder per feature; depends only on core/ and services/
   services/             # access-config, spaceapi, knowledge
   adapters/discord/     # interactive + publisher + CalendarPort
-  observability/        # logger, Sentry helpers, pseudonymisation
+  observability/        # logger, Sentry helpers, secret scrubbing, health
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 content/                # markdown for /info topics
 scripts/                # register-commands, validate-config
@@ -59,7 +61,7 @@ docs/                   # architecture, identity, ADRs
 4. **`admin` comes only from `config/admins.yaml`.** Never derive it from anything else.
 5. **Fail closed.** Invalid or missing access files, or an empty admin list, mean the bot does not start. Discord IDs must be quoted strings (`^\d{17,20}$`). Never coerce numbers to strings.
 6. **Never commit real access files, `.env`, tokens or Discord IDs of real people.** Use example files and obviously fake IDs in tests.
-7. **Never log or report secrets or raw Discord IDs.** Use the HMAC pseudonym helper. No `console.log`.
+7. **Never log or report secrets.** When logging an action, identify the user with `actorLogFields()`, which gives `user` (`discord:<id>`), `userName` and `userHandle`, so moderators can recognise and ban them. Names are for humans only: act on the ID, never the name. Don't log message content or command arguments unless an ADR says so. No `console.log`.
 8. **Private data gets private replies** (`Reply.private = true`, which is ephemeral on Discord).
 9. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*` need **tests and a human reviewer**. Call this out in the PR description.
 
@@ -67,8 +69,8 @@ docs/                   # architecture, identity, ADRs
 
 - **Dependency direction:** `adapters → core ← features → services`. `core` imports nothing from other folders. **discord.js is imported only in `src/adapters/discord/`.** When the core needs platform data, define a port in `core/ports/` and implement it in the adapter.
 - **Adding a feature:**
-  1. Create `src/features/<name>/index.ts` that exports a `Feature`.
-  2. Register it in `src/features/index.ts`.
+  1. Create `src/features/<name>/index.ts` that exports a `create<Name>Feature(deps)` factory returning a `Feature`. Dependencies come in through `deps`, never as module-level singletons.
+  2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register` so Discord sees it.
   3. Choose the lowest tier that is safe.
   4. Add tests.
 - **Announcements:** features call `services.announcer.announce({ kind, text, … })`. They never call a publisher directly. Routing is config. Never hard-code platform accounts or handles.
@@ -76,6 +78,7 @@ docs/                   # architecture, identity, ADRs
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.
 - **Types:** `strict`, no `any` (use `unknown` and narrow it). Prefer `type` over `interface`.
 - **Tests:** Vitest. Test features against a fake `CommandContext`. Test the Discord adapter's mapping logic with plain objects, never against a live Discord connection. Mock HTTP (SpaceAPI) at the service boundary.
+- **Coverage:** `vitest.config.ts` sets an 80% overall floor, with strict floors (about 98%) for `core/`, `services/`, the Discord handlers and the observability helpers. Keep platform client code thin: put decisions in plain functions (see `adapters/discord/handlers.ts`) so they can be tested. Never lower a threshold to make a change pass. Add tests instead, or explain why in the PR.
 - **Style:** Biome. Don't hand-format.
 - **Dependencies:** keep them minimal. Explain why in the PR when you add one.
 
