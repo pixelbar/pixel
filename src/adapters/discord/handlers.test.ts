@@ -24,7 +24,7 @@ function fakeInteraction(overrides: Partial<IncomingCommand> = {}) {
 	return {
 		guildId: GUILD,
 		commandName: "whoami",
-		user: { id: IDS.member, displayName: "global-name" },
+		user: { id: IDS.member, displayName: "global-name", username: "member_handle" },
 		options: { data: [] },
 		reply: vi.fn(async () => {}),
 		deferReply: vi.fn(async () => {}),
@@ -56,7 +56,7 @@ describe("createCommandHandler", () => {
 		);
 	});
 
-	it("dispatches commands from the configured guild with the user's immutable ID", async () => {
+	it("dispatches commands from the configured guild with the user's ID, name and handle", async () => {
 		const dispatcher = fakeDispatcher();
 		const handle = createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 });
 		const interaction = fakeInteraction({
@@ -69,7 +69,13 @@ describe("createCommandHandler", () => {
 		await handle(interaction, "Server Nick");
 
 		expect(dispatcher.dispatch).toHaveBeenCalledWith({
-			actor: { platform: "discord", userId: IDS.member, displayName: "Server Nick", chat: "group" },
+			actor: {
+				platform: "discord",
+				userId: IDS.member,
+				displayName: "Server Nick",
+				handle: "member_handle",
+				chat: "group",
+			},
 			command: "info",
 			args: { topic: "hours" },
 		});

@@ -1,12 +1,40 @@
 import { describe, expect, it } from "vitest";
 import { principal } from "../testing/fixtures.ts";
-import { actorRef, checkAccess, highestTier, TIERS, tierAtLeast } from "./access.ts";
+import {
+	actorLogFields,
+	actorRef,
+	checkAccess,
+	highestTier,
+	TIERS,
+	tierAtLeast,
+} from "./access.ts";
 
 describe("actorRef", () => {
 	it("is the platform-prefixed user ID", () => {
 		expect(actorRef({ platform: "discord", userId: "100000000000000002" })).toBe(
 			"discord:100000000000000002",
 		);
+	});
+});
+
+describe("actorLogFields", () => {
+	const base = {
+		platform: "discord",
+		userId: "100000000000000002",
+		displayName: "Ada",
+		chat: "group",
+	} as const;
+
+	it("includes the ID, display name and handle", () => {
+		expect(actorLogFields({ ...base, handle: "ada_l" })).toEqual({
+			user: "discord:100000000000000002",
+			userName: "Ada",
+			userHandle: "ada_l",
+		});
+	});
+
+	it("omits the handle when the platform has none", () => {
+		expect(actorLogFields(base)).toEqual({ user: "discord:100000000000000002", userName: "Ada" });
 	});
 });
 

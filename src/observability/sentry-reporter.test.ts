@@ -32,14 +32,28 @@ describe("createSentryReporter", () => {
 		});
 	});
 
-	it("identifies the user by stable platform ID, never by display name", () => {
+	it("identifies the user by stable platform ID, plus handle and display name", () => {
 		createSentryReporter().capture(new Error("boom"), {
 			command: "x",
 			feature: "x",
-			principal: caller,
+			principal: { ...caller, handle: "ada_l" },
 		});
-		expect(scope.setUser).toHaveBeenCalledWith({ id: `discord:${IDS.member}` });
-		const sent = JSON.stringify([scope.setUser.mock.calls, scope.setTags.mock.calls]);
-		expect(sent).not.toContain("Ada Lovelace");
+		expect(scope.setUser).toHaveBeenCalledWith({
+			id: `discord:${IDS.member}`,
+			username: "ada_l",
+			name: "Ada Lovelace",
+		});
+	});
+
+	it("omits the username when the platform has no handle", () => {
+		createSentryReporter().capture(new Error("boom"), {
+			command: "x",
+			feature: "x",
+			principal: { ...caller, handle: undefined },
+		});
+		expect(scope.setUser).toHaveBeenCalledWith({
+			id: `discord:${IDS.member}`,
+			name: "Ada Lovelace",
+		});
 	});
 });

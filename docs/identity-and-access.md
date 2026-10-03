@@ -98,7 +98,7 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 ### Audit in phase 1
 
 - **Tier changes:** the config files are the record of who has which tier. Editors should keep a private change history (for example a private repo or Key Vault secret versions).
-- **Denied commands, and every admin-tier command:** logged as structured events (`{ event, command, tier, user: "discord:<id>" }`).
+- **Every action:** each executed command (`command.executed`, with its outcome), denial (`command.denied`) and rate limit (`command.rate_limited`) is logged as a structured event that names who did it: `{ event, command, tier, user: "discord:<id>", userName, userHandle }`. This means abusive users can be identified and banned. **Ban by `user` (the ID).** Names can change and can be faked to look like someone else.
 
 ## Context rules
 
@@ -111,7 +111,7 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 
 - Phase 1 Pixel stores nothing on disk apart from the config files that operators maintain. It does not store message content.
 - `/whoami` shows a person their Discord ID and effective tier, so they can check what Pixel thinks.
-- Logs and Sentry identify users by their platform ID (`discord:<id>`). We chose this over pseudonyms because pseudonyms change whenever the key is rotated, which breaks tracking one user's issues over time. Discord IDs count as personal data under GDPR, so the privacy notice must mention that they are stored in logs and Sentry, and Sentry's data retention applies. Display names and message content are never sent.
+- Logs and Sentry identify users by their platform ID (`discord:<id>`). We chose this over pseudonyms because pseudonyms change whenever the key is rotated, which breaks tracking one user's issues over time. Logs and Sentry also record the user's display name and Discord handle, so people can recognise who did something. IDs and names count as personal data under GDPR, so the privacy notice must mention that they are stored in logs and Sentry, and log and Sentry retention apply. Message content and command arguments are never logged.
 - Sentry's `dataCollection` options are all turned off: user info, headers, cookies, bodies, query params and stack-frame local variables. A `beforeSend` hook also scrubs anything that looks like a bot token.
 - This needs a short privacy notice (linked from `/help`) before going live.
 

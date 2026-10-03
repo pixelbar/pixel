@@ -61,7 +61,7 @@ docs/                   # architecture, identity, ADRs
 4. **`admin` comes only from `config/admins.yaml`.** Never derive it from anything else.
 5. **Fail closed.** Invalid or missing access files, or an empty admin list, mean the bot does not start. Discord IDs must be quoted strings (`^\d{17,20}$`). Never coerce numbers to strings.
 6. **Never commit real access files, `.env`, tokens or Discord IDs of real people.** Use example files and obviously fake IDs in tests.
-7. **Never log or report secrets or display names.** To identify users in logs and Sentry, use `actorRef()` (`discord:<id>`). Platform IDs are allowed there, but names and nicknames are not. No `console.log`.
+7. **Never log or report secrets.** When logging an action, identify the user with `actorLogFields()`, which gives `user` (`discord:<id>`), `userName` and `userHandle`, so moderators can recognise and ban them. Names are for humans only: act on the ID, never the name. Don't log message content or command arguments unless an ADR says so. No `console.log`.
 8. **Private data gets private replies** (`Reply.private = true`, which is ephemeral on Discord).
 9. Changes to `core/access*`, `core/identity*`, `core/dispatcher*`, `core/registry*` or `services/access-config*` need **tests and a human reviewer**. Call this out in the PR description.
 

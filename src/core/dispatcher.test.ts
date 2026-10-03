@@ -86,13 +86,13 @@ describe("Dispatcher", () => {
 			expect(result.reply.text).toBe(allowed ? "secret" : MESSAGES.deniedTier);
 		});
 
-		it("never calls the handler when denied, and logs the denial with the user's ID", async () => {
+		it("never calls the handler when denied, and logs who was denied", async () => {
 			const handler = vi.fn(async () => ({ text: "secret" }));
 			const { dispatcher, entries } = setup([
 				command({ name: "a", access: { minTier: "admin" }, handler }),
 			]);
 			const result = await dispatcher.dispatch({
-				actor: as(IDS.member, { displayName: "Ada Lovelace" }),
+				actor: as(IDS.member, { displayName: "Ada Lovelace", handle: "ada_l" }),
 				command: "a",
 				args: {},
 			});
@@ -102,11 +102,13 @@ describe("Dispatcher", () => {
 			const denial = entries.find((e) => e.obj.event === "command.denied");
 			expect(denial?.obj).toMatchObject({
 				user: `discord:${IDS.member}`,
+				userName: "Ada Lovelace",
+				userHandle: "ada_l",
 				reason: "tier",
 				tier: "member",
 				required: "admin",
 			});
-			expect(JSON.stringify(entries)).not.toContain("Ada Lovelace");
+			expect(entries.some((e) => e.obj.event === "command.executed")).toBe(false);
 		});
 
 		it("denies commands used in a disallowed context", async () => {
@@ -134,10 +136,24 @@ describe("Dispatcher", () => {
 			expect(handler).not.toHaveBeenCalled();
 		});
 
-		it("logs admin command usage", async () => {
+		it("logs every executed command as an action with who did it", async () => {
 			const { dispatcher, entries } = setup([command({ name: "a", access: { minTier: "admin" } })]);
-			await dispatcher.dispatch({ actor: as(IDS.admin), command: "a", args: {} });
-			expect(entries.some((e) => e.obj.event === "command.admin")).toBe(true);
+			await dispatcher.dispatch({
+				actor: as(IDS.admin, { displayName: "Grace", handle: "grace_h" }),
+				command: "a",
+				args: {},
+			});
+			const action = entries.find((e) => e.obj.event === "command.executed");
+			expect(action?.level).toBe("info");
+			expect(action?.obj).toMatchObject({
+				command: "a",
+				outcome: "ok",
+				tier: "admin",
+				user: `discord:${IDS.admin}`,
+				userName: "Grace",
+				userHandle: "grace_h",
+			});
+			expect(action?.obj.durationMs).toEqual(expect.any(Number));
 		});
 
 		it("passes only commands the caller may use to the handler", async () => {
@@ -196,7 +212,7 @@ describe("Dispatcher", () => {
 
 	describe("errors", () => {
 		it("shows UserFacingError messages without reporting them", async () => {
-			const { dispatcher, reporter } = setup([
+			const { dispatcher, reporter, entries } = setup([
 				command({
 					name: "e",
 					handler: async () => {
@@ -207,11 +223,14 @@ describe("Dispatcher", () => {
 			const result = await dispatcher.dispatch({ actor: as(IDS.guest), command: "e", args: {} });
 			expect(result).toEqual({ reply: { text: "Nope, try again.", private: true }, private: true });
 			expect(reporter.capture).not.toHaveBeenCalled();
+			expect(entries.find((e) => e.obj.event === "command.executed")?.obj.outcome).toBe(
+				"user_error",
+			);
 		});
 
 		it("hides unexpected errors from the user and reports them", async () => {
 			const boom = new Error("database password is hunter2");
-			const { dispatcher, reporter } = setup([
+			const { dispatcher, reporter, entries } = setup([
 				command({
 					name: "e",
 					handler: async () => {
@@ -220,6 +239,7 @@ describe("Dispatcher", () => {
 				}),
 			]);
 			const result = await dispatcher.dispatch({ actor: as(IDS.member), command: "e", args: {} });
+			expect(entries.find((e) => e.obj.event === "command.executed")?.obj.outcome).toBe("error");
 			expect(result.reply.text).toBe(MESSAGES.internalError);
 			expect(result.private).toBe(true);
 			expect(reporter.capture).toHaveBeenCalledWith(

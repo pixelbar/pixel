@@ -15,6 +15,7 @@ export function actor(overrides: Partial<PlatformActor> = {}): PlatformActor {
 		platform: "discord",
 		userId: IDS.guest,
 		displayName: "Test User",
+		handle: "test-user",
 		chat: "group",
 		...overrides,
 	};

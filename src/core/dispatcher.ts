@@ -1,4 +1,10 @@
-import { actorRef, checkAccess, type PlatformActor, type Principal } from "./access.ts";
+import {
+	actorLogFields,
+	actorRef,
+	checkAccess,
+	type PlatformActor,
+	type Principal,
+} from "./access.ts";
 import type { Args, ArgValue, CommandDefinition, CommandSummary } from "./command.ts";
 import { UserFacingError } from "./errors.ts";
 import type { IdentityService } from "./identity.ts";
@@ -57,7 +63,11 @@ export class Dispatcher {
 	async dispatch({ actor, command, args }: DispatchRequest): Promise<DispatchResult> {
 		const { registry, identity, rateLimiter, reporter } = this.#deps;
 		const user = actorRef(actor);
-		const log = this.#deps.logger.child({ command, platform: actor.platform, user });
+		const log = this.#deps.logger.child({
+			command,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
 
 		const registered = registry.get(command);
 		if (!registered) return privateText(MESSAGES.unknownCommand);
@@ -83,9 +93,18 @@ export class Dispatcher {
 			return privateText(decision.reason === "tier" ? MESSAGES.deniedTier : MESSAGES.deniedContext);
 		}
 
-		if (definition.access.minTier === "admin") {
-			log.info({ event: "command.admin", tier: principal.tier }, "admin command");
-		}
+		// Every executed command is logged as an action, so abuse can be traced to a user.
+		const started = performance.now();
+		const executed = (outcome: "ok" | "user_error" | "error") =>
+			log.info(
+				{
+					event: "command.executed",
+					outcome,
+					tier: principal.tier,
+					durationMs: Math.round(performance.now() - started),
+				},
+				"command executed",
+			);
 
 		try {
 			const validArgs = validateArgs(definition, args);
@@ -95,9 +114,14 @@ export class Dispatcher {
 				logger: log,
 				availableCommands: this.#available(principal),
 			});
+			executed("ok");
 			return { reply, private: reply.private ?? definition.private ?? false };
 		} catch (error) {
-			if (error instanceof UserFacingError) return privateText(error.message);
+			if (error instanceof UserFacingError) {
+				executed("user_error");
+				return privateText(error.message);
+			}
+			executed("error");
 			log.error({ event: "command.failed", err: error }, "command failed");
 			reporter.capture(error, { command, feature, principal });
 			return privateText(MESSAGES.internalError);

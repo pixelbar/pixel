@@ -16,7 +16,7 @@ export const WRONG_GUILD_MESSAGE = "Pixel only works in the Pixelbar Discord ser
 export type IncomingCommand = Respondable & {
 	guildId: string | null;
 	commandName: string;
-	user: { id: string; displayName: string };
+	user: { id: string; displayName: string; username: string };
 	options: { data: readonly DiscordOption[] };
 };
 
@@ -31,8 +31,8 @@ export type CommandHandlerDeps = {
  * guild other than the configured one — or from outside a guild — are refused
  * before anything reaches the dispatcher.
  *
- * `displayName` is the caller's server nickname when known; it is for display
- * only and never used for authorisation.
+ * `displayName` is the caller's server nickname when known. It and the
+ * username (handle) are for display and logs only, never for authorisation.
  */
 export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: CommandHandlerDeps) {
 	return async (interaction: IncomingCommand, displayName?: string): Promise<void> => {
@@ -44,6 +44,7 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 			platform: "discord",
 			userId: interaction.user.id,
 			displayName: displayName ?? interaction.user.displayName,
+			handle: interaction.user.username,
 			chat: "group",
 		};
 		await respond(interaction, {

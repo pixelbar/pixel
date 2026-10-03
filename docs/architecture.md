@@ -70,8 +70,9 @@ type Access = { minTier: Tier; contexts?: ChatContext[] };   // minTier is requi
 
 type PlatformActor = {
   platform: Platform;            // "discord" for now
-  userId: string;                // immutable platform ID
-  displayName: string;
+  userId: string;                // immutable platform ID: the only thing used for auth
+  displayName: string;           // logs and display only
+  handle?: string;               // unique username (Discord handle), logs only
   chat: ChatContext;
 };
 
@@ -127,10 +128,11 @@ type Feature = {
 - **Dispatcher** handles each command in order:
   1. rate-limit, which is cheap and protects the tier sources
   2. resolve identity
-  3. check access, logging denials and admin commands
+  3. check access, logging denials
   4. validate the arguments against the declared options
   5. call the handler
   6. map errors to replies, reporting unexpected ones to Sentry with the command's tags
+  7. log every executed command as an action (`command.executed`), recording who did it (ID, display name, handle), their tier, the outcome and the duration
 - **Announcer** sends each announcement kind to the publishers configured for it (`ANNOUNCE_ROUTES`). One publisher failing doesn't block the others, and failures go to Sentry. Phase 1 has one publisher: a Discord channel.
 - **Scheduler** runs simple interval jobs in the process, for example polling SpaceAPI. Jobs report to Sentry Cron Monitors.
 - **Rate limiter** keeps an in-memory token bucket for each user. That is enough because there is a single replica.
@@ -177,7 +179,7 @@ There are no member-only features yet. The first one will be the real test of th
 ## Observability
 
 - **Sentry** (`@sentry/node`) is initialised in `src/instrument.ts`, which is loaded with `--import` before the app. If no DSN is set, it does nothing.
-  - Each command scope carries the tags `command`, `feature`, `platform` and `tier`. The Sentry user is the stable platform ID (`discord:<id>`), so a user's issues can be traced over time. Display names are never sent.
+  - Each command scope carries the tags `command`, `feature`, `platform` and `tier`. The Sentry user is the stable platform ID (`discord:<id>`), so a user's issues can be traced over time, with their Discord handle as `username` and display name as `name` so people can recognise them.
   - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
   - Releases are tagged with the git SHA, and source maps are uploaded from CI later.
   - `environment` is `local`, `dev` or `prod`.

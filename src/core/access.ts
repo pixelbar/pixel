@@ -22,8 +22,10 @@ export type PlatformActor = {
 	platform: Platform;
 	/** Immutable platform user ID. The only field used for identification. */
 	userId: string;
-	/** For display only. Never use for authorisation. */
+	/** Server nickname or display name. For display and logs only — never for authorisation. */
 	displayName: string;
+	/** Unique platform username (e.g. Discord handle), if any. For logs only — never for authorisation. */
+	handle?: string;
 	chat: ChatContext;
 };
 
@@ -31,12 +33,27 @@ export type PlatformActor = {
 export type Principal = PlatformActor & { tier: Tier };
 
 /**
- * Stable user identifier for logs and Sentry, e.g. "discord:494477157062672404".
- * Prefixed with the platform so IDs stay unique once more platforms exist.
- * Never includes display names.
+ * Stable user identifier, e.g. "discord:494477157062672404". Prefixed with
+ * the platform so IDs stay unique once more platforms exist. This is the
+ * authoritative identity — ban and grant by this, not by name.
  */
 export function actorRef(actor: Pick<PlatformActor, "platform" | "userId">): string {
 	return `${actor.platform}:${actor.userId}`;
+}
+
+export type ActorLogFields = { user: string; userName: string; userHandle?: string };
+
+/**
+ * Fields identifying who performed an action, for logs: the stable ID plus
+ * names so humans can recognise the user. Names are user-controlled and can
+ * change, so act on `user`, never on the names.
+ */
+export function actorLogFields(actor: PlatformActor): ActorLogFields {
+	return {
+		user: actorRef(actor),
+		userName: actor.displayName,
+		...(actor.handle ? { userHandle: actor.handle } : {}),
+	};
 }
 
 export function tierRank(tier: Tier): number {
