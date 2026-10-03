@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { type CalendarEvent, CalendarUnavailableError } from "../../core/calendar.ts";
-import type { CommandDefinition } from "../../core/command.ts";
-import { context } from "../../testing/fixtures.ts";
+import type { PlainCommand } from "../../core/command.ts";
+import { context, plain } from "../../testing/fixtures.ts";
 import { createEventsFeature, MAX_EVENTS } from "./index.ts";
 
 // Saturday 3 October 2026, 14:00 in Amsterdam (summer time, UTC+2).
@@ -25,14 +25,13 @@ function event(overrides: Partial<CalendarEvent> = {}): CalendarEvent {
 function eventsCommand(
 	calendar: { events: () => Promise<CalendarEvent[]> },
 	options: { now?: Date; timezone?: string } = {},
-): CommandDefinition {
+): PlainCommand {
 	const command = createEventsFeature({
 		calendar,
 		timezone: options.timezone ?? "Europe/Amsterdam",
 		now: () => options.now ?? NOW,
 	}).commands?.[0];
-	if (!command) throw new Error("no events command");
-	return command;
+	return plain(command);
 }
 
 /** Runs /events against a calendar holding `events` and returns the embed. */

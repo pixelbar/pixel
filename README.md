@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`, plus open/closed announcements in Discord, `/events` (from the server's scheduled events) and `/info` (short answers about Pixelbar). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin status`, plus open/closed announcements in Discord, `/events` (from the server's scheduled events) and `/info` (short answers about Pixelbar). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
 ## Stack
 
@@ -125,6 +125,7 @@ Run `just` to list every recipe.
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
 | `just register`        | Register slash commands with Discord          |
+| `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docker-build`    | Build the container image                     |
 
 ## CI

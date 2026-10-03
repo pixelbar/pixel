@@ -1,8 +1,8 @@
 import { ApplicationCommandOptionType, InteractionContextType, MessageFlags } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchResult } from "../../core/dispatcher.ts";
-import { command } from "../../testing/fixtures.ts";
-import { optionsToArgs } from "./args.ts";
+import { command, group, subcommand } from "../../testing/fixtures.ts";
+import { parseOptions } from "./args.ts";
 import { toSlashCommand } from "./commands.ts";
 import { renderEdit, renderReply, truncate } from "./render.ts";
 import { type Respondable, type RespondOptions, respond } from "./respond.ts";
@@ -50,16 +50,124 @@ describe("toSlashCommand without options", () => {
 	});
 });
 
-describe("optionsToArgs", () => {
+describe("toSlashCommand visibility", () => {
+	it("hides admin-tier commands by default, and leaves the rest visible", () => {
+		expect(
+			toSlashCommand(command({ access: { minTier: "admin" } })).default_member_permissions,
+		).toBe("0");
+		expect(toSlashCommand(group({ access: { minTier: "admin" } })).default_member_permissions).toBe(
+			"0",
+		);
+		for (const minTier of ["guest", "friend", "member"] as const) {
+			expect(toSlashCommand(command({ access: { minTier } }))).not.toHaveProperty(
+				"default_member_permissions",
+			);
+		}
+	});
+});
+
+describe("toSlashCommand with subcommands and users", () => {
+	it("maps a group to native subcommands with their own options", () => {
+		const json = toSlashCommand(
+			group({
+				name: "admin",
+				description: "Admin",
+				subcommands: [
+					subcommand({
+						name: "grant",
+						description: "Grant",
+						options: [{ name: "who", description: "Person", type: "user", required: true }],
+					}),
+				],
+			}),
+		);
+		expect(json.options).toEqual([
+			{
+				type: ApplicationCommandOptionType.Subcommand,
+				name: "grant",
+				description: "Grant",
+				options: [
+					{
+						type: ApplicationCommandOptionType.User,
+						name: "who",
+						description: "Person",
+						required: true,
+					},
+				],
+			},
+		]);
+		expect(json.contexts).toEqual([InteractionContextType.Guild]);
+	});
+});
+
+describe("parseOptions", () => {
 	it("keeps primitive values and ignores other option types", () => {
 		expect(
-			optionsToArgs([
+			parseOptions([
 				{ name: "a", type: ApplicationCommandOptionType.String, value: "x" },
 				{ name: "b", type: ApplicationCommandOptionType.Integer, value: 2 },
 				{ name: "c", type: ApplicationCommandOptionType.Boolean, value: false },
-				{ name: "u", type: ApplicationCommandOptionType.User, value: "100000000000000001" },
+				{ name: "u", type: ApplicationCommandOptionType.Mentionable, value: "100000000000000001" },
 			]),
-		).toEqual({ a: "x", b: 2, c: false });
+		).toEqual({ args: { a: "x", b: 2, c: false }, users: {} });
+	});
+
+	it("unwraps a subcommand and its options", () => {
+		expect(
+			parseOptions([
+				{
+					name: "status",
+					type: ApplicationCommandOptionType.Subcommand,
+					options: [{ name: "a", type: ApplicationCommandOptionType.String, value: "x" }],
+				},
+			]),
+		).toEqual({ subcommand: "status", args: { a: "x" }, users: {} });
+		expect(
+			parseOptions([{ name: "status", type: ApplicationCommandOptionType.Subcommand }]),
+		).toEqual({ subcommand: "status", args: {}, users: {} });
+	});
+
+	it("passes a picked user as an immutable ID plus a resolved description", () => {
+		const user = {
+			id: "100000000000000001",
+			displayName: "Global",
+			username: "handle",
+			bot: false,
+		};
+		const parsed = parseOptions([
+			{ name: "who", type: ApplicationCommandOptionType.User, value: user.id, user },
+			{
+				name: "bot",
+				type: ApplicationCommandOptionType.User,
+				user: { ...user, id: "100000000000000002", bot: true },
+				member: { displayName: "Nick" },
+			},
+			{
+				name: "api",
+				type: ApplicationCommandOptionType.User,
+				user: { ...user, id: "100000000000000003" },
+				member: { nick: "ApiNick" },
+			},
+		]);
+		expect(parsed.args).toEqual({
+			who: "100000000000000001",
+			bot: "100000000000000002",
+			api: "100000000000000003",
+		});
+		expect(parsed.users.who).toEqual({
+			id: user.id,
+			displayName: "Global",
+			handle: "handle",
+			isBot: false,
+		});
+		expect(parsed.users.bot).toMatchObject({ displayName: "Nick", isBot: true });
+		expect(parsed.users.api).toMatchObject({ displayName: "ApiNick" });
+	});
+
+	it("ignores a user option that wasn't resolved", () => {
+		expect(
+			parseOptions([{ name: "who", type: ApplicationCommandOptionType.User, value: "1" }]),
+		).toEqual({ args: {}, users: {} });
 	});
 });
 

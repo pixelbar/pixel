@@ -1,7 +1,7 @@
 import type { PlatformActor } from "../../core/access.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
-import { type DiscordOption, optionsToArgs } from "./args.ts";
+import { type DiscordOption, parseOptions } from "./args.ts";
 import { renderReply } from "./render.ts";
 import { type Respondable, respond } from "./respond.ts";
 
@@ -47,16 +47,13 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 			handle: interaction.user.username,
 			chat: "group",
 		};
+		const { subcommand, args, users } = parseOptions(interaction.options.data);
 		await respond(interaction, {
-			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName),
+			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName, subcommand),
 			deferAfterMs,
 			work: (showPending) =>
 				dispatcher.dispatch(
-					{
-						actor,
-						command: interaction.commandName,
-						args: optionsToArgs(interaction.options.data),
-					},
+					{ actor, command: interaction.commandName, subcommand, args, users },
 					{ onPending: showPending },
 				),
 		});

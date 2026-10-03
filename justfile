@@ -52,6 +52,10 @@ validate-config:
 register:
     pnpm exec tsx --env-file=.env scripts/register-commands.ts
 
+# Show admin-tier commands to the people in admins.yaml (run after `register`; needs a one-off sign-in as a server manager)
+command-access:
+    pnpm exec tsx --env-file=.env scripts/command-access.ts
+
 # Build the container image
 docker-build tag="pixel:local":
     docker build --build-arg PIXEL_VERSION=$(git rev-parse --short HEAD) -t {{tag}} .

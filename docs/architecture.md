@@ -83,14 +83,20 @@ type CommandDefinition = {
   name: string;
   description: string;
   access: Access;
-  options?: CommandOption[];     // string | integer | boolean, with optional choices
+  options?: CommandOption[];     // string | integer | boolean | user
   private?: boolean;             // default reply visibility
   placeholder?: Reply;           // shown at once (e.g. "Checking…"), then replaced by the result
   handler: (ctx: CommandContext) => Promise<Reply>;
 };
 
+// Or a group, e.g. /admin status: `subcommands` instead of a handler. Each subcommand has
+// its own name, access, options, private, placeholder and handler. The group's access is a
+// floor: the registry rejects a looser subcommand, and the dispatcher checks both.
+type GroupCommand = { name; description; access: Access; subcommands: SubcommandDefinition[] };
+
 type CommandContext = {
   args: Record<string, string | number | boolean | undefined>;   // validated against options
+  users: Record<string, ResolvedUser>;   // people picked through `user` options (id, displayName, handle?, isBot)
   principal: Principal;
   logger: Logger;
   availableCommands: CommandSummary[];   // only what this principal may run (for /help)
@@ -150,7 +156,7 @@ type Feature = {
 
 - **discord.js v14, slash commands only.** Intents: `Guilds` only, which isn't privileged. No `MessageContent`. Scheduled events are read over REST, which needs no intent.
 - **Guild allow-list:** interactions from any guild other than `DISCORD_GUILD_ID` are refused, and the bot leaves other guilds. There are no DMs in phase 1, because guild commands aren't available in DMs.
-- **Mapping:** `CommandDefinition.options` become Discord slash command options. `Reply` becomes the message content plus embeds, truncated to Discord's limits. `private` becomes the ephemeral flag. **Mentions are always disabled** (`allowedMentions: { parse: [] }`), so no reply can ping `@everyone`.
+- **Mapping:** `CommandDefinition.options` become Discord slash command options. A group becomes native subcommands (`/admin status`), and a `user` option becomes Discord's user picker. The handler gets the picked user's immutable ID as the arg, and the adapter resolves their name and whether they are a bot. Bots are refused unless the option sets `allowBots`. Targets are identified by ID only, never by name. `Reply` becomes the message content plus embeds, truncated to Discord's limits. `private` becomes the ephemeral flag. **Mentions are always disabled** (`allowedMentions: { parse: [] }`), so no reply can ping `@everyone`.
 - **Acknowledging within 3 seconds:** Discord requires a response within 3 s. Pixel acknowledges with whichever comes first:
   - the command's placeholder, which is posted straight away
   - `deferReply()`, if the handler is still running after 1.5 s (this uses the command's default visibility)
@@ -192,7 +198,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `help`    | `/help`                      | guest  | ✅    | Lists only the commands the caller can use          |
 | `ping`    | `/ping`                      | guest  | ✅    | Version                                             |
 | `whoami`  | `/whoami`                    | guest  | ✅    | Private reply: your ID and tier                     |
-| `admin`   | `/admin`                     | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |
+| `admin`   | `/admin status`              | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs). `/admin` is a group, and more subcommands follow |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |

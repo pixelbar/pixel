@@ -11,31 +11,53 @@ type OptionBase = {
 export type CommandOption =
 	| (OptionBase & { type: "string"; choices?: readonly string[] })
 	| (OptionBase & { type: "integer" })
-	| (OptionBase & { type: "boolean" });
+	| (OptionBase & { type: "boolean" })
+	/**
+	 * A person picked by the caller. The handler receives their immutable
+	 * platform ID as the arg value, plus a `ResolvedUser` in `ctx.users`.
+	 * Bots are refused unless `allowBots` is set.
+	 */
+	| (OptionBase & { type: "user"; allowBots?: boolean });
 
 export type ArgValue = string | number | boolean;
 export type Args = Readonly<Record<string, ArgValue | undefined>>;
 
+/** A user picked through a `user` option, as resolved by the platform adapter. */
+export type ResolvedUser = {
+	/** Immutable platform ID. The only field to identify or act on. */
+	id: string;
+	/** For display and logs only. */
+	displayName: string;
+	handle?: string;
+	isBot: boolean;
+};
+
 /** What a command looks like to callers, without its handler. */
 export type CommandSummary = {
+	/** Full name; subcommands are "group sub", e.g. "admin status". */
 	name: string;
 	description: string;
 };
 
 export type CommandContext = {
 	args: Args;
+	/** Users picked through `user` options, by option name. */
+	users: Readonly<Record<string, ResolvedUser>>;
 	principal: Principal;
 	logger: Logger;
 	/** Commands this principal is allowed to run, for /help. */
 	availableCommands: readonly CommandSummary[];
 };
 
-export type CommandDefinition = {
+type Named = {
 	/** Lowercase, 1–32 chars of a-z, 0-9, '-' or '_' (Discord's rules). */
 	name: string;
 	/** 1–100 chars. */
 	description: string;
 	access: Access;
+};
+
+type Runnable = {
 	options?: readonly CommandOption[];
 	/** Default reply visibility. Replies can override it with `Reply.private`. */
 	private?: boolean;
@@ -46,3 +68,26 @@ export type CommandDefinition = {
 	placeholder?: Reply;
 	handler: (ctx: CommandContext) => Promise<Reply>;
 };
+
+export type PlainCommand = Named & Runnable & { subcommands?: undefined };
+
+export type SubcommandDefinition = Named & Runnable;
+
+/**
+ * A command with subcommands, e.g. `/admin status`. The group's access is a
+ * floor: a subcommand may tighten it but never loosen it, and the dispatcher
+ * checks both.
+ */
+export type GroupCommand = Named & {
+	subcommands: readonly SubcommandDefinition[];
+	options?: undefined;
+	handler?: undefined;
+	private?: undefined;
+	placeholder?: undefined;
+};
+
+export type CommandDefinition = PlainCommand | GroupCommand;
+
+export function isGroup(def: CommandDefinition): def is GroupCommand {
+	return def.subcommands !== undefined;
+}

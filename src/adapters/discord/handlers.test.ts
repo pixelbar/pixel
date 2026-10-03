@@ -16,7 +16,7 @@ const OTHER_GUILD = "100000000000000099";
 function fakeDispatcher(result: DispatchResult = { reply: { text: "ok" }, private: false }) {
 	return {
 		dispatch: vi.fn(async (_req: DispatchRequest, _hooks?: DispatchHooks) => result),
-		defaultPrivacy: vi.fn((_name: string) => false),
+		defaultPrivacy: vi.fn((_name: string, _sub?: string) => false),
 	};
 }
 
@@ -79,10 +79,46 @@ describe("createCommandHandler", () => {
 				},
 				command: "info",
 				args: { topic: "hours" },
+				users: {},
 			},
 			{ onPending: expect.any(Function) },
 		);
 		expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ content: "ok" }));
+	});
+
+	it("passes the subcommand and a picked user's ID to the dispatcher", async () => {
+		const dispatcher = fakeDispatcher();
+		const handle = createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 });
+		const target = { id: IDS.guest, displayName: "Target", username: "target", bot: false };
+		const interaction = fakeInteraction({
+			commandName: "admin",
+			options: {
+				data: [
+					{
+						name: "whois",
+						type: ApplicationCommandOptionType.Subcommand,
+						options: [
+							{
+								name: "who",
+								type: ApplicationCommandOptionType.User,
+								value: IDS.guest,
+								user: target,
+							},
+						],
+					},
+				],
+			},
+		});
+
+		await handle(interaction);
+
+		expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("admin", "whois");
+		expect(dispatcher.dispatch.mock.calls[0]?.[0]).toMatchObject({
+			command: "admin",
+			subcommand: "whois",
+			args: { who: IDS.guest },
+			users: { who: { id: IDS.guest, displayName: "Target", handle: "target", isBot: false } },
+		});
 	});
 
 	it("posts a placeholder from the dispatcher, then edits in the result", async () => {
@@ -131,7 +167,7 @@ describe("createCommandHandler", () => {
 			await vi.advanceTimersByTimeAsync(2000);
 			await done;
 
-			expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("whoami");
+			expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("whoami", undefined);
 			expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
 		} finally {
 			vi.useRealTimers();

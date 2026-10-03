@@ -1,5 +1,5 @@
-import { TIERS, type Tier } from "./access.ts";
-import type { CommandDefinition } from "./command.ts";
+import { TIERS, type Tier, tierRank } from "./access.ts";
+import { type CommandDefinition, isGroup, type SubcommandDefinition } from "./command.ts";
 import type { Feature } from "./feature.ts";
 
 export type RegisteredCommand = {
@@ -42,8 +42,44 @@ export class CommandRegistry {
 	}
 }
 
+const MAX_SUBCOMMANDS = 25;
+const MAX_OPTIONS = 25;
+
 function validate(feature: string, def: CommandDefinition): void {
 	const where = `command "${def.name}" in feature "${feature}"`;
+	validateCommon(where, def);
+	if (!isGroup(def)) {
+		validateRunnable(where, def);
+		return;
+	}
+	const subs: unknown = def.subcommands;
+	if (!Array.isArray(subs) || subs.length < 1 || subs.length > MAX_SUBCOMMANDS) {
+		throw new RegistryError(`Subcommands must number 1–${MAX_SUBCOMMANDS} for ${where}`);
+	}
+	if (def.handler !== undefined || def.options !== undefined) {
+		throw new RegistryError(`A command with subcommands can't have a handler or options: ${where}`);
+	}
+	const seen = new Set<string>();
+	for (const sub of def.subcommands) {
+		const subWhere = `subcommand "${sub.name}" of ${where}`;
+		validateCommon(subWhere, sub);
+		validateRunnable(subWhere, sub);
+		if (seen.has(sub.name)) throw new RegistryError(`Duplicate ${subWhere}`);
+		seen.add(sub.name);
+		if (tierRank(sub.access.minTier) < tierRank(def.access.minTier)) {
+			throw new RegistryError(`${subWhere} can't be open to a lower tier than its command`);
+		}
+		const allowed = def.access.contexts;
+		if (allowed && !sub.access.contexts?.every((c) => allowed.includes(c))) {
+			throw new RegistryError(`${subWhere} can't be allowed in more contexts than its command`);
+		}
+	}
+}
+
+function validateCommon(
+	where: string,
+	def: Pick<CommandDefinition, "name" | "description" | "access">,
+) {
 	if (!NAME_PATTERN.test(def.name)) throw new RegistryError(`Invalid name for ${where}`);
 	if (def.description.length < 1 || def.description.length > 100) {
 		throw new RegistryError(`Description must be 1–100 characters for ${where}`);
@@ -54,7 +90,13 @@ function validate(feature: string, def: CommandDefinition): void {
 	if (!TIERS.includes(minTier as Tier)) {
 		throw new RegistryError(`Missing or invalid access.minTier for ${where}`);
 	}
+}
+
+function validateRunnable(where: string, def: SubcommandDefinition): void {
 	if (typeof def.handler !== "function") throw new RegistryError(`Missing handler for ${where}`);
+	if ((def.options?.length ?? 0) > MAX_OPTIONS) {
+		throw new RegistryError(`At most ${MAX_OPTIONS} options allowed for ${where}`);
+	}
 
 	const seen = new Set<string>();
 	let optionalSeen = false;

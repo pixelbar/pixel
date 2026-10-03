@@ -52,11 +52,12 @@ describe("buildCore", () => {
 		[IDS.admin, true],
 		[IDS.member, false],
 		[IDS.guest, false],
-	])("/admin for %s → allowed=%s", async (userId, allowed) => {
+	])("/admin status for %s → allowed=%s", async (userId, allowed) => {
 		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
 		const result = await dispatcher.dispatch({
 			actor: actor({ userId }),
 			command: "admin",
+			subcommand: "status",
 			args: {},
 		});
 		if (allowed) expect(result.reply.embeds?.[0]?.title).toBe("Pixel status");
