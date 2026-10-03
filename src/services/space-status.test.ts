@@ -215,7 +215,23 @@ describe("tracking changes", () => {
 		await service.checkNow();
 		const at = advance(1000);
 		await service.checkNow();
-		expect(changes).toEqual([{ from: "closed", to: "open", at }]);
+		expect(changes).toEqual([{ from: "closed", to: "open", at, previousSince: null }]);
+	});
+
+	it("tells listeners when the state it changed from began, if it saw that", async () => {
+		const { service, fetch, advance } = setup();
+		const changes: SpaceChange[] = [];
+		service.onChange((c) => changes.push(c));
+		fetch.json(open(false)).json(open(true)).json(open(false));
+		await service.checkNow();
+		const openedAt = advance(60_000);
+		await service.checkNow();
+		const closedAt = advance(3 * 3_600_000);
+		await service.checkNow();
+		expect(changes).toEqual([
+			{ from: "closed", to: "open", at: openedAt, previousSince: null },
+			{ from: "open", to: "closed", at: closedAt, previousSince: openedAt },
+		]);
 	});
 
 	it("stops notifying after unsubscribe", async () => {
@@ -256,6 +272,16 @@ describe("failure reporting", () => {
 		expect(String(reported)).toMatch(/3 times in a row/);
 	});
 
+	it("by default reports after 10 failures in a row: about 5 minutes at the default interval", async () => {
+		const { service, fetch, reportError } = setup();
+		for (let i = 0; i < 12; i++) fetch.fail(new Error("down"));
+		for (let i = 0; i < 9; i++) await service.checkNow().catch(() => {});
+		expect(reportError).not.toHaveBeenCalled();
+		await service.checkNow().catch(() => {});
+		expect(reportError).toHaveBeenCalledOnce();
+		expect(String(reportError.mock.calls[0]?.[0])).toMatch(/10 times in a row/);
+	});
+
 	it("resets after a success, so a later outage is reported again", async () => {
 		const { service, fetch, reportError } = setup({ failureThreshold: 2 });
 		fetch
@@ -271,6 +297,38 @@ describe("failure reporting", () => {
 
 describe("background polling", () => {
 	afterEach(() => vi.useRealTimers());
+
+	it("polls every 30 seconds by default, and says so", async () => {
+		vi.useFakeTimers();
+		const fetch = fakeFetch();
+		for (let i = 0; i < 4; i++) fetch.json(open(true));
+		const service = new SpaceApiStatus({
+			url: URL,
+			logger: silentLogger,
+			reportError: vi.fn(),
+			fetch: fetch.fn,
+		});
+		expect(service.pollIntervalMs).toBe(30_000);
+
+		service.start();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(fetch.fn).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(29_999);
+		expect(fetch.fn).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(fetch.fn).toHaveBeenCalledTimes(2);
+		service.stop();
+	});
+
+	it("reports the interval it was given", () => {
+		const service = new SpaceApiStatus({
+			url: URL,
+			logger: silentLogger,
+			reportError: vi.fn(),
+			pollIntervalMs: 1234,
+		});
+		expect(service.pollIntervalMs).toBe(1234);
+	});
 
 	it("checks immediately and then on every interval until stopped", async () => {
 		vi.useFakeTimers();
@@ -359,7 +417,7 @@ describe("persistence", () => {
 		await service.checkNow();
 		const at = advance(60_000);
 		await service.checkNow();
-		expect(changes).toEqual([{ from: "open", to: "closed", at }]);
+		expect(changes).toEqual([{ from: "open", to: "closed", at, previousSince: earlier }]);
 		expect(store.saves).toEqual([{ state: "closed", since: at }]);
 	});
 

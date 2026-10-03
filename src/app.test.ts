@@ -29,7 +29,12 @@ describe("buildCore", () => {
 			healthPort: 0,
 			sentryDsn: undefined,
 			spaceApiUrl: "https://spaceapi.example/",
-			discord: { token: "x", appId: "100000000000000010", guildId: "100000000000000020" },
+			discord: {
+				token: "x",
+				appId: "100000000000000010",
+				guildId: "100000000000000020",
+				announce: { liveChannelId: undefined, timelineChannelId: undefined },
+			},
 		};
 	});
 

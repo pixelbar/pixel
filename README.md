@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`. `/events`, `/info` and open/closed announcements come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin`, plus open/closed announcements in Discord. `/events` and `/info` come next. See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md).
 
 ## Stack
 
@@ -51,6 +51,17 @@ Never develop against the production bot.
 3. Create a test server, invite the bot with the `bot` and `applications.commands` scopes, and put the server ID in `DISCORD_GUILD_ID`.
 4. Turn on Developer Mode in Discord, right-click yourself, choose **Copy User ID**, and add yourself to `config/admins.yaml`.
 
+### Announcements
+
+Pixel can post when Pixelbar opens or closes, in two styles. Each has its own channel setting, you can use either, both or neither, and they can be the same channel:
+
+- **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
+- **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
+
+A change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
+
+Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
+
 ### Access lists
 
 Tiers come from two YAML files. **They are gitignored, because they contain personal data.**
@@ -71,8 +82,10 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_TOKEN`               | Bot token                                          |
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
+| `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` | Optional. Channel for the **live** style: one post per opening, edited to "closed" when the space closes |
+| `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Where Pixel remembers when the space last changed (`space.state`). Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Where Pixel keeps small bits of state (`space.state`, `announcements.state`). Defaults to `data/` |
 | `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
 
 ## Common commands

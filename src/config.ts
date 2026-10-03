@@ -25,6 +25,8 @@ const envSchema = z.object({
 	DISCORD_TOKEN: z.string().min(1),
 	DISCORD_APP_ID: snowflake,
 	DISCORD_GUILD_ID: snowflake,
+	DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
+	DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
 });
 
 export type Config = {
@@ -37,7 +39,17 @@ export type Config = {
 	healthPort: number;
 	sentryDsn: string | undefined;
 	spaceApiUrl: string;
-	discord: { token: string; appId: string; guildId: string };
+	discord: {
+		token: string;
+		appId: string;
+		guildId: string;
+		announce: {
+			/** One post per opening, edited to "closed" when the space closes. */
+			liveChannelId: string | undefined;
+			/** A new post for every open and every close; never edited. */
+			timelineChannelId: string | undefined;
+		};
+	};
 };
 
 export class ConfigError extends Error {
@@ -62,7 +74,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
 		spaceApiUrl: e.SPACEAPI_URL,
-		discord: { token: e.DISCORD_TOKEN, appId: e.DISCORD_APP_ID, guildId: e.DISCORD_GUILD_ID },
+		discord: {
+			token: e.DISCORD_TOKEN,
+			appId: e.DISCORD_APP_ID,
+			guildId: e.DISCORD_GUILD_ID,
+			announce: {
+				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
+				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,
+			},
+		},
 	};
 }
 

@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { Announcer } from "./core/announcer.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
+import type { Feature } from "./core/feature.ts";
 import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
@@ -17,6 +19,10 @@ export type Core = {
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
 	spaceStatus: SpaceStatus;
+	/** Platform adapters register their publishers here once they're ready. */
+	announcer: Announcer;
+	/** Not started here — the bot calls `startFeatures()` once the adapters are ready. */
+	features: readonly Feature[];
 };
 
 export type BuildCoreOptions = {
@@ -46,12 +52,16 @@ export function buildCore(
 		...(options.fetch ? { fetch: options.fetch } : {}),
 	});
 
+	const announcer = new Announcer({ logger, reporter });
+
 	const registry = new CommandRegistry();
 	const features = buildFeatures({
 		version: config.version,
 		startedAt: options.startedAt ?? new Date(),
 		access,
 		spaceStatus,
+		announcer,
+		logger,
 	});
 	for (const feature of features) registry.register(feature);
 
@@ -63,5 +73,5 @@ export function buildCore(
 		reporter,
 	});
 
-	return { access, registry, dispatcher, spaceStatus };
+	return { access, registry, dispatcher, spaceStatus, announcer, features };
 }

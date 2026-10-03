@@ -14,7 +14,7 @@
 
 | In scope                                                    | Not yet                                             |
 | ----------------------------------------------------------- | --------------------------------------------------- |
-| Core: commands, access, dispatcher, registry, announcer, scheduler | Telegram, Mastodon, other adapters           |
+| Core: commands, access, dispatcher, registry, announcer     | Telegram, Mastodon, other adapters                  |
 | Discord adapter (interactive + publisher + calendar)        | Account linking across platforms                    |
 | Tiers from `config/admins.yaml` and `config/members.yaml`   | Discord role sync                                   |
 | SpaceAPI status, Discord events, info, help, whoami         | A database (none is needed until linking or grants) |
@@ -34,7 +34,7 @@ Pixel follows a **ports-and-adapters** design. Adapters translate between a plat
    │ adapters/discord                         │   ┌───────────────────┐
    │  interactions → PlatformActor + command  │   │ adapters/telegram │ (interactive)
    │  Reply → Discord messages                │   │ adapters/mastodon │ (publisher only)
-   │  Publisher (announcement channel)        │   └───────────────────┘
+   │  Publishers (live + timeline channels)   │   └───────────────────┘
    │  CalendarPort (guild scheduled events)   │
    └───────┬──────────────────────────▲───────┘
            │                          │ Announcement
@@ -43,7 +43,7 @@ Pixel follows a **ports-and-adapters** design. Adapters translate between a plat
    │ core                                     │
    │  identity (TierSources) → dispatcher     │
    │  (rate limit → authorize → handler)      │
-   │  registry · announcer · scheduler        │
+   │  registry · announcer                    │
    │  errors · ports                          │
    └───────────────────┬──────────────────────┘
                        ▼
@@ -105,20 +105,26 @@ type Reply = {
   private?: boolean;             // Discord: ephemeral
 };
 
-// core/announcer.ts
-type Announcement = {
-  kind: string;                  // "space.status", …
-  text: string;                  // plain text, short (fits any platform)
-  url?: string;
-  embed?: Embed;
+// core/announcement.ts: what features announce and publishers receive
+type Announcement = SpaceStatusAnnouncement;   // a union that grows with each new kind
+type SpaceStatusAnnouncement = {
+  kind: "space.status";
+  state: "open" | "closed";
+  at: Date;                      // when Pixel saw the change
+  openedAt: Date | null;         // for "closed": when this stretch of being open began, if known
+  text: string;                  // short plain text for platforms without rich formatting
 };
-type Publisher = { id: string; publish(a: Announcement): Promise<void> };
+type Publisher = {
+  id: string;                    // "discord:live", "discord:timeline", …
+  publish(a: Announcement): Promise<void>;
+  reconcile?(s: SpaceSnapshot): Promise<void>;   // at startup: fix stale posts, never post new ones
+};
 
 // core/feature.ts
 type Feature = {
   name: string;
   commands?: CommandDefinition[];
-  jobs?: ScheduledJob[];         // { name, everyMs, run(ctx) }
+  start?: () => Stop;            // background work, started once the adapters are ready
 };
 ```
 
@@ -135,8 +141,8 @@ type Feature = {
   6. call the handler
   7. map errors to replies, reporting unexpected ones to Sentry with the command's tags
   8. log every executed command as an action (`command.executed`), recording who did it (ID, display name, handle), their tier, the outcome and the duration
-- **Announcer** sends each announcement kind to the publishers configured for it (`ANNOUNCE_ROUTES`). One publisher failing doesn't block the others, and failures go to Sentry. Phase 1 has one publisher: a Discord channel.
-- **Scheduler** runs simple interval jobs in the process, for example polling SpaceAPI. Jobs report to Sentry Cron Monitors.
+- **Announcer** sends each announcement to every registered publisher. Adapters register their publishers once they're ready. One publisher failing never blocks the others and never throws: the failure is logged and reported to Sentry, tagged `announcer:<publisher id>`. Calls run one at a time, in order, so a startup `reconcile` can't interleave with an announcement. There's deliberately no routing table yet: with one platform it would be speculative, and routing becomes config once a second publisher exists.
+- **Background work:** a feature can declare `start()`. The bot calls every feature's `start()` once Discord is ready, so the publishers already exist, and calls the returned stop function on shutdown. There's deliberately no generic scheduler yet: the status service already polls on its own, and one will make sense when a second job appears (such as the nightly role check in #14).
 - **Rate limiter** keeps an in-memory token bucket for each user. That is enough because there is a single replica.
 - **Errors:** `UserFacingError` is shown to the user and not reported. Anything else is reported to Sentry, and the user gets a generic reply. Errors outside commands, from background work or platform clients, go through `ErrorReporter.captureBackground` and are tagged with their source.
 
@@ -153,7 +159,11 @@ type Feature = {
 - **Visibility can't change after the first response.** If the first response was public but the result is private, Pixel deletes it and sends the result as an ephemeral follow-up. A private result is never shown publicly.
 - **Accents:** `Embed.accent` sets the colour of the embed's side bar.
 - **Registration:** `just register` runs a script that builds the command list from the registry and sends it with a REST PUT to the guild. Commands are registered to the guild only, because Pixel serves just one, so updates show up instantly.
-- **Publisher:** posts announcements to `DISCORD_ANNOUNCE_CHANNEL_ID`.
+- **Publishers:** two styles of space announcement, each with its own channel setting, and either, both or neither can be on. They can also be the same channel. All posts are embeds with mentions disabled, and times use Discord's timestamp markup, so everyone sees them in their own time zone.
+  - **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited, so a status-only channel reads as a log of exactly when the space opened and closed. "🟢 Pixelbar opened" and "🔴 Pixelbar closed", with how long it was open if known.
+  - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a new "🟢 Pixelbar is open" post; closing **edits that same post** to "🔴 Pixelbar is closed: was open from … to …". Opening again makes another new post. A closed post is never turned back into an open one, so nobody is confused by a message that flips back.
+  - **Finding the open post to edit.** Pixel uses the message ID it remembered in `announcements.state` (so it works even if the post is buried in a busy channel), and also looks through its own recent messages in the channel (so it still works if the remembered ID was lost, for example after a deploy, and a deleted post simply isn't found). Only posts carrying the live footer count, so a `/status` reply can't be mistaken for one. Pixel keeps the invariant that at most one post, the newest, says "open".
+  - **Startup checks.** For each channel, Pixel checks it exists, is a text channel in the Pixelbar server, and that the bot has the permissions it needs: View Channel, Send Messages and Embed Links, plus Read Message History for the live style. If not, that publisher stays off with a clear log and a Sentry report, and everything else keeps working. No new Discord intents are needed.
 - **CalendarPort:** lists the guild's scheduled events through REST, with a short cache.
 
 ## Services and ports
@@ -161,7 +171,7 @@ type Feature = {
 | Service / port   | Purpose                              | Implementation                                                    |
 | ---------------- | ------------------------------------ | ----------------------------------------------------------------- |
 | `accessConfig`   | Admin and member lists               | Loads and validates the two YAML files at startup (`ConfigTierSource`) |
-| `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 60 s tracks when the state changed, and `onChange` fires on open↔closed flips. The last state and its time are saved to `space.state` and restored on startup (below). After 5 consecutive failures it reports once, and it logs when SpaceAPI recovers |
+| `spaceStatus`    | Is the space open?                   | `services/space-status.ts`. `checkNow()` asks `SPACEAPI_URL` (SpaceAPI v0.13) live, with a 5 s timeout, a size cap and validation. Overlapping checks share one request. Background polling every 30 s tracks when the state changed, and `onChange` fires on open↔closed flips, with how long the previous state lasted. The last state and its time are saved to `space.state` and restored on startup (below). After 10 consecutive failures (about 5 minutes) it reports once, and it logs when SpaceAPI recovers |
 | `CalendarPort`   | Upcoming events                      | Implemented by the Discord adapter                                |
 | `knowledge`      | Info topics                          | Markdown files in `content/`                                      |
 
@@ -169,7 +179,7 @@ Pixelbar's SpaceAPI response has `state.open` but no `lastchange`, so Pixel reco
 
 On startup the saved state is trusted only once a live reading agrees with it:
 - **Same state:** the saved "since" is kept, so a restart doesn't lose it.
-- **Different state:** the space changed while Pixel was down, so when is unknowable. "Since" is cleared and **no change event fires**, so a restart never announces a stale change (see #3).
+- **Different state:** the space changed while Pixel was down, so when is unknowable. "Since" is cleared and **no change event fires**, so a restart never announces a stale change. A live post that still says "open" is corrected at startup (see Announcing changes).
 - **Missing, malformed or unreadable file:** Pixel starts fresh and logs a warning. Unlike the access lists this is not fail-closed: the file only affects the "open for 2h" text, so it must never stop the bot. A saved time in the future (clock change or hand-edit) is ignored.
 - **Can't write:** checks carry on, and the failure is logged, and reported to Sentry once.
 
@@ -184,11 +194,20 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `whoami`  | `/whoami`                    | guest  | ✅    | Private reply: your ID and tier                     |
 | `admin`   | `/admin`                     | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
-| `status`  | job: announce changes        | n/a    |       | Sent through the announcer to the Discord channel   |
+| `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  |       | The next few Discord scheduled events               |
 | `info`    | `/info <topic>`              | guest  |       | Address, membership, contact (from `content/`)      |
 
-The announcer and scheduler arrive with the announce-changes job (#3), and the CalendarPort with `events` (#4).
+The CalendarPort arrives with `events` (#4).
+
+### Announcing changes
+
+When the space opens or closes, the `status` feature announces it through the announcer (`features/status/announce.ts`):
+- **Never on startup.** The status service only reports changes it saw, so starting up, or a change while Pixel was down, announces nothing.
+- **Only once it holds.** A change is announced once the new state has been seen on 2 polls in a row (`READINGS_TO_CONFIRM`), so about 30–60 s after it happens. If it flips back before that, nothing is posted, so flicking the switch doesn't flood the channel.
+- **If SpaceAPI is unreachable while confirming,** Pixel keeps trying each interval for up to about 5 minutes, then gives up rather than guessing.
+- **At most once.** A change is never announced twice, even if every publisher failed.
+- **At startup, stale posts are corrected, not re-announced.** Each publisher gets the current state (`Publisher.reconcile`) once SpaceAPI answers. The live style uses it to turn a leftover "open" post into "closed" (without a closing time, since Pixel didn't see it) when the space closed while Pixel was down. It never posts anything new.
 
 There are no member-only features yet. The first one will be the real test of the access layer, but the plumbing and tests come first.
 
@@ -212,21 +231,18 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`                  |
-| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state, e.g. `space.state`; gitignored |
+| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state (`space.state`, `announcements.state`); gitignored |
 | `DISCORD_TOKEN`               | yes    |                                                |
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |
+| `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` |   | Optional. Live style: one post per opening, edited to "closed" |
+| `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |
 | `SPACEAPI_URL`                |        | Default `https://spaceapi.pixelbar.nl/`; http(s) only |
 
-Planned, arriving with announcements (#3):
-
-| Variable                      | Notes                                          |
-| ----------------------------- | ---------------------------------------------- |
-| `DISCORD_ANNOUNCE_CHANNEL_ID` | Optional. If unset, there are no announcements |
-| `ANNOUNCE_ROUTES`             | JSON mapping each kind to publisher IDs, default `{"space.status":["discord"]}` |
+If neither announcement channel is set, nothing is announced. Both can be the same channel.
 
 Per-platform settings for later adapters (Telegram tokens, the Mastodon instance and account) will come from configuration when those adapters are built. No account is hard-coded.
 
@@ -239,7 +255,7 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. That means max replicas = 1, and deploys should use a stop-then-start strategy, or a lock once a database exists.
 - **Images:** built by GitHub Actions and pushed to `ghcr.io/pixelbar/pixel:<sha>`. The images contain no secrets and no access lists.
 - **Secrets and access files:** Key Vault. The two YAML files are stored as secrets and mounted into the container as files.
-- **Runtime state:** the container writes `space.state` to `/app/data`. A container's own filesystem is thrown away on every deploy, so without a mounted volume (for example Azure Files) the "open for 2h" detail resets after each deploy. Pixel works fine either way, so a volume is optional (#9).
+- **Runtime state:** the container writes `space.state` and `announcements.state` to `/app/data`. A container's own filesystem is thrown away on every deploy, so without a mounted volume (for example Azure Files) the "open for 2h" detail resets after each deploy, and the live style loses its remembered post and relies on searching the channel's recent messages instead. Pixel works fine either way, so a volume is optional (#9).
 - **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
 - **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC), `infra/modules/pixel`, and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state.
 - **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. Actions are pinned to commit SHAs, and the workflow can only read the repo.
@@ -248,13 +264,13 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 ## Adding a platform (later)
 
 - **Interactive** (for example Telegram): create `src/adapters/telegram/`. It builds a `PlatformActor`, calls the dispatcher and renders `Reply`. Telegram users get tiers only after account linking, which brings in Postgres (see the identity doc).
-- **Outbound only** (for example Mastodon): implement `Publisher`, configure the instance and account through environment variables, and add the publisher's ID to `ANNOUNCE_ROUTES`. Features do not change.
+- **Outbound only** (for example Mastodon): implement `Publisher`, configure the instance and account through environment variables, and register it with the announcer. Features do not change. When there are several publishers, add per-kind routing as config.
 
 ## Open questions
 
 - Where should private change history for `admins.yaml` and `members.yaml` live (a private repo, or Key Vault versions)?
 - Which Azure subscription and which Sentry org? (Needed once infrastructure work starts.)
-- Which channel should status announcements go to?
+- Which channels should the live and timeline announcements go to in the real server?
 
 ## Decision log
 

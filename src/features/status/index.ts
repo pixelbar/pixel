@@ -1,18 +1,22 @@
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
-import type { SpaceReading, SpaceStatus } from "../../services/space-status.ts";
+import type { SpaceReading } from "../../services/space-status.ts";
+import { type SpaceAnnouncementsDeps, startSpaceAnnouncements } from "./announce.ts";
 
-export type StatusDeps = {
-	spaceStatus: Pick<SpaceStatus, "checkNow">;
+export type StatusDeps = SpaceAnnouncementsDeps & {
 	now?: () => Date;
 };
 
-/** `/status`: is Pixelbar open right now? Looked up live from SpaceAPI. */
+/**
+ * `/status`: is Pixelbar open right now? Looked up live from SpaceAPI.
+ * Also announces when the space opens or closes (see `announce.ts`).
+ */
 export function createStatusFeature(deps: StatusDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	return {
 		name: "status",
+		start: () => startSpaceAnnouncements(deps),
 		commands: [
 			{
 				name: "status",

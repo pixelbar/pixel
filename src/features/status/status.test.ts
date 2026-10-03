@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CommandDefinition } from "../../core/command.ts";
+import { silentLogger } from "../../core/logger.ts";
 import { SpaceApiError, type SpaceReading } from "../../services/space-status.ts";
 import { context } from "../../testing/fixtures.ts";
 import { createStatusFeature } from "./index.ts";
@@ -7,7 +8,12 @@ import { createStatusFeature } from "./index.ts";
 const NOW = new Date("2026-10-03T20:00:00Z");
 
 function statusCommand(checkNow: () => Promise<SpaceReading>): CommandDefinition {
-	const command = createStatusFeature({ spaceStatus: { checkNow }, now: () => NOW }).commands?.[0];
+	const command = createStatusFeature({
+		spaceStatus: { checkNow, onChange: () => () => {}, pollIntervalMs: 30_000 },
+		announcer: { announce: async () => {}, reconcile: async () => {} },
+		logger: silentLogger,
+		now: () => NOW,
+	}).commands?.[0];
 	if (!command) throw new Error("no status command");
 	return command;
 }

@@ -42,7 +42,7 @@ src/
   config.ts             # zod-validated env; the ONLY place that reads process.env
   testing/              # test fixtures (fake IDs, contexts); never imported by app code
   core/                 # platform-agnostic: access, command, dispatcher, registry,
-                        #   identity, announcer, scheduler, errors, ports/
+                        #   identity, announcer, announcement types, errors, ports/
   features/<name>/      # one folder per feature; depends only on core/ and services/
   services/             # access-config, spaceapi, knowledge
   adapters/discord/     # interactive + publisher + CalendarPort
@@ -74,7 +74,8 @@ docs/                   # architecture, identity, ADRs
   2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register` so Discord sees it.
   3. Choose the lowest tier that is safe.
   4. Add tests.
-- **Announcements:** features call `services.announcer.announce({ kind, text, … })`. They never call a publisher directly. Routing is config. Never hard-code platform accounts or handles.
+- **Announcements:** features hand an announcement (a typed kind from `core/announcement.ts`) to the `Announcer` and never call a publisher or a platform directly. Publishers decide how each kind looks on their platform. Never hard-code platform accounts, handles or channels: they come from config. Announcement text must be safe to show anywhere, and Discord posts must keep mentions disabled.
+- **Background work:** a feature that needs it declares `start()`, which returns a stop function. Don't start timers or listeners at import time or in a factory. Anything that runs from a timer must catch its own failures so none escapes as an unhandled rejection.
 - **Config:** a new environment variable must be added to `config.ts`, `.env.example` and the architecture doc's config table.
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.
 - **Types:** `strict`, no `any` (use `unknown` and narrow it). Prefer `type` over `interface`.
