@@ -12,7 +12,7 @@ A lighter option if you can't commit to full membership: access when members are
 **How to join as a member**
 1. Visit the space and meet the members.
 2. Read the house rules (`/info topic:rules`).
-3. Email the membership form to bestuur@pixelbar.nl.
+3. Email the membership form to [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl).
 4. Set up a monthly bank transfer. Membership starts after your first payment.
 
 **Friends** email the board that they'd like to join, with their nickname, and pay by bank transfer.

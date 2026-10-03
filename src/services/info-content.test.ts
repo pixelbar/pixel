@@ -344,6 +344,24 @@ describe("the real content/info folder", () => {
 		expect(byId.membership).toContain("https://pixelbar.nl/becomingamember/");
 	});
 
+	it("makes Mastodon, Twitter and the board's email links", () => {
+		const contact = real().find((t) => t.id === "contact")?.body;
+		expect(contact).toContain("[@pixelbar@hsnl.social](https://hsnl.social/@pixelbar)");
+		expect(contact).toContain("[@pixelbar010](https://x.com/pixelbar010)");
+		expect(contact).toContain("[bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl)");
+	});
+
+	it("never shows a Pixelbar email address as bare text, only as a link", () => {
+		for (const topicFound of real()) {
+			const withoutLinks = topicFound.body.replace(/\[([^\]]+@pixelbar\.nl)\]\(mailto:\1\)/g, "");
+			expect(withoutLinks, `${topicFound.id} has a bare email address`).not.toMatch(
+				/[\w.+-]+@pixelbar\.nl/,
+			);
+		}
+		const membership = real().find((t) => t.id === "membership")?.body;
+		expect(membership).toContain("[bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl)");
+	});
+
 	it("tells people when it's open, pointing at the announcements channel and its weekly poll", () => {
 		const visiting = (id?: string) => real(id).find((t) => t.id === "visiting")?.body;
 		const expected = (channel: string) =>
