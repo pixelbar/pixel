@@ -10,6 +10,23 @@ import { type Respondable, respond } from "./respond.ts";
  * decisions here (guild allow-list, actor construction) are unit-testable.
  */
 
+/**
+ * Who is behind an interaction, by their immutable Discord ID. The names are for
+ * display and logs only, never for authorisation.
+ */
+export function discordActor(
+	user: { id: string; displayName: string; username: string },
+	displayName?: string,
+): PlatformActor {
+	return {
+		platform: "discord",
+		userId: user.id,
+		displayName: displayName ?? user.displayName,
+		handle: user.username,
+		chat: "group",
+	};
+}
+
 export const WRONG_GUILD_MESSAGE = "Pixel only works in the Pixelbar Discord server.";
 
 /** The parts of a ChatInputCommandInteraction the command handler reads. */
@@ -40,13 +57,7 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 			await interaction.reply(renderReply({ text: WRONG_GUILD_MESSAGE }, true));
 			return;
 		}
-		const actor: PlatformActor = {
-			platform: "discord",
-			userId: interaction.user.id,
-			displayName: displayName ?? interaction.user.displayName,
-			handle: interaction.user.username,
-			chat: "group",
-		};
+		const actor = discordActor(interaction.user, displayName);
 		const { subgroup, subcommand, args, users } = parseOptions(interaction.options.data);
 		await respond(interaction, {
 			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName, subcommand, subgroup),
@@ -87,13 +98,7 @@ export function createAutocompleteHandler({ guildId, dispatcher }: AutocompleteH
 			await interaction.respond([]);
 			return;
 		}
-		const actor: PlatformActor = {
-			platform: "discord",
-			userId: interaction.user.id,
-			displayName: displayName ?? interaction.user.displayName,
-			handle: interaction.user.username,
-			chat: "group",
-		};
+		const actor = discordActor(interaction.user, displayName);
 		const { subgroup, subcommand, focused, args } = parseAutocomplete(interaction.options.data);
 		const choices = focused
 			? await dispatcher.suggest({

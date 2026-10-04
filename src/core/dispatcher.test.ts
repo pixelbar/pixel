@@ -6,7 +6,7 @@ import type { CommandDefinition, ResolvedUser, SuggestFn } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
 import { UserFacingError } from "./errors.ts";
 import { IdentityService } from "./identity.ts";
-import type { Logger } from "./logger.ts";
+import { type Logger, silentLogger } from "./logger.ts";
 import type { ErrorReporter } from "./ports/error-reporter.ts";
 import { RateLimiter } from "./rate-limit.ts";
 import { CommandRegistry } from "./registry.ts";
@@ -1161,5 +1161,167 @@ describe("suggest", () => {
 		expect(validateArgs(def, { device: "anything-typed-by-hand" }).args).toEqual({
 			device: "anything-typed-by-hand",
 		});
+	});
+});
+
+describe("tracing what runs to the person who ran it", () => {
+	type Context = Parameters<NonNullable<ErrorReporter["withContext"]>>[0];
+
+	/** A reporter whose withContext records what it was given, and whether work was running inside it. */
+	function scoped() {
+		const seen: { command: string; feature: string; userId: string; tier: string }[] = [];
+		let inside = false;
+		const withContext: NonNullable<ErrorReporter["withContext"]> = async (
+			context: Context,
+			run,
+		) => {
+			seen.push({
+				command: context.command,
+				feature: context.feature,
+				userId: context.principal.userId,
+				tier: context.principal.tier,
+			});
+			inside = true;
+			try {
+				return await run();
+			} finally {
+				inside = false;
+			}
+		};
+		return { seen, withContext, isInside: () => inside };
+	}
+
+	function build(
+		commands: CommandDefinition[],
+		withContext?: ErrorReporter["withContext"],
+		capture: ErrorReporter["capture"] = vi.fn(),
+	) {
+		const registry = new CommandRegistry();
+		registry.register({ name: "feat", commands });
+		const reporter: ErrorReporter = {
+			capture,
+			captureBackground: vi.fn(),
+			breadcrumb: vi.fn(),
+			...(withContext ? { withContext } : {}),
+		};
+		return new Dispatcher({
+			registry,
+			identity: new IdentityService([
+				{ name: "test", tierFor: async (a: PlatformActor) => TIERS_BY_ID[a.userId] ?? null },
+			]),
+			rateLimiter: new RateLimiter({ capacity: 100, refillPerSecond: 0, now: () => 0 }),
+			logger: silentLogger,
+			reporter,
+		});
+	}
+
+	it("runs the handler inside the person's context, with the full command name", async () => {
+		const { seen, withContext, isInside } = scoped();
+		let insideHandler = false;
+		const dispatcher = build(
+			[
+				group({
+					name: "ha",
+					subcommands: [
+						subcommand({
+							name: "set",
+							access: { minTier: "member" },
+							handler: async () => {
+								insideHandler = isInside();
+								return { text: "done" };
+							},
+						}),
+					],
+				}),
+			],
+			withContext,
+		);
+		const result = await dispatcher.dispatch({
+			actor: as(IDS.member),
+			command: "ha",
+			subcommand: "set",
+			args: {},
+		});
+		expect(result.reply.text).toBe("done");
+		expect(insideHandler).toBe(true);
+		expect(seen).toEqual([
+			{ command: "ha set", feature: "feat", userId: IDS.member, tier: "member" },
+		]);
+	});
+
+	it("doesn't open a context for a command that is refused, or isn't found", async () => {
+		const { seen, withContext } = scoped();
+		const dispatcher = build(
+			[command({ name: "secret", access: { minTier: "admin" } })],
+			withContext,
+		);
+		await dispatcher.dispatch({ actor: as(IDS.guest), command: "secret", args: {} });
+		await dispatcher.dispatch({ actor: as(IDS.guest), command: "nope", args: {} });
+		expect(seen).toEqual([]);
+	});
+
+	it("runs suggestions inside the person's context too", async () => {
+		const { seen, withContext, isInside } = scoped();
+		let insideSuggest = false;
+		const dispatcher = build(
+			[
+				command({
+					name: "ha",
+					access: { minTier: "member" },
+					options: [
+						{
+							name: "device",
+							description: "d",
+							type: "string",
+							suggest: async () => {
+								insideSuggest = isInside();
+								return [{ name: "lamp", value: "lamp" }];
+							},
+						},
+					],
+				}),
+			],
+			withContext,
+		);
+		const out = await dispatcher.suggest({
+			actor: as(IDS.member),
+			command: "ha",
+			option: "device",
+			typed: "",
+			args: {},
+		});
+		expect(out).toEqual([{ name: "lamp", value: "lamp" }]);
+		expect(insideSuggest).toBe(true);
+		expect(seen).toEqual([{ command: "ha", feature: "feat", userId: IDS.member, tier: "member" }]);
+	});
+
+	it("still reports a failing command with the person, outside that context", async () => {
+		const { withContext } = scoped();
+		const capture = vi.fn<ErrorReporter["capture"]>();
+		const dispatcher = build(
+			[
+				command({
+					name: "boom",
+					handler: async () => {
+						throw new Error("bug");
+					},
+				}),
+			],
+			withContext,
+			capture,
+		);
+		const result = await dispatcher.dispatch({ actor: as(IDS.member), command: "boom", args: {} });
+		expect(result.reply.text).toBe(MESSAGES.internalError);
+		expect(capture).toHaveBeenCalledTimes(1);
+		expect(capture.mock.calls[0]?.[1]).toMatchObject({
+			command: "boom",
+			principal: { userId: IDS.member },
+		});
+	});
+
+	it("works as before with a reporter that can't scope", async () => {
+		const dispatcher = build([command({ name: "hi", handler: async () => ({ text: "hello" }) })]);
+		const result = await dispatcher.dispatch({ actor: as(IDS.guest), command: "hi", args: {} });
+		expect(result.reply.text).toBe("hello");
 	});
 });

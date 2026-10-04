@@ -187,13 +187,18 @@ export class Dispatcher {
 					private: placeholder.private ?? definition.private ?? false,
 				});
 			}
-			const reply = await definition.handler({
-				args: valid.args,
-				users: valid.users,
-				principal,
-				logger: log,
-				availableCommands: this.#available(principal),
-			});
+			const run = () =>
+				definition.handler({
+					args: valid.args,
+					users: valid.users,
+					principal,
+					logger: log,
+					availableCommands: this.#available(principal),
+				});
+			// Whatever is reported while the command runs is traced to the person who ran it.
+			const reply = await (reporter.withContext
+				? reporter.withContext({ command, feature, principal }, run)
+				: run());
 			executed("ok");
 			return { reply, private: reply.private ?? definition.private ?? false };
 		} catch (error) {
@@ -259,8 +264,12 @@ export class Dispatcher {
 
 		try {
 			const timeoutMs = this.#deps.suggestTimeoutMs ?? DEFAULT_SUGGEST_TIMEOUT_MS;
+			const run = () =>
+				suggest({ typed: request.typed, args: request.args, principal, logger: log });
 			const suggestions = await withTimeout(
-				suggest({ typed: request.typed, args: request.args, principal, logger: log }),
+				reporter.withContext
+					? reporter.withContext({ command, feature: found.feature, principal }, run)
+					: run(),
 				timeoutMs,
 			);
 			return cleanSuggestions(suggestions, option.type === "integer");

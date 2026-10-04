@@ -50,7 +50,7 @@ async function main(): Promise<void> {
 		calendar,
 		roles,
 		roleMapping: config.discord.roles,
-		reportError: (error) => reporter.captureBackground(error, "discord"),
+		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
 		},

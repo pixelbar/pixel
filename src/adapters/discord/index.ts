@@ -1,4 +1,5 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
+import { actorLogFields, type PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
 import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
@@ -19,7 +20,12 @@ import {
 } from "./announce-publishers.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
-import { createAutocompleteHandler, createCommandHandler, createGuildGuard } from "./handlers.ts";
+import {
+	createAutocompleteHandler,
+	createCommandHandler,
+	createGuildGuard,
+	discordActor,
+} from "./handlers.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
@@ -40,7 +46,7 @@ export type DiscordAdapterDeps = {
 	/** Which Discord role each tier is mirrored to. Unset tiers aren't mirrored. */
 	roleMapping: RoleMapping;
 	/** Reports errors that escape the dispatcher (e.g. Discord API failures). */
-	reportError: (error: unknown) => void;
+	reportError: (error: unknown, actor?: PlatformActor) => void;
 	/** Called once the client is connected and the announcement publishers are registered. */
 	onReady?: () => void;
 };
@@ -163,10 +169,15 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
 		handleCommand(interaction, displayName).catch((error: unknown) => {
 			logger.error(
-				{ err: error, command: interaction.commandName },
+				{
+					err: error,
+					command: interaction.commandName,
+					...actorLogFields(discordActor(interaction.user, displayName)),
+				},
 				"failed to handle interaction",
 			);
-			reportError(error);
+			// Name who it happened to, by ID, so the report can be traced.
+			reportError(error, discordActor(interaction.user, displayName));
 		});
 	});
 

@@ -12,6 +12,7 @@ import {
 	createAutocompleteHandler,
 	createCommandHandler,
 	createGuildGuard,
+	discordActor,
 	type IncomingAutocomplete,
 	type IncomingCommand,
 	WRONG_GUILD_MESSAGE,
@@ -312,5 +313,28 @@ describe("createAutocompleteHandler", () => {
 		await createAutocompleteHandler({ guildId: GUILD, dispatcher })(interaction);
 		expect(dispatcher.suggest).not.toHaveBeenCalled();
 		expect(interaction.respond).toHaveBeenCalledWith([]);
+	});
+});
+
+describe("discordActor", () => {
+	it("identifies the person by their immutable Discord ID, with names for display only", () => {
+		expect(
+			discordActor(
+				{ id: IDS.member, displayName: "Global Name", username: "ada_l" },
+				"Server Nick",
+			),
+		).toEqual({
+			platform: "discord",
+			userId: IDS.member,
+			displayName: "Server Nick",
+			handle: "ada_l",
+			chat: "group",
+		});
+	});
+
+	it("falls back to their global display name when there's no server nickname", () => {
+		expect(
+			discordActor({ id: IDS.member, displayName: "Global Name", username: "ada_l" }).displayName,
+		).toBe("Global Name");
 	});
 });
