@@ -30,7 +30,7 @@ Either way, this only affects what Discord shows. A person you allow who isn't i
 
 ## Hiding other commands from some roles
 
-Commands below admin tier (`/status`, `/events`, `/info`, `/help`, `/ping`, `/whoami`) are visible to everyone by default, which is usually what you want. To hide one from a role:
+Commands below admin tier (`/status`, `/events`, `/info`, `/help`, `/ping`, `/whoami`) are visible to everyone by default, which is usually what you want. `/ha` (Home Assistant) is refused to guests by Pixel, but Discord shows it to everyone unless you hide it, so you may want to hide it from the roles that aren't members or friends. To hide one from a role:
 
 1. **Server Settings → Integrations → Pixel**.
 2. Click the command.

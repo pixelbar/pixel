@@ -31,6 +31,16 @@ export type KindAction = {
 	working?: readonly string[];
 };
 
+/** An attribute worth showing for a kind in `/ha status`. */
+export type KindAttribute = {
+	/** The attribute's key in Home Assistant, such as "brightness". */
+	key: string;
+	/** Shown to people, such as "Brightness". 1–30 characters. */
+	label: string;
+	/** How to show it: "percent255" turns Home Assistant's 0–255 scale into a percentage. */
+	format: "text" | "number" | "percent" | "percent255";
+};
+
 /** The capability that lets someone control a kind. It's registered with the others, so a new kind brings its own. */
 export type KindCapability = {
 	/** Starts with "ha-", such as "ha-lights". Never "ha-admin", which is the general one. */
@@ -47,6 +57,10 @@ export type HomeKind = {
 	domains: readonly string[];
 	/** What may be done with it. Empty means read-only. */
 	actions: readonly KindAction[];
+	/** The attributes `/ha status` shows besides the state. */
+	attributes?: readonly KindAttribute[];
+	/** States worth a warning mark, such as "jammed". "unavailable" and "unknown" always get one. */
+	warnStates?: readonly string[];
 	/**
 	 * The capability that lets someone control this kind (see the capability
 	 * system). Absent for a read-only kind. Acting on a device needs this one or `ha-admin`.
@@ -62,6 +76,7 @@ const WORD = /^[a-z][a-z-]{0,19}$/;
 const DOMAIN = /^[a-z][a-z_]*$/;
 const SERVICE = /^[a-z][a-z_]*$/;
 const STATE = /^[a-z][a-z_]*$/;
+const ATTRIBUTE = /^[a-z][a-z0-9_]*$/;
 
 /**
  * Checks a list of kinds and returns them by name. A mistake here is a bug in the
@@ -79,6 +94,19 @@ export function defineKinds(kinds: readonly HomeKind[]): ReadonlyMap<string, Hom
 		}
 		if (kind.domains.length === 0 || !kind.domains.every((d) => DOMAIN.test(d))) {
 			throw new HomeKindError(`${where} needs one or more valid Home Assistant domains`);
+		}
+		const attributeKeys = new Set<string>();
+		for (const attribute of kind.attributes ?? []) {
+			const at = `attribute "${attribute.key}" of ${where}`;
+			if (!ATTRIBUTE.test(attribute.key)) throw new HomeKindError(`Invalid key for ${at}`);
+			if (attributeKeys.has(attribute.key)) throw new HomeKindError(`Duplicate ${at}`);
+			attributeKeys.add(attribute.key);
+			if (attribute.label.length < 1 || attribute.label.length > 30) {
+				throw new HomeKindError(`Label must be 1–30 characters for ${at}`);
+			}
+		}
+		if (kind.warnStates?.some((s) => !STATE.test(s))) {
+			throw new HomeKindError(`${where} has an invalid warning state`);
 		}
 		const seen = new Set<string>();
 		for (const action of kind.actions) {

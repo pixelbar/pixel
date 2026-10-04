@@ -183,6 +183,35 @@ describe("defineKinds", () => {
 		}
 	});
 
+	it("rejects a malformed attribute or warning state", () => {
+		const attr = (key: string, label = "Level") => ({ key, label, format: "text" as const });
+		expect(() => defineKinds([kind({ attributes: [attr("Bad Key")] })])).toThrow(
+			/Invalid key for attribute/,
+		);
+		expect(() => defineKinds([kind({ attributes: [attr("level"), attr("level")] })])).toThrow(
+			/Duplicate attribute "level"/,
+		);
+		expect(() => defineKinds([kind({ attributes: [attr("level", "")] })])).toThrow(
+			/Label must be 1–30 characters/,
+		);
+		expect(() => defineKinds([kind({ attributes: [attr("level", "x".repeat(31))] })])).toThrow(
+			/Label must be 1–30 characters/,
+		);
+		expect(() => defineKinds([kind({ warnStates: ["Jammed!"] })])).toThrow(/invalid warning state/);
+		expect(() =>
+			defineKinds([kind({ attributes: [attr("level")], warnStates: ["jammed"] })]),
+		).not.toThrow();
+	});
+
+	it("shows what's useful about each built-in kind", () => {
+		expect(HOME_KINDS.get("light")?.attributes?.map((a) => a.key)).toEqual(["brightness"]);
+		expect(HOME_KINDS.get("door")?.warnStates).toEqual(["jammed"]);
+		expect(HOME_KINDS.get("sensor")?.attributes?.map((a) => a.key)).toEqual([
+			"device_class",
+			"battery_level",
+		]);
+	});
+
 	it("rejects two kinds that share a capability", () => {
 		expect(() => defineKinds([kind(), kind({ name: "shade" })])).toThrow(
 			/shares the capability "ha-blinds" with another kind/,
