@@ -300,3 +300,43 @@ describe("CommandRegistry capabilities", () => {
 		).not.toThrow();
 	});
 });
+
+describe("CommandRegistry suggestions", () => {
+	const suggest = async () => [];
+	const stringOption = (extra: object = {}) =>
+		({ name: "device", description: "d", type: "string", ...extra }) as const;
+
+	it("accepts suggestions on string and integer options", () => {
+		expect(() => register(command({ options: [stringOption({ suggest })] }))).not.toThrow();
+		expect(() =>
+			register(command({ options: [{ name: "n", description: "d", type: "integer", suggest }] })),
+		).not.toThrow();
+	});
+
+	it("rejects suggestions together with fixed choices", () => {
+		expect(() =>
+			register(command({ options: [stringOption({ suggest, choices: ["a"] })] })),
+		).toThrow(/both choices and suggestions/);
+	});
+
+	it("rejects a suggest that isn't a function", () => {
+		expect(() => register(command({ options: [stringOption({ suggest: "later" })] }))).toThrow(
+			/isn't a function/,
+		);
+	});
+
+	it.each(["boolean", "user"])("rejects suggestions on a %s option", (type) => {
+		const option = { name: "x", description: "d", type, suggest } as never;
+		expect(() => register(command({ options: [option] }))).toThrow(/Only string and integer/);
+	});
+
+	it("checks options of subcommands and subgroups too", () => {
+		const bad = [stringOption({ suggest, choices: ["a"] })];
+		expect(() => register(group({ subcommands: [subcommand({ options: bad })] }))).toThrow(
+			/both choices and suggestions/,
+		);
+		expect(() =>
+			register(group({ subcommands: [subgroup({ subcommands: [subcommand({ options: bad })] })] })),
+		).toThrow(/both choices and suggestions/);
+	});
+});

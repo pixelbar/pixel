@@ -2,6 +2,7 @@ import { type Access, TIERS, type Tier, tierRank } from "./access.ts";
 import type { CapabilityRegistry } from "./capabilities.ts";
 import {
 	type CommandDefinition,
+	type CommandOption,
 	type GroupCommand,
 	isGroup,
 	isSubgroup,
@@ -163,5 +164,27 @@ function validateRunnable(where: string, def: SubcommandDefinition): void {
 			throw new RegistryError(`Required options must come before optional ones for ${where}`);
 		}
 		if (!option.required) optionalSeen = true;
+		validateSuggest(option, where);
+	}
+}
+
+/** Suggestions are for string and integer options, and never go with fixed choices. */
+function validateSuggest(option: CommandOption, where: string): void {
+	const suggest: unknown = (option as { suggest?: unknown }).suggest;
+	if (suggest === undefined) return;
+	if (typeof suggest !== "function") {
+		throw new RegistryError(
+			`Option "${option.name}" has a suggest that isn't a function for ${where}`,
+		);
+	}
+	if (option.type !== "string" && option.type !== "integer") {
+		throw new RegistryError(
+			`Only string and integer options can have suggestions: "${option.name}" for ${where}`,
+		);
+	}
+	if (option.type === "string" && option.choices !== undefined) {
+		throw new RegistryError(
+			`Option "${option.name}" can't have both choices and suggestions for ${where}`,
+		);
 	}
 }

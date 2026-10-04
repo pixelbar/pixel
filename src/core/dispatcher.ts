@@ -16,12 +16,14 @@ import {
 	type ResolvedUser,
 	type SubcommandDefinition,
 	type SubgroupDefinition,
+	type SuggestFn,
+	type Suggestion,
 } from "./command.ts";
 import { UserFacingError } from "./errors.ts";
 import type { IdentityService } from "./identity.ts";
 import type { Logger } from "./logger.ts";
 import type { ErrorReporter } from "./ports/error-reporter.ts";
-import type { RateLimiter } from "./rate-limit.ts";
+import { RateLimiter } from "./rate-limit.ts";
 import type { CommandRegistry } from "./registry.ts";
 import type { Reply } from "./reply.ts";
 
@@ -36,6 +38,27 @@ export type DispatchRequest = {
 	/** Users picked through `user` options, by option name, as resolved by the adapter. */
 	users?: Readonly<Record<string, ResolvedUser>>;
 };
+
+/** Someone is typing in an option that has live suggestions. */
+export type SuggestRequest = {
+	actor: PlatformActor;
+	command: string;
+	subgroup?: string;
+	subcommand?: string;
+	/** The option being typed. */
+	option: string;
+	/** What has been typed in it so far. */
+	typed: string;
+	/** The other options filled in so far. Unchecked and possibly partial. */
+	args: Args;
+};
+
+/** Discord's limits: 25 suggestions, each name and value at most 100 characters. */
+export const MAX_SUGGESTIONS = 25;
+export const MAX_SUGGESTION_LENGTH = 100;
+
+/** Discord waits 3 seconds for suggestions, so give up a little before that. */
+const DEFAULT_SUGGEST_TIMEOUT_MS = 2500;
 
 export type DispatchResult = {
 	reply: Reply;
@@ -56,6 +79,12 @@ export type DispatcherDeps = {
 	registry: CommandRegistry;
 	identity: IdentityService;
 	rateLimiter: RateLimiter;
+	/**
+	 * Suggestions fire on every keystroke, so they get their own, more generous
+	 * limit and can't use up the budget for real commands.
+	 */
+	suggestRateLimiter?: RateLimiter;
+	suggestTimeoutMs?: number;
 	logger: Logger;
 	reporter: ErrorReporter;
 };
@@ -77,9 +106,12 @@ export const MESSAGES = {
  */
 export class Dispatcher {
 	readonly #deps: DispatcherDeps;
+	readonly #suggestLimiter: RateLimiter;
 
 	constructor(deps: DispatcherDeps) {
 		this.#deps = deps;
+		this.#suggestLimiter =
+			deps.suggestRateLimiter ?? new RateLimiter({ capacity: 20, refillPerSecond: 5 });
 	}
 
 	/** Lets adapters choose visibility before the reply exists (e.g. when deferring). */
@@ -176,6 +208,73 @@ export class Dispatcher {
 		}
 	}
 
+	/**
+	 * Live suggestions for an option, for someone who is typing in it. Goes through
+	 * the same access gates as running the command, so suggestions never reveal
+	 * anything to someone who couldn't run it: they get an empty list and the
+	 * denial is logged. A slow or failing suggestion function also gives an empty
+	 * list. What was typed is never logged.
+	 *
+	 * Suggestions are only a convenience. The platform doesn't check that a value
+	 * came from them, so the command must still validate what it receives.
+	 */
+	async suggest(request: SuggestRequest): Promise<Suggestion[]> {
+		const { identity, reporter } = this.#deps;
+		const { actor, subgroup, subcommand } = request;
+		const found = this.#lookup(request.command, subcommand, subgroup);
+		const option = found?.runnable.options?.find((o) => o.name === request.option);
+		const suggest = (option as { suggest?: SuggestFn } | undefined)?.suggest;
+		if (!found || !option || !suggest) return [];
+
+		const command = [request.command, subgroup, subcommand]
+			.filter((part) => part !== undefined)
+			.join(" ");
+		const log = this.#deps.logger.child({
+			command,
+			option: option.name,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
+		if (!this.#suggestLimiter.tryTake(actorRef(actor))) {
+			log.debug({ event: "command.suggest_rate_limited" }, "suggestions rate limited");
+			return [];
+		}
+
+		const principal = await identity.resolve(actor);
+		for (const access of found.gates) {
+			const decision = checkAccess(access, principal);
+			if (decision.allowed) continue;
+			log.warn(
+				{
+					event: "command.suggest_denied",
+					reason: decision.reason,
+					tier: principal.tier,
+					required: access.minTier,
+					...(access.capability === undefined ? {} : { capability: access.capability }),
+				},
+				"suggestions denied",
+			);
+			return [];
+		}
+
+		try {
+			const timeoutMs = this.#deps.suggestTimeoutMs ?? DEFAULT_SUGGEST_TIMEOUT_MS;
+			const suggestions = await withTimeout(
+				suggest({ typed: request.typed, args: request.args, principal, logger: log }),
+				timeoutMs,
+			);
+			return cleanSuggestions(suggestions, option.type === "integer");
+		} catch (error) {
+			if (error instanceof SuggestTimeout) {
+				log.warn({ event: "command.suggest_timeout" }, "suggestions timed out");
+			} else if (!(error instanceof UserFacingError)) {
+				log.error({ event: "command.suggest_failed", err: error }, "suggestions failed");
+				reporter.capture(error, { command, feature: found.feature, principal });
+			}
+			return [];
+		}
+	}
+
 	/** Finds what to run, plus every access gate on the way (group first). */
 	#lookup(command: string, subcommand?: string, subgroup?: string) {
 		const registered = this.#deps.registry.get(command);
@@ -219,6 +318,54 @@ export class Dispatcher {
 			});
 		});
 	}
+}
+
+class SuggestTimeout extends Error {
+	override name = "SuggestTimeout";
+}
+
+async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new SuggestTimeout()), ms);
+	});
+	try {
+		return await Promise.race([work, timeout]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Keeps what the platform can show: at most 25, with sensible names and values.
+ * A value can't be shortened without changing what it means, so one that is too
+ * long (or the wrong type for the option) is dropped rather than cut.
+ */
+function cleanSuggestions(list: readonly Suggestion[], integer: boolean): Suggestion[] {
+	const out: Suggestion[] = [];
+	for (const { name, value } of list) {
+		if (out.length >= MAX_SUGGESTIONS) break;
+		const shown = [
+			...String(name)
+				.replace(/[\p{Cc}\p{Cf}]/gu, " ")
+				.replace(/\s+/g, " ")
+				.trim(),
+		]
+			.slice(0, MAX_SUGGESTION_LENGTH)
+			.join("");
+		if (shown === "") continue;
+		if (integer) {
+			if (typeof value !== "number" || !Number.isSafeInteger(value)) continue;
+		} else if (
+			typeof value !== "string" ||
+			value === "" ||
+			[...value].length > MAX_SUGGESTION_LENGTH
+		) {
+			continue;
+		}
+		out.push({ name: shown, value });
+	}
+	return out;
 }
 
 function privateText(text: string): DispatchResult {

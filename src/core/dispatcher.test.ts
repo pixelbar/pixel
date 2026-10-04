@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { actor, command, group, IDS, subcommand, subgroup } from "../testing/fixtures.ts";
 import type { PlatformActor, Tier } from "./access.ts";
 import { CapabilityRegistry } from "./capabilities.ts";
-import type { CommandDefinition, ResolvedUser } from "./command.ts";
+import type { CommandDefinition, ResolvedUser, SuggestFn } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
 import { UserFacingError } from "./errors.ts";
 import { IdentityService } from "./identity.ts";
@@ -818,5 +818,348 @@ describe("capabilities", () => {
 		expect(seen).toEqual(["help"]);
 		await dispatcher.dispatch({ actor: as(IDS.friend), command: "help", args: {} });
 		expect(seen).toEqual(["help"]);
+	});
+});
+
+describe("suggest", () => {
+	const device = (suggest: SuggestFn, extra: object = {}) =>
+		({ name: "device", description: "d", type: "string", suggest, ...extra }) as const;
+	const pick = (suggest: SuggestFn, access: { minTier: Tier } = { minTier: "member" }) =>
+		command({ name: "ha", access, options: [device(suggest)] });
+	const ask = (
+		dispatcher: Dispatcher,
+		userId: string,
+		more: Partial<Parameters<Dispatcher["suggest"]>[0]> = {},
+	) =>
+		dispatcher.suggest({
+			actor: as(userId),
+			command: "ha",
+			option: "device",
+			typed: "",
+			args: {},
+			...more,
+		});
+
+	function suggestSetup(
+		commands: CommandDefinition[],
+		deps: Partial<ConstructorParameters<typeof Dispatcher>[0]> = {},
+	) {
+		const registry = new CommandRegistry();
+		registry.register({ name: "feat", commands });
+		const { logger, entries } = recordingLogger();
+		const reporter = {
+			capture: vi.fn<ErrorReporter["capture"]>(),
+			captureBackground: vi.fn<ErrorReporter["captureBackground"]>(),
+			breadcrumb: vi.fn<ErrorReporter["breadcrumb"]>(),
+		};
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService([
+				{ name: "test", tierFor: async (a: PlatformActor) => TIERS_BY_ID[a.userId] ?? null },
+			]),
+			rateLimiter: new RateLimiter({ capacity: 100, refillPerSecond: 0, now: () => 0 }),
+			logger,
+			reporter,
+			...deps,
+		});
+		return { dispatcher, entries, reporter };
+	}
+
+	it("gives a permitted caller the suggestions, with what was typed, the other options and who's asking", async () => {
+		const fn = vi.fn<SuggestFn>(async () => [{ name: "Front door", value: "front-door" }]);
+		const { dispatcher } = suggestSetup([pick(fn)]);
+		const result = await ask(dispatcher, IDS.member, { typed: "fro", args: { other: "x" } });
+		expect(result).toEqual([{ name: "Front door", value: "front-door" }]);
+		expect(fn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				typed: "fro",
+				args: { other: "x" },
+				principal: expect.objectContaining({ userId: IDS.member, tier: "member" }),
+			}),
+		);
+	});
+
+	it("lets suggestions depend on the other options", async () => {
+		const actionsFor: Record<string, string[]> = { door: ["lock", "unlock"], lamp: ["on", "off"] };
+		const { dispatcher } = suggestSetup([
+			command({
+				name: "ha",
+				access: { minTier: "member" },
+				options: [
+					{ name: "device", description: "d", type: "string" },
+					device(
+						async ({ args }) =>
+							(actionsFor[String(args.device)] ?? []).map((a) => ({ name: a, value: a })),
+						{
+							name: "action",
+						},
+					),
+				],
+			}),
+		]);
+		const result = await dispatcher.suggest({
+			actor: as(IDS.member),
+			command: "ha",
+			option: "action",
+			typed: "",
+			args: { device: "door" },
+		});
+		expect(result.map((s) => s.value)).toEqual(["lock", "unlock"]);
+	});
+
+	describe("limits what it returns", () => {
+		it("caps the list at 25", async () => {
+			const many = Array.from({ length: 40 }, (_, i) => ({ name: `d${i}`, value: `d${i}` }));
+			const { dispatcher } = suggestSetup([pick(async () => many)]);
+			expect(await ask(dispatcher, IDS.member)).toHaveLength(25);
+		});
+
+		it("shortens names to 100 characters and tidies them", async () => {
+			const { dispatcher } = suggestSetup([
+				pick(async () => [
+					{ name: "x".repeat(150), value: "a" },
+					{ name: "Line\nbreak\u0000 and\ttab", value: "b" },
+				]),
+			]);
+			const [long, tidy] = await ask(dispatcher, IDS.member);
+			expect(long?.name).toBe("x".repeat(100));
+			expect(tidy?.name).toBe("Line break and tab");
+		});
+
+		it("drops, rather than cuts, a value that is too long, empty or the wrong type", async () => {
+			const { dispatcher } = suggestSetup([
+				pick(async () => [
+					{ name: "long", value: "x".repeat(101) },
+					{ name: "empty", value: "" },
+					{ name: "number", value: 5 },
+					{ name: "   ", value: "blank-name" },
+					{ name: "fine", value: "ok" },
+				]),
+			]);
+			expect(await ask(dispatcher, IDS.member)).toEqual([{ name: "fine", value: "ok" }]);
+		});
+
+		it("only keeps safe integers for an integer option", async () => {
+			const integer = command({
+				name: "ha",
+				access: { minTier: "member" },
+				options: [
+					{
+						name: "device",
+						description: "d",
+						type: "integer",
+						suggest: async () => [
+							{ name: "one", value: 1 },
+							{ name: "half", value: 1.5 },
+							{ name: "huge", value: 2 ** 60 },
+							{ name: "text", value: "2" },
+						],
+					},
+				],
+			});
+			const { dispatcher } = suggestSetup([integer]);
+			expect(await ask(dispatcher, IDS.member)).toEqual([{ name: "one", value: 1 }]);
+		});
+	});
+
+	describe("is authorised like the command", () => {
+		it.each([
+			["a guest", IDS.guest],
+			["a friend", IDS.friend],
+		])("gives %s nothing, calls nothing, and logs the denial", async (_label, userId) => {
+			const fn = vi.fn<SuggestFn>(async () => [{ name: "secret", value: "secret" }]);
+			const { dispatcher, entries } = suggestSetup([pick(fn)]);
+			expect(await ask(dispatcher, userId)).toEqual([]);
+			expect(fn).not.toHaveBeenCalled();
+			expect(entries.find((e) => e.obj.event === "command.suggest_denied")?.obj).toMatchObject({
+				reason: "tier",
+				required: "member",
+				user: `discord:${userId}`,
+			});
+		});
+
+		it("checks the group, the subgroup and the subcommand", async () => {
+			const fn = vi.fn<SuggestFn>(async () => [{ name: "x", value: "x" }]);
+			const tree = group({
+				name: "ha",
+				access: { minTier: "friend" },
+				subcommands: [
+					subgroup({
+						name: "sg",
+						access: { minTier: "member" },
+						subcommands: [
+							subcommand({ name: "run", access: { minTier: "admin" }, options: [device(fn)] }),
+						],
+					}),
+				],
+			});
+			const { dispatcher } = suggestSetup([tree]);
+			const nested = { subgroup: "sg", subcommand: "run" };
+			expect(await ask(dispatcher, IDS.member, nested)).toEqual([]);
+			expect(await ask(dispatcher, IDS.admin, nested)).toHaveLength(1);
+		});
+
+		it("applies a capability requirement, and never lets a guest through", async () => {
+			const capabilities = new CapabilityRegistry([{ name: "door", description: "Open the door" }]);
+			const registry = new CommandRegistry({ capabilities });
+			const fn = vi.fn<SuggestFn>(async () => [{ name: "x", value: "x" }]);
+			registry.register({
+				name: "feat",
+				commands: [pick(fn, { minTier: "member", capability: "door" } as never)],
+			});
+			const granted: Record<string, string[]> = { [IDS.member]: ["door"], [IDS.guest]: ["door"] };
+			const dispatcher = new Dispatcher({
+				registry,
+				identity: new IdentityService(
+					[{ name: "t", tierFor: async (a: PlatformActor) => TIERS_BY_ID[a.userId] ?? null }],
+					[{ name: "c", capabilitiesFor: async (a: PlatformActor) => granted[a.userId] ?? [] }],
+				),
+				rateLimiter: new RateLimiter({ capacity: 100, refillPerSecond: 0 }),
+				logger: recordingLogger().logger,
+				reporter: { capture: vi.fn(), captureBackground: vi.fn(), breadcrumb: vi.fn() },
+			});
+			expect(await ask(dispatcher, IDS.member)).toHaveLength(1);
+			expect(await ask(dispatcher, IDS.admin)).toEqual([]);
+			expect(await ask(dispatcher, IDS.guest)).toEqual([]);
+		});
+	});
+
+	it.each([
+		["an unknown command", { command: "nope" }],
+		["an option that doesn't exist", { option: "nope" }],
+		["a subcommand on a plain command", { subcommand: "run" }],
+	])("returns nothing for %s", async (_label, more) => {
+		const fn = vi.fn<SuggestFn>(async () => [{ name: "x", value: "x" }]);
+		const { dispatcher } = suggestSetup([pick(fn)]);
+		expect(await ask(dispatcher, IDS.admin, more)).toEqual([]);
+		expect(fn).not.toHaveBeenCalled();
+	});
+
+	it("returns nothing for an option without suggestions", async () => {
+		const plain = command({
+			name: "ha",
+			access: { minTier: "member" },
+			options: [{ name: "device", description: "d", type: "string" }],
+		});
+		const { dispatcher } = suggestSetup([plain]);
+		expect(await ask(dispatcher, IDS.admin)).toEqual([]);
+	});
+
+	describe("rate limiting", () => {
+		it("has its own limit, so it can't use up the budget for real commands", async () => {
+			const fn = vi.fn<SuggestFn>(async () => [{ name: "x", value: "x" }]);
+			const { dispatcher, entries } = suggestSetup([pick(fn), command({ name: "ping" })], {
+				rateLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0, now: () => 0 }),
+				suggestRateLimiter: new RateLimiter({ capacity: 2, refillPerSecond: 0, now: () => 0 }),
+			});
+			expect(await ask(dispatcher, IDS.admin)).toHaveLength(1);
+			expect(await ask(dispatcher, IDS.admin)).toHaveLength(1);
+			expect(await ask(dispatcher, IDS.admin)).toEqual([]);
+			expect(fn).toHaveBeenCalledTimes(2);
+			expect(entries.some((e) => e.obj.event === "command.suggest_rate_limited")).toBe(true);
+			// The command's own budget is untouched by all that typing.
+			const result = await dispatcher.dispatch({ actor: as(IDS.admin), command: "ping", args: {} });
+			expect(result.reply.text).toBe("ok");
+		});
+
+		it("limits each person separately", async () => {
+			const { dispatcher } = suggestSetup([pick(async () => [{ name: "x", value: "x" }])], {
+				suggestRateLimiter: new RateLimiter({ capacity: 1, refillPerSecond: 0, now: () => 0 }),
+			});
+			expect(await ask(dispatcher, IDS.admin)).toHaveLength(1);
+			expect(await ask(dispatcher, IDS.admin)).toEqual([]);
+			expect(await ask(dispatcher, IDS.member)).toHaveLength(1);
+		});
+
+		it("has a sensible default limit", async () => {
+			const { dispatcher } = suggestSetup([pick(async () => [{ name: "x", value: "x" }])]);
+			for (let i = 0; i < 5; i++) expect(await ask(dispatcher, IDS.admin)).toHaveLength(1);
+		});
+	});
+
+	describe("when the suggestions go wrong", () => {
+		it("gives an empty list, logs and reports a failure", async () => {
+			const boom = new Error("HA exploded");
+			const { dispatcher, entries, reporter } = suggestSetup([
+				pick(async () => {
+					throw boom;
+				}),
+			]);
+			expect(await ask(dispatcher, IDS.member)).toEqual([]);
+			expect(entries.find((e) => e.obj.event === "command.suggest_failed")).toBeDefined();
+			expect(reporter.capture).toHaveBeenCalledWith(
+				boom,
+				expect.objectContaining({ command: "ha", feature: "feat" }),
+			);
+		});
+
+		it("gives an empty list, quietly, for an error meant for the user", async () => {
+			const { dispatcher, entries, reporter } = suggestSetup([
+				pick(async () => {
+					throw new UserFacingError("not now");
+				}),
+			]);
+			expect(await ask(dispatcher, IDS.member)).toEqual([]);
+			expect(reporter.capture).not.toHaveBeenCalled();
+			expect(entries.some((e) => e.obj.event === "command.suggest_failed")).toBe(false);
+		});
+
+		it("gives an empty list when it takes too long, and logs that", async () => {
+			const never = new Promise<never>(() => {});
+			const { dispatcher, entries, reporter } = suggestSetup([pick(() => never)], {
+				suggestTimeoutMs: 20,
+			});
+			const started = Date.now();
+			expect(await ask(dispatcher, IDS.member)).toEqual([]);
+			expect(Date.now() - started).toBeLessThan(1000);
+			expect(entries.find((e) => e.obj.event === "command.suggest_timeout")).toBeDefined();
+			expect(reporter.capture).not.toHaveBeenCalled();
+		});
+
+		it("doesn't break the command itself", async () => {
+			const handler = vi.fn(async () => ({ text: "ran" }));
+			const { dispatcher } = suggestSetup([
+				command({
+					name: "ha",
+					access: { minTier: "member" },
+					options: [
+						device(async () => {
+							throw new Error("boom");
+						}),
+					],
+					handler,
+				}),
+			]);
+			expect(await ask(dispatcher, IDS.member)).toEqual([]);
+			const result = await dispatcher.dispatch({
+				actor: as(IDS.member),
+				command: "ha",
+				args: { device: "front-door" },
+			});
+			expect(result.reply.text).toBe("ran");
+		});
+	});
+
+	it("never logs what was typed or the other options", async () => {
+		const { dispatcher, entries } = suggestSetup([
+			pick(async () => {
+				throw new Error("boom");
+			}),
+		]);
+		await ask(dispatcher, IDS.member, {
+			typed: "hunter2-secret",
+			args: { other: "private-value" },
+		});
+		await ask(dispatcher, IDS.guest, { typed: "hunter2-secret" });
+		const text = JSON.stringify(entries);
+		expect(text).not.toContain("hunter2-secret");
+		expect(text).not.toContain("private-value");
+	});
+
+	it("is only suggestions: a value that wasn't suggested is still validated by the command", () => {
+		const def = command({ options: [device(async () => [])] });
+		expect(validateArgs(def, { device: "anything-typed-by-hand" }).args).toEqual({
+			device: "anything-typed-by-hand",
+		});
 	});
 });

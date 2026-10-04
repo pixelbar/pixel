@@ -66,13 +66,22 @@ function toOption(option: CommandOption): APIApplicationCommandBasicOption {
 	};
 	switch (option.type) {
 		case "string":
+			// With suggestions, Discord asks the bot as the person types. It never goes with
+			// fixed choices (the registry rejects that).
+			if (option.suggest) {
+				return { ...base, type: ApplicationCommandOptionType.String, autocomplete: true };
+			}
 			return {
 				...base,
 				type: ApplicationCommandOptionType.String,
 				...(option.choices ? { choices: option.choices.map((c) => ({ name: c, value: c })) } : {}),
 			};
 		case "integer":
-			return { ...base, type: ApplicationCommandOptionType.Integer };
+			return {
+				...base,
+				type: ApplicationCommandOptionType.Integer,
+				...(option.suggest ? { autocomplete: true } : {}),
+			};
 		case "boolean":
 			return { ...base, type: ApplicationCommandOptionType.Boolean };
 		case "user":
