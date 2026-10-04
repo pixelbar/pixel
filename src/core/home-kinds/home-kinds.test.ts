@@ -5,7 +5,7 @@ const kind = (overrides: Partial<HomeKind> = {}): HomeKind => ({
 	name: "blind",
 	description: "A blind",
 	domains: ["cover"],
-	capability: "ha-blinds",
+	capability: { name: "ha-blinds", description: "Move the blinds" },
 	actions: [
 		{
 			name: "close",
@@ -31,7 +31,8 @@ describe("the built-in kinds", () => {
 		const found = HOME_KINDS.get(name);
 		expect(found?.domains).toEqual(domains);
 		expect(found?.actions.map((a) => a.name)).toEqual(actions);
-		expect(found?.capability).toBe(capability);
+		expect(found?.capability?.name).toBe(capability);
+		expect(found?.capability?.description.length).toBeGreaterThan(0);
 	});
 
 	it("makes a sensor read-only, with no capability to grant", () => {
@@ -62,11 +63,11 @@ describe("the built-in kinds", () => {
 
 	it("has a distinct capability for every kind that can change things", () => {
 		const capabilities = [...HOME_KINDS.values()].flatMap((k) =>
-			k.capability ? [k.capability] : [],
+			k.capability ? [k.capability.name] : [],
 		);
 		expect(new Set(capabilities).size).toBe(capabilities.length);
 		for (const k of HOME_KINDS.values()) {
-			if (k.actions.length > 0) expect(k.capability).toMatch(/^ha-[a-z-]+$/);
+			if (k.actions.length > 0) expect(k.capability?.name).toMatch(/^ha-[a-z-]+$/);
 		}
 	});
 });
@@ -155,11 +156,37 @@ describe("defineKinds", () => {
 				/working state that is invalid/,
 			],
 			["actions but no capability", kind({ capability: undefined as never }), /needs a capability/],
+			[
+				"a capability that doesn't start with ha-",
+				kind({ capability: { name: "blinds", description: "d" } }),
+				/must be a valid name starting with "ha-"/,
+			],
+			[
+				"a capability named like the general one",
+				kind({ capability: { name: "ha-admin", description: "d" } }),
+				/not "ha-admin"/,
+			],
+			[
+				"a capability with a bad name",
+				kind({ capability: { name: "ha-Blinds!", description: "d" } }),
+				/must be a valid name starting with "ha-"/,
+			],
+			[
+				"a capability with no description",
+				kind({ capability: { name: "ha-blinds", description: "" } }),
+				/Capability description must be 1–100 characters/,
+			],
 		];
 		for (const [, definition, message] of bad) {
 			expect(() => defineKinds([definition])).toThrow(HomeKindError);
 			expect(() => defineKinds([definition])).toThrow(message);
 		}
+	});
+
+	it("rejects two kinds that share a capability", () => {
+		expect(() => defineKinds([kind(), kind({ name: "shade" })])).toThrow(
+			/shares the capability "ha-blinds" with another kind/,
+		);
 	});
 
 	it("rejects two kinds with the same name", () => {

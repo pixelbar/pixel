@@ -4,7 +4,10 @@ export const powerSwitch: HomeKind = {
 	name: "switch",
 	description: "A power switch or socket",
 	domains: ["switch"],
-	capability: "ha-switches",
+	capability: {
+		name: "ha-switches",
+		description: "Switch the power switches and sockets on the Home Assistant list on and off",
+	},
 	actions: [
 		{ name: "on", description: "Switch it on", service: "turn_on", done: ["on"] },
 		{ name: "off", description: "Switch it off", service: "turn_off", done: ["off"] },

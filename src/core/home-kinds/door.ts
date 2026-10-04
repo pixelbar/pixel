@@ -8,7 +8,10 @@ export const door: HomeKind = {
 	name: "door",
 	description: "A door with a lock",
 	domains: ["lock"],
-	capability: "ha-doors",
+	capability: {
+		name: "ha-doors",
+		description: "Lock, unlock and open the doors on the Home Assistant list",
+	},
 	actions: [
 		{
 			name: "lock",
