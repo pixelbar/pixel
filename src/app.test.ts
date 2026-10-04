@@ -46,6 +46,7 @@ describe("buildCore", () => {
 				guildId: "100000000000000020",
 				announcementsChannelId: undefined,
 				announce: { liveChannelId: undefined, timelineChannelId: undefined },
+				roles: { member: undefined, friend: undefined },
 			},
 		};
 	});

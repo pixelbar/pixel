@@ -4,6 +4,7 @@ import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
+import type { RoleMirror } from "../../core/role-mirror.ts";
 import {
 	LIVE_PERMISSIONS,
 	openAnnouncementChannel,
@@ -19,6 +20,7 @@ import {
 import { FileLivePostStore } from "./announce-state.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createCommandHandler, createGuildGuard } from "./handlers.ts";
+import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
 	token: string;
@@ -33,6 +35,10 @@ export type DiscordAdapterDeps = {
 	announcer: Pick<Announcer, "register">;
 	/** Where this adapter plugs in the server's scheduled events once it's ready. */
 	calendar: Pick<Calendar, "use">;
+	/** Where this adapter plugs in the role mirror once it's ready. */
+	roles: Pick<RoleMirror, "attach" | "check">;
+	/** Which Discord role each tier is mirrored to. Unset tiers aren't mirrored. */
+	roleMapping: RoleMapping;
 	/** Reports errors that escape the dispatcher (e.g. Discord API failures). */
 	reportError: (error: unknown) => void;
 	/** Called once the client is connected and the announcement publishers are registered. */
@@ -116,6 +122,16 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		);
 		await Promise.all(ready.guilds.cache.map(leaveIfForeign));
 		deps.calendar.use(createDiscordCalendarSource(ready, guildId));
+		// Mirror tiers to roles (Pixel to Discord only), and say plainly what works and what doesn't.
+		deps.roles.attach(
+			new DiscordRoleMirror({
+				rest: ready.rest,
+				guildId,
+				botId: ready.user.id,
+				mapping: deps.roleMapping,
+			}),
+		);
+		await deps.roles.check();
 		try {
 			await registerPublishers(ready);
 		} catch (error) {

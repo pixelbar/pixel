@@ -52,6 +52,36 @@ describe("loadConfig", () => {
 		).toThrow(/DISCORD_ANNOUNCEMENTS_CHANNEL_ID/);
 	});
 
+	it("mirrors no tier to a Discord role unless configured", () => {
+		expect(loadConfig(VALID).discord.roles).toEqual({ member: undefined, friend: undefined });
+		expect(
+			loadConfig({ ...VALID, DISCORD_ROLE_MEMBER: "", DISCORD_ROLE_FRIEND: "" }).discord.roles,
+		).toEqual({ member: undefined, friend: undefined });
+	});
+
+	it("reads a role name or ID for each tier, trimmed", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				DISCORD_ROLE_MEMBER: "  member ",
+				DISCORD_ROLE_FRIEND: "100000000000000102",
+			}).discord.roles,
+		).toEqual({ member: "member", friend: "100000000000000102" });
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_FRIEND: "friend" }).discord.roles).toEqual({
+			member: undefined,
+			friend: "friend",
+		});
+	});
+
+	it("rejects a blank or over-long role setting", () => {
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_MEMBER: "   " })).toThrow(
+			/DISCORD_ROLE_MEMBER/,
+		);
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_FRIEND: "x".repeat(101) })).toThrow(
+			/DISCORD_ROLE_FRIEND/,
+		);
+	});
+
 	it("has no announcement channels unless configured", () => {
 		expect(loadConfig(VALID).discord.announce).toEqual({
 			liveChannelId: undefined,

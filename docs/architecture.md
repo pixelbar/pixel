@@ -16,7 +16,7 @@
 | ----------------------------------------------------------- | --------------------------------------------------- |
 | Core: commands, access, dispatcher, registry, announcer     | Telegram, Mastodon, other adapters                  |
 | Discord adapter (interactive + publisher + calendar)        | Account linking across platforms                    |
-| Tiers from `config/admins.yaml` and `config/members.yaml`   | Discord role sync                                   |
+| Tiers from `config/admins.yaml` and `config/members.yaml`   | Reading Discord roles (never: roles are only mirrored to) |
 | SpaceAPI status, Discord events, info, help, whoami         | A database (none is needed until linking or grants) |
 | Sentry, pino, `just`                                        | Terraform and CI/CD (designed below, built later)   |
 
@@ -205,8 +205,9 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `whoami`  | `/whoami`                    | guest  | ✅    | Private reply: your ID and tier                     |
 | `admin`   | `/admin status`              | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |
 | `admin`   | `/admin reload`              | admin  | ✅    | Re-reads `admins.yaml` and `members.yaml` after hand edits. Keeps the old data if they're now invalid |
-| `admin`   | `/admin set-level user: level: [reason:]` | admin | ✅ | Makes someone `member`, `friend` or `guest`. Private reply with before and after. Refuses admins and bots, and says so when nothing would change |
-| `admin`   | `/admin whois user:`         | admin  | ✅    | Private. Level, where it comes from (admins file, members file, not listed), capabilities and the note. Lookups are logged |
+| `admin`   | `/admin level set user: level: [reason:]` | admin | ✅ | Makes someone `member`, `friend` or `guest`. Private reply with before and after. Refuses admins and bots, and says so when nothing would change |
+| `admin`   | `/admin level get user:`         | admin  | ✅    | Private. Level, where it comes from (admins file, members file, not listed), capabilities, the note and, when roles are mirrored, their Discord roles with any mismatch. Lookups are logged |
+| `admin`   | `/admin sync [user:]`        | admin  | ✅    | Sets the mapped Discord roles from Pixel's data, for one person or everyone in Pixel's lists. Pixel always wins |
 | `admin`   | `/admin capabilities grant\|revoke user: capability: [reason:]` | admin | ✅ | Gives or takes a named permission. Picked from the registry in `features/capabilities.ts`, audited, refused for guests and bots. Says so when nothing would change |
 | `admin`   | `/admin capabilities list [user:]` | admin | ✅ | Private. The registered capabilities with holder counts, or one person's |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
@@ -288,6 +289,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` |    | Optional. The channel where announcements and the weekly poll are posted. `/info` points people at it. (Not the space-status posts below) |
 | `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` |   | Optional. Live style: one post per opening, edited to "closed" |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
+| `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
+| `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |

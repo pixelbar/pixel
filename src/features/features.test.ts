@@ -10,6 +10,7 @@ import { silentLogger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { CommandRegistry } from "../core/registry.ts";
+import { RoleMirror } from "../core/role-mirror.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -40,6 +41,7 @@ const deps = () => ({
 	startedAt: new Date(),
 	access,
 	capabilities: new CapabilityRegistry(),
+	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	reporter: nullErrorReporter,
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
@@ -75,8 +77,8 @@ describe("buildFeatures", () => {
 		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
 			["status", "admin"],
 			["reload", "admin"],
-			["set-level", "admin"],
-			["whois", "admin"],
+			["level", "admin"],
+			["sync", "admin"],
 			["capabilities", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
@@ -127,6 +129,7 @@ function adminSubcommand(
 		startedAt: new Date(0),
 		access: store,
 		capabilities: new CapabilityRegistry(),
+		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
@@ -180,6 +183,7 @@ describe("admin", () => {
 			startedAt: new Date(0),
 			access: store,
 			capabilities: new CapabilityRegistry(),
+			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 			reporter: { ...nullErrorReporter, captureBackground },
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");

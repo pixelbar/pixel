@@ -1,6 +1,6 @@
 import { TIER_LABELS, type Tier } from "../../core/access.ts";
 import type { CapabilityRegistry } from "../../core/capabilities.ts";
-import type { ResolvedUser, SubcommandDefinition } from "../../core/command.ts";
+import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import {
@@ -8,9 +8,11 @@ import {
 	MAX_REASON_LENGTH,
 	type MemberTier,
 } from "../../core/ports/access-store.ts";
+import type { RoleMirror } from "../../core/role-mirror.ts";
+import { inspectionField, mirrorLine, mirrorReason, wantedFor } from "./roles.ts";
 
 /**
- * `/admin set-level` and `/admin whois`: who is a member or friend. Both act
+ * `/admin level set` and `/admin level get`: who is a member or friend. Both act
  * on the person's immutable ID. Names, handles and notes are shown for people
  * to read only, and everything written by someone else is escaped or shown as a
  * code span so it can't render as formatting, links or mentions.
@@ -20,13 +22,14 @@ export type MemberCommandDeps = Pick<AccessStore, "view" | "apply">;
 
 const LEVELS: readonly MemberTier[] = ["member", "friend", "guest"];
 
-export function createMemberSubcommands(
+export function createLevelSubgroup(
 	access: MemberCommandDeps,
 	capabilities: Pick<CapabilityRegistry, "has">,
-): SubcommandDefinition[] {
-	return [
+	roles: Pick<RoleMirror, "apply" | "inspect">,
+): SubgroupDefinition {
+	const subcommands: SubcommandDefinition[] = [
 		{
-			name: "set-level",
+			name: "set",
 			description: "Make someone a member or friend, or set them back to guest",
 			access: { minTier: "admin" },
 			private: true,
@@ -60,16 +63,32 @@ export function createMemberSubcommands(
 					);
 				}
 				const current = view.records.get(target.id)?.tier ?? "guest";
-				if (current === level) {
+
+				// Pixel's data is updated first. Discord's roles then follow, even when nothing
+				// changed in Pixel, so a person who's out of step gets put right.
+				const changed = current !== level;
+				const result = changed
+					? await access.apply(
+							{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
+							principal,
+						)
+					: undefined;
+				const mirror = await roles.apply(
+					target.id,
+					level,
+					mirrorReason(changed ? "Set to" : "Synced to", level, principal),
+				);
+				const roleLine = mirrorLine(mirror, "change");
+
+				if (!result) {
+					const already = `${describe(target)} is already set to ${TIER_LABELS[level]}.`;
 					return {
-						text: `${describe(target)} is already set to ${TIER_LABELS[level]}. Nothing changed.`,
+						text: roleLine
+							? `${already} Nothing changed in Pixel.\n${roleLine}`
+							: `${already} Nothing changed.`,
 					};
 				}
-
-				const { before, after } = await access.apply(
-					{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
-					principal,
-				);
+				const { before, after } = result;
 				const stillHasCapabilities = level === "guest" && after.capabilities.length > 0;
 				return {
 					embeds: [
@@ -88,6 +107,7 @@ export function createMemberSubcommands(
 											},
 										]
 									: []),
+								...(roleLine ? [{ name: "Discord roles", value: roleLine }] : []),
 							],
 						},
 					],
@@ -95,7 +115,7 @@ export function createMemberSubcommands(
 			},
 		},
 		{
-			name: "whois",
+			name: "get",
 			description: "See someone's Pixel access level, where it comes from, and their capabilities",
 			access: { minTier: "admin" },
 			private: true,
@@ -105,7 +125,10 @@ export function createMemberSubcommands(
 			handler: async ({ users, logger }) => {
 				const target = pickedUser(users, "user");
 				// Lookups show a note and capabilities, so they're recorded like changes are.
-				logger.info({ event: "admin.whois", target: `discord:${target.id}` }, "looked up a person");
+				logger.info(
+					{ event: "admin.level_get", target: `discord:${target.id}` },
+					"looked up a person",
+				);
 
 				const title = escapeMarkdown(target.displayName);
 				const identity = [
@@ -132,6 +155,10 @@ export function createMemberSubcommands(
 				const record = view.records.get(target.id);
 				const tier: Tier = view.discord.get(target.id) ?? "guest";
 				const held = record?.capabilities ?? [];
+				const rolesField = inspectionField(
+					await roles.inspect(target.id),
+					wantedFor(view, target.id),
+				);
 				return {
 					embeds: [
 						{
@@ -156,6 +183,7 @@ export function createMemberSubcommands(
 													.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
 								},
 								...(record?.note ? [{ name: "Note", value: inlineCode(record.note, 300) }] : []),
+								...(rolesField ? [rolesField] : []),
 							],
 						},
 					],
@@ -163,6 +191,12 @@ export function createMemberSubcommands(
 			},
 		},
 	];
+	return {
+		name: "level",
+		description: "Membership levels: member, friend or guest",
+		access: { minTier: "admin" },
+		subcommands,
+	};
 }
 
 function source(tier: Tier, listed: boolean): string {

@@ -8,15 +8,17 @@ import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
+import { silentLogger } from "../../core/logger.ts";
 import { MAX_REASON_LENGTH } from "../../core/ports/access-store.ts";
-import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
+import { type ErrorReporter, nullErrorReporter } from "../../core/ports/error-reporter.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
+import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
-import { createMemberSubcommands } from "./members.ts";
+import { createLevelSubgroup } from "./members.ts";
 
 const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
 const MEMBERS = `members:
@@ -31,6 +33,7 @@ const MEMBERS = `members:
     tier: member
 `;
 const TARGET = "100000000000000050";
+const unattached = () => new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter });
 const CAPABILITIES = new CapabilityRegistry([
 	{ name: "front-door", description: "Open the front door" },
 ]);
@@ -69,6 +72,7 @@ function setup(ops = nodeFileOps) {
 			startedAt: new Date(),
 			access: store,
 			capabilities: CAPABILITIES,
+			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			reporter,
 		}),
 	);
@@ -99,7 +103,10 @@ function run(
 	return dispatcher.dispatch({
 		actor: actor(as),
 		command: "admin",
-		subcommand,
+		// The old names are kept in the tests' vocabulary: set-level is /admin level set, whois is /admin level get.
+		...(subcommand === "set-level" || subcommand === "whois"
+			? { subgroup: "level", subcommand: subcommand === "set-level" ? "set" : "get" }
+			: { subcommand }),
 		args: target ? { user: target.id, ...args } : args,
 		...(target ? { users: { user: target } } : {}),
 	});
@@ -139,7 +146,7 @@ describe("who may run them", () => {
 		expect(set.reply.text).toBe(MESSAGES.deniedTier);
 		expect(whois.reply.text).toBe(MESSAGES.deniedTier);
 		expect(read()).toBe(MEMBERS);
-		expect(events("admin.whois")).toHaveLength(0);
+		expect(events("admin.level_get")).toHaveLength(0);
 	});
 
 	it("lets an admin run them", async () => {
@@ -150,7 +157,7 @@ describe("who may run them", () => {
 	});
 });
 
-describe("/admin set-level", () => {
+describe("/admin level set", () => {
 	it("makes a guest a member, persists it, and logs who did what to whom", async () => {
 		const { dispatcher, store } = setup();
 		const result = await run(
@@ -271,7 +278,8 @@ describe("/admin set-level", () => {
 		const unresolved = await dispatcher.dispatch({
 			actor: actor({ userId: IDS.admin }),
 			command: "admin",
-			subcommand: "set-level",
+			subgroup: "level",
+			subcommand: "set",
 			args: { user: TARGET, level: "member" },
 		});
 		expect(unresolved.reply.text).toMatch(/Invalid value for option "user"/);
@@ -332,7 +340,7 @@ describe("/admin set-level", () => {
 	});
 });
 
-describe("/admin whois", () => {
+describe("/admin level get", () => {
 	it("shows level, source, capabilities and the note for a member", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "whois", {}, human(IDS.member, "Grace"));
@@ -406,7 +414,7 @@ describe("/admin whois", () => {
 	it("records who looked up whom", async () => {
 		const { dispatcher } = setup();
 		await run(dispatcher, "whois", {}, human(IDS.member));
-		expect(events("admin.whois")[0]?.obj).toMatchObject({
+		expect(events("admin.level_get")[0]?.obj).toMatchObject({
 			target: `discord:${IDS.member}`,
 		});
 	});
@@ -448,9 +456,11 @@ describe("/admin whois", () => {
 
 describe("handler guard", () => {
 	it("fails loudly if a required user wasn't resolved (the dispatcher prevents this)", async () => {
-		const sub = createMemberSubcommands(openStore(), new CapabilityRegistry()).find(
-			(s) => s.name === "whois",
-		);
+		const sub = createLevelSubgroup(
+			openStore(),
+			new CapabilityRegistry(),
+			unattached(),
+		).subcommands.find((s) => s.name === "get");
 		await expect(sub?.handler(context())).rejects.toThrow(/missing resolved user/);
 	});
 });

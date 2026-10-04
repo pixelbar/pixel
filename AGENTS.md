@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database, account linking, Discord role sync or Terraform unless a human asks for it. Design for them, but don't build them.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database, account linking or Terraform unless a human asks for it. Design for them, but don't build them.
 
 ## Project at a glance
 
@@ -67,7 +67,8 @@ docs/                   # architecture, identity, ADRs
 9. **Commands that target a person use a `user` option** and act on the ID the handler receives, never on a name. A subcommand can't be looser than its group (the registry enforces it).
 10. **`config/members.yaml` is changed only through the `AccessStore`** (`apply`). Never write that file from anywhere else, and never add a way to change `admins.yaml` at runtime. The store audits every change, so don't bypass it.
 11. **Capabilities are declared in `src/features/capabilities.ts` and enforced only in the dispatcher.** A command that needs one says `access: { minTier, capability }` and both must hold. A capability is never implied by a tier, a role or being an admin, and a guest never passes. Don't check capabilities in handlers or adapters.
-12. Changes to `core/access*`, `core/identity*`, `core/capabilities*`, `core/dispatcher*`, `core/registry*` or `services/access-config*`, `services/access-store*` or `core/ports/access-store*` need **tests and a human reviewer**. Call this out in the PR description.
+12. **Discord roles are mirrored to, never read.** Pixel pushes a person's level to the mapped roles (`DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND`) through the `RoleMirror`, and never lets a role decide a tier, a capability or an admin. Don't add a way to read a role into identity, and don't touch roles that aren't mapped.
+13. Changes to `core/access*`, `core/identity*`, `core/capabilities*`, `core/role-mirror*`, `adapters/discord/role-mirror*`, `core/dispatcher*`, `core/registry*` or `services/access-config*`, `services/access-store*` or `core/ports/access-store*` need **tests and a human reviewer**. Call this out in the PR description.
 
 ## Conventions
 
