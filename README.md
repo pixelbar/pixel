@@ -86,7 +86,7 @@ The text of the answer, in markdown…
 
 Tiers come from two YAML files. **They are gitignored, because they contain personal data.**
 
-- `config/admins.yaml`: Pixel admins, as a list of Discord IDs. Each admin also needs an entry in `members.yaml`.
+- `config/admins.yaml`: Pixel admins, each with an `id` like `discord:<id>` (the same form as in `members.yaml`). Each admin also needs a `members.yaml` entry with the same id.
 - `config/members.yaml`: paying `member` and `friend` memberships (Discord ID and tier), plus optional capabilities. **Pixel rewrites this file** when admins change tiers, keeping a `.bak` of the previous version, so it needs a writable location. Hand edits are still fine, and `/admin reload` picks them up.
 
 Everyone else is a `guest`.

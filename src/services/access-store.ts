@@ -326,13 +326,13 @@ function edit(doc: ReturnType<typeof parseDocument>, change: AccessChange, index
 	}
 
 	const item = doc.createNode({
-		discordId: change.id,
+		id: `discord:${change.id}`,
 		tier: change.tier,
 		...(change.note !== undefined ? { note: change.note } : {}),
 	}) as YAMLMap;
 	if (!isMap(item)) throw new Error("couldn't create a members entry");
 	// IDs must be quoted strings, or they lose precision when read back as numbers.
-	(item.get("discordId", true) as Scalar).type = "QUOTE_DOUBLE";
+	(item.get("id", true) as Scalar).type = "QUOTE_DOUBLE";
 	seq.flow = false;
 	seq.add(item);
 }

@@ -17,13 +17,13 @@ import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 
-const ADMINS = `admins:\n  - "${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - id: "discord:${IDS.admin}"\n`;
 const MEMBERS = `members:
-  - discordId: "${IDS.admin}"
+  - id: "discord:${IDS.admin}"
     tier: member
-  - discordId: "${IDS.member}"
+  - id: "discord:${IDS.member}"
     tier: member
-  - discordId: "${IDS.friend}"
+  - id: "discord:${IDS.friend}"
     tier: friend
     capabilities:
       - workshop
@@ -124,7 +124,7 @@ beforeEach(() => {
 	writeFileSync(join(dir, "admins.yaml"), ADMINS);
 	writeFileSync(
 		membersFile,
-		`${MEMBERS}  - discordId: "${DEMOTED}"\n    tier: guest\n    capabilities:\n      - front-door\n`,
+		`${MEMBERS}  - id: "discord:${DEMOTED}"\n    tier: guest\n    capabilities:\n      - front-door\n`,
 	);
 	logs = [];
 	reporter = { capture: vi.fn(), captureBackground: vi.fn(), breadcrumb: vi.fn() };
@@ -391,7 +391,7 @@ describe("list", () => {
 	it("flags names that no longer exist", async () => {
 		writeFileSync(
 			membersFile,
-			`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n    capabilities:\n      - old-thing\n`,
+			`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n    capabilities:\n      - old-thing\n`,
 		);
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "list", {}, human(IDS.member));

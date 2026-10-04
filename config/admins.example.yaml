@@ -2,9 +2,11 @@
 #
 # Copy to config/admins.yaml (gitignored — it contains personal data).
 #
-# This is only a list of Discord user IDs. Every admin ALSO needs an entry in
-# members.yaml (their membership level, capabilities and a note), so admins are
-# members as well as admins. Pixel refuses to start if one is missing.
+# Same shape as members.yaml: each entry has an `id`, which is the platform and
+# the user ID ("discord:<id>"), so other platforms can be told apart later.
+# Every admin ALSO needs an entry in members.yaml with the same id (their
+# membership level, capabilities and a note), so admins are members as well as
+# admins. Pixel refuses to start if one is missing.
 #
 # To find a Discord ID: enable Developer Mode in Discord settings,
 # right-click the user and choose "Copy User ID".
@@ -12,4 +14,4 @@
 # IDs MUST be quoted strings. Unquoted numbers lose precision and Pixel will
 # refuse to start.
 admins:
-  - "100000000000000001"
+  - id: "discord:100000000000000001"

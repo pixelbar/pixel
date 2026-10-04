@@ -17,14 +17,22 @@ import type { TierSource } from "../core/ports/tier-source.ts";
 
 export const DISCORD_ID = /^\d{17,20}$/;
 
-const discordId = z
-	.string({ error: 'must be a quoted string, e.g. "123456789012345678"' })
-	.regex(DISCORD_ID, { error: "must be a Discord user ID (17–20 digits)" });
+// People are identified by a platform-prefixed ID ("discord:<id>") in both files, so other
+// platforms can be told apart later and an admin entry matches its members entry exactly.
+// Only Discord exists for now. Inside Pixel the ID is the bare Discord user ID.
+const PLATFORM_ID = /^discord:\d{17,20}$/;
 
-// Admins are just IDs. Each one must also have an entry in the members file, which
-// holds everything else about them (membership level, capabilities, note).
+const platformId = z
+	.string({ error: 'must be a quoted string, e.g. "discord:123456789012345678"' })
+	.regex(PLATFORM_ID, {
+		error: 'must be a platform and user ID, e.g. "discord:123456789012345678" (Discord IDs are 17–20 digits)',
+	})
+	.transform((ref) => ref.slice("discord:".length));
+
+// Admins are just IDs. Each one must also have an entry in the members file, which holds
+// everything else about them (membership level, capabilities, note).
 const adminsSchema = z.strictObject({
-	admins: z.array(discordId).min(1, { error: "at least one admin is required" }),
+	admins: z.array(z.strictObject({ id: platformId })).min(1, { error: "at least one admin is required" }),
 });
 
 export const MAX_CAPABILITIES = 50;
@@ -36,13 +44,15 @@ const capabilities = z
 
 const membersSchema = z.strictObject({
 	members: z.array(
-		z.strictObject({
-			discordId,
-			// `guest` keeps the entry (and its capabilities) for someone who was demoted.
-			tier: z.enum(["member", "friend", "guest"]),
-			note: z.string().optional(),
-			capabilities: capabilities.optional(),
-		}),
+		z
+			.strictObject({
+				id: platformId,
+				// `guest` keeps the entry (and its capabilities) for someone who was demoted.
+				tier: z.enum(["member", "friend", "guest"]),
+				note: z.string().optional(),
+				capabilities: capabilities.optional(),
+			})
+			.transform(({ id, ...rest }) => ({ discordId: id, ...rest })),
 	),
 });
 
@@ -68,7 +78,7 @@ export function loadAccessFiles(paths: AccessConfigPaths) {
 }
 
 export function parseAdmins(source: string, file: string): string[] {
-	return parseSource(file, source, adminsSchema).admins;
+	return parseSource(file, source, adminsSchema).admins.map((admin) => admin.id);
 }
 
 /** Parses and validates the text of the members file. Throws `AccessConfigError`. */

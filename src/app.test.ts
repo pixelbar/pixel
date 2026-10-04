@@ -19,10 +19,10 @@ describe("buildCore", () => {
 		dir = mkdtempSync(join(tmpdir(), "pixel-app-"));
 		const adminsFile = join(dir, "admins.yaml");
 		const membersFile = join(dir, "members.yaml");
-		writeFileSync(adminsFile, `admins:\n  - "${IDS.admin}"\n`);
+		writeFileSync(adminsFile, `admins:\n  - id: "discord:${IDS.admin}"\n`);
 		writeFileSync(
 			membersFile,
-			`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n`,
+			`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n`,
 		);
 		mkdirSync(join(dir, "content", "info"), { recursive: true });
 		writeFileSync(
@@ -303,7 +303,7 @@ describe("buildCore", () => {
 		it("ignores capability names in the file that don't exist, and reports them without failing", () => {
 			writeFileSync(
 				config.access.membersFile,
-				`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n    capabilities:\n      - gone\n`,
+				`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n    capabilities:\n      - gone\n`,
 			);
 			const captureBackground = vi.fn();
 			const core = buildCore(config, silentLogger, { ...nullErrorReporter, captureBackground });
@@ -317,7 +317,7 @@ describe("buildCore", () => {
 		it("stays quiet when every name in the file exists", () => {
 			writeFileSync(
 				config.access.membersFile,
-				`members:\n  - discordId: "${IDS.admin}"\n    tier: member\n  - discordId: "${IDS.member}"\n    tier: member\n    capabilities:\n      - door\n`,
+				`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n    capabilities:\n      - door\n`,
 			);
 			const captureBackground = vi.fn();
 			buildCore(

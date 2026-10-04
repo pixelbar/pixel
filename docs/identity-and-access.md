@@ -36,12 +36,12 @@ Each command states its tier, for example `access: { minTier: "member" }`. `/hel
 
 ```yaml
 # config/admins.yaml
-# Pixel admins: full control of the bot. Just a list of Discord IDs.
-# Discord ID: enable Developer Mode, right-click the user, Copy User ID.
+# Pixel admins: full control of the bot. Same shape as members.yaml.
+# id is "<platform>:<user id>". Discord ID: enable Developer Mode, right-click the user, Copy User ID.
 # IDs MUST be quoted strings (see "Validation").
-# Every admin ALSO needs an entry in members.yaml.
+# Every admin ALSO needs an entry in members.yaml with the same id.
 admins:
-  - "123456789012345678"
+  - id: "discord:123456789012345678"
 ```
 
 ```yaml
@@ -49,10 +49,10 @@ admins:
 # Paying memberships. Anyone not listed is a guest.
 # Managed by Pixel (admin commands rewrite it) and still safe to edit by hand.
 members:
-  - discordId: "123456789012345678"   # an admin: also listed in admins.yaml
+  - id: "discord:123456789012345678"   # an admin: also listed in admins.yaml
     tier: member
     note: "Jane Doe"
-  - discordId: "234567890123456789"
+  - id: "discord:234567890123456789"
     tier: member                # member | friend | guest
     note: "optional, for humans"
     capabilities:               # optional named permissions, see the capability system
@@ -61,17 +61,18 @@ members:
 
 - Paths: `PIXEL_ADMINS_FILE` and `PIXEL_MEMBERS_FILE`, defaulting to `config/admins.yaml` and `config/members.yaml`.
 - **The real files are gitignored**, because they link Discord accounts to membership, which is personal data. The repo contains `config/admins.example.yaml` and `config/members.example.yaml`.
+- **Both files identify people the same way:** `id: "discord:<id>"`, the platform and the user ID, the same form as `actorRef` and the logs. That is so people on other platforms can be told apart once they exist, and so an admin entry matches its members entry exactly. Only `discord:` is accepted for now.
 - **Admins are members too.** `admins.yaml` only says who is an admin. Each admin must also have an entry in `members.yaml`, which holds their membership level, capabilities and note. Pixel refuses to start if one is missing. An admin's effective tier is `admin` (which includes everything below it), and their entry's capabilities still apply. `/admin set-level` refuses admins, but `/admin capabilities grant` works on them.
-- **Moving from the old format** (admins as `name` and `discordId` objects): change `admins.yaml` to a plain list of the quoted IDs, and add an entry for each admin to `members.yaml` (`tier: member` is fine, with the name as the note). Pixel refuses the old format and says which entry is wrong.
+- **Moving from the old formats:** in both files, replace `discordId: "<id>"` with `id: "discord:<id>"`, and drop the `name` from `admins.yaml` (it becomes the `note` of the admin's members entry). Add a members entry for each admin if they don't have one (`tier: member` is fine). Pixel refuses the old formats and says which entry is wrong, without echoing the ID.
 - **`members.yaml` is bot-managed.** Admin commands change it, so it needs a **writable, persistent, snapshotted volume**, not a read-only mount. `admins.yaml` stays hand-edited (read-only is fine) and no command can touch it.
 - `tier: guest` keeps the entry and its capabilities for someone who was demoted. They are treated as unlisted: no tier, not counted, and every tier-gated command refuses them.
 
 ### Validation (at startup, with zod)
 
-- `discordId` must be a **string** matching `^\d{17,20}$`. If it's an unquoted YAML number, Pixel **refuses to start**. Snowflakes are larger than JavaScript's safe integer range, so an unquoted ID would be silently rounded to a different user.
+- `id` must be a **string** like `discord:123456789012345678`: the platform, then a 17–20 digit user ID. If it's unquoted, or has no platform, Pixel **refuses to start**. Snowflakes are larger than JavaScript's safe integer range, so an unquoted number would be silently rounded to a different user.
 - `tier` must be `member`, `friend` or `guest`. `capabilities` is an optional list of unique names (lowercase words joined by `-`, at most 50). Unknown keys are rejected, which catches typos like `teir`.
-- A duplicate `discordId` within a file is an error.
-- `admins` is a list of quoted IDs with at least one entry, each unique, and each with an entry in `members.yaml`. An ID in both files is expected: admin wins, and the entry's other fields still apply.
+- A duplicate `id` within a file is an error.
+- `admins` is a list of entries with an `id`, at least one, each unique, each unique, and each with an entry in `members.yaml`. An ID in both files is expected: admin wins, and the entry's other fields still apply.
 - If either file is missing or invalid, startup fails with a clear message that never includes the file contents.
 
 ### Reloading

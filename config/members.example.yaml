@@ -5,20 +5,22 @@
 # version as members.yaml.bak), so it must be writable. Hand edits are fine:
 # run /admin reload afterwards, or restart.
 #
-# Every admin listed in admins.yaml MUST have an entry here too. Admin comes
-# from admins.yaml; the entry holds their membership level, capabilities and note.
+# Every admin listed in admins.yaml MUST have an entry here too, with the same id.
+# Admin comes from admins.yaml; the entry holds their membership level,
+# capabilities and note.
 #
 # tier: member | friend | guest   (guest keeps the entry, but no tier)
 # capabilities: optional named permissions (lowercase words joined by '-')
+# Same shape as admins.yaml: `id` is "<platform>:<user id>", e.g. "discord:123456789012345678".
 # IDs MUST be quoted strings.
 members:
-  - discordId: "100000000000000001" # also in admins.yaml
+  - id: "discord:100000000000000001" # also in admins.yaml
     tier: member
     note: Example Admin
-  - discordId: "100000000000000002"
+  - id: "discord:100000000000000002"
     tier: member
     note: optional, for humans
-  - discordId: "100000000000000003"
+  - id: "discord:100000000000000003"
     tier: friend
     # capabilities:
     #   - front-door

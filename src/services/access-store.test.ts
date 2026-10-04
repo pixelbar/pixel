@@ -20,19 +20,19 @@ import { AccessStoreError, FileAccessStore, type FileOps, nodeFileOps } from "./
 
 const NEW_ID = "100000000000000050";
 
-const ADMINS = `admins:\n  - "${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - id: "discord:${IDS.admin}"\n`;
 /** Every admin has a members entry too. */
-const ADMIN_ENTRY = `  - discordId: "${IDS.admin}"\n    tier: friend\n    note: Ada\n`;
+const ADMIN_ENTRY = `  - id: "discord:${IDS.admin}"\n    tier: friend\n    note: Ada\n`;
 const MEMBERS = `# Paying members. Edited by Pixel and by hand.
 members:
   # Ada's friend
-  - discordId: "${IDS.member}"
+  - id: "discord:${IDS.member}"
     tier: member
     note: paid yearly # keep this
     capabilities:
       - front-door
 
-  - discordId: "${IDS.friend}"
+  - id: "discord:${IDS.friend}"
     tier: friend
 ${ADMIN_ENTRY}`;
 
@@ -127,7 +127,7 @@ describe("changing a tier", () => {
 		expect(result.after).toEqual({ discordId: NEW_ID, tier: "friend", capabilities: [] });
 		const text = read();
 		expect(text.startsWith(MEMBERS)).toBe(true);
-		expect(text).toContain(`- discordId: "${NEW_ID}"\n    tier: friend`);
+		expect(text).toContain(`- id: "discord:${NEW_ID}"\n    tier: friend`);
 		expect(store.view.discord.get(NEW_ID)).toBe("friend");
 		expect(store.view.counts).toEqual({ admins: 1, members: 1, friends: 2 });
 	});
@@ -137,7 +137,7 @@ describe("changing a tier", () => {
 		const store = open();
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", note: "new" }, by);
 		expect(read()).toBe(
-			`members:\n${ADMIN_ENTRY}  - discordId: "${NEW_ID}"\n    tier: member\n    note: new\n`,
+			`members:\n${ADMIN_ENTRY}  - id: "discord:${NEW_ID}"\n    tier: member\n    note: new\n`,
 		);
 		expect(open().view.discord.get(NEW_ID)).toBe("member");
 	});
@@ -274,7 +274,7 @@ describe("safe writes", () => {
 
 	it("keeps a hand edit made while the bot runs", async () => {
 		const store = open();
-		const edited = `${MEMBERS}\n  - discordId: "${IDS.guest}"\n    tier: friend\n    note: added by hand\n`;
+		const edited = `${MEMBERS}\n  - id: "discord:${IDS.guest}"\n    tier: friend\n    note: added by hand\n`;
 		writeFileSync(membersFile, edited);
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member" }, by);
 		expect(read()).toContain("added by hand");
@@ -295,7 +295,7 @@ describe("safe writes", () => {
 
 	it("refuses a file that was broken by hand, and changes nothing", async () => {
 		const store = open();
-		const broken = `members:\n  - discordId: "${IDS.member}"\n    tier: nonsense\n`;
+		const broken = `members:\n  - id: "discord:${IDS.member}"\n    tier: nonsense\n`;
 		writeFileSync(membersFile, broken);
 		const before = store.view;
 		await expect(store.apply({ kind: "set-tier", id: NEW_ID, tier: "friend" }, by)).rejects.toThrow(
@@ -460,10 +460,10 @@ describe("audit", () => {
 describe("reload", () => {
 	it("picks up hand edits, including new admins, and reports the counts", async () => {
 		const store = open();
-		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - "${IDS.guest}"\n`);
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - id: "discord:${IDS.guest}"\n`);
 		writeFileSync(
 			membersFile,
-			`members:\n${ADMIN_ENTRY}  - discordId: "${IDS.guest}"\n    tier: friend\n`,
+			`members:\n${ADMIN_ENTRY}  - id: "discord:${IDS.guest}"\n    tier: friend\n`,
 		);
 
 		const result = await store.reload(by);
@@ -484,7 +484,7 @@ describe("reload", () => {
 	it("keeps the current data when the files are now invalid, and says why", async () => {
 		const store = open();
 		const before = store.view;
-		writeFileSync(membersFile, `members:\n  - discordId: "${IDS.member}"\n    tier: nonsense\n`);
+		writeFileSync(membersFile, `members:\n  - id: "discord:${IDS.member}"\n    tier: nonsense\n`);
 
 		const error = await store.reload(by).catch((e: unknown) => e as Error);
 
@@ -505,8 +505,8 @@ describe("reload", () => {
 
 	it("lets the next change use an admin added by reload", async () => {
 		const store = open();
-		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - "${IDS.guest}"\n`);
-		writeFileSync(membersFile, `${MEMBERS}  - discordId: "${IDS.guest}"\n    tier: friend\n`);
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - id: "discord:${IDS.guest}"\n`);
+		writeFileSync(membersFile, `${MEMBERS}  - id: "discord:${IDS.guest}"\n    tier: friend\n`);
 		await store.reload(by);
 		await expect(
 			store.apply({ kind: "set-tier", id: IDS.guest, tier: "friend" }, by),
