@@ -4,7 +4,7 @@ import { light } from "./light.ts";
 import { sensor } from "./sensor.ts";
 import { powerSwitch } from "./switch.ts";
 
-export type { HomeKind, KindAction } from "./kind.ts";
+export type { HomeKind, KindAction, KindCapability } from "./kind.ts";
 export { defineKinds, HomeKindError } from "./kind.ts";
 
 /**

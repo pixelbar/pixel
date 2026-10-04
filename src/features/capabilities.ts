@@ -1,12 +1,16 @@
 import type { CapabilityDefinition } from "../core/capabilities.ts";
+import { homeCapabilities } from "../core/home-access.ts";
+import { HOME_KINDS } from "../core/home-kinds/index.ts";
 
 /**
  * Every capability that exists. Admins can only grant names listed here, and a
  * command that requires a name that isn't listed stops Pixel from starting.
  *
- * It's empty on purpose: the generic system comes first, specific capabilities
- * (for example door control) are added with the features that need them.
+ * Home Assistant brings `ha-admin` (control any device) and one per kind of device
+ * that can be controlled (`ha-lights`, `ha-switches`, `ha-doors`). The per-kind ones
+ * come from the kinds themselves, so a new kind brings its capability with it. Add
+ * other features' capabilities to the list:
  *
- *   { name: "front-door", description: "Open and lock the front door" }
+ *   { name: "workshop-laser", description: "Use the laser cutter" }
  */
-export const CAPABILITIES: readonly CapabilityDefinition[] = [];
+export const CAPABILITIES: readonly CapabilityDefinition[] = [...homeCapabilities(HOME_KINDS)];

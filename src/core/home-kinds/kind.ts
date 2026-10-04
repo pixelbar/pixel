@@ -1,3 +1,6 @@
+import { CAPABILITY_NAME } from "../capabilities.ts";
+import { HA_ADMIN } from "../home-access.ts";
+
 /**
  * A *kind* of device says what Pixel may do with a Home Assistant entity of a
  * certain sort: which HA domains it can be, which actions people may run on it,
@@ -28,6 +31,14 @@ export type KindAction = {
 	working?: readonly string[];
 };
 
+/** The capability that lets someone control a kind. It's registered with the others, so a new kind brings its own. */
+export type KindCapability = {
+	/** Starts with "ha-", such as "ha-lights". Never "ha-admin", which is the general one. */
+	name: string;
+	/** 1–100 characters. Shown to admins when granting. */
+	description: string;
+};
+
 export type HomeKind = {
 	/** What goes in the devices file, such as "door". Lowercase words joined by '-'. */
 	name: string;
@@ -38,9 +49,9 @@ export type HomeKind = {
 	actions: readonly KindAction[];
 	/**
 	 * The capability that lets someone control this kind (see the capability
-	 * system). Absent for a read-only kind. A person also needs `ha-admin` or this one.
+	 * system). Absent for a read-only kind. Acting on a device needs this one or `ha-admin`.
 	 */
-	capability?: string;
+	capability?: KindCapability;
 };
 
 export class HomeKindError extends Error {
@@ -58,6 +69,7 @@ const STATE = /^[a-z][a-z_]*$/;
  */
 export function defineKinds(kinds: readonly HomeKind[]): ReadonlyMap<string, HomeKind> {
 	const byName = new Map<string, HomeKind>();
+	const capabilities = new Set<string>();
 	for (const kind of kinds) {
 		const where = `kind "${kind.name}"`;
 		if (!WORD.test(kind.name)) throw new HomeKindError(`Invalid name for ${where}`);
@@ -90,6 +102,21 @@ export function defineKinds(kinds: readonly HomeKind[]): ReadonlyMap<string, Hom
 		}
 		if (kind.actions.length > 0 && !kind.capability) {
 			throw new HomeKindError(`${where} can change things, so it needs a capability`);
+		}
+		if (kind.capability) {
+			const { name, description } = kind.capability;
+			if (!CAPABILITY_NAME.test(name) || !name.startsWith("ha-") || name === HA_ADMIN) {
+				throw new HomeKindError(
+					`The capability of ${where} must be a valid name starting with "ha-", and not "${HA_ADMIN}"`,
+				);
+			}
+			if (description.length < 1 || description.length > 100) {
+				throw new HomeKindError(`Capability description must be 1–100 characters for ${where}`);
+			}
+			if (capabilities.has(name)) {
+				throw new HomeKindError(`${where} shares the capability "${name}" with another kind`);
+			}
+			capabilities.add(name);
 		}
 		byName.set(kind.name, kind);
 	}
