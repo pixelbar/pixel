@@ -83,7 +83,11 @@ function setup(
 	logger.child = () => logger;
 	const registry = new CommandRegistry();
 	registry.register(
-		createHomeFeature({ home: { getStates }, homeDevices: devices, now: () => NOW }),
+		createHomeFeature({
+			home: { getStates, callService: async () => {} },
+			homeDevices: devices,
+			now: () => NOW,
+		}),
 	);
 	const dispatcher = new Dispatcher({
 		registry,

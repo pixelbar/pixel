@@ -57,7 +57,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
-		createHomeFeature({ home: deps.home, homeDevices: deps.homeDevices }),
+		createHomeFeature({ home: deps.home, homeDevices: deps.homeDevices, reporter: deps.reporter }),
 		createHomeInventoryFeature({ inventory: deps.homeInventory, logger: deps.logger }),
 		createAdminFeature({
 			version: deps.version,
