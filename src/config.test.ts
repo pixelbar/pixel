@@ -269,3 +269,20 @@ describe("the Home Assistant inventory interval", () => {
 		);
 	});
 });
+
+describe("the log directory", () => {
+	it("defaults to data/logs", () => {
+		expect(loadConfig(VALID).logDir).toBe("data/logs");
+	});
+
+	it("can be moved", () => {
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: " /var/log/pixel " }).logDir).toBe(
+			"/var/log/pixel",
+		);
+	});
+
+	it("turns the log file off when empty, leaving the console and Sentry", () => {
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: "" }).logDir).toBeUndefined();
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: "   " }).logDir).toBeUndefined();
+	});
+});

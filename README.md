@@ -113,7 +113,8 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `PIXEL_DATA_DIR`              | Optional. Where Pixel keeps small bits of state (`space.state`, `announcements.state`). Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
-| `SENTRY_DSN`                  | Optional. Error reporting is off if unset          |
+| `SENTRY_DSN`                  | Optional. Error reporting and Sentry Logs are off if unset |
+| `PIXEL_LOG_DIR`               | Optional. Where the rotating log file goes (about two weeks, JSON lines). Defaults to `data/logs/`. Empty turns the file off. Logs also go to the console and to Sentry Logs |
 
 ## Common commands
 

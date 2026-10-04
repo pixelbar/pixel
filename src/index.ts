@@ -7,6 +7,7 @@ import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
 import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
+import { logProcessFailures } from "./observability/process-logging.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
 import { findMissingDevices } from "./services/home-devices.ts";
@@ -14,6 +15,7 @@ import { findMissingDevices } from "./services/home-devices.ts";
 async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
+	logProcessFailures(logger);
 	const reporter = createSentryReporter();
 	const {
 		access,

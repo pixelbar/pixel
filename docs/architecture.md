@@ -335,7 +335,12 @@ There are no member-only features yet. The first one will be the real test of th
   - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
   - Releases are tagged with the git SHA, and source maps are uploaded from CI later.
   - `environment` is `local`, `dev` or `prod`.
-- **Logs:** pino writes JSON to stdout. Locally, pino-pretty makes it readable.
+- **Logs:** everything is logged through the one pino logger (`observability/logger.ts`, no `console`), and each line goes to **three** places:
+  - **The console:** JSON, or readable with pino-pretty when `PIXEL_ENV=local`.
+  - **A rotating file** of JSON lines in `PIXEL_LOG_DIR` (default `data/logs`, empty turns it off): `pixel.<date>.<n>.log` with `current.log` pointing at the live one, a new file each day or at 20 MB, about two weeks kept (14 besides the live one, including files left by earlier runs), readable only by the user running Pixel. It's written by the `pino-roll` transport in a worker thread. If the directory can't be written, Pixel carries on with the console and Sentry and logs a warning (`log.file_unavailable`), so a read-only disk never stops the bot.
+  - **Sentry Logs:** Sentry's pino integration (set up in `observability/sentry-options.ts`) sends `info` and above as Sentry Logs, whatever `LOG_LEVEL` is (debug stays in the console and the file), with each line's fields as attributes. They aren't turned into error events: real failures still reach Sentry as events through the `ErrorReporter`. Nothing is sent when no DSN is set.
+  - **Secrets:** pino redacts `token` and authorization headers by name, and every line written (console and file) has anything shaped like a bot or Home Assistant token masked on the way out. Sentry's copy is scrubbed again in `beforeSendLog`.
+  - **Failures nobody caught:** an unhandled promise rejection and an uncaught exception are logged too (`process.unhandled_rejection`, `process.uncaught_exception`), so they reach the file and Sentry as well as the console. Neither changes whether the process exits: a rejection is logged and the bot carries on (like Sentry's default), and an exception still ends the process.
 - **Health:** a small HTTP server exposes `/healthz` (process alive) and `/readyz` (Discord gateway connected).
 
 ## Configuration
@@ -365,6 +370,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
+| `PIXEL_LOG_DIR`               |        | Default `data/logs`. A rotating JSON log file is written here (about two weeks, readable only by the owner). Empty turns the file off; the console and Sentry Logs still get every line |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |
 | `SPACEAPI_URL`                |        | Default `https://spaceapi.pixelbar.nl/`; http(s) only |
 
@@ -408,4 +414,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | proposed |
 | 0003 | No database until account linking or grants need one                  | proposed |
 | 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
-| 0005 | Sentry for errors (no PII), pino to stdout for logs                   | proposed |
+| 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
