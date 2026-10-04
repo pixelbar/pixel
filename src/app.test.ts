@@ -257,8 +257,8 @@ describe("buildCore", () => {
 		const DOOR = [{ name: "door", description: "Open the door" }];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
 
-		it("starts with none registered, so admins have nothing to grant yet", async () => {
-			const core = buildCore(config, silentLogger, nullErrorReporter);
+		it("can start with none registered, so admins have nothing to grant", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: [] });
 			expect(core.capabilities.all()).toEqual([]);
 			const result = await core.dispatcher.dispatch({
 				actor: actor({ userId: IDS.admin }),
@@ -269,6 +269,37 @@ describe("buildCore", () => {
 				users: { user: person },
 			});
 			expect(result.reply.text).toBe("No capabilities are registered yet.");
+		});
+
+		it("registers the Home Assistant capabilities, so admins can grant them", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter);
+			expect(core.capabilities.all().map((c) => c.name)).toEqual([
+				"ha-admin",
+				"ha-lights",
+				"ha-switches",
+				"ha-doors",
+			]);
+			const listed = await core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.admin }),
+				command: "admin",
+				subgroup: "capabilities",
+				subcommand: "list",
+				args: {},
+			});
+			const text = JSON.stringify(listed.reply);
+			for (const name of ["ha-admin", "ha-lights", "ha-switches", "ha-doors"]) {
+				expect(text).toContain(name);
+			}
+			const grant = await core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.admin }),
+				command: "admin",
+				subgroup: "capabilities",
+				subcommand: "grant",
+				args: { user: IDS.member, capability: "ha-lights" },
+				users: { user: person },
+			});
+			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
+			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
 		});
 
 		it("lets an admin grant one, which then shows in the member's principal and the file", async () => {

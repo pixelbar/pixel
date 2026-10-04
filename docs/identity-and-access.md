@@ -121,7 +121,7 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 
 ### Capabilities
 
-Some features should reach specific people, **not everyone who is a member**, and not based on a Discord role. A **capability** is a named permission granted to an individual, for example a future `front-door`. There are none yet: the system is generic, and the first one arrives with the door lock (#29).
+Some features should reach specific people, **not everyone who is a member**, and not based on a Discord role. A **capability** is a named permission granted to an individual, for example `ha-doors`. The Home Assistant ones are the first (see "Home Assistant devices" below), and other features add their own.
 
 - **Declared in code.** `src/features/capabilities.ts` lists every capability (name and description). Admins can only grant names that exist there, so a typo can't create a silent grant. A command that requires an unknown name stops startup.
 - **Commands require a tier and a capability**, for example `access: { minTier: "member", capability: "front-door" }`. **Both must hold**, so access can't outlive membership. The dispatcher is the only place this is checked, and the refusal is the same generic message as any other, with the real reason (`capability`) in the log.
@@ -132,6 +132,26 @@ Some features should reach specific people, **not everyone who is a member**, an
 - **Names in the file that don't exist** (for example after rolling back a release) are ignored. Pixel logs a warning and reports them to Sentry (names only), at startup and on `/admin reload`.
 
 **Threat model.** A grant lives only in `members.yaml`, and only an admin from `admins.yaml` can change it, through the store. A compromised Discord server, a role change or a forged display name can't grant a capability, because Pixel never reads roles to decide access and identifies people only by ID. Someone who gains write access to the files, or to an admin account, can grant one, which is why every change is audited and why the files live on a protected volume.
+
+### Home Assistant devices
+
+Controlling a device in Home Assistant (HA) is decided with capabilities, never with Discord roles. The devices are an allow-list in `config/home-assistant/devices.yaml` (see `architecture.md`), and **one rule**, in `src/core/home-access.ts`, decides who may do what to each. Every `/ha` command and autocomplete use it, so they can't disagree.
+
+| | Needs |
+| --- | --- |
+| **See a device and read its status** | Its tier floor (`minTier`, `member` unless the file says `friend` or `admin`). No capability. |
+| **Act on a device** (run an action) | The tier floor, **and** `ha-admin` **or** the capability of the device's kind, **and** the action is one the file allows for that device. |
+
+The capabilities are `ha-admin` (any device, whatever its kind) and one per kind that can be controlled: `ha-lights`, `ha-switches` and `ha-doors`. A kind brings its own capability, so a new kind needs no change here. Sensors only report, so they have none.
+
+- **Nothing implies one.** Not a tier, not a Discord role and not being a Pixel admin: an admin without the capability is refused, and grants it to themselves (audited) if they want it.
+- **Guests never pass**, even holding `ha-admin`, because the device's tier floor is never guest. A demotion takes effect at once.
+- **A capability is narrow.** `ha-lights` doesn't reach a switch or a door, and `ha-admin` can't do what the devices file doesn't allow for that device.
+- **A refusal reveals nothing.** The person gets one message (`HOME_DENIED`) whether the device doesn't exist, they lack the tier or they lack the capability, so it never confirms a device is there, what kind it is or what they'd need. The log has the real reason (`tier`, `capability` or `action`) and who asked.
+- **Autocomplete uses the same rule.** It offers only the devices a person may see, or for an action only those they may run it on. Autocomplete is still a convenience: the command checks again.
+- **Where it's enforced.** `/ha` has a coarse floor at the dispatcher (the lowest tier any device needs). Each device's own floor, capability and action are checked by the shared rule in the handler. A handler may be stricter than the dispatcher, never looser.
+
+**Threat model for Home Assistant.** The token Pixel uses can't be limited by Home Assistant, so it can do whatever its user can; a non-admin user is the best fence available, and Pixel warns if the token belongs to an admin. The real fence is Pixel's own: the devices file (a human-written allow-list, never written by Pixel), the actions listed per device, and this rule. The inventory of everything HA has (`inventory.yaml`) is never read back and grants nothing. Someone who can edit `devices.yaml` or `members.yaml`, or who is an admin, can widen access, which is why those files are protected and why grants are audited. Doors are the sensitive case, and #29 adds more safeguards on top.
 
 ### Discord role mirroring
 
@@ -176,6 +196,7 @@ Pixel's own data is the source of truth for tiers. Where the Discord server uses
 | A bug in an adapter skips authorisation             | Central dispatcher check, plus tests that every command declares access     |
 | Someone abuses the bot from a foreign guild         | Guild allow-list; the bot leaves other guilds                               |
 | Bot token leaks                                     | Stored in `.env` or Key Vault, never logged, separate dev and prod bots     |
+| Someone controls a Home Assistant device they shouldn't | One rule: tier floor, plus `ha-admin` or the kind's capability, plus an action the file allows; a generic refusal that reveals nothing; the token belongs to a non-admin HA user |
 | Forged interactions                                 | Gateway connection, so payloads arrive over an authenticated socket. If HTTP interactions are used later, verify the Ed25519 signature |
 
 ## Testing requirements (phase 1)
