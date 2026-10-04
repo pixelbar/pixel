@@ -169,7 +169,9 @@ describe("loadAccessConfig", () => {
 			`admins:\n  - ids: ["discord:${IDS.admin}"]\n  - ids: ["discord:${IDS.admin}"]\n`,
 			MEMBERS,
 		);
-		expect(() => loadAccessConfig(paths)).toThrow(/admins\[1\]\.ids\[0\] duplicates admins\[0\]\.ids\[0\]/);
+		expect(() => loadAccessConfig(paths)).toThrow(
+			/admins\[1\]\.ids\[0\] duplicates admins\[0\]\.ids\[0\]/,
+		);
 	});
 
 	it("rejects unknown tiers", () => {
@@ -191,7 +193,9 @@ describe("loadAccessConfig", () => {
     tier: friend
 `),
 		);
-		expect(() => loadAccessConfig(paths)).toThrow(/members\[2\]\.ids\[0\] duplicates members\[1\]\.ids\[0\]/);
+		expect(() => loadAccessConfig(paths)).toThrow(
+			/members\[2\]\.ids\[0\] duplicates members\[1\]\.ids\[0\]/,
+		);
 	});
 
 	it("fails on a missing file", () => {

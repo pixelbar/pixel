@@ -542,7 +542,10 @@ ${ADMIN_ENTRY}  - ids: ["discord:${IDS.member}", "discord:${SECOND}"]
 
 	it("shares capabilities between their ids", async () => {
 		const store = open();
-		await store.apply({ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] }, by);
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] },
+			by,
+		);
 		expect(store.view.records.get(SECOND)?.capabilities).toEqual(["front-door"]);
 		expect(open().view.records.get(SECOND)?.capabilities).toEqual(["front-door"]);
 	});
