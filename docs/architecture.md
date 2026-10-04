@@ -215,6 +215,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
 | `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
+| `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The events list
 
