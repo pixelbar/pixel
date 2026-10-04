@@ -6,6 +6,7 @@ import type { PlatformActor } from "../../core/access.ts";
 import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
+import { Home } from "../../core/home.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
 import { silentLogger } from "../../core/logger.ts";
@@ -73,6 +74,7 @@ function setup(ops = nodeFileOps) {
 			access: store,
 			capabilities: CAPABILITIES,
 			roles: new RoleMirror({ logger: silentLogger, reporter }),
+			home: new Home({ logger: silentLogger, reporter }),
 			reporter,
 		}),
 	);

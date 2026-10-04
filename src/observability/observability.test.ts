@@ -10,6 +10,16 @@ describe("scrub", () => {
 		expect(scrubString(`token ${fakeToken} here`)).toBe("token [redacted-token] here");
 	});
 
+	it("redacts Home Assistant long-lived tokens, which are JWTs", () => {
+		const jwt = `eyJ${"h".repeat(30)}.eyJ${"p".repeat(60)}.${"s".repeat(43)}`;
+		expect(scrubString(`Authorization: Bearer ${jwt} sent`)).toBe(
+			"Authorization: Bearer [redacted-token] sent",
+		);
+		expect(scrubDeep({ nested: [{ header: `Bearer ${jwt}` }] })).toEqual({
+			nested: [{ header: "Bearer [redacted-token]" }],
+		});
+	});
+
 	it("keeps Discord IDs, which identify users in Sentry", () => {
 		expect(scrubString(`user discord:${IDS.member}`)).toBe(`user discord:${IDS.member}`);
 	});

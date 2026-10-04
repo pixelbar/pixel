@@ -183,3 +183,57 @@ describe("loadSentryConfig", () => {
 		).toEqual({ dsn: "https://key@o0.ingest.sentry.io/1", environment: "prod", release: "abc123" });
 	});
 });
+
+describe("Home Assistant settings", () => {
+	const URL = "https://example123.ui.nabu.casa";
+	const TOKEN = "a-long-lived-token-value";
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).homeAssistant).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: "", HOME_ASSISTANT_TOKEN: "" }).homeAssistant,
+		).toBeUndefined();
+	});
+
+	it("reads the address and the token", () => {
+		expect(
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: URL, HOME_ASSISTANT_TOKEN: ` ${TOKEN} ` })
+				.homeAssistant,
+		).toEqual({ url: URL, token: TOKEN });
+		expect(
+			loadConfig({
+				...VALID,
+				HOME_ASSISTANT_URL: "http://homeassistant.local:8123",
+				HOME_ASSISTANT_TOKEN: TOKEN,
+			}).homeAssistant?.url,
+		).toBe("http://homeassistant.local:8123");
+	});
+
+	it.each([
+		["only the address", { HOME_ASSISTANT_URL: URL }],
+		["only the token", { HOME_ASSISTANT_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing either value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/set both HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN, or neither/);
+		expect(message).not.toContain(TOKEN);
+		expect(message).not.toContain(URL);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the address %j", (url) => {
+		expect(() =>
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: url, HOME_ASSISTANT_TOKEN: TOKEN }),
+		).toThrow(/HOME_ASSISTANT_URL/);
+	});
+
+	it("rejects a blank token", () => {
+		expect(() =>
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: URL, HOME_ASSISTANT_TOKEN: "   " }),
+		).toThrow(/HOME_ASSISTANT_TOKEN/);
+	});
+});

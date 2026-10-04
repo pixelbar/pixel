@@ -2,6 +2,7 @@ import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
 import type { Feature } from "../core/feature.ts";
+import type { Home } from "../core/home.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
@@ -24,6 +25,7 @@ export type FeatureDeps = {
 	access: AccessStore;
 	capabilities: CapabilityRegistry;
 	roles: RoleMirror;
+	home: Home;
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
@@ -55,6 +57,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			access: deps.access,
 			capabilities: deps.capabilities,
 			roles: deps.roles,
+			home: deps.home,
 			reporter: deps.reporter,
 		}),
 	];

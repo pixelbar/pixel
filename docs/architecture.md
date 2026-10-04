@@ -178,6 +178,18 @@ type Feature = {
   - **Startup checks.** For each channel, Pixel checks it exists, is a text channel in the Pixelbar server, and that the bot has the permissions it needs: View Channel, Send Messages and Embed Links, plus Read Message History for the live style. If not, that publisher stays off with a clear log and a Sentry report, and everything else keeps working. No new Discord intents are needed.
 - **Calendar source:** once connected, the adapter plugs the server's Discord scheduled events into the core `Calendar`. It reads them over REST on every call, needing no extra intents or permissions. (discord.js only skips the request when asked for one event by ID, which this never does.) Voice and stage channel names come from discord.js's channel cache, which Discord keeps current through gateway updates, so a renamed channel is right immediately. `calendar-map.ts` (pure, fully tested) maps each Discord event to a neutral `CalendarEvent`: external events use their location text, voice and stage events use the channel's name, finished and cancelled events are dropped, and recurrence rules become plain words ("weekly on Tuesday"). Discord returns a recurring event once, showing its next occurrence.
 
+## Home Assistant (a client, not an adapter)
+
+Pixel can read and control a Home Assistant (HA) instance: lights, switches, doors. Unlike Discord this is not a place where commands come from. Pixel is the client, and features reach HA only through the core `Home` (`core/home.ts`), the same way they use the calendar. The adapter in `adapters/home-assistant/` is the **only** place that imports the official `home-assistant-js-websocket` library, and it plugs a backend into `Home` at startup.
+
+- **Connection:** `HOME_ASSISTANT_URL` (for example the Nabu Casa cloud address) and `HOME_ASSISTANT_TOKEN`, a long-lived token. Both unset means off, and only one set stops startup. It connects in the background and reconnects forever, so a slow or absent HA never holds up the bot, and it doesn't count towards `/healthz`: HA being down shouldn't restart Pixel.
+- **A non-admin token:** HA can't scope a token, so a long-lived token can do whatever its user can. Use a **non-admin** HA user: that blocks the admin-only commands. Pixel asks HA whose token it is (`auth/current_user`) and warns, in the logs and Sentry, if it belongs to an admin. `/admin status` shows the warning too. The real fence is Pixel's own allow-list of devices (a later step).
+- **Fails closed:** while HA isn't connected, or the token was refused, a call fails at once with a plain message. Nothing is queued, nothing is retried (a late unlock must never happen), and every call has a time limit. An outage is reported once, not on every command.
+- **No cache:** every read asks HA, so a change in HA shows on the next read.
+- **Errors are translated:** the library throws numbers (connection problems) and plain `{ code, message }` objects (HA's own errors). The adapter turns them into `HomeUnavailableError` and `HomeRequestError` with fixed, safe messages. The token and the address never appear in a message, a log line or Sentry (the token is scrubbed there too).
+- **After a refused token:** the connection is off until `/admin reload` re-checks it, so a replaced token takes effect without a restart.
+- **Tests** run against `src/testing/fake-home-assistant.ts`, a stand-in server that speaks HA's WebSocket protocol, never a real HA.
+
 ## Services and ports
 
 | Service / port   | Purpose                              | Implementation                                                    |
@@ -293,6 +305,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
+| `HOME_ASSISTANT_URL`          |        | Optional, with the token. The address Pixel reaches Home Assistant at, such as the Nabu Casa cloud URL (http or https) |
+| `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |

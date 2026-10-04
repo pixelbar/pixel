@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
+import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -13,7 +14,7 @@ async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry, spaceStatus, announcer, calendar, roles, features } =
+	const { access, dispatcher, registry, spaceStatus, announcer, calendar, roles, home, features } =
 		buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
 
 	logger.info(
@@ -40,6 +41,18 @@ async function main(): Promise<void> {
 			stopFeatures = startFeatures(features);
 		},
 	});
+	// Home Assistant connects in the background and reconnects forever, so it never holds up the
+	// bot. It doesn't count towards health either: Home Assistant being down shouldn't restart Pixel.
+	let homeAssistant: HomeAssistantBackend | undefined;
+	if (config.homeAssistant) {
+		homeAssistant = new HomeAssistantBackend({ ...config.homeAssistant, logger });
+		home.attach(homeAssistant);
+		homeAssistant.settled
+			.then(() => home.check())
+			.catch((error: unknown) => reporter.captureBackground(error, "home-assistant"));
+	} else {
+		logger.info({ event: "home.unconfigured" }, "Home Assistant isn't configured");
+	}
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	spaceStatus.start();
 
@@ -50,6 +63,7 @@ async function main(): Promise<void> {
 		logger.info({ event: "shutdown", signal }, "shutting down");
 		stopFeatures();
 		spaceStatus.stop();
+		homeAssistant?.close();
 		await discord.stop();
 		health.close();
 		await Sentry.flush(2000);

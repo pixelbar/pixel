@@ -172,6 +172,9 @@ importers:
       discord.js:
         specifier: ^14.27.0
         version: 14.27.0
+      home-assistant-js-websocket:
+        specifier: ^9.7.0
+        version: 9.7.0
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -188,6 +191,9 @@ importers:
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.4
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       '@vitest/coverage-v8':
         specifier: ^5.0.3
         version: 5.0.3(vitest@5.0.3)
@@ -203,6 +209,9 @@ importers:
       vitest:
         specifier: ^5.0.3
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@26.6.4)(@vitest/coverage-v8@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
 
 packages:
 
@@ -1027,6 +1036,9 @@ packages:
 
   help-me@5.0.0:
     resolution: {integrity: sha512-7xgomUX6ADmcYzFik0HzAxh/73YlKR9bmFzf51CZwR+b6YtzU2m0u49hQCqV6SvlqIqsaxovfwdvbnsw3b/zpg==}
+
+  home-assistant-js-websocket@9.7.0:
+    resolution: {integrity: sha512-AE/VtwY+sKi7B3934KuIgvj2g06QY9aFVdd2zh1r5ygbpMo2TZbvN9Zoma8L2wHNYFsngTRiZxYOnLlCysIOzA==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -1970,6 +1982,8 @@ snapshots:
   has-flag@4.0.0: {}
 
   help-me@5.0.0: {}
+
+  home-assistant-js-websocket@9.7.0: {}
 
   joycon@3.1.1: {}
 

@@ -8,6 +8,8 @@
 const PATTERNS: readonly [RegExp, string][] = [
 	// Discord bot tokens: base64 user ID . timestamp . HMAC
 	[/[\w-]{23,28}\.[\w-]{6,7}\.[\w-]{27,40}/g, "[redacted-token]"],
+	// Home Assistant long-lived tokens are JWTs: three base64url parts, the first starting "eyJ".
+	[/eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g, "[redacted-token]"],
 ];
 
 export function scrubString(input: string): string {

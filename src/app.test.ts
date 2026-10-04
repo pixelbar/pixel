@@ -48,6 +48,7 @@ describe("buildCore", () => {
 				announce: { liveChannelId: undefined, timelineChannelId: undefined },
 				roles: { member: undefined, friend: undefined },
 			},
+			homeAssistant: undefined,
 		};
 	});
 

@@ -6,6 +6,7 @@ import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
+import { Home } from "../core/home.ts";
 import { silentLogger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
@@ -43,6 +44,7 @@ const deps = () => ({
 	access,
 	capabilities: new CapabilityRegistry(),
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
+	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
 	spaceStatus,
@@ -132,6 +134,7 @@ function adminSubcommand(
 		access: store,
 		capabilities: new CapabilityRegistry(),
 		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
+		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
@@ -186,6 +189,7 @@ describe("admin", () => {
 			access: store,
 			capabilities: new CapabilityRegistry(),
 			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
+			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 			reporter: { ...nullErrorReporter, captureBackground },
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");
