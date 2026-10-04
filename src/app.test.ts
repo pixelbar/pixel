@@ -330,4 +330,30 @@ describe("buildCore", () => {
 			expect(captureBackground).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("feedback", () => {
+		const ask = (core: ReturnType<typeof buildCore>, userId: string) =>
+			core.dispatcher.dispatch({
+				actor: actor({ userId, displayName: "Someone" }),
+				command: "feedback",
+				args: { message: "The quiz night is missing from /events" },
+			});
+
+		it("says it isn't set up when nothing is plugged in, and nothing is sent", async () => {
+			const result = await ask(buildCore(config, silentLogger, nullErrorReporter), IDS.guest);
+			expect(result.reply.text).toBe("Feedback isn't set up right now, sorry.");
+			expect(result.private).toBe(true);
+		});
+
+		it("sends it, for a guest too, with who it's from", async () => {
+			const send = vi.fn(() => true);
+			const core = buildCore(config, silentLogger, nullErrorReporter, { feedback: { send } });
+			const result = await ask(core, IDS.guest);
+			expect(result.reply.text).toContain("Thank you");
+			expect(send).toHaveBeenCalledWith({
+				message: "The quiz night is missing from /events",
+				from: expect.objectContaining({ userId: IDS.guest, tier: "guest", displayName: "Someone" }),
+			});
+		});
+	});
 });

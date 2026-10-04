@@ -6,6 +6,7 @@ import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
 import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
+import { createSentryFeedback } from "./observability/sentry-feedback.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
 
 async function main(): Promise<void> {
@@ -13,7 +14,7 @@ async function main(): Promise<void> {
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
 	const { access, dispatcher, registry, spaceStatus, announcer, calendar, roles, features } =
-		buildCore(config, logger, reporter);
+		buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.view.counts },
