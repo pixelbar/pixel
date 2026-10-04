@@ -36,12 +36,12 @@ Each command states its tier, for example `access: { minTier: "member" }`. `/hel
 
 ```yaml
 # config/admins.yaml
-# Pixel admins: full control of the bot.
-# Discord ID: enable Developer Mode, right-click the user, Copy User ID.
+# Pixel admins: full control of the bot. Same shape as members.yaml.
+# ids is a list of "<platform>:<user id>". Discord ID: enable Developer Mode, right-click the user, Copy User ID.
 # IDs MUST be quoted strings (see "Validation").
+# Every admin ALSO needs an entry in members.yaml holding the same ids.
 admins:
-  - name: Jane Doe              # for humans only; never used for authorisation
-    discordId: "123456789012345678"
+  - ids: ["discord:123456789012345678"]
 ```
 
 ```yaml
@@ -49,7 +49,10 @@ admins:
 # Paying memberships. Anyone not listed is a guest.
 # Managed by Pixel (admin commands rewrite it) and still safe to edit by hand.
 members:
-  - discordId: "234567890123456789"
+  - ids: ["discord:123456789012345678"]   # an admin: also listed in admins.yaml
+    tier: member
+    note: "Jane Doe"
+  - ids: ["discord:234567890123456789"]
     tier: member                # member | friend | guest
     note: "optional, for humans"
     capabilities:               # optional named permissions, see the capability system
@@ -58,16 +61,18 @@ members:
 
 - Paths: `PIXEL_ADMINS_FILE` and `PIXEL_MEMBERS_FILE`, defaulting to `config/admins.yaml` and `config/members.yaml`.
 - **The real files are gitignored**, because they link Discord accounts to membership, which is personal data. The repo contains `config/admins.example.yaml` and `config/members.example.yaml`.
+- **Both files identify people the same way:** each entry is one person, with `ids`, a list of `"<platform>:<user id>"` (the same form as `actorRef` and the logs). One person can have several, for example one per platform, so people on other platforms can be told apart and linked once they exist (#16). An id may appear in only one entry per file. Only `discord:` is accepted for now.
+- **Admins are members too.** `admins.yaml` only says who is an admin. An admin entry's ids must all belong to one members entry, and only the ids listed there are admin: a second account in the same members entry keeps the person's membership level but isn't an admin. Each admin must also have an entry in `members.yaml`, which holds their membership level, capabilities and note. Pixel refuses to start if one is missing. An admin's effective tier is `admin` (which includes everything below it), and their entry's capabilities still apply. `/admin set-level` refuses admins, but `/admin capabilities grant` works on them.
+- **Moving from the old formats:** in both files, replace `discordId: "<id>"` with `ids: ["discord:<id>"]`, and drop the `name` from `admins.yaml` (it becomes the `note` of the admin's members entry). Add a members entry for each admin if they don't have one (`tier: member` is fine). Pixel refuses the old formats and says which entry is wrong, without echoing the ID.
 - **`members.yaml` is bot-managed.** Admin commands change it, so it needs a **writable, persistent, snapshotted volume**, not a read-only mount. `admins.yaml` stays hand-edited (read-only is fine) and no command can touch it.
 - `tier: guest` keeps the entry and its capabilities for someone who was demoted. They are treated as unlisted: no tier, not counted, and every tier-gated command refuses them.
 
 ### Validation (at startup, with zod)
 
-- `discordId` must be a **string** matching `^\d{17,20}$`. If it's an unquoted YAML number, Pixel **refuses to start**. Snowflakes are larger than JavaScript's safe integer range, so an unquoted ID would be silently rounded to a different user.
+- Each entry of `ids` must be a **string** like `discord:123456789012345678`: the platform, then a 17–20 digit user ID (an entry has one to ten of them, without repeats). If one is unquoted, or has no platform, Pixel **refuses to start**. Snowflakes are larger than JavaScript's safe integer range, so an unquoted number would be silently rounded to a different user.
 - `tier` must be `member`, `friend` or `guest`. `capabilities` is an optional list of unique names (lowercase words joined by `-`, at most 50). Unknown keys are rejected, which catches typos like `teir`.
-- A duplicate `discordId` within a file is an error.
-- If an ID appears in both files, admin wins. Pixel logs a warning.
-- `admins` must contain at least one entry.
+- An id that appears in two entries of the same file is an error. Messages name the position (`members[2].ids[1] duplicates members[1].ids[0]`), never the id.
+- `admins` is a list of entries with `ids`, at least one entry, each unique, and each with an entry in `members.yaml`. An ID in both files is expected: admin wins, and the entry's other fields still apply.
 - If either file is missing or invalid, startup fails with a clear message that never includes the file contents.
 
 ### Reloading
@@ -113,6 +118,20 @@ type TierSource = {
 Phase 1 has a single `ConfigTierSource`. Later sources implement the same interface: Discord roles, database grants, linked identities. Neither the dispatcher nor any feature changes when a source is added.
 
 Handlers receive a `Principal { platform, userId, displayName, tier }`. They never receive raw platform objects they could misuse to make their own authorisation decisions.
+
+### Capabilities
+
+Some features should reach specific people, **not everyone who is a member**, and not based on a Discord role. A **capability** is a named permission granted to an individual, for example a future `front-door`. There are none yet: the system is generic, and the first one arrives with the door lock (#29).
+
+- **Declared in code.** `src/features/capabilities.ts` lists every capability (name and description). Admins can only grant names that exist there, so a typo can't create a silent grant. A command that requires an unknown name stops startup.
+- **Commands require a tier and a capability**, for example `access: { minTier: "member", capability: "front-door" }`. **Both must hold**, so access can't outlive membership. The dispatcher is the only place this is checked, and the refusal is the same generic message as any other, with the real reason (`capability`) in the log.
+- **Nothing implies a capability:** not a tier, not a Discord role, and not being an admin. An admin who needs one grants it to themselves, and that is audited like any other grant.
+- **Guests never pass.** A guest holds no capabilities and is refused by every capability-gated command, even if the file lists some for them. Setting someone to guest therefore takes effect straight away, and their capabilities are kept but inactive.
+- **Hidden from `/help`** for people who lack it. Discord still lists every registered command, so "secret" means unauthorised people are refused, not that the command is invisible (see [`discord-command-visibility.md`](discord-command-visibility.md)).
+- **Admin commands** (admin only, private, audited through the store): `/admin capabilities grant user: capability: [reason:]`, `/admin capabilities revoke ...` and `/admin capabilities list [user:]`. The capability is picked from the registry. Granting to a guest is refused, since it would do nothing. With nothing registered they say "No capabilities are registered yet."
+- **Names in the file that don't exist** (for example after rolling back a release) are ignored. Pixel logs a warning and reports them to Sentry (names only), at startup and on `/admin reload`.
+
+**Threat model.** A grant lives only in `members.yaml`, and only an admin from `admins.yaml` can change it, through the store. A compromised Discord server, a role change or a forged display name can't grant a capability, because Pixel never reads roles to decide access and identifies people only by ID. Someone who gains write access to the files, or to an admin account, can grant one, which is why every change is audited and why the files live on a protected volume.
 
 ### Audit in phase 1
 

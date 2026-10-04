@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildCore } from "./app.ts";
 import type { Config } from "./config.ts";
+import { CapabilityError } from "./core/capabilities.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
@@ -18,8 +19,11 @@ describe("buildCore", () => {
 		dir = mkdtempSync(join(tmpdir(), "pixel-app-"));
 		const adminsFile = join(dir, "admins.yaml");
 		const membersFile = join(dir, "members.yaml");
-		writeFileSync(adminsFile, `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`);
-		writeFileSync(membersFile, `members:\n  - discordId: "${IDS.member}"\n    tier: member\n`);
+		writeFileSync(adminsFile, `admins:\n  - ids: ["discord:${IDS.admin}"]\n`);
+		writeFileSync(
+			membersFile,
+			`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n`,
+		);
 		mkdirSync(join(dir, "content", "info"), { recursive: true });
 		writeFileSync(
 			join(dir, "content", "info", "membership.md"),
@@ -243,5 +247,86 @@ describe("buildCore", () => {
 	it("refuses to build with an invalid access file", () => {
 		writeFileSync(config.access.adminsFile, "admins: []\n");
 		expect(() => buildCore(config, silentLogger, nullErrorReporter)).toThrow(/at least one admin/);
+	});
+
+	describe("capabilities", () => {
+		const DOOR = [{ name: "door", description: "Open the door" }];
+		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
+
+		it("starts with none registered, so admins have nothing to grant yet", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter);
+			expect(core.capabilities.all()).toEqual([]);
+			const result = await core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.admin }),
+				command: "admin",
+				subgroup: "capabilities",
+				subcommand: "grant",
+				args: { user: IDS.member, capability: "door" },
+				users: { user: person },
+			});
+			expect(result.reply.text).toBe("No capabilities are registered yet.");
+		});
+
+		it("lets an admin grant one, which then shows in the member's principal and the file", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
+			const grant = await core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.admin }),
+				command: "admin",
+				subgroup: "capabilities",
+				subcommand: "grant",
+				args: { user: IDS.member, capability: "door" },
+				users: { user: person },
+			});
+			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
+			expect(readFileSync(config.access.membersFile, "utf8")).toContain("door");
+			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["door"]);
+
+			// A restart sees it too.
+			const restarted = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
+			expect(restarted.access.view.records.get(IDS.member)?.capabilities).toEqual(["door"]);
+		});
+
+		it("refuses a member, a friend and a guest the admin commands", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
+			for (const userId of [IDS.member, IDS.friend, IDS.guest]) {
+				const result = await core.dispatcher.dispatch({
+					actor: actor({ userId }),
+					command: "admin",
+					subgroup: "capabilities",
+					subcommand: "list",
+					args: {},
+				});
+				expect(result.reply.text).toBe(MESSAGES.deniedTier);
+			}
+		});
+
+		it("ignores capability names in the file that don't exist, and reports them without failing", () => {
+			writeFileSync(
+				config.access.membersFile,
+				`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    capabilities:\n      - gone\n`,
+			);
+			const captureBackground = vi.fn();
+			const core = buildCore(config, silentLogger, { ...nullErrorReporter, captureBackground });
+			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["gone"]);
+			expect(captureBackground).toHaveBeenCalledTimes(1);
+			const [error, source] = captureBackground.mock.calls[0] ?? [];
+			expect(error).toBeInstanceOf(CapabilityError);
+			expect(source).toBe("access-config");
+		});
+
+		it("stays quiet when every name in the file exists", () => {
+			writeFileSync(
+				config.access.membersFile,
+				`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    capabilities:\n      - door\n`,
+			);
+			const captureBackground = vi.fn();
+			buildCore(
+				config,
+				silentLogger,
+				{ ...nullErrorReporter, captureBackground },
+				{ capabilities: DOOR },
+			);
+			expect(captureBackground).not.toHaveBeenCalled();
+		});
 	});
 });

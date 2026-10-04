@@ -47,13 +47,13 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 			handle: interaction.user.username,
 			chat: "group",
 		};
-		const { subcommand, args, users } = parseOptions(interaction.options.data);
+		const { subgroup, subcommand, args, users } = parseOptions(interaction.options.data);
 		await respond(interaction, {
-			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName, subcommand),
+			defaultPrivate: dispatcher.defaultPrivacy(interaction.commandName, subcommand, subgroup),
 			deferAfterMs,
 			work: (showPending) =>
 				dispatcher.dispatch(
-					{ actor, command: interaction.commandName, subcommand, args, users },
+					{ actor, command: interaction.commandName, subgroup, subcommand, args, users },
 					{ onPending: showPending },
 				),
 		});

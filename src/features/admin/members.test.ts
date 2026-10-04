@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor } from "../../core/access.ts";
+import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
@@ -17,17 +18,22 @@ import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 import { createMemberSubcommands } from "./members.ts";
 
-const ADMINS = `admins:\n  - name: Ada\n    discordId: "${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
 const MEMBERS = `members:
-  - discordId: "${IDS.member}"
+  - ids: ["discord:${IDS.member}"]
     tier: member
     note: paid yearly
     capabilities:
       - front-door
-  - discordId: "${IDS.friend}"
+  - ids: ["discord:${IDS.friend}"]
     tier: friend
+  - ids: ["discord:${IDS.admin}"]
+    tier: member
 `;
 const TARGET = "100000000000000050";
+const CAPABILITIES = new CapabilityRegistry([
+	{ name: "front-door", description: "Open the front door" },
+]);
 
 let dir: string;
 let membersFile: string;
@@ -62,6 +68,8 @@ function setup(ops = nodeFileOps) {
 			version: "1",
 			startedAt: new Date(),
 			access: store,
+			capabilities: CAPABILITIES,
+			reporter,
 		}),
 	);
 	const dispatcher = new Dispatcher({
@@ -345,6 +353,7 @@ describe("/admin whois", () => {
 		expect(fieldsOf(result)).toMatchObject({
 			"Access level": "Pixel admin",
 			"Comes from": "config/admins.yaml",
+			"Also listed as": "Pixelbar member",
 			Capabilities: "None",
 		});
 		expect(fieldsOf(result)).not.toHaveProperty("Note");
@@ -369,6 +378,16 @@ describe("/admin whois", () => {
 			"Comes from": "config/members.yaml (set to guest)",
 			Capabilities: "front-door (inactive while a guest)",
 		});
+	});
+
+	it("flags capability names that no longer exist, which are ignored", async () => {
+		writeFileSync(
+			membersFile,
+			`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    capabilities:\n      - front-door\n      - old-thing\n`,
+		);
+		const { dispatcher } = setup();
+		const result = await run(dispatcher, "whois", {}, human(IDS.member));
+		expect(fieldsOf(result).Capabilities).toBe("front-door, old-thing (not registered, ignored)");
 	});
 
 	it("shows a bot as a bot", async () => {
@@ -399,7 +418,7 @@ describe("/admin whois", () => {
 		it("is shown as an inert code span", async () => {
 			writeFileSync(
 				membersFile,
-				`members:\n  - discordId: "${IDS.member}"\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
+				`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
 			);
 			const { dispatcher } = setup();
 			const result = await run(dispatcher, "whois", {}, human(IDS.member));
@@ -429,7 +448,9 @@ describe("/admin whois", () => {
 
 describe("handler guard", () => {
 	it("fails loudly if a required user wasn't resolved (the dispatcher prevents this)", async () => {
-		const sub = createMemberSubcommands(openStore()).find((s) => s.name === "whois");
+		const sub = createMemberSubcommands(openStore(), new CapabilityRegistry()).find(
+			(s) => s.name === "whois",
+		);
 		await expect(sub?.handler(context())).rejects.toThrow(/missing resolved user/);
 	});
 });

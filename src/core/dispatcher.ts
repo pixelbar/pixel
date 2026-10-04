@@ -10,9 +10,12 @@ import {
 	type Args,
 	type ArgValue,
 	type CommandSummary,
+	type GroupCommand,
 	isGroup,
+	isSubgroup,
 	type ResolvedUser,
 	type SubcommandDefinition,
+	type SubgroupDefinition,
 } from "./command.ts";
 import { UserFacingError } from "./errors.ts";
 import type { IdentityService } from "./identity.ts";
@@ -25,6 +28,8 @@ import type { Reply } from "./reply.ts";
 export type DispatchRequest = {
 	actor: PlatformActor;
 	command: string;
+	/** Set when `command` is a group and the subcommand sits in a subgroup, e.g. `capabilities` in `/admin capabilities grant`. */
+	subgroup?: string;
 	/** Set when `command` is a group, e.g. `status` for `/admin status`. */
 	subcommand?: string;
 	args: Args;
@@ -78,25 +83,27 @@ export class Dispatcher {
 	}
 
 	/** Lets adapters choose visibility before the reply exists (e.g. when deferring). */
-	defaultPrivacy(command: string, subcommand?: string): boolean {
-		return this.#lookup(command, subcommand)?.runnable.private ?? false;
+	defaultPrivacy(command: string, subcommand?: string, subgroup?: string): boolean {
+		return this.#lookup(command, subcommand, subgroup)?.runnable.private ?? false;
 	}
 
 	async dispatch(
-		{ actor, command: commandName, subcommand, args, users = {} }: DispatchRequest,
+		{ actor, command: commandName, subgroup, subcommand, args, users = {} }: DispatchRequest,
 		hooks: DispatchHooks = {},
 	): Promise<DispatchResult> {
 		const { identity, rateLimiter, reporter } = this.#deps;
 		const user = actorRef(actor);
 		// Logged and tagged by full name, e.g. "admin status".
-		const command = subcommand === undefined ? commandName : `${commandName} ${subcommand}`;
+		const command = [commandName, subgroup, subcommand]
+			.filter((part) => part !== undefined)
+			.join(" ");
 		const log = this.#deps.logger.child({
 			command,
 			platform: actor.platform,
 			...actorLogFields(actor),
 		});
 
-		const found = this.#lookup(commandName, subcommand);
+		const found = this.#lookup(commandName, subcommand, subgroup);
 		if (!found) return privateText(MESSAGES.unknownCommand);
 		const { runnable: definition, gates, feature } = found;
 
@@ -116,10 +123,14 @@ export class Dispatcher {
 					reason: decision.reason,
 					tier: principal.tier,
 					required: access.minTier,
+					// The reply is generic, so the log is where "no capability" is visible.
+					...(access.capability === undefined ? {} : { capability: access.capability }),
 				},
 				"command denied",
 			);
-			return privateText(decision.reason === "tier" ? MESSAGES.deniedTier : MESSAGES.deniedContext);
+			return privateText(
+				decision.reason === "context" ? MESSAGES.deniedContext : MESSAGES.deniedTier,
+			);
 		}
 
 		// Every executed command is logged as an action, so abuse can be traced to a user.
@@ -166,17 +177,25 @@ export class Dispatcher {
 	}
 
 	/** Finds what to run, plus every access gate on the way (group first). */
-	#lookup(command: string, subcommand?: string) {
+	#lookup(command: string, subcommand?: string, subgroup?: string) {
 		const registered = this.#deps.registry.get(command);
 		if (!registered) return undefined;
 		const { definition, feature } = registered;
 		if (!isGroup(definition)) {
-			if (subcommand !== undefined) return undefined;
+			if (subcommand !== undefined || subgroup !== undefined) return undefined;
 			return { runnable: definition, gates: [definition.access], feature };
 		}
-		const sub = definition.subcommands.find((s) => s.name === subcommand);
-		if (!sub) return undefined;
-		return { runnable: sub, gates: [definition.access, sub.access], feature };
+		let parent: GroupCommand | SubgroupDefinition = definition;
+		const gates = [definition.access];
+		if (subgroup !== undefined) {
+			const nested = definition.subcommands.find((s) => isSubgroup(s) && s.name === subgroup);
+			if (!nested || !isSubgroup(nested)) return undefined;
+			parent = nested;
+			gates.push(nested.access);
+		}
+		const sub = parent.subcommands.find((s) => !isSubgroup(s) && s.name === subcommand);
+		if (!sub || isSubgroup(sub)) return undefined;
+		return { runnable: sub, gates: [...gates, sub.access], feature };
 	}
 
 	#available(principal: Principal): CommandSummary[] {
@@ -186,9 +205,18 @@ export class Dispatcher {
 				if (!allowed(definition.access)) return [];
 				return [{ name: definition.name, description: definition.description }];
 			}
-			return definition.subcommands
-				.filter((sub) => allowed(definition.access, sub.access))
-				.map((sub) => ({ name: `${definition.name} ${sub.name}`, description: sub.description }));
+			return definition.subcommands.flatMap((child): CommandSummary[] => {
+				if (!isSubgroup(child)) {
+					if (!allowed(definition.access, child.access)) return [];
+					return [{ name: `${definition.name} ${child.name}`, description: child.description }];
+				}
+				return child.subcommands
+					.filter((sub) => allowed(definition.access, child.access, sub.access))
+					.map((sub) => ({
+						name: `${definition.name} ${child.name} ${sub.name}`,
+						description: sub.description,
+					}));
+			});
 		});
 	}
 }

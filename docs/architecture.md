@@ -90,9 +90,14 @@ type CommandDefinition = {
 };
 
 // Or a group, e.g. /admin status: `subcommands` instead of a handler. Each subcommand has
-// its own name, access, options, private, placeholder and handler. The group's access is a
-// floor: the registry rejects a looser subcommand, and the dispatcher checks both.
-type GroupCommand = { name; description; access: Access; subcommands: SubcommandDefinition[] };
+// its own name, access, options, private, placeholder and handler. A group can also hold
+// subgroups (/admin capabilities grant): { name, description, access, subcommands }.
+// Access is a floor at every level: the registry rejects a looser child, and the dispatcher
+// checks every level.
+type GroupCommand = { name; description; access: Access; subcommands: (SubcommandDefinition | SubgroupDefinition)[] };
+
+// access: { minTier, contexts?, capability? } — a capability is a named permission that must
+// hold as well as the tier (core/capabilities.ts). Principal.capabilities is always empty for guests.
 
 type CommandContext = {
   args: Record<string, string | number | boolean | undefined>;   // validated against options
@@ -202,6 +207,8 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `admin`   | `/admin reload`              | admin  | ✅    | Re-reads `admins.yaml` and `members.yaml` after hand edits. Keeps the old data if they're now invalid |
 | `admin`   | `/admin set-level user: level: [reason:]` | admin | ✅ | Makes someone `member`, `friend` or `guest`. Private reply with before and after. Refuses admins and bots, and says so when nothing would change |
 | `admin`   | `/admin whois user:`         | admin  | ✅    | Private. Level, where it comes from (admins file, members file, not listed), capabilities and the note. Lookups are logged |
+| `admin`   | `/admin capabilities grant\|revoke user: capability: [reason:]` | admin | ✅ | Gives or takes a named permission. Picked from the registry in `features/capabilities.ts`, audited, refused for guests and bots. Says so when nothing would change |
+| `admin`   | `/admin capabilities list [user:]` | admin | ✅ | Private. The registered capabilities with holder counts, or one person's |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |

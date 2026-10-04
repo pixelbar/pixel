@@ -16,7 +16,7 @@ const OTHER_GUILD = "100000000000000099";
 function fakeDispatcher(result: DispatchResult = { reply: { text: "ok" }, private: false }) {
 	return {
 		dispatch: vi.fn(async (_req: DispatchRequest, _hooks?: DispatchHooks) => result),
-		defaultPrivacy: vi.fn((_name: string, _sub?: string) => false),
+		defaultPrivacy: vi.fn((_name: string, _sub?: string, _group?: string) => false),
 	};
 }
 
@@ -112,12 +112,38 @@ describe("createCommandHandler", () => {
 
 		await handle(interaction);
 
-		expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("admin", "whois");
+		expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("admin", "whois", undefined);
 		expect(dispatcher.dispatch.mock.calls[0]?.[0]).toMatchObject({
 			command: "admin",
 			subcommand: "whois",
 			args: { who: IDS.guest },
 			users: { who: { id: IDS.guest, displayName: "Target", handle: "target", isBot: false } },
+		});
+	});
+
+	it("passes the subgroup too", async () => {
+		const dispatcher = fakeDispatcher();
+		const handle = createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 });
+		const interaction = fakeInteraction({
+			commandName: "admin",
+			options: {
+				data: [
+					{
+						name: "capabilities",
+						type: ApplicationCommandOptionType.SubcommandGroup,
+						options: [{ name: "grant", type: ApplicationCommandOptionType.Subcommand }],
+					},
+				],
+			},
+		});
+
+		await handle(interaction);
+
+		expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("admin", "grant", "capabilities");
+		expect(dispatcher.dispatch.mock.calls[0]?.[0]).toMatchObject({
+			command: "admin",
+			subgroup: "capabilities",
+			subcommand: "grant",
 		});
 	});
 
@@ -167,7 +193,7 @@ describe("createCommandHandler", () => {
 			await vi.advanceTimersByTimeAsync(2000);
 			await done;
 
-			expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("whoami", undefined);
+			expect(dispatcher.defaultPrivacy).toHaveBeenCalledWith("whoami", undefined, undefined);
 			expect(interaction.deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
 		} finally {
 			vi.useRealTimers();

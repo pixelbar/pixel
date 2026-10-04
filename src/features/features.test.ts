@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
+import { CapabilityRegistry } from "../core/capabilities.ts";
+import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
@@ -37,6 +39,8 @@ const deps = () => ({
 	version: "1.0.0",
 	startedAt: new Date(),
 	access,
+	capabilities: new CapabilityRegistry(),
+	reporter: nullErrorReporter,
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
@@ -73,6 +77,7 @@ describe("buildFeatures", () => {
 			["reload", "admin"],
 			["set-level", "admin"],
 			["whois", "admin"],
+			["capabilities", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -121,9 +126,13 @@ function adminSubcommand(
 		version: "1.0.0",
 		startedAt: new Date(0),
 		access: store,
+		capabilities: new CapabilityRegistry(),
+		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
-	const sub = admin?.subcommands?.find((s) => s.name === name);
+	const sub = admin?.subcommands?.find(
+		(s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name,
+	);
 	if (!sub) throw new Error(`no /admin ${name}`);
 	return sub;
 }
@@ -149,6 +158,35 @@ describe("admin", () => {
 			context({ principal: principal("admin") }),
 		);
 		expect(reply.text).not.toContain("warning");
+	});
+
+	it("reports capabilities that no longer exist, by name, and says they're ignored", async () => {
+		const captureBackground = vi.fn();
+		const record = (capabilities: string[]) => ({
+			ids: [`discord:${IDS.member}`],
+			tier: "member" as const,
+			capabilities,
+		});
+		const store = {
+			view: {
+				...access.view,
+				records: new Map([[IDS.member, record(["gone", "old"])]]),
+			},
+			apply: access.apply,
+			reload: access.reload,
+		};
+		const admin = createAdminFeature({
+			version: "1.0.0",
+			startedAt: new Date(0),
+			access: store,
+			capabilities: new CapabilityRegistry(),
+			reporter: { ...nullErrorReporter, captureBackground },
+		}).commands?.[0];
+		const reload = admin?.subcommands?.find((s) => s.name === "reload");
+		if (!reload || isSubgroup(reload)) throw new Error("no /admin reload");
+		const reply = await reload.handler(context({ principal: principal("admin") }));
+		expect(reply.text).toContain("don't exist and are ignored: gone, old.");
+		expect(captureBackground).toHaveBeenCalledTimes(1);
 	});
 
 	it("lets a failed reload's message through", async () => {

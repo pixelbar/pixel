@@ -13,8 +13,12 @@ import type { PlatformActor, Tier } from "../access.ts";
 export type MemberTier = "member" | "friend" | "guest";
 
 export type MemberRecord = {
-	/** Immutable platform user ID. The only way to identify a person. */
-	discordId: string;
+	/**
+	 * Every identity this person has, platform-prefixed ("discord:<id>"). One
+	 * person can have several, for example one per platform. Immutable user
+	 * IDs only, never names.
+	 */
+	ids: readonly string[];
 	tier: MemberTier;
 	/** Free text for humans. Never logged or sent anywhere. */
 	note?: string;
@@ -26,7 +30,10 @@ export type MemberRecord = {
 export type AccessView = {
 	/** Discord user ID → tier. Only non-guest tiers appear; guest entries are left out. */
 	readonly discord: ReadonlyMap<string, Exclude<Tier, "guest">>;
-	/** Every entry in the members file, including guests, by Discord user ID. */
+	/**
+	 * Every entry in the members file, including guests, by Discord user ID.
+	 * A person with several IDs appears under each (the same record).
+	 */
 	readonly records: ReadonlyMap<string, MemberRecord>;
 	readonly counts: { readonly admins: number; readonly members: number; readonly friends: number };
 	/** Non-fatal issues, safe to log (no IDs). */

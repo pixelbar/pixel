@@ -74,12 +74,21 @@ export type PlainCommand = Named & Runnable & { subcommands?: undefined };
 export type SubcommandDefinition = Named & Runnable;
 
 /**
- * A command with subcommands, e.g. `/admin status`. The group's access is a
- * floor: a subcommand may tighten it but never loosen it, and the dispatcher
- * checks both.
+ * A named set of subcommands inside a group, e.g. `capabilities` in
+ * `/admin capabilities grant`. Its access is a floor for the subcommands in it.
+ */
+export type SubgroupDefinition = Named & {
+	subcommands: readonly SubcommandDefinition[];
+};
+
+/**
+ * A command with subcommands, e.g. `/admin status`, and optionally subgroups of
+ * them, e.g. `/admin capabilities grant`. Access is a floor at every level: a
+ * subcommand or subgroup may tighten it but never loosen it, and the dispatcher
+ * checks every level.
  */
 export type GroupCommand = Named & {
-	subcommands: readonly SubcommandDefinition[];
+	subcommands: readonly (SubcommandDefinition | SubgroupDefinition)[];
 	options?: undefined;
 	handler?: undefined;
 	private?: undefined;
@@ -90,4 +99,10 @@ export type CommandDefinition = PlainCommand | GroupCommand;
 
 export function isGroup(def: CommandDefinition): def is GroupCommand {
 	return def.subcommands !== undefined;
+}
+
+export function isSubgroup(
+	entry: SubcommandDefinition | SubgroupDefinition,
+): entry is SubgroupDefinition {
+	return (entry as SubgroupDefinition).subcommands !== undefined;
 }

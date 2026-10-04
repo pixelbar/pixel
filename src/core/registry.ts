@@ -1,5 +1,13 @@
-import { TIERS, type Tier, tierRank } from "./access.ts";
-import { type CommandDefinition, isGroup, type SubcommandDefinition } from "./command.ts";
+import { type Access, TIERS, type Tier, tierRank } from "./access.ts";
+import type { CapabilityRegistry } from "./capabilities.ts";
+import {
+	type CommandDefinition,
+	type GroupCommand,
+	isGroup,
+	isSubgroup,
+	type SubcommandDefinition,
+	type SubgroupDefinition,
+} from "./command.ts";
 import type { Feature } from "./feature.ts";
 
 export type RegisteredCommand = {
@@ -20,10 +28,16 @@ export class RegistryError extends Error {
  */
 export class CommandRegistry {
 	readonly #commands = new Map<string, RegisteredCommand>();
+	readonly #capabilities: Pick<CapabilityRegistry, "has">;
+
+	/** `capabilities` is what commands may require. Without it, none exist. */
+	constructor(options: { capabilities?: Pick<CapabilityRegistry, "has"> } = {}) {
+		this.#capabilities = options.capabilities ?? { has: () => false };
+	}
 
 	register(feature: Feature): void {
 		for (const definition of feature.commands ?? []) {
-			validate(feature.name, definition);
+			validate(feature.name, definition, this.#capabilities);
 			if (this.#commands.has(definition.name)) {
 				throw new RegistryError(
 					`Duplicate command "${definition.name}" in feature "${feature.name}"`,
@@ -45,40 +59,66 @@ export class CommandRegistry {
 const MAX_SUBCOMMANDS = 25;
 const MAX_OPTIONS = 25;
 
-function validate(feature: string, def: CommandDefinition): void {
+type Known = Pick<CapabilityRegistry, "has">;
+
+function validate(feature: string, def: CommandDefinition, known: Known): void {
 	const where = `command "${def.name}" in feature "${feature}"`;
-	validateCommon(where, def);
+	validateCommon(where, def, known);
 	if (!isGroup(def)) {
 		validateRunnable(where, def);
 		return;
 	}
-	const subs: unknown = def.subcommands;
-	if (!Array.isArray(subs) || subs.length < 1 || subs.length > MAX_SUBCOMMANDS) {
-		throw new RegistryError(`Subcommands must number 1–${MAX_SUBCOMMANDS} for ${where}`);
-	}
 	if (def.handler !== undefined || def.options !== undefined) {
 		throw new RegistryError(`A command with subcommands can't have a handler or options: ${where}`);
 	}
+	validateChildren(where, def, 0, known);
+}
+
+/** Checks the subcommands and subgroups of a group (depth 0) or of a subgroup (depth 1). */
+function validateChildren(
+	where: string,
+	parent: GroupCommand | SubgroupDefinition,
+	depth: number,
+	known: Known,
+): void {
+	const children: unknown = parent.subcommands;
+	if (!Array.isArray(children) || children.length < 1 || children.length > MAX_SUBCOMMANDS) {
+		throw new RegistryError(`Subcommands must number 1–${MAX_SUBCOMMANDS} for ${where}`);
+	}
+	// Subcommands and subgroups share one namespace in Discord.
 	const seen = new Set<string>();
-	for (const sub of def.subcommands) {
-		const subWhere = `subcommand "${sub.name}" of ${where}`;
-		validateCommon(subWhere, sub);
-		validateRunnable(subWhere, sub);
-		if (seen.has(sub.name)) throw new RegistryError(`Duplicate ${subWhere}`);
-		seen.add(sub.name);
-		if (tierRank(sub.access.minTier) < tierRank(def.access.minTier)) {
-			throw new RegistryError(`${subWhere} can't be open to a lower tier than its command`);
+	for (const child of parent.subcommands) {
+		const isNested = isSubgroup(child);
+		const childWhere = `${isNested ? "subgroup" : "subcommand"} "${child.name}" of ${where}`;
+		validateCommon(childWhere, child, known);
+		if (isNested) {
+			// Discord allows one level of subgroup: command → subgroup → subcommand.
+			if (depth > 0) throw new RegistryError(`${childWhere} is nested too deeply`);
+			validateChildren(childWhere, child, depth + 1, known);
+		} else {
+			validateRunnable(childWhere, child);
 		}
-		const allowed = def.access.contexts;
-		if (allowed && !sub.access.contexts?.every((c) => allowed.includes(c))) {
-			throw new RegistryError(`${subWhere} can't be allowed in more contexts than its command`);
-		}
+		if (seen.has(child.name)) throw new RegistryError(`Duplicate ${childWhere}`);
+		seen.add(child.name);
+		assertNotLooser(childWhere, parent.access, child.access);
+	}
+}
+
+/** A child may tighten its parent's access but never loosen it. */
+function assertNotLooser(childWhere: string, parent: Access, child: Access): void {
+	if (tierRank(child.minTier) < tierRank(parent.minTier)) {
+		throw new RegistryError(`${childWhere} can't be open to a lower tier than its parent`);
+	}
+	const allowed = parent.contexts;
+	if (allowed && !child.contexts?.every((c) => allowed.includes(c))) {
+		throw new RegistryError(`${childWhere} can't be allowed in more contexts than its parent`);
 	}
 }
 
 function validateCommon(
 	where: string,
 	def: Pick<CommandDefinition, "name" | "description" | "access">,
+	known: Known,
 ) {
 	if (!NAME_PATTERN.test(def.name)) throw new RegistryError(`Invalid name for ${where}`);
 	if (def.description.length < 1 || def.description.length > 100) {
@@ -89,6 +129,17 @@ function validateCommon(
 	const minTier: unknown = (def.access as { minTier?: unknown } | undefined)?.minTier;
 	if (!TIERS.includes(minTier as Tier)) {
 		throw new RegistryError(`Missing or invalid access.minTier for ${where}`);
+	}
+	const capability: unknown = def.access.capability;
+	if (capability !== undefined) {
+		// A typo here would otherwise lock everyone out, or worse, match nothing silently.
+		if (typeof capability !== "string" || !known.has(capability)) {
+			throw new RegistryError(`Unknown capability required by ${where}`);
+		}
+		// Guests never pass a capability check, so a guest-tier command with one is a mistake.
+		if (minTier === "guest") {
+			throw new RegistryError(`A capability needs a minTier above guest for ${where}`);
+		}
 	}
 }
 

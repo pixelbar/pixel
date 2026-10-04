@@ -1,5 +1,6 @@
 import {
 	type APIApplicationCommandBasicOption,
+	type APIApplicationCommandSubcommandGroupOption,
 	type APIApplicationCommandSubcommandOption,
 	ApplicationCommandOptionType,
 	ApplicationIntegrationType,
@@ -10,7 +11,9 @@ import {
 	type CommandDefinition,
 	type CommandOption,
 	isGroup,
+	isSubgroup,
 	type SubcommandDefinition,
+	type SubgroupDefinition,
 } from "../../core/command.ts";
 
 /**
@@ -23,13 +26,26 @@ export function toSlashCommand(
 	return {
 		name: def.name,
 		description: def.description,
-		options: isGroup(def) ? def.subcommands.map(toSubcommand) : (def.options ?? []).map(toOption),
+		options: isGroup(def)
+			? def.subcommands.map((child) =>
+					isSubgroup(child) ? toSubgroup(child) : toSubcommand(child),
+				)
+			: (def.options ?? []).map(toOption),
 		// "0" hides the command from everyone but server Administrators until the
 		// server grants it (see docs/discord-command-visibility.md). This only
 		// controls what people see: the dispatcher still decides who may run it.
 		...(def.access.minTier === "admin" ? { default_member_permissions: "0" } : {}),
 		contexts: [InteractionContextType.Guild],
 		integration_types: [ApplicationIntegrationType.GuildInstall],
+	};
+}
+
+function toSubgroup(group: SubgroupDefinition): APIApplicationCommandSubcommandGroupOption {
+	return {
+		type: ApplicationCommandOptionType.SubcommandGroup,
+		name: group.name,
+		description: group.description,
+		options: group.subcommands.map(toSubcommand),
 	};
 }
 

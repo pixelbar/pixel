@@ -11,7 +11,8 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
-import { actorLogFields, actorRef, type PlatformActor } from "../core/access.ts";
+import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
+import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import type {
@@ -28,7 +29,6 @@ import {
 	AccessConfigError,
 	type AccessConfigPaths,
 	buildAccessConfig,
-	CAPABILITY_NAME,
 	DISCORD_ID,
 	loadAccessFiles,
 	MAX_CAPABILITIES,
@@ -109,12 +109,9 @@ export class FileAccessStore implements AccessStore {
 	readonly #reporter: ErrorReporter;
 	readonly #ops: FileOps;
 	#view: AccessView;
-	#admins: { discordId: string }[];
+	#admins: string[][];
 
-	private constructor(
-		deps: FileAccessStoreDeps,
-		loaded: { admins: { discordId: string }[]; view: AccessView },
-	) {
+	private constructor(deps: FileAccessStoreDeps, loaded: { admins: string[][]; view: AccessView }) {
 		this.#paths = deps.paths;
 		this.#logger = deps.logger;
 		this.#reporter = deps.reporter;
@@ -169,17 +166,20 @@ export class FileAccessStore implements AccessStore {
 	#apply(change: AccessChange, by: PlatformActor): AccessChangeResult {
 		const file = this.#paths.membersFile;
 		const { id } = change;
+		const ref = `discord:${id}`;
 		validateChange(change);
-		if (this.#view.discord.get(id) === "admin") {
+		// Admins come only from admins.yaml. Their members entry may still hold capabilities.
+		// This covers every id of an admin's, so a second account can't be used to demote them.
+		if (change.kind === "set-tier" && this.#isAdminPerson(id)) {
 			throw new AccessStoreError(
-				"That person is an admin. Admins are managed in admins.yaml only.",
+				"That person is an admin. Admins come from admins.yaml, so their level can't be changed here.",
 			);
 		}
 
 		const raw = this.#read(file);
 		const doc = parseDocument(raw);
 		const current = this.#parseCurrent(raw, file);
-		const index = current.findIndex((entry) => entry.discordId === id);
+		const index = current.findIndex((entry) => entry.ids.includes(ref));
 		const before = index >= 0 ? toRecord(current[index] as (typeof current)[number]) : null;
 
 		if (change.kind === "set-capabilities" && !before) {
@@ -195,17 +195,25 @@ export class FileAccessStore implements AccessStore {
 		}
 
 		edit(doc, change, index);
-		const next = doc.toString();
+		// No padding inside [ ], so `ids: ["discord:123"]` round-trips exactly as written.
+		const next = doc.toString({ flowCollectionPadding: false });
 		// Our own edit must produce a valid file. If it doesn't, that is a bug, not user error.
 		const nextEntries = parseMembers(next, file);
 
 		this.#writeFile(file, raw, next);
 
-		const updated = nextEntries.find((entry) => entry.discordId === id);
+		const updated = nextEntries.find((entry) => entry.ids.includes(ref));
 		const after = toRecord(updated as NonNullable<typeof updated>);
 		this.#view = buildAccessConfig(this.#admins, nextEntries, this.#paths);
 		this.#audit(change, by, before, after);
 		return { before, after };
+	}
+
+	/** Whether this Discord user, or any other id of the same person, is an admin. */
+	#isAdminPerson(userId: string): boolean {
+		const person = this.#view.records.get(userId);
+		const userIds = person ? person.ids.map((ref) => splitRef(ref).userId) : [userId];
+		return userIds.some((other) => this.#view.discord.get(other) === "admin");
 	}
 
 	#read(file: string) {
@@ -328,13 +336,17 @@ function edit(doc: ReturnType<typeof parseDocument>, change: AccessChange, index
 	}
 
 	const item = doc.createNode({
-		discordId: change.id,
+		ids: [`discord:${change.id}`],
 		tier: change.tier,
 		...(change.note !== undefined ? { note: change.note } : {}),
 	}) as YAMLMap;
 	if (!isMap(item)) throw new Error("couldn't create a members entry");
-	// IDs must be quoted strings, or they lose precision when read back as numbers.
-	(item.get("discordId", true) as Scalar).type = "QUOTE_DOUBLE";
+	// IDs must be quoted strings, or they lose precision when read back as numbers. A short
+	// list stays on one line: ids: ["discord:123…"].
+	const ids = item.get("ids");
+	if (!isSeq(ids)) throw new Error("couldn't create a members entry");
+	ids.flow = true;
+	for (const entry of ids.items) (entry as Scalar).type = "QUOTE_DOUBLE";
 	seq.flow = false;
 	seq.add(item);
 }
