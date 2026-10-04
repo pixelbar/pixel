@@ -37,6 +37,7 @@ describe("buildCore", () => {
 			dataDir: join(dir, "data"),
 			contentDir: join(dir, "content"),
 			homeAssistantDir: "config/home-assistant",
+			homeSyncMinutes: 60,
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
 			sentryDsn: undefined,
@@ -389,6 +390,34 @@ describe("buildCore", () => {
 			expect(() => buildCore(haConfig(haDir), silentLogger, nullErrorReporter)).toThrow(
 				/invalid devices file/,
 			);
+		});
+
+		it("has a working inventory, with the interval from the config, only when Home Assistant is set up", () => {
+			const haDir = join(dir, "ha");
+			mkdirSync(haDir);
+			writeFileSync(join(haDir, "devices.yaml"), "devices: []\n");
+			const on = buildCore(
+				{ ...haConfig(haDir), homeSyncMinutes: 15 },
+				silentLogger,
+				nullErrorReporter,
+			);
+			expect(on.homeInventory.configured).toBe(true);
+			expect(on.homeInventory.intervalMs).toBe(15 * 60_000);
+			const off = buildCore(config, silentLogger, nullErrorReporter);
+			expect(off.homeInventory.configured).toBe(false);
+		});
+
+		it("never lets the inventory into the devices people can use", async () => {
+			const haDir = join(dir, "ha");
+			mkdirSync(haDir);
+			writeFileSync(join(haDir, "devices.yaml"), "devices: []\n");
+			writeFileSync(
+				join(haDir, "inventory.yaml"),
+				"inventory:\n  - name: lamp\n    entity: light.lamp\n    kind: light\n",
+			);
+			const core = buildCore(haConfig(haDir), silentLogger, nullErrorReporter);
+			expect(core.homeDevices.view.devices).toEqual([]);
+			expect(core.homeDevices.view.byName.has("lamp")).toBe(false);
 		});
 
 		it("loads the devices when the file is valid", () => {

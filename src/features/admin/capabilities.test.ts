@@ -18,6 +18,7 @@ import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
+import { HomeInventory } from "../../services/home-inventory.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 
@@ -78,6 +79,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			home: new Home({ logger: silentLogger, reporter }),
 			homeDevices: HomeDeviceStore.empty(),
+			homeInventory: HomeInventory.off(),
 			reporter,
 		}),
 	);

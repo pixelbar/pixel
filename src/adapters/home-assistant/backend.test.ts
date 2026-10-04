@@ -172,6 +172,90 @@ describe("reading and calling", () => {
 		expect((await backend.getStates(["light.a"])).get("light.a")?.lastChanged).toBeNull();
 	});
 
+	describe("listing every entity", () => {
+		const entities = [
+			{
+				entityId: "light.workshop",
+				state: "on",
+				attributes: { friendly_name: "Workshop" },
+				areaId: "ws",
+			},
+			{ entityId: "sensor.temp", state: "21", attributes: { friendly_name: 12 }, deviceId: "d1" },
+			{ entityId: "switch.nightlight", state: "off", category: "config" as const },
+			{ entityId: "sensor.rssi", state: "-60", category: "diagnostic" as const, hidden: true },
+		];
+		const areas = [
+			{ id: "ws", name: "Workshop" },
+			{ id: "hall", name: "Hall" },
+		];
+		const devices = [{ id: "d1", areaId: "hall" }, { id: "d2" }];
+
+		it("gives name, area (its own, or its device's), category and hidden, without the state", async () => {
+			const server = await fake({ entities, areas, devices });
+			const backend = backendFor(server);
+			await backend.settled;
+			expect(await backend.listEntities()).toEqual([
+				{
+					entityId: "light.workshop",
+					name: "Workshop",
+					area: "Workshop",
+					category: undefined,
+					hidden: false,
+				},
+				{
+					entityId: "sensor.temp",
+					name: undefined,
+					area: "Hall",
+					category: undefined,
+					hidden: false,
+				},
+				{
+					entityId: "switch.nightlight",
+					name: undefined,
+					area: undefined,
+					category: "config",
+					hidden: false,
+				},
+				{
+					entityId: "sensor.rssi",
+					name: undefined,
+					area: undefined,
+					category: "diagnostic",
+					hidden: true,
+				},
+			]);
+		});
+
+		it("still lists them, with no areas, when Home Assistant won't give the areas", async () => {
+			const server = await fake({ entities, areas, devices });
+			server.failAreaRegistry("unauthorized");
+			const backend = backendFor(server);
+			await backend.settled;
+			const listed = await backend.listEntities();
+			expect(listed).toHaveLength(4);
+			expect(listed.every((entity) => entity.area === undefined)).toBe(true);
+			expect(listed.find((entity) => entity.entityId === "switch.nightlight")?.category).toBe(
+				"config",
+			);
+			expect(logs.some((log) => log.obj.event === "home.areas_failed")).toBe(true);
+		});
+
+		it("fails, rather than guessing, when it can't tell which entities are setup or hidden", async () => {
+			const server = await fake({ entities, areas, devices });
+			server.failEntityRegistry("unauthorized");
+			const backend = backendFor(server);
+			await backend.settled;
+			await expect(backend.listEntities()).rejects.toBeInstanceOf(HomeRequestError);
+		});
+
+		it("fails at once while not connected", async () => {
+			const server = await fake();
+			const backend = backendFor(server, "wrong-token");
+			await backend.settled;
+			await expect(backend.listEntities()).rejects.toBeInstanceOf(HomeUnavailableError);
+		});
+	});
+
 	it("sends exactly the service, entity and data it was given, once", async () => {
 		const server = await fake();
 		const backend = backendFor(server);

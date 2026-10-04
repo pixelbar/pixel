@@ -24,6 +24,7 @@ import { buildFeatures } from "./features/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
+import { HomeInventory, INVENTORY_FILE } from "./services/home-inventory.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
@@ -37,6 +38,8 @@ export type Core = {
 	home: Home;
 	/** The devices Pixel may touch in Home Assistant. Empty when Home Assistant isn't set up. */
 	homeDevices: HomeDeviceStore;
+	/** Everything Home Assistant has, written to a file for people to read. Never an allow-list. */
+	homeInventory: HomeInventory;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -84,6 +87,16 @@ export function buildCore(
 	const homeDevices = config.homeAssistant
 		? HomeDeviceStore.open({ dir: config.homeAssistantDir, kinds: HOME_KINDS })
 		: HomeDeviceStore.empty();
+	const homeInventory = config.homeAssistant
+		? new HomeInventory({
+				home,
+				kinds: HOME_KINDS,
+				devices: homeDevices,
+				file: join(config.homeAssistantDir, INVENTORY_FILE),
+				logger,
+				intervalMs: config.homeSyncMinutes * 60_000,
+			})
+		: HomeInventory.off();
 
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,
@@ -113,6 +126,7 @@ export function buildCore(
 		roles,
 		home,
 		homeDevices,
+		homeInventory,
 		reporter,
 		spaceStatus,
 		announcer,
@@ -140,6 +154,7 @@ export function buildCore(
 		roles,
 		home,
 		homeDevices,
+		homeInventory,
 		registry,
 		dispatcher,
 		spaceStatus,

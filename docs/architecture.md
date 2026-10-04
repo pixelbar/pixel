@@ -204,6 +204,17 @@ Pixel never offers "any entity". The devices it may touch are listed in `config/
 
 The file **fails closed** like the access files: when `HOME_ASSISTANT_URL` is set and the file is missing or invalid, Pixel doesn't start. Errors name the file, the position and the field, never a value, because the file describes the building. `/admin reload` re-reads it, and an invalid edit keeps the old list. At startup and on reload, Pixel warns about devices whose entity HA doesn't know (a typo), and `/admin status` shows how many devices are allowed. `just validate-config` checks it too.
 
+### The inventory (known, not usable)
+
+Alongside the allow-list, Pixel keeps an **inventory** of everything Home Assistant has that it has a kind for, in `config/home-assistant/inventory.yaml` (gitignored, rewritten on every sync). It exists so a person can see what's there, copy an entry into `devices.yaml` and give it a tier and actions, and so later features (richer `/status`, sensors) have the information to hand.
+
+It is **not an allow-list**, and nothing reads it to decide anything. Entries have no tier and no actions, the file is never loaded back into Pixel, and the inventory is never offered by a command or autocomplete. A device is usable only when a person has listed it in `devices.yaml`.
+
+- **When:** once Home Assistant has connected, then every `PIXEL_HOME_SYNC_MINUTES` (default 60; 0 means only at startup and on `/admin reload`). A failed run is skipped, not retried: the next run is the retry. An outage is logged once, and the old file stays.
+- **What:** entities in a domain that has a kind (light, switch, lock, sensor, binary_sensor), leaving out those Home Assistant files as config or diagnostic and those someone hid. Each entry has a suggested `name` (a valid, unique device name made from the friendly name), the `entity`, the `kind`, the friendly name and the area. It has no state, because that changes constantly. Entries already in `devices.yaml` are marked `inDevicesFile`. At most 1000 entries, sensors being the first cut.
+- **How:** it reads the same compact entity list Home Assistant's own app uses, which a non-admin token may read. If that list can't be read the run fails rather than guessing which entities are setup ones. The file is written atomically (mode 0600), and only when something other than the time changed. Names come from Home Assistant and are cleaned before they're written.
+- `/admin status` shows how many are known and when it last synced, and `/admin reload` syncs now.
+
 ## Services and ports
 
 | Service / port   | Purpose                              | Implementation                                                    |
@@ -322,6 +333,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. The address Pixel reaches Home Assistant at, such as the Nabu Casa cloud URL (http or https) |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
+| `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |
