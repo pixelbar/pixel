@@ -3,16 +3,36 @@ import { MAX_SUGGESTIONS } from "../../core/dispatcher.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, formatDuration, inlineCode } from "../../core/format.ts";
 import { type EntityState, HOME_MESSAGES, type Home } from "../../core/home.ts";
-import { canViewDevice, HOME_DENIED, visibleDevices } from "../../core/home-access.ts";
-import type { KindAttribute } from "../../core/home-kinds/index.ts";
+import {
+	actionableDevices,
+	canActOnDevice,
+	canViewDevice,
+	HOME_DENIED,
+	visibleDevices,
+} from "../../core/home-access.ts";
+import type { KindAction, KindAttribute } from "../../core/home-kinds/index.ts";
+import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Embed, EmbedField, Reply } from "../../core/reply.ts";
 import type { HomeDevice, HomeDeviceStore } from "../../services/home-devices.ts";
+import { type ControlResult, DeviceControl } from "./control.ts";
 
 export type HomeFeatureDeps = {
-	home: Pick<Home, "getStates">;
+	home: Pick<Home, "getStates" | "callService">;
 	homeDevices: Pick<HomeDeviceStore, "view" | "configured">;
+	reporter?: Pick<ErrorReporter, "breadcrumb">;
+	/** Runs the actions. Defaults to one that talks to `home`. */
+	control?: Pick<DeviceControl, "run" | "timeoutMs">;
+	/**
+	 * Kinds that `/ha set` refuses to act on at all, even for someone who holds the
+	 * capability. Doors are off until their extra safeguards exist (the public notice,
+	 * a confirmation and conditions, issue #29).
+	 */
+	blockedKinds?: ReadonlySet<string>;
 	now?: () => Date;
 };
+
+/** Kinds that can't be acted on yet. See `HomeFeatureDeps.blockedKinds`. */
+export const DEFAULT_BLOCKED_KINDS: ReadonlySet<string> = new Set(["door"]);
 
 /** An embed field holds at most 1024 characters. */
 const FIELD_LIMIT = 1000;
@@ -33,6 +53,8 @@ const NO_READING: Readonly<Record<string, string>> = {
  */
 export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 	const now = deps.now ?? (() => new Date());
+	const control = deps.control ?? new DeviceControl({ home: deps.home });
+	const blocked = deps.blockedKinds ?? DEFAULT_BLOCKED_KINDS;
 	const notSetUp = (): Reply => ({ text: HOME_MESSAGES.notSetUp, private: true });
 
 	return {
@@ -110,6 +132,124 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 								);
 							}
 							return { embeds: [describeStatus(device, state, now())] };
+						},
+					},
+					{
+						name: "set",
+						description: "Change a device, such as switching a light on or off",
+						// The lowest floor any device can have. The shared rule decides per device and per action.
+						access: { minTier: "friend" },
+						private: true,
+						placeholder: { text: "Working on it…", private: true },
+						options: [
+							{
+								name: "device",
+								description: "Which device",
+								type: "string",
+								required: true,
+								suggest: async ({ typed, args, principal }) => {
+									if (!deps.homeDevices.configured) return [];
+									const devices = deps.homeDevices.view.devices;
+									// Narrow by the state already chosen, when it's one that exists.
+									const chosen = typeof args.state === "string" ? args.state : undefined;
+									const known =
+										chosen !== undefined &&
+										devices.some((d) => d.actions.some((a) => a.name === chosen));
+									return suggestDevices(
+										actionableDevices(devices, principal, known ? chosen : undefined).filter(
+											(device) => !blocked.has(device.kind.name),
+										),
+										typed,
+									);
+								},
+							},
+							{
+								name: "state",
+								description: "What to set it to, such as on or off",
+								type: "string",
+								required: true,
+								suggest: async ({ typed, args, principal }) => {
+									if (!deps.homeDevices.configured) return [];
+									const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
+									const usable = (d: HomeDevice) =>
+										d.actions.filter(
+											(a) =>
+												!blocked.has(d.kind.name) && canActOnDevice(d, a.name, principal).allowed,
+										);
+									// With a device chosen: what that device allows. Without: the values that work somewhere.
+									const actions = device
+										? usable(device)
+										: uniqueActions(deps.homeDevices.view.devices.flatMap(usable));
+									return suggestActions(actions, typed);
+								},
+							},
+						],
+						handler: async ({ args, principal, logger }): Promise<Reply> => {
+							if (!deps.homeDevices.configured) return notSetUp();
+							// Everything typed is checked again, here, whatever was suggested.
+							const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
+							const wanted = String(args.state ?? "");
+							const decision = device ? canActOnDevice(device, wanted, principal) : undefined;
+							const action = device?.actions.find((a) => a.name === wanted);
+							if (!device || !decision?.allowed || !action) {
+								// The real reason goes in the log. What was typed doesn't: it could be anything.
+								logger.warn(
+									{
+										event: "home.action_denied",
+										reason: !device
+											? "unknown-device"
+											: decision && !decision.allowed
+												? decision.reason
+												: "action",
+										...(device ? { device: device.name } : {}),
+									},
+									"refused a device action",
+								);
+								return { text: HOME_DENIED, private: true };
+							}
+							if (blocked.has(device.kind.name)) {
+								logger.warn(
+									{
+										event: "home.action_denied",
+										reason: "kind-off",
+										device: device.name,
+										kind: device.kind.name,
+									},
+									"refused a device action: this kind isn't switched on",
+								);
+								return {
+									text: `Controlling ${device.kind.name}s from Pixel isn't switched on yet.`,
+									private: true,
+								};
+							}
+
+							const result = await control.run(device, action);
+							const fields = {
+								event: "home.action",
+								device: device.name,
+								kind: device.kind.name,
+								action: action.name,
+								outcome: result.outcome,
+								...(result.outcome === "not-attempted" ? { reason: result.reason } : {}),
+								...(before(result) ? { before: shorten(before(result)) } : {}),
+								...(after(result) ? { after: shorten(after(result)) } : {}),
+								durationMs: result.durationMs,
+							};
+							logger.info(fields, "ran a device action");
+							deps.reporter?.breadcrumb(
+								"home.action",
+								`${action.name} ${device.name}: ${result.outcome}`,
+								{
+									user: `${principal.platform}:${principal.userId}`,
+									device: device.name,
+									action: action.name,
+									outcome: result.outcome,
+								},
+							);
+							return {
+								embeds: [describeResult(device, action, result, control.timeoutMs)],
+								private: true,
+							};
 						},
 					},
 				],
@@ -267,4 +407,113 @@ function suggestDevices(devices: readonly HomeDevice[], typed: string): Suggesti
 
 function capitalize(text: string): string {
 	return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+const before = (result: ControlResult): string | undefined =>
+	"before" in result ? result.before : undefined;
+const after = (result: ControlResult): string | undefined =>
+	"after" in result ? result.after : undefined;
+
+/** A state from Home Assistant, short enough for a log line. */
+function shorten(state: string | undefined): string {
+	return (state ?? "").slice(0, STATE_MAX);
+}
+
+/** What happened, in plain words: exactly what the device reported, and that nothing is retried. */
+function describeResult(
+	device: HomeDevice,
+	action: KindAction,
+	result: ControlResult,
+	timeoutMs: number,
+): Embed {
+	const name = `**${device.name}**`;
+	const seconds = Math.round(timeoutMs / 1000);
+	const code = (state: string) => describeState(state, device.kind.warnStates);
+	const sent = "I sent the command once and won't send it again.";
+	switch (result.outcome) {
+		case "done":
+			return {
+				title: "✅ Done",
+				description: `${name} is now ${code(result.after)} (it was ${code(result.before)}).`,
+				accent: "positive",
+			};
+		case "already":
+			return {
+				title: "Already there",
+				description: `${name} is already ${code(result.before)}. I didn't send anything.`,
+				accent: "neutral",
+			};
+		case "in-progress":
+			return {
+				title: "⏳ Still working",
+				description: `${name} is still ${code(result.after)} after ${seconds}s. ${sent} Check with \`/ha status\`.`,
+				accent: "warning",
+			};
+		case "no-change":
+			return {
+				title: "⚠️ Nothing changed",
+				description: `${name} still shows ${code(result.after)} after ${seconds}s. ${sent} Check with \`/ha status\`.`,
+				accent: "warning",
+			};
+		case "failed":
+			return {
+				title: "⚠️ It didn't work",
+				description: `${name} reports ${code(result.after)} after \`${action.name}\` (it was ${code(result.before)}). ${sent}`,
+				accent: "negative",
+			};
+		case "unconfirmed":
+			return {
+				title: "⚠️ Can't confirm",
+				description: `I couldn't confirm what happened to ${name}: the command may or may not have gone through. ${sent} Check with \`/ha status\`.`,
+				accent: "warning",
+			};
+		case "rejected":
+			return {
+				title: "⚠️ Home Assistant refused",
+				description: `${HOME_MESSAGES.refused} ${name} is still ${code(result.before)}. I didn't try again.`,
+				accent: "negative",
+			};
+		case "not-attempted":
+			return { title: "Not sent", description: notSent(name, result), accent: "warning" };
+	}
+}
+
+function notSent(
+	name: string,
+	result: Extract<ControlResult, { outcome: "not-attempted" }>,
+): string {
+	switch (result.reason) {
+		case "busy":
+			return `Someone is already changing ${name}. Give it a moment.`;
+		case "cooldown":
+			return `${name} was only just changed. Give it a few seconds.`;
+		case "missing":
+			return `Home Assistant doesn't have ${name} right now, so I didn't send anything.`;
+		case "unavailable":
+			return `${name} is ${describeState(result.before ?? "unavailable")}, so I didn't send anything.`;
+		case "under-way":
+			return `${name} is already ${describeState(result.before ?? "")}, which means it's on its way. I didn't send anything.`;
+	}
+}
+
+/** The same action on several devices, once. */
+function uniqueActions(actions: readonly KindAction[]): KindAction[] {
+	return [...new Map(actions.map((action) => [action.name, action])).values()];
+}
+
+/** Action names to complete, with what each does, best matches first. Never asks Home Assistant. */
+function suggestActions(actions: readonly KindAction[], typed: string): Suggestion[] {
+	const needle = typed.trim().toLowerCase();
+	return actions
+		.filter((action) => needle === "" || action.name.includes(needle))
+		.sort(
+			(a, b) =>
+				Number(b.name.startsWith(needle)) - Number(a.name.startsWith(needle)) ||
+				a.name.localeCompare(b.name),
+		)
+		.slice(0, MAX_SUGGESTIONS)
+		.map((action) => ({
+			name: `${action.name} · ${action.description}`.slice(0, 100),
+			value: action.name,
+		}));
 }

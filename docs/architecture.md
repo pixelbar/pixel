@@ -254,6 +254,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
 | `home`    | `/ha list`                   | friend | ✅    | Private. The devices you may use (by each device's tier floor), grouped by kind, with their live state. Unavailable and unknown show as themselves. Says so when nothing is available to you, or when Home Assistant isn't set up |
 | `home`    | `/ha status device:`         | friend | ✅    | Private. One device's live state, when it last changed and a few details for its kind (brightness, battery, the unit of a reading). `device` autocompletes, offering only what you may see. An unknown device and one you may not see get the same generic answer. Looking at a door is logged |
+| `home`    | `/ha set device: state:`     | friend | ✅    | Private. Changes a device, such as `on` or `off` for a light. Needs the device's tier floor and `ha-admin` or the kind's capability, and an action the devices file allows. Both options autocomplete: `state` offers what that device allows, and what you may run. Reports what really happened. Doors are switched off for now |
 | `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The Home Assistant commands
@@ -266,6 +267,21 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 - **What a kind shows** is part of the kind (`attributes` and `warnStates` in `core/home-kinds/`): brightness for lights, the type and battery for sensors. A new kind says what's worth showing, and nothing else changes.
 - **Size:** one embed field per kind, cut at the field limit with "…and N more."
 - **Logging:** a refused status is logged with the real reason (`unknown-device` or `tier`) and the device name when it exists, never what was typed. Looking at a door is logged with who and which.
+
+### Changing devices: `/ha set`
+
+`/ha set device: state:` is the one place Pixel changes something in the real world, so it's strict and honest. `state` is the name of one of the kind's actions (`on`, `off`, `toggle` for lights and switches), and the kind's catalogue decides the service call: `on` on a light is `light.turn_on` on that entity, and nothing outside the catalogue can be sent. People can't pass a service name or any data.
+
+- **Checked again at run time:** the device, the action and the person are checked against the devices file and the shared rule in `core/home-access.ts` when the command runs, whatever autocomplete offered. Anything not allowed gets the same generic `HOME_DENIED` answer as an unknown device, without calling Home Assistant. The log has the real reason (`unknown-device`, `tier`, `capability` or `action`) and never what was typed.
+- **Autocomplete uses the same rule:** `device` offers only devices you may act on (narrowed by the state if you've chosen one), and `state` offers only what you may run on the chosen device, with what each does. With no device yet it offers the values that work somewhere. A suggestion is a convenience, never validation.
+- **Check, act, confirm** (`features/home/control.ts`):
+  1. Read the state fresh. If the device is already there, say so and send nothing. If it's `unavailable` or `unknown`, or a lock is already on its way (`unlocking`), send nothing.
+  2. Make exactly one call. If Home Assistant can't be reached to read the state, nothing is sent. There are no retries and nothing is queued, so a late action can never happen. If the call itself times out or the connection drops, Pixel says it can't confirm and never resends.
+  3. Watch for the end state every half second for eight seconds, and report what really happened: **done**, **still working** (a lock that is `unlocking`), **nothing changed**, **it didn't work** (`jammed`, or the device went unavailable), **can't confirm** (contact lost), or **Home Assistant refused**. A toggle counts as done when the state changed.
+- **One at a time per device,** with a three-second cool-down after an action, so a double click sends one. A second run says someone is already changing it, or that it was only just changed.
+- **Audit:** every action that ran logs `home.action` with who (from the dispatcher), the device, kind, action, state before and after (cut to 40 characters), outcome and duration, and leaves a Sentry breadcrumb. Refusals are logged as `home.action_denied`.
+- **Replies are private,** and show Home Assistant's states as code spans. Home Assistant's own error text is never shown, only a fixed summary.
+- **Doors are off for now.** Even for someone with `ha-doors` or `ha-admin`, and even if a door's actions are listed in the devices file, `/ha set` refuses doors ("isn't switched on yet") and never offers them in autocomplete. They come on with the door safeguards (#29: a public notice, a confirmation, conditions and an emergency switch). Until then lights and switches are the only kinds that can be changed.
 
 ### The events list
 
