@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IDS, principal } from "../testing/fixtures.ts";
 
 const scope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
+const isolationScope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
 const captureException = vi.fn();
 const addBreadcrumb = vi.fn();
 
 vi.mock("@sentry/node", () => ({
 	withScope: (callback: (s: typeof scope) => void) => callback(scope),
+	withIsolationScope: <T>(callback: (s: typeof isolationScope) => T) => callback(isolationScope),
 	captureException: (error: unknown) => captureException(error),
 	addBreadcrumb: (crumb: unknown) => addBreadcrumb(crumb),
 }));
@@ -82,5 +84,53 @@ describe("createSentryReporter", () => {
 			id: `discord:${IDS.member}`,
 			name: "Ada Lovelace",
 		});
+	});
+
+	it("names who a background error happened to, by ID, when it is told", () => {
+		createSentryReporter().captureBackground(new Error("discord failed"), "discord", {
+			platform: "discord",
+			userId: IDS.member,
+			displayName: "Ada Lovelace",
+			handle: "ada_l",
+		});
+		expect(scope.setTag).toHaveBeenCalledWith("source", "discord");
+		expect(scope.setUser).toHaveBeenCalledWith({
+			id: `discord:${IDS.member}`,
+			username: "ada_l",
+			name: "Ada Lovelace",
+		});
+	});
+
+	it("runs the work with the person and command attached to everything reported meanwhile", async () => {
+		const run = vi.fn(async () => "result");
+		const result = await createSentryReporter().withContext?.(
+			{ command: "ha set", feature: "home", principal: { ...caller, handle: "ada_l" } },
+			run,
+		);
+		expect(result).toBe("result");
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(isolationScope.setTags).toHaveBeenCalledWith({
+			command: "ha set",
+			feature: "home",
+			platform: "discord",
+			tier: "member",
+		});
+		expect(isolationScope.setUser).toHaveBeenCalledWith({
+			id: `discord:${IDS.member}`,
+			username: "ada_l",
+			name: "Ada Lovelace",
+		});
+	});
+
+	it("lets an error from the work through, unchanged", async () => {
+		const error = new Error("handler failed");
+		await expect(
+			createSentryReporter().withContext?.(
+				{ command: "x", feature: "x", principal: caller },
+				async () => {
+					throw error;
+				},
+			),
+		).rejects.toBe(error);
 	});
 });
