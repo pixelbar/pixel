@@ -36,6 +36,7 @@ describe("buildCore", () => {
 			access: { adminsFile, membersFile },
 			dataDir: join(dir, "data"),
 			contentDir: join(dir, "content"),
+			homeAssistantDir: "config/home-assistant",
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
 			sentryDsn: undefined,
@@ -355,6 +356,51 @@ describe("buildCore", () => {
 				message: "The quiz night is missing from /events",
 				from: expect.objectContaining({ userId: IDS.guest, tier: "guest", displayName: "Someone" }),
 			});
+		});
+	});
+
+	describe("Home Assistant devices", () => {
+		const haConfig = (haDir: string): Config => ({
+			...config,
+			homeAssistantDir: haDir,
+			homeAssistant: { url: "https://ha.example", token: "not-a-real-token" },
+		});
+
+		it("doesn't look for a devices file when Home Assistant isn't configured", () => {
+			const core = buildCore(
+				{ ...config, homeAssistantDir: join(dir, "nowhere") },
+				silentLogger,
+				nullErrorReporter,
+			);
+			expect(core.homeDevices.configured).toBe(false);
+			expect(core.homeDevices.view.devices).toEqual([]);
+		});
+
+		it("refuses to build when Home Assistant is configured but the devices file is missing", () => {
+			expect(() =>
+				buildCore(haConfig(join(dir, "nowhere")), silentLogger, nullErrorReporter),
+			).toThrow(/cannot read file/);
+		});
+
+		it("refuses to build with an invalid devices file", () => {
+			const haDir = join(dir, "ha");
+			mkdirSync(haDir);
+			writeFileSync(join(haDir, "devices.yaml"), "devices:\n  - name: BAD\n");
+			expect(() => buildCore(haConfig(haDir), silentLogger, nullErrorReporter)).toThrow(
+				/invalid devices file/,
+			);
+		});
+
+		it("loads the devices when the file is valid", () => {
+			const haDir = join(dir, "ha");
+			mkdirSync(haDir);
+			writeFileSync(
+				join(haDir, "devices.yaml"),
+				"devices:\n  - name: lamp\n    entity: light.lamp\n    kind: light\n    actions: [on]\n",
+			);
+			const core = buildCore(haConfig(haDir), silentLogger, nullErrorReporter);
+			expect(core.homeDevices.configured).toBe(true);
+			expect(core.homeDevices.view.byName.get("lamp")?.entityId).toBe("light.lamp");
 		});
 	});
 });

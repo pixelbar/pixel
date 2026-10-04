@@ -237,3 +237,18 @@ describe("Home Assistant settings", () => {
 		).toThrow(/HOME_ASSISTANT_TOKEN/);
 	});
 });
+
+describe("the Home Assistant devices directory", () => {
+	it("defaults to config/home-assistant", () => {
+		expect(loadConfig(VALID).homeAssistantDir).toBe("config/home-assistant");
+	});
+
+	it("can be pointed elsewhere, but not at nothing", () => {
+		expect(
+			loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "/etc/pixel/ha" }).homeAssistantDir,
+		).toBe("/etc/pixel/ha");
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "" })).toThrow(
+			/PIXEL_HOME_ASSISTANT_DIR/,
+		);
+	});
+});

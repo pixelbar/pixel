@@ -13,6 +13,7 @@ import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { nullFeedbackSink } from "../core/ports/feedback.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
+import { HomeDeviceStore } from "../services/home-devices.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -45,6 +46,7 @@ const deps = () => ({
 	capabilities: new CapabilityRegistry(),
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
+	homeDevices: HomeDeviceStore.empty(),
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
 	spaceStatus,
@@ -135,6 +137,7 @@ function adminSubcommand(
 		capabilities: new CapabilityRegistry(),
 		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
+		homeDevices: HomeDeviceStore.empty(),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
@@ -190,6 +193,7 @@ describe("admin", () => {
 			capabilities: new CapabilityRegistry(),
 			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
+			homeDevices: HomeDeviceStore.empty(),
 			reporter: { ...nullErrorReporter, captureBackground },
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");

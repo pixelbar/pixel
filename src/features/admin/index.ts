@@ -5,8 +5,9 @@ import type { Home } from "../../core/home.ts";
 import type { AccessStore } from "../../core/ports/access-store.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
+import type { HomeDeviceStore } from "../../services/home-devices.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
-import { describeHome, homeLines } from "./home.ts";
+import { describeHome, homeLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
@@ -16,7 +17,8 @@ export type AdminDeps = {
 	access: Pick<AccessStore, "view" | "apply" | "reload">;
 	capabilities: CapabilityRegistry;
 	roles: Pick<RoleMirror, "apply" | "inspect" | "states" | "check">;
-	home: Pick<Home, "status" | "check">;
+	home: Pick<Home, "status" | "check" | "getStates">;
+	homeDevices: Pick<HomeDeviceStore, "view" | "reload" | "configured">;
 	reporter: ErrorReporter;
 	now?: () => Date;
 };
@@ -54,7 +56,10 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 										},
 										{ name: "Access lists", value: describeCounts(deps.access.view.counts) },
 										{ name: "Discord roles", value: describeStates(await deps.roles.states()) },
-										{ name: "Home Assistant", value: describeHome(deps.home.status()) },
+										{
+											name: "Home Assistant",
+											value: describeHome(deps.home.status(), deps.homeDevices),
+										},
 									],
 								},
 							],
@@ -86,6 +91,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 										? [`These capabilities don't exist and are ignored: ${unknown.join(", ")}.`]
 										: []),
 									...homeLines(homeStatus),
+									...(await reloadDevices(deps.homeDevices, deps.home)),
 									...roleStates.flatMap((state) =>
 										state.status === "off"
 											? [`Role mirroring for ${state.tier} is off: ${state.reason}.`]

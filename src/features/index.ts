@@ -8,6 +8,7 @@ import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
+import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -26,6 +27,7 @@ export type FeatureDeps = {
 	capabilities: CapabilityRegistry;
 	roles: RoleMirror;
 	home: Home;
+	homeDevices: HomeDeviceStore;
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
@@ -58,6 +60,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			capabilities: deps.capabilities,
 			roles: deps.roles,
 			home: deps.home,
+			homeDevices: deps.homeDevices,
 			reporter: deps.reporter,
 		}),
 	];

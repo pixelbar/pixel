@@ -1,0 +1,40 @@
+# The devices Pixel may use in Home Assistant.
+#
+# Copy to config/home-assistant/devices.yaml (gitignored: it describes the building).
+# This list is the fence. Pixel never offers anything that isn't here, whatever
+# people type, because the Home Assistant token itself can't be limited.
+#
+# name:        what people type. Lowercase words joined by '-', up to 32 characters.
+# entity:      the Home Assistant entity, such as light.workshop. Its domain must suit the kind.
+# kind:        light | switch | door | sensor. The kind decides which actions exist.
+# actions:     the actions people may run, from what the kind offers. Leave it out for read-only.
+#                light, switch: on, off, toggle
+#                door:          lock, unlock, open
+#                sensor:        none (read-only)
+# description: optional, shown to people (up to 100 characters).
+# minTier:     friend | member | admin. Defaults to member. To act, people also need the capability
+#              for the kind (or ha-admin).
+devices:
+  - name: workshop-light
+    entity: light.workshop
+    kind: light
+    actions: [on, off, toggle]
+    description: The main light in the workshop
+
+  - name: laser-cutter
+    entity: switch.laser_cutter
+    kind: switch
+    actions: [on, off]
+    description: Power to the laser cutter
+    minTier: member
+
+  - name: front-door
+    entity: lock.front_door
+    kind: door
+    actions: [lock, unlock]
+    description: The front door
+
+  - name: workshop-temperature
+    entity: sensor.workshop_temperature
+    kind: sensor
+    description: Temperature in the workshop
