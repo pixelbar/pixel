@@ -8,6 +8,8 @@ import {
 	MAX_REASON_LENGTH,
 	type MemberTier,
 } from "../../core/ports/access-store.ts";
+import type { RoleMirror } from "../../core/role-mirror.ts";
+import { inspectionField, mirrorLine, mirrorReason, wantedFor } from "./roles.ts";
 
 /**
  * `/admin set-level` and `/admin whois`: who is a member or friend. Both act
@@ -23,6 +25,7 @@ const LEVELS: readonly MemberTier[] = ["member", "friend", "guest"];
 export function createMemberSubcommands(
 	access: MemberCommandDeps,
 	capabilities: Pick<CapabilityRegistry, "has">,
+	roles: Pick<RoleMirror, "apply" | "inspect">,
 ): SubcommandDefinition[] {
 	return [
 		{
@@ -60,16 +63,32 @@ export function createMemberSubcommands(
 					);
 				}
 				const current = view.records.get(target.id)?.tier ?? "guest";
-				if (current === level) {
+
+				// Pixel's data is updated first. Discord's roles then follow, even when nothing
+				// changed in Pixel, so a person who's out of step gets put right.
+				const changed = current !== level;
+				const result = changed
+					? await access.apply(
+							{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
+							principal,
+						)
+					: undefined;
+				const mirror = await roles.apply(
+					target.id,
+					level,
+					mirrorReason(changed ? "Set to" : "Synced to", level, principal),
+				);
+				const roleLine = mirrorLine(mirror, "change");
+
+				if (!result) {
+					const already = `${describe(target)} is already set to ${TIER_LABELS[level]}.`;
 					return {
-						text: `${describe(target)} is already set to ${TIER_LABELS[level]}. Nothing changed.`,
+						text: roleLine
+							? `${already} Nothing changed in Pixel.\n${roleLine}`
+							: `${already} Nothing changed.`,
 					};
 				}
-
-				const { before, after } = await access.apply(
-					{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
-					principal,
-				);
+				const { before, after } = result;
 				const stillHasCapabilities = level === "guest" && after.capabilities.length > 0;
 				return {
 					embeds: [
@@ -88,6 +107,7 @@ export function createMemberSubcommands(
 											},
 										]
 									: []),
+								...(roleLine ? [{ name: "Discord roles", value: roleLine }] : []),
 							],
 						},
 					],
@@ -132,6 +152,10 @@ export function createMemberSubcommands(
 				const record = view.records.get(target.id);
 				const tier: Tier = view.discord.get(target.id) ?? "guest";
 				const held = record?.capabilities ?? [];
+				const rolesField = inspectionField(
+					await roles.inspect(target.id),
+					wantedFor(view, target.id),
+				);
 				return {
 					embeds: [
 						{
@@ -156,6 +180,7 @@ export function createMemberSubcommands(
 													.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
 								},
 								...(record?.note ? [{ name: "Note", value: inlineCode(record.note, 300) }] : []),
+								...(rolesField ? [rolesField] : []),
 							],
 						},
 					],

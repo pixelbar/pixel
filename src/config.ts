@@ -34,6 +34,9 @@ const envSchema = z.object({
 	DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
 	DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
 	DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
+	// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
+	DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
+	DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
 });
 
 export type Config = {
@@ -65,6 +68,11 @@ export type Config = {
 			/** A new post for every open and every close; never edited. */
 			timelineChannelId: string | undefined;
 		};
+		/**
+		 * The Discord role each tier is mirrored to, by name or ID. Pixel pushes tiers
+		 * to these roles and never reads them. Unset means not mirrored.
+		 */
+		roles: { member: string | undefined; friend: string | undefined };
 	};
 };
 
@@ -101,6 +109,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
 				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,
 			},
+			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 		},
 	};
 }

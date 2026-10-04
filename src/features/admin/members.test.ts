@@ -8,10 +8,12 @@ import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
+import { silentLogger } from "../../core/logger.ts";
 import { MAX_REASON_LENGTH } from "../../core/ports/access-store.ts";
-import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
+import { type ErrorReporter, nullErrorReporter } from "../../core/ports/error-reporter.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
+import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
@@ -31,6 +33,7 @@ const MEMBERS = `members:
     tier: member
 `;
 const TARGET = "100000000000000050";
+const unattached = () => new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter });
 const CAPABILITIES = new CapabilityRegistry([
 	{ name: "front-door", description: "Open the front door" },
 ]);
@@ -69,6 +72,7 @@ function setup(ops = nodeFileOps) {
 			startedAt: new Date(),
 			access: store,
 			capabilities: CAPABILITIES,
+			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			reporter,
 		}),
 	);
@@ -448,7 +452,7 @@ describe("/admin whois", () => {
 
 describe("handler guard", () => {
 	it("fails loudly if a required user wasn't resolved (the dispatcher prevents this)", async () => {
-		const sub = createMemberSubcommands(openStore(), new CapabilityRegistry()).find(
+		const sub = createMemberSubcommands(openStore(), new CapabilityRegistry(), unattached()).find(
 			(s) => s.name === "whois",
 		);
 		await expect(sub?.handler(context())).rejects.toThrow(/missing resolved user/);

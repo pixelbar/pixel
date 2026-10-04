@@ -3,14 +3,17 @@ import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
 import type { AccessStore } from "../../core/ports/access-store.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
+import type { RoleMirror } from "../../core/role-mirror.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
 import { createMemberSubcommands } from "./members.ts";
+import { createRoleSubcommands, describeStates } from "./roles.ts";
 
 export type AdminDeps = {
 	version: string;
 	startedAt: Date;
 	access: Pick<AccessStore, "view" | "apply" | "reload">;
 	capabilities: CapabilityRegistry;
+	roles: Pick<RoleMirror, "apply" | "inspect" | "states" | "check">;
 	reporter: ErrorReporter;
 	now?: () => Date;
 };
@@ -47,6 +50,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 											inline: true,
 										},
 										{ name: "Access lists", value: describeCounts(deps.access.view.counts) },
+										{ name: "Discord roles", value: describeStates(await deps.roles.states()) },
 									],
 								},
 							],
@@ -65,6 +69,8 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 								deps.capabilities,
 								{ logger, reporter: deps.reporter },
 							);
+							// Re-check the role mapping too, so a renamed or moved role is noticed.
+							const roleStates = await deps.roles.check();
 							return {
 								text: [
 									"Reloaded the access lists.",
@@ -74,11 +80,17 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 									...(unknown.length > 0
 										? [`These capabilities don't exist and are ignored: ${unknown.join(", ")}.`]
 										: []),
+									...roleStates.flatMap((state) =>
+										state.status === "off"
+											? [`Role mirroring for ${state.tier} is off: ${state.reason}.`]
+											: [],
+									),
 								].join("\n"),
 							};
 						},
 					},
-					...createMemberSubcommands(deps.access, deps.capabilities),
+					...createMemberSubcommands(deps.access, deps.capabilities, deps.roles),
+					...createRoleSubcommands(deps.access, deps.roles),
 					createCapabilitySubgroup({ access: deps.access, capabilities: deps.capabilities }),
 				],
 			},

@@ -15,6 +15,7 @@ import type { AccessStore } from "./core/ports/access-store.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
+import { RoleMirror } from "./core/role-mirror.ts";
 import { CAPABILITIES } from "./features/capabilities.ts";
 import { buildFeatures } from "./features/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
@@ -26,6 +27,8 @@ import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 export type Core = {
 	access: AccessStore;
 	capabilities: CapabilityRegistry;
+	/** Mirrors tiers to Discord roles once the Discord adapter has plugged its backend in. */
+	roles: RoleMirror;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -65,6 +68,8 @@ export function buildCore(
 	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
 	reportUnknownCapabilities(access.view.records.values(), capabilities, { logger, reporter });
 
+	const roles = new RoleMirror({ logger, reporter });
+
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,
 		logger,
@@ -89,6 +94,7 @@ export function buildCore(
 		startedAt: options.startedAt ?? new Date(),
 		access,
 		capabilities,
+		roles,
 		reporter,
 		spaceStatus,
 		announcer,
@@ -110,5 +116,15 @@ export function buildCore(
 		reporter,
 	});
 
-	return { access, capabilities, registry, dispatcher, spaceStatus, announcer, calendar, features };
+	return {
+		access,
+		capabilities,
+		roles,
+		registry,
+		dispatcher,
+		spaceStatus,
+		announcer,
+		calendar,
+		features,
+	};
 }

@@ -12,11 +12,8 @@ async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry, spaceStatus, announcer, calendar, features } = buildCore(
-		config,
-		logger,
-		reporter,
-	);
+	const { access, dispatcher, registry, spaceStatus, announcer, calendar, roles, features } =
+		buildCore(config, logger, reporter);
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.view.counts },
@@ -35,6 +32,8 @@ async function main(): Promise<void> {
 		announceStateFile: join(config.dataDir, "announcements.state"),
 		announcer,
 		calendar,
+		roles,
+		roleMapping: config.discord.roles,
 		reportError: (error) => reporter.captureBackground(error, "discord"),
 		onReady: () => {
 			stopFeatures = startFeatures(features);

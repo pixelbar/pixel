@@ -8,10 +8,12 @@ import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
+import { silentLogger } from "../../core/logger.ts";
 import { MAX_REASON_LENGTH } from "../../core/ports/access-store.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
+import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
@@ -71,6 +73,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 			startedAt: new Date(),
 			access: store,
 			capabilities: registry,
+			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			reporter,
 		}),
 	);

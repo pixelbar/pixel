@@ -5,6 +5,7 @@ import type { Feature } from "../core/feature.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
+import type { RoleMirror } from "../core/role-mirror.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -20,6 +21,7 @@ export type FeatureDeps = {
 	startedAt: Date;
 	access: AccessStore;
 	capabilities: CapabilityRegistry;
+	roles: RoleMirror;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
 	announcer: Announcer;
@@ -48,6 +50,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			startedAt: deps.startedAt,
 			access: deps.access,
 			capabilities: deps.capabilities,
+			roles: deps.roles,
 			reporter: deps.reporter,
 		}),
 	];
