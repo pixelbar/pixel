@@ -74,7 +74,7 @@ describe("buildFeatures", () => {
 				.all()
 				.map((c) => c.definition.name)
 				.sort(),
-		).toEqual(["admin", "events", "feedback", "help", "info", "ping", "status", "whoami"]);
+		).toEqual(["admin", "events", "feedback", "ha", "help", "info", "ping", "status", "whoami"]);
 	});
 
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {

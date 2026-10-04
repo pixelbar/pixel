@@ -252,7 +252,20 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
 | `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
+| `home`    | `/ha list`                   | friend | ✅    | Private. The devices you may use (by each device's tier floor), grouped by kind, with their live state. Unavailable and unknown show as themselves. Says so when nothing is available to you, or when Home Assistant isn't set up |
+| `home`    | `/ha status device:`         | friend | ✅    | Private. One device's live state, when it last changed and a few details for its kind (brightness, battery, the unit of a reading). `device` autocompletes, offering only what you may see. An unknown device and one you may not see get the same generic answer. Looking at a door is logged |
 | `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
+
+### The Home Assistant commands
+
+`/ha list` and `/ha status` only read. `/ha` has a floor of `friend` (the lowest any device can have, and a guest never passes), and each device's own floor is checked by the shared rule in `core/home-access.ts` (see `identity-and-access.md`), both when listing and when completing, so people see only what they may use. The commands don't need a capability: reading takes the tier floor alone.
+
+- **Live, no cache:** every list and every status asks Home Assistant fresh, and only about the devices it will show. If Home Assistant can't be reached the reply says so plainly. With Home Assistant not set up, `/ha` says so, and there is nothing to autocomplete.
+- **Everything from Home Assistant is untrusted text:** states, units and attributes are shown as code spans (so no formatting, links or mentions), with control characters removed and length limited. Device names come from the devices file, not from Home Assistant. Long readings are rounded to two decimals.
+- **States that aren't readings** show as themselves, never as "off": `unavailable` (⚠️), `unknown` (❔), a device Home Assistant doesn't have (❔), and a kind's warning states such as a `jammed` lock (⚠️).
+- **What a kind shows** is part of the kind (`attributes` and `warnStates` in `core/home-kinds/`): brightness for lights, the type and battery for sensors. A new kind says what's worth showing, and nothing else changes.
+- **Size:** one embed field per kind, cut at the field limit with "…and N more."
+- **Logging:** a refused status is logged with the real reason (`unknown-device` or `tier`) and the device name when it exists, never what was typed. Looking at a door is logged with who and which.
 
 ### The events list
 

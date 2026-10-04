@@ -16,6 +16,7 @@ import { createAdminFeature } from "./admin/index.ts";
 import { createEventsFeature } from "./events/index.ts";
 import { createFeedbackFeature } from "./feedback/index.ts";
 import { createHelpFeature } from "./help/index.ts";
+import { createHomeFeature } from "./home/index.ts";
 import { createHomeInventoryFeature } from "./home-inventory/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
@@ -56,6 +57,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
+		createHomeFeature({ home: deps.home, homeDevices: deps.homeDevices }),
 		createHomeInventoryFeature({ inventory: deps.homeInventory, logger: deps.logger }),
 		createAdminFeature({
 			version: deps.version,
