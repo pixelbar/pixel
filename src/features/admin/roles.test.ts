@@ -6,6 +6,7 @@ import type { PlatformActor } from "../../core/access.ts";
 import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
+import { Home, type HomeBackend, type HomeStatus } from "../../core/home.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
@@ -76,7 +77,7 @@ function fakeBackend(overrides: Partial<MirrorBackend> = {}): Fake {
 	};
 }
 
-function setup(backend?: Fake) {
+function setup(backend?: Fake, homeBackend?: HomeBackend) {
 	const store = FileAccessStore.open({
 		paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
 		logger: logger(),
@@ -84,6 +85,8 @@ function setup(backend?: Fake) {
 		ops: nodeFileOps,
 	});
 	const roles = new RoleMirror({ logger: logger(), reporter });
+	const home = new Home({ logger: logger(), reporter });
+	if (homeBackend) home.attach(homeBackend);
 	if (backend) roles.attach(backend);
 	const commands = new CommandRegistry();
 	commands.register(
@@ -93,6 +96,7 @@ function setup(backend?: Fake) {
 			access: store,
 			capabilities: new CapabilityRegistry(),
 			roles,
+			home,
 			reporter,
 		}),
 	);
@@ -606,6 +610,79 @@ describe("/admin status and reload", () => {
 		expect(ok.reply.text).not.toContain("Role mirroring");
 		const none = await run(setup().dispatcher, "reload", {});
 		expect(none.reply.text).not.toContain("Role mirroring");
+	});
+});
+
+describe("/admin status and reload show Home Assistant", () => {
+	const homeBackend = (status: HomeStatus): HomeBackend & { check: ReturnType<typeof vi.fn> } => ({
+		status: () => status,
+		check: vi.fn(async () => status),
+		getStates: async () => new Map(),
+		callService: async () => {},
+	});
+
+	it("says it isn't configured when nothing is plugged in", async () => {
+		const result = await run(setup().dispatcher, "status", {});
+		expect(fieldsOf(result)["Home Assistant"]).toBe("Not configured");
+	});
+
+	it("shows a connection, and an admin token as a warning", async () => {
+		const ok = setup(
+			undefined,
+			homeBackend({ kind: "connected", haVersion: "2026.10.0", adminToken: false }),
+		);
+		expect(fieldsOf(await run(ok.dispatcher, "status", {}))["Home Assistant"]).toBe(
+			"Connected (version `2026.10.0`)",
+		);
+		const admin = setup(
+			undefined,
+			homeBackend({ kind: "connected", haVersion: "2026.10.0", adminToken: true }),
+		);
+		expect(fieldsOf(await run(admin.dispatcher, "status", {}))["Home Assistant"]).toContain(
+			"⚠ The token belongs to an admin user",
+		);
+	});
+
+	it("shows a refused token and an unreachable Home Assistant", async () => {
+		const off = setup(
+			undefined,
+			homeBackend({
+				kind: "off",
+				reason: "Home Assistant refused the token, so it needs replacing",
+			}),
+		);
+		expect(fieldsOf(await run(off.dispatcher, "status", {}))["Home Assistant"]).toBe(
+			"Off: Home Assistant refused the token, so it needs replacing",
+		);
+		const down = setup(undefined, homeBackend({ kind: "reconnecting" }));
+		expect(fieldsOf(await run(down.dispatcher, "status", {}))["Home Assistant"]).toBe(
+			"Not connected, trying to reconnect",
+		);
+	});
+
+	it("re-checks the connection on reload, and says what needs attention", async () => {
+		const backend = homeBackend({
+			kind: "off",
+			reason: "Home Assistant refused the token, so it needs replacing",
+		});
+		const { dispatcher } = setup(undefined, backend);
+		const result = await run(dispatcher, "reload", {});
+		expect(backend.check).toHaveBeenCalled();
+		expect(result.reply.text).toContain(
+			"Home Assistant is off: Home Assistant refused the token, so it needs replacing.",
+		);
+		expect(reporter.captureBackground).toHaveBeenCalledTimes(1);
+	});
+
+	it("says nothing about Home Assistant on reload when all is well or it isn't used", async () => {
+		const ok = setup(
+			undefined,
+			homeBackend({ kind: "connected", haVersion: "1", adminToken: false }),
+		);
+		expect((await run(ok.dispatcher, "reload", {})).reply.text).not.toContain("Home Assistant");
+		expect((await run(setup().dispatcher, "reload", {})).reply.text).not.toContain(
+			"Home Assistant",
+		);
 	});
 });
 

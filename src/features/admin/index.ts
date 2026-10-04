@@ -1,10 +1,12 @@
 import { type CapabilityRegistry, reportUnknownCapabilities } from "../../core/capabilities.ts";
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
+import type { Home } from "../../core/home.ts";
 import type { AccessStore } from "../../core/ports/access-store.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
+import { describeHome, homeLines } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
@@ -14,6 +16,7 @@ export type AdminDeps = {
 	access: Pick<AccessStore, "view" | "apply" | "reload">;
 	capabilities: CapabilityRegistry;
 	roles: Pick<RoleMirror, "apply" | "inspect" | "states" | "check">;
+	home: Pick<Home, "status" | "check">;
 	reporter: ErrorReporter;
 	now?: () => Date;
 };
@@ -51,6 +54,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 										},
 										{ name: "Access lists", value: describeCounts(deps.access.view.counts) },
 										{ name: "Discord roles", value: describeStates(await deps.roles.states()) },
+										{ name: "Home Assistant", value: describeHome(deps.home.status()) },
 									],
 								},
 							],
@@ -71,6 +75,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 							);
 							// Re-check the role mapping too, so a renamed or moved role is noticed.
 							const roleStates = await deps.roles.check();
+							const homeStatus = await deps.home.check();
 							return {
 								text: [
 									"Reloaded the access lists.",
@@ -80,6 +85,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 									...(unknown.length > 0
 										? [`These capabilities don't exist and are ignored: ${unknown.join(", ")}.`]
 										: []),
+									...homeLines(homeStatus),
 									...roleStates.flatMap((state) =>
 										state.status === "off"
 											? [`Role mirroring for ${state.tier} is off: ${state.reason}.`]

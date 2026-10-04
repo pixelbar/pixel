@@ -12,32 +12,41 @@ const optional = <T extends z.ZodType>(schema: T) =>
 
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
 
-const envSchema = z.object({
-	PIXEL_ENV: pixelEnv,
-	PIXEL_VERSION: z.string().default("dev"),
-	LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-	PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
-	PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
-	PIXEL_DATA_DIR: z.string().min(1).default("data"),
-	PIXEL_CONTENT_DIR: z.string().min(1).default("content"),
-	PIXEL_TIMEZONE: z
-		.string()
-		.default("Europe/Amsterdam")
-		.refine(isValidTimeZone, { error: "must be a time zone name like Europe/Amsterdam" }),
-	HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
-	SENTRY_DSN: optional(z.url()),
-	SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
+const envSchema = z
+	.object({
+		PIXEL_ENV: pixelEnv,
+		PIXEL_VERSION: z.string().default("dev"),
+		LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+		PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
+		PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
+		PIXEL_DATA_DIR: z.string().min(1).default("data"),
+		PIXEL_CONTENT_DIR: z.string().min(1).default("content"),
+		PIXEL_TIMEZONE: z
+			.string()
+			.default("Europe/Amsterdam")
+			.refine(isValidTimeZone, { error: "must be a time zone name like Europe/Amsterdam" }),
+		HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
+		SENTRY_DSN: optional(z.url()),
+		SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
 
-	DISCORD_TOKEN: z.string().min(1),
-	DISCORD_APP_ID: snowflake,
-	DISCORD_GUILD_ID: snowflake,
-	DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
-	DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
-	DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
-	// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
-	DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
-	DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
-});
+		DISCORD_TOKEN: z.string().min(1),
+		DISCORD_APP_ID: snowflake,
+		DISCORD_GUILD_ID: snowflake,
+		DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
+		DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
+		DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
+		// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
+		DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
+		DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
+
+		// Both unset means Home Assistant is off. Setting only one is a mistake, so it stops startup.
+		HOME_ASSISTANT_URL: optional(z.url({ protocol: /^https?$/ })),
+		HOME_ASSISTANT_TOKEN: optional(z.string().trim().min(1)),
+	})
+	.refine((e) => (e.HOME_ASSISTANT_URL === undefined) === (e.HOME_ASSISTANT_TOKEN === undefined), {
+		path: ["HOME_ASSISTANT_URL"],
+		error: "set both HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN, or neither",
+	});
 
 export type Config = {
 	env: "local" | "dev" | "prod";
@@ -74,6 +83,12 @@ export type Config = {
 		 */
 		roles: { member: string | undefined; friend: string | undefined };
 	};
+	/**
+	 * How to reach Home Assistant: its address (for example the Nabu Casa cloud URL)
+	 * and a long-lived token. Use a non-admin user's token: Home Assistant can't
+	 * limit a token. The token is a secret. Undefined means Home Assistant is off.
+	 */
+	homeAssistant: { url: string; token: string } | undefined;
 };
 
 export class ConfigError extends Error {
@@ -111,6 +126,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 		},
+		homeAssistant:
+			e.HOME_ASSISTANT_URL !== undefined && e.HOME_ASSISTANT_TOKEN !== undefined
+				? { url: e.HOME_ASSISTANT_URL, token: e.HOME_ASSISTANT_TOKEN }
+				: undefined,
 	};
 }
 

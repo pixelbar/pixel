@@ -9,6 +9,7 @@ import {
 } from "./core/capabilities.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
+import { Home } from "./core/home.ts";
 import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
@@ -29,6 +30,8 @@ export type Core = {
 	capabilities: CapabilityRegistry;
 	/** Mirrors tiers to Discord roles once the Discord adapter has plugged its backend in. */
 	roles: RoleMirror;
+	/** Reads and controls Home Assistant once its adapter has plugged a backend in. */
+	home: Home;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -69,6 +72,7 @@ export function buildCore(
 	reportUnknownCapabilities(access.view.records.values(), capabilities, { logger, reporter });
 
 	const roles = new RoleMirror({ logger, reporter });
+	const home = new Home({ logger, reporter });
 
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,
@@ -95,6 +99,7 @@ export function buildCore(
 		access,
 		capabilities,
 		roles,
+		home,
 		reporter,
 		spaceStatus,
 		announcer,
@@ -120,6 +125,7 @@ export function buildCore(
 		access,
 		capabilities,
 		roles,
+		home,
 		registry,
 		dispatcher,
 		spaceStatus,
