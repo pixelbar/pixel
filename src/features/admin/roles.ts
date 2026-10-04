@@ -13,7 +13,7 @@ import type {
 
 /**
  * Role mirroring in the admin commands: `/admin sync`, plus the wording shared
- * with `set-level`, `whois` and `status`. Discord moderators name roles, so
+ * with `level set`, `level get` and `status`. Discord moderators name roles, so
  * every role name is shown as a code span and never as formatting.
  */
 
@@ -65,7 +65,7 @@ export function mirrorLine(result: MirrorResult, context: "change" | "sync"): st
 	}
 }
 
-/** The "Discord roles" field of `/admin whois`, or undefined when nothing is mapped. */
+/** The "Discord roles" field of `/admin level get`, or undefined when nothing is mapped. */
 export function inspectionField(
 	inspection: Inspection,
 	wanted: WantedLevel,

@@ -1,6 +1,6 @@
 import { TIER_LABELS, type Tier } from "../../core/access.ts";
 import type { CapabilityRegistry } from "../../core/capabilities.ts";
-import type { ResolvedUser, SubcommandDefinition } from "../../core/command.ts";
+import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import {
@@ -12,7 +12,7 @@ import type { RoleMirror } from "../../core/role-mirror.ts";
 import { inspectionField, mirrorLine, mirrorReason, wantedFor } from "./roles.ts";
 
 /**
- * `/admin set-level` and `/admin whois`: who is a member or friend. Both act
+ * `/admin level set` and `/admin level get`: who is a member or friend. Both act
  * on the person's immutable ID. Names, handles and notes are shown for people
  * to read only, and everything written by someone else is escaped or shown as a
  * code span so it can't render as formatting, links or mentions.
@@ -22,14 +22,14 @@ export type MemberCommandDeps = Pick<AccessStore, "view" | "apply">;
 
 const LEVELS: readonly MemberTier[] = ["member", "friend", "guest"];
 
-export function createMemberSubcommands(
+export function createLevelSubgroup(
 	access: MemberCommandDeps,
 	capabilities: Pick<CapabilityRegistry, "has">,
 	roles: Pick<RoleMirror, "apply" | "inspect">,
-): SubcommandDefinition[] {
-	return [
+): SubgroupDefinition {
+	const subcommands: SubcommandDefinition[] = [
 		{
-			name: "set-level",
+			name: "set",
 			description: "Make someone a member or friend, or set them back to guest",
 			access: { minTier: "admin" },
 			private: true,
@@ -115,7 +115,7 @@ export function createMemberSubcommands(
 			},
 		},
 		{
-			name: "whois",
+			name: "get",
 			description: "See someone's Pixel access level, where it comes from, and their capabilities",
 			access: { minTier: "admin" },
 			private: true,
@@ -125,7 +125,10 @@ export function createMemberSubcommands(
 			handler: async ({ users, logger }) => {
 				const target = pickedUser(users, "user");
 				// Lookups show a note and capabilities, so they're recorded like changes are.
-				logger.info({ event: "admin.whois", target: `discord:${target.id}` }, "looked up a person");
+				logger.info(
+					{ event: "admin.level_get", target: `discord:${target.id}` },
+					"looked up a person",
+				);
 
 				const title = escapeMarkdown(target.displayName);
 				const identity = [
@@ -188,6 +191,12 @@ export function createMemberSubcommands(
 			},
 		},
 	];
+	return {
+		name: "level",
+		description: "Membership levels: member, friend or guest",
+		access: { minTier: "admin" },
+		subcommands,
+	};
 }
 
 function source(tier: Tier, listed: boolean): string {

@@ -123,7 +123,10 @@ function run(
 	return dispatcher.dispatch({
 		actor: actor(as),
 		command: "admin",
-		subcommand,
+		// The old names are kept in the tests' vocabulary: set-level is /admin level set, whois is /admin level get.
+		...(subcommand === "set-level" || subcommand === "whois"
+			? { subgroup: "level", subcommand: subcommand === "set-level" ? "set" : "get" }
+			: { subcommand }),
 		args: target ? { user: target.id, ...args } : args,
 		...(target ? { users: { user: target } } : {}),
 	});
@@ -151,7 +154,7 @@ beforeEach(() => {
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("/admin set-level mirrors to Discord", () => {
+describe("/admin level set mirrors to Discord", () => {
 	it("updates Pixel first, then Discord, and passes an audit-log reason naming the admin", async () => {
 		let fileWhenMirrored = "";
 		const backend = fakeBackend({
@@ -436,7 +439,7 @@ describe("/admin sync", () => {
 	});
 });
 
-describe("/admin whois shows Discord roles", () => {
+describe("/admin level get shows Discord roles", () => {
 	const inspect = (holdings: { tier: "member" | "friend"; role: string; has: boolean }[]) =>
 		fakeBackend({ inspect: async () => ({ kind: "ok", holdings }) });
 

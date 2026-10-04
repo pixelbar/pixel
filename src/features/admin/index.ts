@@ -5,7 +5,7 @@ import type { AccessStore } from "../../core/ports/access-store.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
-import { createMemberSubcommands } from "./members.ts";
+import { createLevelSubgroup } from "./members.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
 export type AdminDeps = {
@@ -89,7 +89,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 							};
 						},
 					},
-					...createMemberSubcommands(deps.access, deps.capabilities, deps.roles),
+					createLevelSubgroup(deps.access, deps.capabilities, deps.roles),
 					...createRoleSubcommands(deps.access, deps.roles),
 					createCapabilitySubgroup({ access: deps.access, capabilities: deps.capabilities }),
 				],

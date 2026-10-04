@@ -77,8 +77,7 @@ describe("buildFeatures", () => {
 		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
 			["status", "admin"],
 			["reload", "admin"],
-			["set-level", "admin"],
-			["whois", "admin"],
+			["level", "admin"],
 			["sync", "admin"],
 			["capabilities", "admin"],
 		]);
