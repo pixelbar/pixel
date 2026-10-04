@@ -141,6 +141,10 @@ Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It ru
 
 Not set up yet. The plan is a single container on Azure Container Apps, with `dev` and `prod` environments provisioned by Terraform. See [Deployment](docs/architecture.md#deployment-designed-not-built-in-phase-1).
 
+## Running and operating Pixel
+
+The [operations runbook](docs/runbook.md) covers day-to-day tasks and incidents: access lists, moderation, Home Assistant, rotating secrets, deploys and rollbacks, what to do when the bot is down or answering twice, Sentry, privacy requests and disaster recovery. Anyone who runs Pixel should read it first.
+
 ## Security
 
 Pixel decides who gets member-level access, so its security matters. If you find a vulnerability, email the board at bestuur@pixelbar.nl instead of opening a public issue.

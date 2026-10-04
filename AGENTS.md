@@ -91,6 +91,7 @@ docs/                   # architecture, identity, ADRs
 - **Tests:** Vitest. Test features against a fake `CommandContext`. Test the Discord adapter's mapping logic with plain objects, never against a live Discord connection. Mock HTTP (SpaceAPI) at the service boundary.
 - **Coverage:** `vitest.config.ts` sets an 80% overall floor, with strict floors (about 98%) for `core/`, `services/`, the Discord handlers and the observability helpers. Keep platform client code thin: put decisions in plain functions (see `adapters/discord/handlers.ts`) so they can be tested. Never lower a threshold to make a change pass. Add tests instead, or explain why in the PR.
 - **Style:** Biome. Don't hand-format.
+- **Runbook:** [`docs/runbook.md`](docs/runbook.md) is how volunteers run Pixel. A change to how Pixel is built, configured, deployed, monitored or recovered (an environment variable, a file it reads or writes, a command to run after a deploy, infrastructure) must update the matching section of the runbook in the same PR. The `🚧 Azure` markers are filled in as the infrastructure lands.
 - **Dependencies:** keep them minimal. Explain why in the PR when you add one.
 
 ## Things to avoid
