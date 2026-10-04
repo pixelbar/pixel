@@ -6,11 +6,13 @@ import type { Home } from "../core/home.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
+import type { FeedbackSink } from "../core/ports/feedback.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createEventsFeature } from "./events/index.ts";
+import { createFeedbackFeature } from "./feedback/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
@@ -24,6 +26,7 @@ export type FeatureDeps = {
 	capabilities: CapabilityRegistry;
 	roles: RoleMirror;
 	home: Home;
+	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
 	announcer: Announcer;
@@ -47,6 +50,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
+		createFeedbackFeature({ sink: deps.feedback }),
 		createAdminFeature({
 			version: deps.version,
 			startedAt: deps.startedAt,

@@ -10,6 +10,7 @@ import { Home } from "../core/home.ts";
 import { silentLogger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
+import { nullFeedbackSink } from "../core/ports/feedback.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
@@ -44,6 +45,7 @@ const deps = () => ({
 	capabilities: new CapabilityRegistry(),
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
+	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
@@ -68,7 +70,7 @@ describe("buildFeatures", () => {
 				.all()
 				.map((c) => c.definition.name)
 				.sort(),
-		).toEqual(["admin", "events", "help", "info", "ping", "status", "whoami"]);
+		).toEqual(["admin", "events", "feedback", "help", "info", "ping", "status", "whoami"]);
 	});
 
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {

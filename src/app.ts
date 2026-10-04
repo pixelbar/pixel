@@ -14,6 +14,7 @@ import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
+import { type FeedbackSink, nullFeedbackSink } from "./core/ports/feedback.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { RoleMirror } from "./core/role-mirror.ts";
@@ -50,6 +51,8 @@ export type BuildCoreOptions = {
 	fetch?: typeof globalThis.fetch;
 	/** Overrides the capabilities declared in `features/capabilities.ts` (tests). */
 	capabilities?: readonly CapabilityDefinition[];
+	/** Where `/feedback` messages go. Without one, the command says feedback isn't set up. */
+	feedback?: FeedbackSink;
 };
 
 /**
@@ -98,6 +101,7 @@ export function buildCore(
 		startedAt: options.startedAt ?? new Date(),
 		access,
 		capabilities,
+		feedback: options.feedback ?? nullFeedbackSink,
 		roles,
 		home,
 		reporter,
