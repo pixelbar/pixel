@@ -22,6 +22,7 @@ const envSchema = z
 		PIXEL_DATA_DIR: z.string().min(1).default("data"),
 		PIXEL_CONTENT_DIR: z.string().min(1).default("content"),
 		PIXEL_HOME_ASSISTANT_DIR: z.string().min(1).default("config/home-assistant"),
+		PIXEL_HOME_SYNC_MINUTES: z.coerce.number().int().min(0).max(1440).default(60),
 		PIXEL_TIMEZONE: z
 			.string()
 			.default("Europe/Amsterdam")
@@ -60,6 +61,8 @@ export type Config = {
 	contentDir: string;
 	/** Where the Home Assistant device allow-list lives (`devices.yaml`). Only read when Home Assistant is configured. */
 	homeAssistantDir: string;
+	/** How often the Home Assistant inventory is synced, in minutes. 0 means only at startup and on reload. */
+	homeSyncMinutes: number;
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
 	healthPort: number;
@@ -115,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		dataDir: e.PIXEL_DATA_DIR,
 		contentDir: e.PIXEL_CONTENT_DIR,
 		homeAssistantDir: e.PIXEL_HOME_ASSISTANT_DIR,
+		homeSyncMinutes: e.PIXEL_HOME_SYNC_MINUTES,
 		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,

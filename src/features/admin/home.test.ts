@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EntityState, HomeStatus } from "../../core/home.ts";
 import { type HomeDeviceStore, HomeDevicesError } from "../../services/home-devices.ts";
-import { describeHome, homeLines, reloadDevices } from "./home.ts";
+import type { InventorySync } from "../../services/home-inventory.ts";
+import { describeHome, homeLines, inventoryLines, reloadDevices } from "./home.ts";
 
 const connected = (
 	extra: Partial<Extract<HomeStatus, { kind: "connected" }>> = {},
@@ -164,5 +165,52 @@ describe("reloadDevices", () => {
 		await expect(
 			reloadDevices(store(reload), { getStates: async () => new Map() }),
 		).rejects.toThrow("boom");
+	});
+});
+
+describe("describeHome with the inventory", () => {
+	const at = new Date("2026-10-04T12:00:00Z");
+	const later = new Date("2026-10-04T13:05:00Z");
+
+	it("shows how many are known and how long ago it synced, apart from how many are allowed", () => {
+		expect(
+			describeHome({ kind: "connecting" }, devicesOf(2), { last: { at, count: 408 } }, later),
+		).toBe("Connecting…\n2 devices allowed\n408 known, synced 1h 5m ago");
+	});
+
+	it("says when it hasn't synced yet", () => {
+		expect(describeHome({ kind: "connecting" }, devicesOf(0), { last: undefined }, later)).toBe(
+			"Connecting…\n0 devices allowed\nInventory not synced yet",
+		);
+	});
+
+	it("says nothing about it when Home Assistant isn't set up", () => {
+		expect(describeHome({ kind: "unconfigured" }, devicesOf(0, false), { last: undefined })).toBe(
+			"Not configured",
+		);
+	});
+});
+
+describe("inventoryLines", () => {
+	it.each<[InventorySync, string[]]>([
+		[
+			{ kind: "synced", count: 408, previous: 400, changed: true },
+			["Home Assistant inventory: 408 known (was 400)."],
+		],
+		[
+			{ kind: "synced", count: 408, previous: undefined, changed: true },
+			["Home Assistant inventory: 408 known."],
+		],
+		[
+			{ kind: "skipped", reason: "unavailable" },
+			["The Home Assistant inventory wasn't synced: Home Assistant isn't reachable."],
+		],
+		[
+			{ kind: "skipped", reason: "failed" },
+			["The Home Assistant inventory couldn't be synced, see the logs."],
+		],
+		[{ kind: "skipped", reason: "not-set-up" }, []],
+	])("says what happened for %j", (result, lines) => {
+		expect(inventoryLines(result)).toEqual(lines);
 	});
 });

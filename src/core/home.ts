@@ -22,6 +22,22 @@ export type EntityState = {
 	lastChanged: Date | null;
 };
 
+/**
+ * An entity as Home Assistant lists it, for the inventory: what it is, not what it
+ * reports right now. Text here is untrusted.
+ */
+export type HomeEntity = {
+	entityId: string;
+	/** The friendly name, if it has one. */
+	name: string | undefined;
+	/** The area's name, from the entity or else its device. */
+	area: string | undefined;
+	/** Home Assistant files setup switches and diagnostics under a category. */
+	category: "config" | "diagnostic" | undefined;
+	/** Hidden by someone in Home Assistant. */
+	hidden: boolean;
+};
+
 export type ServiceCall = {
 	domain: string;
 	service: string;
@@ -51,6 +67,8 @@ export type HomeBackend = {
 	/** Fresh states for these entities. Entities that don't exist are left out. */
 	getStates(entityIds: readonly string[]): Promise<Map<string, EntityState>>;
 	callService(call: ServiceCall): Promise<void>;
+	/** Every entity Home Assistant has, with its category and area. For the inventory only. */
+	listEntities(): Promise<HomeEntity[]>;
 };
 
 /** Home Assistant can't be reached or used right now. The message is safe to show. */
@@ -171,6 +189,11 @@ export class Home {
 
 	async getState(entityId: string): Promise<EntityState | undefined> {
 		return (await this.getStates([entityId])).get(entityId);
+	}
+
+	/** Everything Home Assistant has, fresh. For the inventory: it says what exists, never what may be used. */
+	async listEntities(): Promise<HomeEntity[]> {
+		return this.#run("listEntities", (backend) => backend.listEntities());
 	}
 
 	/** Makes one call, once. If Home Assistant isn't reachable it fails at once and nothing is queued or retried. */

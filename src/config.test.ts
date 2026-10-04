@@ -252,3 +252,20 @@ describe("the Home Assistant devices directory", () => {
 		);
 	});
 });
+
+describe("the Home Assistant inventory interval", () => {
+	it("defaults to an hour", () => {
+		expect(loadConfig(VALID).homeSyncMinutes).toBe(60);
+	});
+
+	it("can be changed, or set to 0 for only at startup and on reload", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: "15" }).homeSyncMinutes).toBe(15);
+		expect(loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: "0" }).homeSyncMinutes).toBe(0);
+	});
+
+	it.each(["-1", "1.5", "abc", "1441"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: value })).toThrow(
+			/PIXEL_HOME_SYNC_MINUTES/,
+		);
+	});
+});

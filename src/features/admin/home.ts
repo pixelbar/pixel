@@ -1,20 +1,36 @@
-import { inlineCode } from "../../core/format.ts";
+import { formatDuration, inlineCode } from "../../core/format.ts";
 import type { Home, HomeStatus } from "../../core/home.ts";
 import {
 	findMissingDevices,
 	type HomeDeviceStore,
 	HomeDevicesError,
 } from "../../services/home-devices.ts";
+import type { HomeInventory, InventorySync } from "../../services/home-inventory.ts";
 
-/** The "Home Assistant" field of `/admin status`: the connection, and how many devices are allowed. */
+/**
+ * The "Home Assistant" field of `/admin status`: the connection, how many devices
+ * are allowed, and how many Home Assistant has that Pixel knows of (not allowed,
+ * just known) and when that was last synced.
+ */
 export function describeHome(
 	status: HomeStatus,
 	devices?: Pick<HomeDeviceStore, "view" | "configured">,
+	inventory?: Pick<HomeInventory, "last">,
+	now: Date = new Date(),
 ): string {
 	const connection = describeConnection(status);
 	if (!devices?.configured) return connection;
 	const count = devices.view.devices.length;
-	return `${connection}\n${count} ${count === 1 ? "device" : "devices"} allowed`;
+	const lines = [connection, `${count} ${count === 1 ? "device" : "devices"} allowed`];
+	if (inventory) {
+		const last = inventory.last;
+		lines.push(
+			last
+				? `${last.count} known, synced ${formatDuration(now.getTime() - last.at.getTime())} ago`
+				: "Inventory not synced yet",
+		);
+	}
+	return lines.join("\n");
 }
 
 function describeConnection(status: HomeStatus): string {
@@ -80,4 +96,23 @@ export async function reloadDevices(
 		lines.push(`Not found in Home Assistant: ${missing.join(", ")}.`);
 	}
 	return lines;
+}
+
+/** What `/admin reload` says about the inventory sync. Nothing when Home Assistant isn't set up. */
+export function inventoryLines(result: InventorySync): string[] {
+	switch (result.kind) {
+		case "synced": {
+			const was = result.previous === undefined ? "" : ` (was ${result.previous})`;
+			return [`Home Assistant inventory: ${result.count} known${was}.`];
+		}
+		case "skipped":
+			switch (result.reason) {
+				case "unavailable":
+					return ["The Home Assistant inventory wasn't synced: Home Assistant isn't reachable."];
+				case "failed":
+					return ["The Home Assistant inventory couldn't be synced, see the logs."];
+				case "not-set-up":
+					return [];
+			}
+	}
 }

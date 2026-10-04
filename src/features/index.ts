@@ -9,12 +9,14 @@ import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
+import type { HomeInventory } from "../services/home-inventory.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createEventsFeature } from "./events/index.ts";
 import { createFeedbackFeature } from "./feedback/index.ts";
 import { createHelpFeature } from "./help/index.ts";
+import { createHomeInventoryFeature } from "./home-inventory/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createStatusFeature } from "./status/index.ts";
@@ -28,6 +30,7 @@ export type FeatureDeps = {
 	roles: RoleMirror;
 	home: Home;
 	homeDevices: HomeDeviceStore;
+	homeInventory: HomeInventory;
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
@@ -53,6 +56,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
+		createHomeInventoryFeature({ inventory: deps.homeInventory, logger: deps.logger }),
 		createAdminFeature({
 			version: deps.version,
 			startedAt: deps.startedAt,
@@ -61,6 +65,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			roles: deps.roles,
 			home: deps.home,
 			homeDevices: deps.homeDevices,
+			homeInventory: deps.homeInventory,
 			reporter: deps.reporter,
 		}),
 	];
