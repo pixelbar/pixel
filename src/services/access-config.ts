@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
-import type { PlatformActor, Tier } from "../core/access.ts";
+import { type PlatformActor, splitRef, type Tier } from "../core/access.ts";
 import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import type { AccessView, MemberRecord, MemberTier } from "../core/ports/access-store.ts";
 import type { CapabilitySource } from "../core/ports/capability-source.ts";
@@ -17,22 +17,29 @@ import type { TierSource } from "../core/ports/tier-source.ts";
 
 export const DISCORD_ID = /^\d{17,20}$/;
 
-// People are identified by a platform-prefixed ID ("discord:<id>") in both files, so other
-// platforms can be told apart later and an admin entry matches its members entry exactly.
-// Only Discord exists for now. Inside Pixel the ID is the bare Discord user ID.
+// People are identified by platform-prefixed IDs ("discord:<id>") in both files, so other
+// platforms can be told apart later. One person can have several, so each entry holds a list
+// of them, and an admin entry matches its members entry by the IDs they share. Only Discord
+// exists for now. Inside Pixel, lookups use the bare Discord user ID.
 const PLATFORM_ID = /^discord:\d{17,20}$/;
 
 const platformId = z
 	.string({ error: 'must be a quoted string, e.g. "discord:123456789012345678"' })
 	.regex(PLATFORM_ID, {
-		error: 'must be a platform and user ID, e.g. "discord:123456789012345678" (Discord IDs are 17–20 digits)',
-	})
-	.transform((ref) => ref.slice("discord:".length));
+		error:
+			'must be a platform and user ID, e.g. "discord:123456789012345678" (Discord IDs are 17–20 digits)',
+	});
 
-// Admins are just IDs. Each one must also have an entry in the members file, which holds
-// everything else about them (membership level, capabilities, note).
+const ids = z
+	.array(platformId)
+	.min(1, { error: "at least one id is required" })
+	.max(10, { error: "at most 10 ids" })
+	.refine((list) => new Set(list).size === list.length, { error: "must not repeat an id" });
+
+// Admins are just IDs. Each admin must also have an entry in the members file holding all of
+// those IDs, which holds everything else about them (membership level, capabilities, note).
 const adminsSchema = z.strictObject({
-	admins: z.array(z.strictObject({ id: platformId })).min(1, { error: "at least one admin is required" }),
+	admins: z.array(z.strictObject({ ids })).min(1, { error: "at least one admin is required" }),
 });
 
 export const MAX_CAPABILITIES = 50;
@@ -44,15 +51,13 @@ const capabilities = z
 
 const membersSchema = z.strictObject({
 	members: z.array(
-		z
-			.strictObject({
-				id: platformId,
-				// `guest` keeps the entry (and its capabilities) for someone who was demoted.
-				tier: z.enum(["member", "friend", "guest"]),
-				note: z.string().optional(),
-				capabilities: capabilities.optional(),
-			})
-			.transform(({ id, ...rest }) => ({ discordId: id, ...rest })),
+		z.strictObject({
+			ids,
+			// `guest` keeps the entry (and its capabilities) for someone who was demoted.
+			tier: z.enum(["member", "friend", "guest"]),
+			note: z.string().optional(),
+			capabilities: capabilities.optional(),
+		}),
 	),
 });
 
@@ -77,8 +82,9 @@ export function loadAccessFiles(paths: AccessConfigPaths) {
 	return { admins, view: buildAccessConfig(admins, members, paths) };
 }
 
-export function parseAdmins(source: string, file: string): string[] {
-	return parseSource(file, source, adminsSchema).admins.map((admin) => admin.id);
+/** Each admin as the list of their IDs. */
+export function parseAdmins(source: string, file: string): string[][] {
+	return parseSource(file, source, adminsSchema).admins.map((admin) => admin.ids);
 }
 
 /** Parses and validates the text of the members file. Throws `AccessConfigError`. */
@@ -88,7 +94,7 @@ export function parseMembers(source: string, file: string): MemberEntry[] {
 
 export function toRecord(entry: MemberEntry): MemberRecord {
 	return {
-		discordId: entry.discordId,
+		ids: entry.ids,
 		tier: entry.tier,
 		...(entry.note !== undefined ? { note: entry.note } : {}),
 		capabilities: entry.capabilities ?? [],
@@ -96,53 +102,90 @@ export function toRecord(entry: MemberEntry): MemberRecord {
 }
 
 export function buildAccessConfig(
-	admins: readonly string[],
+	admins: readonly (readonly string[])[],
 	members: readonly MemberEntry[],
 	paths: AccessConfigPaths,
 ): AccessConfig {
-	assertUnique(admins, paths.adminsFile, "admins");
-	assertUnique(
-		members.map((m) => m.discordId),
+	assertUniqueAcross(
+		admins.map((admin) => admin),
+		paths.adminsFile,
+		"admins",
+	);
+	assertUniqueAcross(
+		members.map((m) => m.ids),
 		paths.membersFile,
 		"members",
 	);
 
-	const records = new Map<string, MemberRecord>(members.map((m) => [m.discordId, toRecord(m)]));
-	admins.forEach((id, index) => {
-		if (!records.has(id)) {
-			throw new AccessConfigError(
-				`${paths.adminsFile}: admins[${index}] has no entry in ${paths.membersFile}. Add them there first, with a tier of member, friend or guest`,
-			);
+	// Each person (members entry) is reachable under each of their Discord IDs.
+	const records = new Map<string, MemberRecord>();
+	const ownerOf = new Map<string, number>();
+	members.forEach((member, index) => {
+		const record = toRecord(member);
+		for (const ref of member.ids) {
+			const userId = splitRef(ref).userId;
+			records.set(userId, record);
+			ownerOf.set(userId, index);
 		}
 	});
 
-	const adminIds = new Set(admins);
-	const discord = new Map<string, Exclude<Tier, "guest">>();
-	const counts = { admins: admins.length, members: 0, friends: 0 };
+	// An admin entry must point at one members entry that holds all of its IDs.
+	const adminIds = new Set<string>();
+	const adminPeople = new Set<number>();
+	admins.forEach((refs, index) => {
+		const owners = new Set(refs.map((ref) => ownerOf.get(splitRef(ref).userId)));
+		if (owners.has(undefined)) {
+			throw new AccessConfigError(
+				`${paths.adminsFile}: admins[${index}] has an id with no entry in ${paths.membersFile}. Add them there first, with a tier of member, friend or guest`,
+			);
+		}
+		if (owners.size > 1) {
+			throw new AccessConfigError(
+				`${paths.adminsFile}: admins[${index}] lists ids that belong to different entries in ${paths.membersFile}`,
+			);
+		}
+		for (const ref of refs) adminIds.add(splitRef(ref).userId);
+		adminPeople.add([...owners][0] as number);
+	});
 
-	for (const member of members) {
-		// Admins keep their members entry (capabilities, note), but count once, as admins.
-		if (adminIds.has(member.discordId)) continue;
-		// A guest entry is someone who was demoted: no tier, so they're left out.
+	const discord = new Map<string, Exclude<Tier, "guest">>();
+	const counts = { admins: adminPeople.size, members: 0, friends: 0 };
+
+	members.forEach((member, index) => {
 		const tier: MemberTier = member.tier;
-		if (tier === "guest") continue;
-		discord.set(member.discordId, tier);
+		// A guest entry is someone who was demoted: no tier, so they're left out.
+		if (tier !== "guest") {
+			for (const ref of member.ids) {
+				const userId = splitRef(ref).userId;
+				if (!adminIds.has(userId)) discord.set(userId, tier);
+			}
+		}
+		// Admins keep their members entry (capabilities, note), but count once, as admins.
+		if (adminPeople.has(index) || tier === "guest") return;
 		if (tier === "member") counts.members++;
 		else counts.friends++;
-	}
-	for (const id of admins) discord.set(id, "admin");
+	});
+	for (const userId of adminIds) discord.set(userId, "admin");
 
 	return { discord, records, counts, warnings: [] };
 }
 
-function assertUnique(ids: readonly string[], file: string, key: string): void {
-	const firstIndex = new Map<string, number>();
-	ids.forEach((id, index) => {
-		const first = firstIndex.get(id);
-		if (first !== undefined) {
-			throw new AccessConfigError(`${file}: ${key}[${index}] duplicates ${key}[${first}]`);
-		}
-		firstIndex.set(id, index);
+/** Each ID may appear once across all entries of a file. Messages name positions, never IDs. */
+function assertUniqueAcross(
+	entries: readonly (readonly string[])[],
+	file: string,
+	key: string,
+): void {
+	const first = new Map<string, string>();
+	entries.forEach((refs, entry) => {
+		refs.forEach((ref, position) => {
+			const where = `${key}[${entry}].ids[${position}]`;
+			const seen = first.get(ref);
+			if (seen !== undefined) {
+				throw new AccessConfigError(`${file}: ${where} duplicates ${seen}`);
+			}
+			first.set(ref, where);
+		});
 	});
 }
 

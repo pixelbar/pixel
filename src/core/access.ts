@@ -66,6 +66,12 @@ export type ActorLogFields = { user: string; userName: string; userHandle?: stri
  * names so humans can recognise the user. Names are user-controlled and can
  * change, so act on `user`, never on the names.
  */
+/** Splits "discord:123…" into its platform and user ID. */
+export function splitRef(ref: string): { platform: string; userId: string } {
+	const colon = ref.indexOf(":");
+	return { platform: ref.slice(0, colon), userId: ref.slice(colon + 1) };
+}
+
 export function actorLogFields(actor: PlatformActor): ActorLogFields {
 	return {
 		user: actorRef(actor),

@@ -18,16 +18,16 @@ import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 import { createMemberSubcommands } from "./members.ts";
 
-const ADMINS = `admins:\n  - id: "discord:${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
 const MEMBERS = `members:
-  - id: "discord:${IDS.member}"
+  - ids: ["discord:${IDS.member}"]
     tier: member
     note: paid yearly
     capabilities:
       - front-door
-  - id: "discord:${IDS.friend}"
+  - ids: ["discord:${IDS.friend}"]
     tier: friend
-  - id: "discord:${IDS.admin}"
+  - ids: ["discord:${IDS.admin}"]
     tier: member
 `;
 const TARGET = "100000000000000050";
@@ -383,7 +383,7 @@ describe("/admin whois", () => {
 	it("flags capability names that no longer exist, which are ignored", async () => {
 		writeFileSync(
 			membersFile,
-			`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n    capabilities:\n      - front-door\n      - old-thing\n`,
+			`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    capabilities:\n      - front-door\n      - old-thing\n`,
 		);
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "whois", {}, human(IDS.member));
@@ -418,7 +418,7 @@ describe("/admin whois", () => {
 		it("is shown as an inert code span", async () => {
 			writeFileSync(
 				membersFile,
-				`members:\n  - id: "discord:${IDS.admin}"\n    tier: member\n  - id: "discord:${IDS.member}"\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
+				`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n    note: ${JSON.stringify(HOSTILE)}\n`,
 			);
 			const { dispatcher } = setup();
 			const result = await run(dispatcher, "whois", {}, human(IDS.member));

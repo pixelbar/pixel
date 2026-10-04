@@ -20,19 +20,19 @@ import { AccessStoreError, FileAccessStore, type FileOps, nodeFileOps } from "./
 
 const NEW_ID = "100000000000000050";
 
-const ADMINS = `admins:\n  - id: "discord:${IDS.admin}"\n`;
+const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
 /** Every admin has a members entry too. */
-const ADMIN_ENTRY = `  - id: "discord:${IDS.admin}"\n    tier: friend\n    note: Ada\n`;
+const ADMIN_ENTRY = `  - ids: ["discord:${IDS.admin}"]\n    tier: friend\n    note: Ada\n`;
 const MEMBERS = `# Paying members. Edited by Pixel and by hand.
 members:
   # Ada's friend
-  - id: "discord:${IDS.member}"
+  - ids: ["discord:${IDS.member}"]
     tier: member
     note: paid yearly # keep this
     capabilities:
       - front-door
 
-  - id: "discord:${IDS.friend}"
+  - ids: ["discord:${IDS.friend}"]
     tier: friend
 ${ADMIN_ENTRY}`;
 
@@ -95,7 +95,7 @@ describe("opening", () => {
 		expect(store.view.discord.get(IDS.member)).toBe("member");
 		expect(store.view.discord.get(IDS.admin)).toBe("admin");
 		expect(store.view.records.get(IDS.member)).toEqual({
-			discordId: IDS.member,
+			ids: [`discord:${IDS.member}`],
 			tier: "member",
 			note: "paid yearly",
 			capabilities: ["front-door"],
@@ -114,7 +114,7 @@ describe("opening", () => {
 
 	it("fails closed when an admin has no members entry", () => {
 		writeFileSync(membersFile, "members: []\n");
-		expect(() => open()).toThrow(/admins\[0\] has no entry/);
+		expect(() => open()).toThrow(/admins\[0\] has an id with no entry/);
 	});
 });
 
@@ -124,10 +124,10 @@ describe("changing a tier", () => {
 		const result = await store.apply({ kind: "set-tier", id: NEW_ID, tier: "friend" }, by);
 
 		expect(result.before).toBeNull();
-		expect(result.after).toEqual({ discordId: NEW_ID, tier: "friend", capabilities: [] });
+		expect(result.after).toEqual({ ids: [`discord:${NEW_ID}`], tier: "friend", capabilities: [] });
 		const text = read();
 		expect(text.startsWith(MEMBERS)).toBe(true);
-		expect(text).toContain(`- id: "discord:${NEW_ID}"\n    tier: friend`);
+		expect(text).toContain(`- ids: ["discord:${NEW_ID}"]\n    tier: friend`);
 		expect(store.view.discord.get(NEW_ID)).toBe("friend");
 		expect(store.view.counts).toEqual({ admins: 1, members: 1, friends: 2 });
 	});
@@ -137,7 +137,7 @@ describe("changing a tier", () => {
 		const store = open();
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", note: "new" }, by);
 		expect(read()).toBe(
-			`members:\n${ADMIN_ENTRY}  - id: "discord:${NEW_ID}"\n    tier: member\n    note: new\n`,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${NEW_ID}"]\n    tier: member\n    note: new\n`,
 		);
 		expect(open().view.discord.get(NEW_ID)).toBe("member");
 	});
@@ -274,7 +274,7 @@ describe("safe writes", () => {
 
 	it("keeps a hand edit made while the bot runs", async () => {
 		const store = open();
-		const edited = `${MEMBERS}\n  - id: "discord:${IDS.guest}"\n    tier: friend\n    note: added by hand\n`;
+		const edited = `${MEMBERS}\n  - ids: ["discord:${IDS.guest}"]\n    tier: friend\n    note: added by hand\n`;
 		writeFileSync(membersFile, edited);
 		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member" }, by);
 		expect(read()).toContain("added by hand");
@@ -295,7 +295,7 @@ describe("safe writes", () => {
 
 	it("refuses a file that was broken by hand, and changes nothing", async () => {
 		const store = open();
-		const broken = `members:\n  - id: "discord:${IDS.member}"\n    tier: nonsense\n`;
+		const broken = `members:\n  - ids: ["discord:${IDS.member}"]\n    tier: nonsense\n`;
 		writeFileSync(membersFile, broken);
 		const before = store.view;
 		await expect(store.apply({ kind: "set-tier", id: NEW_ID, tier: "friend" }, by)).rejects.toThrow(
@@ -460,10 +460,10 @@ describe("audit", () => {
 describe("reload", () => {
 	it("picks up hand edits, including new admins, and reports the counts", async () => {
 		const store = open();
-		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - id: "discord:${IDS.guest}"\n`);
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - ids: ["discord:${IDS.guest}"]\n`);
 		writeFileSync(
 			membersFile,
-			`members:\n${ADMIN_ENTRY}  - id: "discord:${IDS.guest}"\n    tier: friend\n`,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${IDS.guest}"]\n    tier: friend\n`,
 		);
 
 		const result = await store.reload(by);
@@ -484,7 +484,10 @@ describe("reload", () => {
 	it("keeps the current data when the files are now invalid, and says why", async () => {
 		const store = open();
 		const before = store.view;
-		writeFileSync(membersFile, `members:\n  - id: "discord:${IDS.member}"\n    tier: nonsense\n`);
+		writeFileSync(
+			membersFile,
+			`members:\n  - ids: ["discord:${IDS.member}"]\n    tier: nonsense\n`,
+		);
 
 		const error = await store.reload(by).catch((e: unknown) => e as Error);
 
@@ -505,11 +508,72 @@ describe("reload", () => {
 
 	it("lets the next change use an admin added by reload", async () => {
 		const store = open();
-		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - id: "discord:${IDS.guest}"\n`);
-		writeFileSync(membersFile, `${MEMBERS}  - id: "discord:${IDS.guest}"\n    tier: friend\n`);
+		writeFileSync(join(dir, "admins.yaml"), `${ADMINS}  - ids: ["discord:${IDS.guest}"]\n`);
+		writeFileSync(membersFile, `${MEMBERS}  - ids: ["discord:${IDS.guest}"]\n    tier: friend\n`);
 		await store.reload(by);
 		await expect(
 			store.apply({ kind: "set-tier", id: IDS.guest, tier: "friend" }, by),
 		).rejects.toThrow(/admins\.yaml/);
+	});
+});
+
+describe("a person with several ids", () => {
+	const SECOND = "100000000000000070";
+	const OTHER = "100000000000000071";
+	const shared = `members:
+${ADMIN_ENTRY}  - ids: ["discord:${IDS.member}", "discord:${SECOND}"]
+    tier: member
+    note: two accounts
+  - ids: ["discord:${OTHER}"]
+    tier: friend
+`;
+
+	beforeEach(() => writeFileSync(membersFile, shared));
+
+	it("changes the one shared entry whichever of their ids is used, and adds nothing", async () => {
+		const store = open();
+		const result = await store.apply({ kind: "set-tier", id: SECOND, tier: "friend" }, by);
+		expect(result.before?.ids).toEqual([`discord:${IDS.member}`, `discord:${SECOND}`]);
+		expect(read()).toBe(shared.replace("tier: member", "tier: friend"));
+		expect(store.view.discord.get(IDS.member)).toBe("friend");
+		expect(store.view.discord.get(SECOND)).toBe("friend");
+		expect(store.view.records.get(IDS.member)).toBe(store.view.records.get(SECOND));
+	});
+
+	it("shares capabilities between their ids", async () => {
+		const store = open();
+		await store.apply({ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] }, by);
+		expect(store.view.records.get(SECOND)?.capabilities).toEqual(["front-door"]);
+		expect(open().view.records.get(SECOND)?.capabilities).toEqual(["front-door"]);
+	});
+
+	it("doesn't treat a second id as a new person", async () => {
+		const store = open();
+		const result = await store.apply({ kind: "set-tier", id: SECOND, tier: "member" }, by);
+		expect(result.before).toEqual(result.after);
+		expect(existsSync(`${membersFile}.bak`)).toBe(false);
+	});
+
+	it("refuses to change the level through another id of an admin", async () => {
+		writeFileSync(
+			join(dir, "admins.yaml"),
+			`admins:\n  - ids: ["discord:${IDS.member}"]\n  - ids: ["discord:${IDS.admin}"]\n`,
+		);
+		const store = open();
+		expect(store.view.discord.get(IDS.member)).toBe("admin");
+		await expect(store.apply({ kind: "set-tier", id: SECOND, tier: "guest" }, by)).rejects.toThrow(
+			/admins\.yaml/,
+		);
+		expect(read()).toBe(shared);
+	});
+
+	it("still lets an admin's other id hold capabilities", async () => {
+		writeFileSync(
+			join(dir, "admins.yaml"),
+			`admins:\n  - ids: ["discord:${IDS.member}"]\n  - ids: ["discord:${IDS.admin}"]\n`,
+		);
+		const store = open();
+		await store.apply({ kind: "set-capabilities", id: SECOND, capabilities: ["front-door"] }, by);
+		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
 	});
 });

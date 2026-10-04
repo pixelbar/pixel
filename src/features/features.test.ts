@@ -163,7 +163,7 @@ describe("admin", () => {
 	it("reports capabilities that no longer exist, by name, and says they're ignored", async () => {
 		const captureBackground = vi.fn();
 		const record = (capabilities: string[]) => ({
-			discordId: IDS.member,
+			ids: [`discord:${IDS.member}`],
 			tier: "member" as const,
 			capabilities,
 		});

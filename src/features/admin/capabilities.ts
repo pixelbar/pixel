@@ -1,4 +1,4 @@
-import { TIER_LABELS, type Tier } from "../../core/access.ts";
+import { highestTier, splitRef, TIER_LABELS, type Tier } from "../../core/access.ts";
 import type { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
@@ -139,10 +139,13 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				if (!target) {
 					const view = access.view;
 					const lines = capabilities.all().map((c) => {
-						const holders = [...view.records.values()].filter(
+						// A person can appear under several IDs, so count each record once.
+						const holders = [...new Set(view.records.values())].filter(
 							(r) =>
 								r.capabilities.includes(c.name) &&
-								(view.discord.get(r.discordId) ?? "guest") !== "guest",
+								highestTier(
+									r.ids.map((ref) => view.discord.get(splitRef(ref).userId) ?? "guest"),
+								) !== "guest",
 						).length;
 						return `**${c.name}**: ${c.description} (${holders} ${holders === 1 ? "person" : "people"})`;
 					});
