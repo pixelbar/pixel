@@ -83,7 +83,7 @@ type CommandDefinition = {
   name: string;
   description: string;
   access: Access;
-  options?: CommandOption[];     // string | integer | boolean | user
+  options?: CommandOption[];     // string | integer | boolean | user; string and integer can have `suggest`
   private?: boolean;             // default reply visibility
   placeholder?: Reply;           // shown at once (e.g. "Checking…"), then replaced by the result
   handler: (ctx: CommandContext) => Promise<Reply>;
@@ -161,6 +161,7 @@ type Feature = {
 
 - **discord.js v14, slash commands only.** Intents: `Guilds` only, which isn't privileged. No `MessageContent`. Scheduled events are read over REST, which needs no intent.
 - **Guild allow-list:** interactions from any guild other than `DISCORD_GUILD_ID` are refused, and the bot leaves other guilds. There are no DMs in phase 1, because guild commands aren't available in DMs.
+- **Autocomplete:** a string or integer option can have a `suggest` function (never together with fixed `choices`). It runs while someone types and returns up to 25 `{ name, value }` suggestions from live data, and it can see the options already filled in, so the actions offered can depend on the device chosen. `Dispatcher.suggest` runs it through the **same access gates as the command**, so people who can't run a command get an empty list (logged as `command.suggest_denied`), and it has its own, more generous rate limit so typing can't use up the budget for commands. A slow (over 2.5 s, Discord's limit is 3) or failing function gives an empty list. What was typed is never logged. **Suggestions are not validation:** Discord doesn't check that a submitted value came from them, so the command validates what it receives as usual.
 - **Mapping:** `CommandDefinition.options` become Discord slash command options. A group becomes native subcommands (`/admin status`), and a `user` option becomes Discord's user picker. The handler gets the picked user's immutable ID as the arg, and the adapter resolves their name and whether they are a bot. Bots are refused unless the option sets `allowBots`. Targets are identified by ID only, never by name. `Reply` becomes the message content plus embeds, truncated to Discord's limits. `private` becomes the ephemeral flag. **Mentions are always disabled** (`allowedMentions: { parse: [] }`), so no reply can ping `@everyone`.
 - **Acknowledging within 3 seconds:** Discord requires a response within 3 s. Pixel acknowledges with whichever comes first:
   - the command's placeholder, which is posted straight away

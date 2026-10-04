@@ -1,11 +1,18 @@
 import { ApplicationCommandOptionType, MessageFlags } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
-import type { DispatchHooks, DispatchRequest, DispatchResult } from "../../core/dispatcher.ts";
+import type {
+	DispatchHooks,
+	DispatchRequest,
+	DispatchResult,
+	SuggestRequest,
+} from "../../core/dispatcher.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { IDS } from "../../testing/fixtures.ts";
 import {
+	createAutocompleteHandler,
 	createCommandHandler,
 	createGuildGuard,
+	type IncomingAutocomplete,
 	type IncomingCommand,
 	WRONG_GUILD_MESSAGE,
 } from "./handlers.ts";
@@ -228,5 +235,82 @@ describe("createGuildGuard", () => {
 			createGuildGuard({ guildId: GUILD, logger: silentLogger, reportError })(g),
 		).resolves.toBeUndefined();
 		expect(reportError).toHaveBeenCalledWith(error);
+	});
+});
+
+describe("createAutocompleteHandler", () => {
+	const string = ApplicationCommandOptionType.String;
+
+	function fakeAutocomplete(overrides: Partial<IncomingAutocomplete> = {}) {
+		return {
+			guildId: GUILD,
+			commandName: "ha",
+			user: { id: IDS.member, displayName: "global-name", username: "member_handle" },
+			options: {
+				data: [
+					{
+						name: "run",
+						type: ApplicationCommandOptionType.Subcommand,
+						options: [
+							{ name: "device", type: string, value: "door" },
+							{ name: "action", type: string, value: "un", focused: true },
+						],
+					},
+				],
+			},
+			respond: vi.fn(async () => {}),
+			...overrides,
+		} satisfies IncomingAutocomplete;
+	}
+
+	const dispatcherReturning = (choices: { name: string; value: string }[]) => ({
+		suggest: vi.fn(async (_request: SuggestRequest) => choices),
+	});
+
+	it("asks the dispatcher with who is typing, what, and the other options, then answers", async () => {
+		const dispatcher = dispatcherReturning([{ name: "Unlock", value: "unlock" }]);
+		const interaction = fakeAutocomplete();
+		await createAutocompleteHandler({ guildId: GUILD, dispatcher })(interaction, "Server Nick");
+
+		expect(dispatcher.suggest).toHaveBeenCalledWith({
+			actor: {
+				platform: "discord",
+				userId: IDS.member,
+				displayName: "Server Nick",
+				handle: "member_handle",
+				chat: "group",
+			},
+			command: "ha",
+			subcommand: "run",
+			option: "action",
+			typed: "un",
+			args: { device: "door" },
+		});
+		expect(interaction.respond).toHaveBeenCalledWith([{ name: "Unlock", value: "unlock" }]);
+	});
+
+	it("falls back to the global display name", async () => {
+		const dispatcher = dispatcherReturning([]);
+		await createAutocompleteHandler({ guildId: GUILD, dispatcher })(fakeAutocomplete());
+		expect(dispatcher.suggest.mock.calls[0]?.[0].actor.displayName).toBe("global-name");
+	});
+
+	it.each([
+		["another guild", OTHER_GUILD],
+		["outside any guild", null],
+	])("answers with nothing, and asks nobody, from %s", async (_label, guildId) => {
+		const dispatcher = dispatcherReturning([{ name: "x", value: "x" }]);
+		const interaction = fakeAutocomplete({ guildId });
+		await createAutocompleteHandler({ guildId: GUILD, dispatcher })(interaction);
+		expect(dispatcher.suggest).not.toHaveBeenCalled();
+		expect(interaction.respond).toHaveBeenCalledWith([]);
+	});
+
+	it("answers with nothing when Discord sent no focused option", async () => {
+		const dispatcher = dispatcherReturning([{ name: "x", value: "x" }]);
+		const interaction = fakeAutocomplete({ options: { data: [] } });
+		await createAutocompleteHandler({ guildId: GUILD, dispatcher })(interaction);
+		expect(dispatcher.suggest).not.toHaveBeenCalled();
+		expect(interaction.respond).toHaveBeenCalledWith([]);
 	});
 });

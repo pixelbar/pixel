@@ -1,7 +1,7 @@
 import type { PlatformActor } from "../../core/access.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
-import { type DiscordOption, parseOptions } from "./args.ts";
+import { type DiscordOption, parseAutocomplete, parseOptions } from "./args.ts";
 import { renderReply } from "./render.ts";
 import { type Respondable, respond } from "./respond.ts";
 
@@ -57,6 +57,56 @@ export function createCommandHandler({ guildId, dispatcher, deferAfterMs }: Comm
 					{ onPending: showPending },
 				),
 		});
+	};
+}
+
+/** The parts of an AutocompleteInteraction the suggestion handler reads. */
+export type IncomingAutocomplete = {
+	guildId: string | null;
+	commandName: string;
+	user: { id: string; displayName: string; username: string };
+	options: { data: readonly DiscordOption[] };
+	respond(choices: { name: string; value: string | number }[]): Promise<unknown>;
+};
+
+export type AutocompleteHandlerDeps = {
+	guildId: string;
+	dispatcher: Pick<Dispatcher, "suggest">;
+};
+
+/**
+ * Returns a handler for autocomplete requests. Like commands, requests from any
+ * other guild are ignored before anything reaches the dispatcher. It always
+ * answers, with an empty list when there is nothing to suggest, because Discord
+ * shows a failure otherwise. Access is the dispatcher's job: it only ever returns
+ * suggestions to someone who may run the command.
+ */
+export function createAutocompleteHandler({ guildId, dispatcher }: AutocompleteHandlerDeps) {
+	return async (interaction: IncomingAutocomplete, displayName?: string): Promise<void> => {
+		if (interaction.guildId !== guildId) {
+			await interaction.respond([]);
+			return;
+		}
+		const actor: PlatformActor = {
+			platform: "discord",
+			userId: interaction.user.id,
+			displayName: displayName ?? interaction.user.displayName,
+			handle: interaction.user.username,
+			chat: "group",
+		};
+		const { subgroup, subcommand, focused, args } = parseAutocomplete(interaction.options.data);
+		const choices = focused
+			? await dispatcher.suggest({
+					actor,
+					command: interaction.commandName,
+					subgroup,
+					subcommand,
+					option: focused.name,
+					typed: focused.typed,
+					args,
+				})
+			: [];
+		await interaction.respond(choices);
 	};
 }
 

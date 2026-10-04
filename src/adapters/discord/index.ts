@@ -19,7 +19,7 @@ import {
 } from "./announce-publishers.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
-import { createCommandHandler, createGuildGuard } from "./handlers.ts";
+import { createAutocompleteHandler, createCommandHandler, createGuildGuard } from "./handlers.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
@@ -61,6 +61,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	const { guildId, dispatcher, reportError } = deps;
 	const logger = deps.logger.child({ adapter: "discord" });
 	const handleCommand = createCommandHandler({ guildId, dispatcher, deferAfterMs: DEFER_AFTER_MS });
+	const handleAutocomplete = createAutocompleteHandler({ guildId, dispatcher });
 	const leaveIfForeign = createGuildGuard({ guildId, logger, reportError });
 
 	const client = new Client({
@@ -147,6 +148,17 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	});
 
 	client.on(Events.InteractionCreate, (interaction) => {
+		if (interaction.isAutocomplete()) {
+			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+			handleAutocomplete(interaction, displayName).catch((error: unknown) => {
+				// Typically Discord stopped waiting. Nothing to show the person.
+				logger.warn(
+					{ err: error, command: interaction.commandName },
+					"couldn't answer autocomplete",
+				);
+			});
+			return;
+		}
 		if (!interaction.isChatInputCommand()) return;
 		const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
 		handleCommand(interaction, displayName).catch((error: unknown) => {

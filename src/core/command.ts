@@ -8,9 +8,38 @@ type OptionBase = {
 	required?: boolean;
 };
 
+/** One suggestion for an option: what's shown, and the value that's submitted if it's picked. */
+export type Suggestion = { name: string; value: string | number };
+
+export type SuggestContext = {
+	/** What the person has typed for this option so far. May be empty. */
+	typed: string;
+	/**
+	 * The other options already filled in, so suggestions can depend on them (the
+	 * actions a device allows, say). **Unchecked and possibly partial:** required
+	 * options may be missing, and nothing has been validated.
+	 */
+	args: Args;
+	principal: Principal;
+	logger: Logger;
+};
+
+/**
+ * Live suggestions for an option, shown as someone types (autocomplete). They
+ * are a convenience, **never validation**: the platform doesn't check that what
+ * is submitted came from the suggestions, so the handler must validate the value
+ * as usual. The dispatcher only calls this for someone who may run the command.
+ */
+export type SuggestFn = (context: SuggestContext) => Promise<readonly Suggestion[]>;
+
 export type CommandOption =
-	| (OptionBase & { type: "string"; choices?: readonly string[] })
-	| (OptionBase & { type: "integer" })
+	| (OptionBase & {
+			type: "string";
+			choices?: readonly string[];
+			/** Live suggestions. Can't be combined with `choices`. */
+			suggest?: SuggestFn;
+	  })
+	| (OptionBase & { type: "integer"; suggest?: SuggestFn })
 	| (OptionBase & { type: "boolean" })
 	/**
 	 * A person picked by the caller. The handler receives their immutable

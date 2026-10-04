@@ -6,6 +6,8 @@ export type DiscordOption = {
 	name: string;
 	type: ApplicationCommandOptionType;
 	value?: string | number | boolean;
+	/** Set on the option being typed, in an autocomplete request. */
+	focused?: boolean;
 	options?: readonly DiscordOption[];
 	/** Set on User options: the resolved account. */
 	user?: { id: string; displayName: string; username: string; bot: boolean };
@@ -63,4 +65,52 @@ function collect(options: readonly DiscordOption[]): Omit<ParsedOptions, "subcom
 		}
 	}
 	return { args, users };
+}
+
+export type ParsedAutocomplete = {
+	subgroup?: string;
+	subcommand?: string;
+	/** The option being typed, and what's been typed in it. Absent if Discord sent none. */
+	focused?: { name: string; typed: string };
+	/** The other options filled in so far. Unchecked: Discord only validates in its own client. */
+	args: Args;
+};
+
+/**
+ * Reads an autocomplete request. The option being typed is `focused`; the rest
+ * are whatever has been filled in so far (required ones may be missing).
+ */
+export function parseAutocomplete(options: readonly DiscordOption[]): ParsedAutocomplete {
+	let level = options;
+	let subgroup: string | undefined;
+	let subcommand: string | undefined;
+	const first = level[0];
+	if (first?.type === ApplicationCommandOptionType.SubcommandGroup) {
+		subgroup = first.name;
+		level = first.options ?? [];
+	}
+	const next = level[0];
+	if (next?.type === ApplicationCommandOptionType.Subcommand) {
+		subcommand = next.name;
+		level = next.options ?? [];
+	}
+
+	const args: Record<string, ArgValue> = {};
+	let focused: ParsedAutocomplete["focused"];
+	for (const option of level) {
+		if (option.value === undefined) continue;
+		if (option.focused) focused = { name: option.name, typed: String(option.value) };
+		else if (
+			PRIMITIVE_TYPES.has(option.type) ||
+			option.type === ApplicationCommandOptionType.User
+		) {
+			args[option.name] = option.value;
+		}
+	}
+	return {
+		...(subgroup !== undefined ? { subgroup } : {}),
+		...(subcommand !== undefined ? { subcommand } : {}),
+		...(focused ? { focused } : {}),
+		args,
+	};
 }

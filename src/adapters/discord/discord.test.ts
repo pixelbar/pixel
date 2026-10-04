@@ -2,7 +2,7 @@ import { ApplicationCommandOptionType, InteractionContextType, MessageFlags } fr
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DispatchResult } from "../../core/dispatcher.ts";
 import { command, group, subcommand, subgroup } from "../../testing/fixtures.ts";
-import { parseOptions } from "./args.ts";
+import { parseAutocomplete, parseOptions } from "./args.ts";
 import { toSlashCommand } from "./commands.ts";
 import { renderEdit, renderReply, truncate } from "./render.ts";
 import { type Respondable, type RespondOptions, respond } from "./respond.ts";
@@ -525,5 +525,140 @@ describe("respond", () => {
 				}),
 			);
 		});
+	});
+});
+
+describe("autocomplete", () => {
+	const suggest = async () => [];
+
+	it("turns autocomplete on for options with suggestions, and leaves choices alone", () => {
+		const json = toSlashCommand(
+			command({
+				name: "ha",
+				options: [
+					{ name: "device", description: "Device", type: "string", suggest },
+					{ name: "level", description: "Level", type: "integer", suggest },
+					{ name: "kind", description: "Kind", type: "string", choices: ["a"] },
+					{ name: "plain", description: "Plain", type: "string" },
+				],
+			}),
+		);
+		expect(json.options).toEqual([
+			{
+				type: ApplicationCommandOptionType.String,
+				name: "device",
+				description: "Device",
+				required: false,
+				autocomplete: true,
+			},
+			{
+				type: ApplicationCommandOptionType.Integer,
+				name: "level",
+				description: "Level",
+				required: false,
+				autocomplete: true,
+			},
+			{
+				type: ApplicationCommandOptionType.String,
+				name: "kind",
+				description: "Kind",
+				required: false,
+				choices: [{ name: "a", value: "a" }],
+			},
+			{
+				type: ApplicationCommandOptionType.String,
+				name: "plain",
+				description: "Plain",
+				required: false,
+			},
+		]);
+	});
+
+	it("also works inside a subgroup's subcommand", () => {
+		const json = toSlashCommand(
+			group({
+				name: "ha",
+				subcommands: [
+					subgroup({
+						name: "sg",
+						subcommands: [
+							subcommand({
+								name: "run",
+								options: [{ name: "device", description: "d", type: "string", suggest }],
+							}),
+						],
+					}),
+				],
+			}),
+		);
+		expect(JSON.stringify(json)).toContain('"autocomplete":true');
+	});
+});
+
+describe("parseAutocomplete", () => {
+	const string = ApplicationCommandOptionType.String;
+
+	it("separates the option being typed from the ones already filled in", () => {
+		expect(
+			parseAutocomplete([
+				{ name: "device", type: string, value: "fro", focused: true },
+				{ name: "other", type: string, value: "x" },
+			]),
+		).toEqual({ focused: { name: "device", typed: "fro" }, args: { other: "x" } });
+	});
+
+	it("unwraps a subgroup and a subcommand", () => {
+		expect(
+			parseAutocomplete([
+				{
+					name: "sg",
+					type: ApplicationCommandOptionType.SubcommandGroup,
+					options: [
+						{
+							name: "run",
+							type: ApplicationCommandOptionType.Subcommand,
+							options: [
+								{ name: "device", type: string, value: "door" },
+								{ name: "action", type: string, value: "un", focused: true },
+							],
+						},
+					],
+				},
+			]),
+		).toEqual({
+			subgroup: "sg",
+			subcommand: "run",
+			focused: { name: "action", typed: "un" },
+			args: { device: "door" },
+		});
+	});
+
+	it("unwraps a plain subcommand", () => {
+		expect(
+			parseAutocomplete([
+				{
+					name: "run",
+					type: ApplicationCommandOptionType.Subcommand,
+					options: [{ name: "device", type: string, value: "d", focused: true }],
+				},
+			]),
+		).toEqual({ subcommand: "run", focused: { name: "device", typed: "d" }, args: {} });
+	});
+
+	it("turns a typed number into text, keeps user IDs, and skips options with no value yet", () => {
+		const parsed = parseAutocomplete([
+			{ name: "n", type: ApplicationCommandOptionType.Integer, value: 12, focused: true },
+			{ name: "who", type: ApplicationCommandOptionType.User, value: "100000000000000001" },
+			{ name: "empty", type: string },
+		]);
+		expect(parsed).toEqual({
+			focused: { name: "n", typed: "12" },
+			args: { who: "100000000000000001" },
+		});
+	});
+
+	it("copes with nothing focused", () => {
+		expect(parseAutocomplete([])).toEqual({ args: {} });
+		expect(parseAutocomplete([{ name: "device", type: string }])).toEqual({ args: {} });
 	});
 });
