@@ -44,9 +44,9 @@ typecheck:
 # Everything CI runs: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
 
-# Validate the access list files
+# Validate the access list files and the Home Assistant devices file
 validate-config:
-    pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}"
+    pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
 # Register slash commands on the configured Discord guild
 register:

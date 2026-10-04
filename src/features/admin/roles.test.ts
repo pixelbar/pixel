@@ -21,6 +21,8 @@ import {
 } from "../../core/role-mirror.ts";
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
+import { HomeDeviceStore } from "../../services/home-devices.ts";
+import { HomeInventory } from "../../services/home-inventory.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 
@@ -97,6 +99,8 @@ function setup(backend?: Fake, homeBackend?: HomeBackend) {
 			capabilities: new CapabilityRegistry(),
 			roles,
 			home,
+			homeDevices: HomeDeviceStore.empty(),
+			homeInventory: HomeInventory.off(),
 			reporter,
 		}),
 	);
@@ -619,6 +623,7 @@ describe("/admin status and reload show Home Assistant", () => {
 		check: vi.fn(async () => status),
 		getStates: async () => new Map(),
 		callService: async () => {},
+		listEntities: async () => [],
 	});
 
 	it("says it isn't configured when nothing is plugged in", async () => {

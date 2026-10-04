@@ -17,6 +17,8 @@ import { CommandRegistry } from "../../core/registry.ts";
 import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
+import { HomeDeviceStore } from "../../services/home-devices.ts";
+import { HomeInventory } from "../../services/home-inventory.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 import { createLevelSubgroup } from "./members.ts";
@@ -75,6 +77,8 @@ function setup(ops = nodeFileOps) {
 			capabilities: CAPABILITIES,
 			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			home: new Home({ logger: silentLogger, reporter }),
+			homeDevices: HomeDeviceStore.empty(),
+			homeInventory: HomeInventory.off(),
 			reporter,
 		}),
 	);

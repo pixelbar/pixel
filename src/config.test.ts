@@ -237,3 +237,35 @@ describe("Home Assistant settings", () => {
 		).toThrow(/HOME_ASSISTANT_TOKEN/);
 	});
 });
+
+describe("the Home Assistant devices directory", () => {
+	it("defaults to config/home-assistant", () => {
+		expect(loadConfig(VALID).homeAssistantDir).toBe("config/home-assistant");
+	});
+
+	it("can be pointed elsewhere, but not at nothing", () => {
+		expect(
+			loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "/etc/pixel/ha" }).homeAssistantDir,
+		).toBe("/etc/pixel/ha");
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "" })).toThrow(
+			/PIXEL_HOME_ASSISTANT_DIR/,
+		);
+	});
+});
+
+describe("the Home Assistant inventory interval", () => {
+	it("defaults to an hour", () => {
+		expect(loadConfig(VALID).homeSyncMinutes).toBe(60);
+	});
+
+	it("can be changed, or set to 0 for only at startup and on reload", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: "15" }).homeSyncMinutes).toBe(15);
+		expect(loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: "0" }).homeSyncMinutes).toBe(0);
+	});
+
+	it.each(["-1", "1.5", "abc", "1441"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_SYNC_MINUTES: value })).toThrow(
+			/PIXEL_HOME_SYNC_MINUTES/,
+		);
+	});
+});

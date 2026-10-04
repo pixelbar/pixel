@@ -183,12 +183,37 @@ type Feature = {
 Pixel can read and control a Home Assistant (HA) instance: lights, switches, doors. Unlike Discord this is not a place where commands come from. Pixel is the client, and features reach HA only through the core `Home` (`core/home.ts`), the same way they use the calendar. The adapter in `adapters/home-assistant/` is the **only** place that imports the official `home-assistant-js-websocket` library, and it plugs a backend into `Home` at startup.
 
 - **Connection:** `HOME_ASSISTANT_URL` (for example the Nabu Casa cloud address) and `HOME_ASSISTANT_TOKEN`, a long-lived token. Both unset means off, and only one set stops startup. It connects in the background and reconnects forever, so a slow or absent HA never holds up the bot, and it doesn't count towards `/healthz`: HA being down shouldn't restart Pixel.
-- **A non-admin token:** HA can't scope a token, so a long-lived token can do whatever its user can. Use a **non-admin** HA user: that blocks the admin-only commands. Pixel asks HA whose token it is (`auth/current_user`) and warns, in the logs and Sentry, if it belongs to an admin. `/admin status` shows the warning too. The real fence is Pixel's own allow-list of devices (a later step).
+- **A non-admin token:** HA can't scope a token, so a long-lived token can do whatever its user can. Use a **non-admin** HA user: that blocks the admin-only commands. Pixel asks HA whose token it is (`auth/current_user`) and warns, in the logs and Sentry, if it belongs to an admin. `/admin status` shows the warning too. The real fence is Pixel's own allow-list of devices (below).
 - **Fails closed:** while HA isn't connected, or the token was refused, a call fails at once with a plain message. Nothing is queued, nothing is retried (a late unlock must never happen), and every call has a time limit. An outage is reported once, not on every command.
 - **No cache:** every read asks HA, so a change in HA shows on the next read.
 - **Errors are translated:** the library throws numbers (connection problems) and plain `{ code, message }` objects (HA's own errors). The adapter turns them into `HomeUnavailableError` and `HomeRequestError` with fixed, safe messages. The token and the address never appear in a message, a log line or Sentry (the token is scrubbed there too).
 - **After a refused token:** the connection is off until `/admin reload` re-checks it, so a replaced token takes effect without a restart.
 - **Tests** run against `src/testing/fake-home-assistant.ts`, a stand-in server that speaks HA's WebSocket protocol, never a real HA.
+
+### Devices and kinds
+
+Pixel never offers "any entity". The devices it may touch are listed in `config/home-assistant/devices.yaml` (gitignored; `devices.example.yaml` is committed and documented). Each device has:
+
+- a **name** people type (`front-door`), unique, lowercase words joined by `-`;
+- an **entity** (`lock.front_door`), unique, whose domain must match the kind;
+- a **kind**, defined in code, which decides what can be done and how;
+- the **actions** allowed, a subset of the kind's. Leaving them out means read-only: nothing is allowed unless it's listed;
+- an optional description, and `minTier` (`friend`, `member` or `admin`, default `member`; never guest).
+
+**Kinds** live in `src/core/home-kinds/`: light, switch, door (lock, unlock, open) and sensor (read-only). A kind is plain data: its HA domains, its actions (the HA service each calls and the states that mean it worked) and the capability that allows acting on it (`ha-lights`, `ha-doors` and so on, wired up in #39). To add a kind, write a file like `light.ts` and add it to `HOME_KINDS`. The devices file, commands and autocomplete all read that list. `defineKinds` rejects a malformed kind when the code starts.
+
+The file **fails closed** like the access files: when `HOME_ASSISTANT_URL` is set and the file is missing or invalid, Pixel doesn't start. Errors name the file, the position and the field, never a value, because the file describes the building. `/admin reload` re-reads it, and an invalid edit keeps the old list. At startup and on reload, Pixel warns about devices whose entity HA doesn't know (a typo), and `/admin status` shows how many devices are allowed. `just validate-config` checks it too.
+
+### The inventory (known, not usable)
+
+Alongside the allow-list, Pixel keeps an **inventory** of everything Home Assistant has that it has a kind for, in `config/home-assistant/inventory.yaml` (gitignored, rewritten on every sync). It exists so a person can see what's there, copy an entry into `devices.yaml` and give it a tier and actions, and so later features (richer `/status`, sensors) have the information to hand.
+
+It is **not an allow-list**, and nothing reads it to decide anything. Entries have no tier and no actions, the file is never loaded back into Pixel, and the inventory is never offered by a command or autocomplete. A device is usable only when a person has listed it in `devices.yaml`.
+
+- **When:** once Home Assistant has connected, then every `PIXEL_HOME_SYNC_MINUTES` (default 60; 0 means only at startup and on `/admin reload`). A failed run is skipped, not retried: the next run is the retry. An outage is logged once, and the old file stays.
+- **What:** entities in a domain that has a kind (light, switch, lock, sensor, binary_sensor), leaving out those Home Assistant files as config or diagnostic and those someone hid. Each entry has a suggested `name` (a valid, unique device name made from the friendly name), the `entity`, the `kind`, the friendly name and the area. It has no state, because that changes constantly. Entries already in `devices.yaml` are marked `inDevicesFile`. At most 1000 entries, sensors being the first cut.
+- **How:** it reads the same compact entity list Home Assistant's own app uses, which a non-admin token may read. If that list can't be read the run fails rather than guessing which entities are setup ones. The file is written atomically (mode 0600), and only when something other than the time changed. Names come from Home Assistant and are cleaned before they're written.
+- `/admin status` shows how many are known and when it last synced, and `/admin reload` syncs now.
 
 ## Services and ports
 
@@ -307,6 +332,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. The address Pixel reaches Home Assistant at, such as the Nabu Casa cloud URL (http or https) |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
+| `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
+| `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
 | `SENTRY_DSN`                  | yes    | Optional                                       |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `HEALTH_PORT`                 |        | Default `8080`                                 |

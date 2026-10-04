@@ -14,7 +14,18 @@ export type FakeEntity = {
 	state: string;
 	attributes?: Record<string, unknown>;
 	lastChanged?: string;
+	/** In the entity registry as a setup or diagnostic entity. */
+	category?: "config" | "diagnostic";
+	/** Hidden in the entity registry. */
+	hidden?: boolean;
+	/** The id of the area it is in itself. */
+	areaId?: string;
+	/** The id of its device, whose area counts when the entity has none. */
+	deviceId?: string;
 };
+
+export type FakeArea = { id: string; name: string };
+export type FakeDevice = { id: string; areaId?: string };
 
 export type FakeServiceCall = {
 	domain: string;
@@ -28,6 +39,8 @@ export type FakeHomeAssistantOptions = {
 	isAdmin?: boolean;
 	haVersion?: string;
 	entities?: FakeEntity[];
+	areas?: FakeArea[];
+	devices?: FakeDevice[];
 	/** Listen on this port, for starting a server where one used to be. Default: any free port. */
 	port?: number;
 };
@@ -40,6 +53,10 @@ export type FakeHomeAssistant = {
 	/** Every call_service received, in order. */
 	calls: FakeServiceCall[];
 	setEntities(entities: FakeEntity[]): void;
+	/** Make the entity registry list fail (domain.service-style: a HA error code), or work again with undefined. */
+	failEntityRegistry(code: string | undefined): void;
+	/** Make the area and device registries fail, or work again with undefined. */
+	failAreaRegistry(code: string | undefined): void;
 	/** Accept this token from now on, and refuse the old one. */
 	setToken(token: string): void;
 	setAdmin(isAdmin: boolean): void;
@@ -63,6 +80,10 @@ export async function startFakeHomeAssistant(
 	let isAdmin = options.isAdmin ?? false;
 	let identityFails = false;
 	let entities = options.entities ?? [];
+	const areas = options.areas ?? [];
+	const devices = options.devices ?? [];
+	let entityRegistryFails: string | undefined;
+	let areaRegistryFails: string | undefined;
 	const failing = new Map<string, string>();
 	const calls: FakeServiceCall[] = [];
 	const sockets = new Set<WebSocket>();
@@ -125,6 +146,27 @@ export async function startFakeHomeAssistant(
 						: reply({ id: "u1", name: "Pixel", is_admin: isAdmin });
 				case "get_states":
 					return reply(entities.map(asHa));
+				case "config/entity_registry/list_for_display":
+					return entityRegistryFails
+						? fail(entityRegistryFails)
+						: reply({
+								entity_categories: { "0": "config", "1": "diagnostic" },
+								entities: entities.map((e) => ({
+									ei: e.entityId,
+									...(e.category ? { ec: e.category === "config" ? 0 : 1 } : {}),
+									...(e.hidden ? { hb: true } : {}),
+									...(e.areaId ? { ai: e.areaId } : {}),
+									...(e.deviceId ? { di: e.deviceId } : {}),
+								})),
+							});
+				case "config/area_registry/list":
+					return areaRegistryFails
+						? fail(areaRegistryFails)
+						: reply(areas.map((a) => ({ area_id: a.id, name: a.name })));
+				case "config/device_registry/list":
+					return areaRegistryFails
+						? fail(areaRegistryFails)
+						: reply(devices.map((d) => ({ id: d.id, area_id: d.areaId ?? null })));
 				case "call_service": {
 					calls.push({
 						domain: String(msg.domain),
@@ -180,6 +222,12 @@ export async function startFakeHomeAssistant(
 		calls,
 		setEntities: (next) => {
 			entities = next;
+		},
+		failEntityRegistry: (code) => {
+			entityRegistryFails = code;
+		},
+		failAreaRegistry: (code) => {
+			areaRegistryFails = code;
 		},
 		setToken: (next) => {
 			token = next;

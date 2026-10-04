@@ -107,6 +107,8 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
+| `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
+| `PIXEL_HOME_SYNC_MINUTES`     | Optional. How often (minutes) Pixel refreshes `inventory.yaml`, a list of everything Home Assistant has so you can copy devices into `devices.yaml`. It is not an allow-list. Defaults to 60, 0 for only at startup and on `/admin reload` |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
 | `PIXEL_DATA_DIR`              | Optional. Where Pixel keeps small bits of state (`space.state`, `announcements.state`). Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |

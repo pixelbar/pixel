@@ -14,6 +14,7 @@ import {
 	type EntityState,
 	HOME_MESSAGES,
 	type HomeBackend,
+	type HomeEntity,
 	HomeRequestError,
 	type HomeStatus,
 	HomeUnavailableError,
@@ -44,6 +45,27 @@ export type HomeAssistantOptions = {
 type Phase = "connecting" | "connected" | "reconnecting" | "off";
 
 type CurrentUser = { is_admin?: boolean };
+
+/** The compact entity list Home Assistant's own frontend uses, which a non-admin user may read. */
+type EntityRegistryDisplay = {
+	entity_categories: Record<string, string>;
+	entities: {
+		/** entity id */
+		ei: string;
+		/** entity category: a key of `entity_categories` */
+		ec?: number;
+		/** hidden */
+		hb?: boolean;
+		/** device id */
+		di?: string;
+		/** area id */
+		ai?: string;
+	}[];
+};
+
+type AreaNames = {
+	byEntity(entry: EntityRegistryDisplay["entities"][number] | undefined): string | undefined;
+};
 
 /** Why the login can't work, in words that name no secret. */
 const REFUSED = "Home Assistant refused the token, so it needs replacing";
@@ -115,6 +137,65 @@ export class HomeAssistantBackend implements HomeBackend {
 			await callService(connection, domain, service, { ...data }, { entity_id: entityId });
 		} catch (error) {
 			throw this.#translate(error);
+		}
+	}
+
+	async listEntities(): Promise<HomeEntity[]> {
+		const connection = this.#live();
+		try {
+			const [states, display] = await Promise.all([
+				getStates(connection),
+				connection.sendMessagePromise<EntityRegistryDisplay>({
+					type: "config/entity_registry/list_for_display",
+				}),
+			]);
+			// The category and the hidden flag decide what the inventory leaves out, so if
+			// this list can't be read the call fails rather than guessing. The areas only
+			// add detail, so they can be missing.
+			const areas = await this.#areaNames(connection);
+			const registry = new Map(display.entities.map((entry) => [entry.ei, entry]));
+			return states.map((state): HomeEntity => {
+				const entry = registry.get(state.entity_id);
+				const friendly = state.attributes.friendly_name;
+				const category = entry?.ec === undefined ? undefined : display.entity_categories[entry.ec];
+				return {
+					entityId: state.entity_id,
+					name: typeof friendly === "string" ? friendly : undefined,
+					area: areas.byEntity(entry),
+					category: category === "config" || category === "diagnostic" ? category : undefined,
+					hidden: entry?.hb === true,
+				};
+			});
+		} catch (error) {
+			throw this.#translate(error);
+		}
+	}
+
+	/** Area names, by entity (its own area, or its device's). Empty when Home Assistant won't say. */
+	async #areaNames(connection: Connection): Promise<AreaNames> {
+		try {
+			const [areas, devices] = await Promise.all([
+				connection.sendMessagePromise<{ area_id: string; name: string }[]>({
+					type: "config/area_registry/list",
+				}),
+				connection.sendMessagePromise<{ id: string; area_id: string | null }[]>({
+					type: "config/device_registry/list",
+				}),
+			]);
+			const names = new Map(areas.map((area) => [area.area_id, area.name]));
+			const deviceAreas = new Map(devices.map((device) => [device.id, device.area_id]));
+			return {
+				byEntity: (entry) => {
+					const id = entry?.ai ?? (entry?.di ? deviceAreas.get(entry.di) : undefined);
+					return id ? names.get(id) : undefined;
+				},
+			};
+		} catch (error) {
+			this.#logger.warn(
+				{ event: "home.areas_failed", why: describeFailure(error) },
+				"couldn't read the areas, so the inventory has none",
+			);
+			return { byEntity: () => undefined };
 		}
 	}
 
