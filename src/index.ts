@@ -9,13 +9,24 @@ import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
+import { findMissingDevices } from "./services/home-devices.ts";
 
 async function main(): Promise<void> {
 	const config = loadConfig();
 	const logger = createLogger(config);
 	const reporter = createSentryReporter();
-	const { access, dispatcher, registry, spaceStatus, announcer, calendar, roles, home, features } =
-		buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
+	const {
+		access,
+		dispatcher,
+		registry,
+		spaceStatus,
+		announcer,
+		calendar,
+		roles,
+		home,
+		homeDevices,
+		features,
+	} = buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.view.counts },
@@ -48,7 +59,17 @@ async function main(): Promise<void> {
 		homeAssistant = new HomeAssistantBackend({ ...config.homeAssistant, logger });
 		home.attach(homeAssistant);
 		homeAssistant.settled
-			.then(() => home.check())
+			.then(async () => {
+				await home.check();
+				// A typo in the devices file shows up as a warning, never a failure.
+				const missing = await findMissingDevices(homeDevices.view, home);
+				if (missing && missing.length > 0) {
+					logger.warn(
+						{ event: "home.devices_missing", devices: missing },
+						"some devices' entities weren't found in Home Assistant",
+					);
+				}
+			})
 			.catch((error: unknown) => reporter.captureBackground(error, "home-assistant"));
 	} else {
 		logger.info({ event: "home.unconfigured" }, "Home Assistant isn't configured");
