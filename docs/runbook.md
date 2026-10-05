@@ -31,9 +31,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 1. **Try it in dev first.** Dev has its own bot, token and guild. Prod is the real Pixelbar server.
 2. **Never run two instances against one bot token.** Every command would be answered twice. Check that nothing else is running before you start one.
 3. **Never paste a secret into chat, an issue, a pull request or a log.** Tokens go in the secret store (or your local `.env`) and nowhere else. If one leaks, rotate it now (see [Secrets](#secrets)) and tell the others.
-4. **Identify people by Discord ID, never by name.** Names and nicknames can be changed or faked. The ID (`discord:<id>`) can't.
+4. **Identify people by ID, never by name.** Names and nicknames can be changed or faked. The ID can't.
 5. **Pixel fails closed.** A missing or broken access file stops it from starting, on purpose: that is a loud outage, never "everyone is a guest". Fix the file; don't work around it.
-6. **Write down what you did,** in the team channel, with the time. Use the log (below) as the record of what Pixel did.
 
 ## Who and what
 
@@ -220,11 +219,11 @@ Pixel can't tell whether the space is open, so it says so rather than guess. Che
 
 ## Sentry
 
-Sentry gets three things: errors (with the tags `command`, `feature`, `platform`, `tier` and the user's Discord ID, so you can see who ran into it), Logs (every log line at `info` and above), and **User Feedback** from people using `/feedback`.
+Sentry gets three things: errors (with the tags `command`, `feature`, `platform`, `tier` and the user's ID, so you can see who ran into it), Logs (every log line at `info` and above), and **User Feedback** from people using `/feedback`.
 
 - **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and for Pixel going quiet, and write here who is notified and where (email, Discord channel).
 - **Triage an error:**
-  1. Open the issue and read the stack, the tags and the user. The user is the Discord ID, so you can find what they did in the logs (see [Moderation](#moderation)).
+  1. Open the issue and read the stack, the tags and the user. The user is their ID, so you can find what they did in the logs (see [Moderation](#moderation)).
   2. Check the breadcrumbs: recent access changes and device actions leave notes there.
   3. Decide: a bug in Pixel (open a GitHub issue, link the Sentry issue), a problem outside it (SpaceAPI, Home Assistant, Discord: see [Incidents](#incidents)), or noise (resolve or ignore it).
   4. If it's urgent and recent, roll back (see [Deploys](#deploys)).
@@ -235,14 +234,14 @@ Sentry gets three things: errors (with the tags `command`, `feature`, `platform`
 
 > **Draft.** The privacy notice and retention policy (#7) aren't written yet. This section lists where personal data lives so a request can be handled now, and should be revised when #7 lands.
 
-Under GDPR, someone can ask what Pixel holds about them, or ask for it to be deleted. You have **one month** to respond, so note the date you received the request. First confirm who is asking: the person must be the one whose Discord ID it is.
+Under GDPR, someone can ask what Pixel holds about them, or ask for it to be deleted. You have **one month** to respond, so note the date you received the request. First confirm who is asking: the person must be the one whose ID it is.
 
 **Where personal data is:**
 
 | Where | What | How long |
 | --- | --- | --- |
-| `members.yaml` | Discord ID, tier, any note, capabilities | Until removed |
-| Pixel's log file and console | Discord ID, display name, handle, and what they did (commands, outcomes) | The log file keeps about two weeks. 🚧 Console and host logs depend on the hosting |
+| `members.yaml` | ID, tier, any note, capabilities | Until removed |
+| Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | The log file keeps about two weeks. 🚧 Console and host logs depend on the hosting |
 | Sentry (errors, Logs, User Feedback) | The same, plus any feedback they sent | Sentry's retention for the project 🚧 (write it down) |
 | Discord | Everything Discord itself holds | Not Pixel's data: refer them to Discord |
 
@@ -252,7 +251,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. `/admin level get user:<person>` for their tier, note and capabilities, or read their entry in `members.yaml`.
 2. Search the logs by their ID (see [Moderation](#moderation)).
-3. In Sentry, search Issues, Logs and User Feedback for `discord:<id>`.
+3. In Sentry, search Issues, Logs and User Feedback for their ID.
 4. Send them a copy of what you found, and no one else's data.
 
 **Deletion request:**
