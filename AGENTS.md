@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database, account linking or Terraform unless a human asks for it. Design for them, but don't build them.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
 
 ## Project at a glance
 
