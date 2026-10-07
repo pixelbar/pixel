@@ -3,8 +3,8 @@
 # Copy to config/admins.yaml (gitignored — it contains personal data).
 #
 # Same shape as members.yaml: each entry is one person, with `ids`, a list of
-# their IDs written as "<platform>:<user id>" (for now only "discord:"). One
-# person can have several, for example one per platform.
+# their IDs written as "<platform>:<user id>": "discord:<17-20 digits>" or
+# "telegram:<numeric id>". One person can have several, for example one per platform.
 # Every admin ALSO needs an entry in members.yaml that holds all of the same
 # ids (their membership level, capabilities and a note), so admins are members
 # as well as admins. Pixel refuses to start if one is missing. Only the ids

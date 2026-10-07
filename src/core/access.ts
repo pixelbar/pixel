@@ -16,13 +16,21 @@ export const TIER_LABELS: Record<Tier, string> = {
 
 export type ChatContext = "dm" | "group";
 
-export type Platform = "discord";
+/** Every platform people can talk to Pixel on. */
+export const PLATFORMS = ["discord", "telegram"] as const;
+
+export type Platform = (typeof PLATFORMS)[number];
 
 export type Access = {
 	/** Required on every command; there is deliberately no default. */
 	minTier: Tier;
 	/** Where the command may run. Omitted means everywhere. */
 	contexts?: readonly ChatContext[];
+	/**
+	 * Which platforms the command runs on. Omitted means all of them. Use it for
+	 * commands a platform can't support, such as picking a person (Discord only).
+	 */
+	platforms?: readonly Platform[];
 	/**
 	 * A named permission the person must also hold, on top of `minTier`. Not
 	 * implied by any tier (admin included) or by a Discord role. Guests never
@@ -51,8 +59,8 @@ export type Principal = PlatformActor & {
 };
 
 /**
- * Stable user identifier, e.g. "discord:494477157062672404". Prefixed with
- * the platform so IDs stay unique once more platforms exist. This is the
+ * Stable user identifier, e.g. "discord:494477157062672404" or "telegram:12345678".
+ * Prefixed with the platform so IDs from different platforms never collide. This is the
  * authoritative identity — ban and grant by this, not by name.
  */
 export function actorRef(actor: Pick<PlatformActor, "platform" | "userId">): string {
@@ -98,13 +106,16 @@ export function highestTier(tiers: Iterable<Tier>): Tier {
 
 export type AccessDecision =
 	| { allowed: true }
-	| { allowed: false; reason: "tier" | "context" | "capability" };
+	| { allowed: false; reason: "tier" | "context" | "platform" | "capability" };
 
 /** Both the tier and, if the command names one, the capability must hold. */
 export function checkAccess(access: Access, principal: Principal): AccessDecision {
 	if (!tierAtLeast(principal.tier, access.minTier)) return { allowed: false, reason: "tier" };
 	if (access.contexts && !access.contexts.includes(principal.chat)) {
 		return { allowed: false, reason: "context" };
+	}
+	if (access.platforms && !access.platforms.includes(principal.platform)) {
+		return { allowed: false, reason: "platform" };
 	}
 	if (access.capability !== undefined) {
 		// A guest has no valid tier, so a capability on its own gets them nowhere.

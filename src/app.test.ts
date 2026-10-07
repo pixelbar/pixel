@@ -307,7 +307,9 @@ describe("buildCore", () => {
 				users: { user: person },
 			});
 			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
-			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
+			expect(core.access.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual([
+				"ha-lights",
+			]);
 		});
 
 		it("lets an admin grant one, which then shows in the member's principal and the file", async () => {
@@ -322,11 +324,13 @@ describe("buildCore", () => {
 			});
 			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
 			expect(readFileSync(config.access.membersFile, "utf8")).toContain("door");
-			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["door"]);
+			expect(core.access.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual(["door"]);
 
 			// A restart sees it too.
 			const restarted = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
-			expect(restarted.access.view.records.get(IDS.member)?.capabilities).toEqual(["door"]);
+			expect(restarted.access.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual([
+				"door",
+			]);
 		});
 
 		it("refuses a member, a friend and a guest the admin commands", async () => {
@@ -350,7 +354,7 @@ describe("buildCore", () => {
 			);
 			const captureBackground = vi.fn();
 			const core = buildCore(config, silentLogger, { ...nullErrorReporter, captureBackground });
-			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["gone"]);
+			expect(core.access.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual(["gone"]);
 			expect(captureBackground).toHaveBeenCalledTimes(1);
 			const [error, source] = captureBackground.mock.calls[0] ?? [];
 			expect(error).toBeInstanceOf(CapabilityError);

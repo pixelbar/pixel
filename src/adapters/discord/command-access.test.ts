@@ -25,9 +25,11 @@ describe("hiddenCommandNames", () => {
 describe("adminOverrides", () => {
 	it("allows each admin by ID and nobody else", () => {
 		const access = new Map([
-			[IDS.admin, "admin" as const],
-			[IDS.member, "member" as const],
-			[IDS.friend, "friend" as const],
+			[`discord:${IDS.admin}`, "admin" as const],
+			[`discord:${IDS.member}`, "member" as const],
+			[`discord:${IDS.friend}`, "friend" as const],
+			// An admin's Telegram ID can't be given a Discord override.
+			["telegram:123456789", "admin" as const],
 		]);
 		expect(adminOverrides(access)).toEqual([{ id: IDS.admin, type: 2, permission: true }]);
 	});
@@ -35,7 +37,7 @@ describe("adminOverrides", () => {
 	it("refuses more than Discord's limit instead of silently dropping admins", () => {
 		const access = new Map(
 			Array.from({ length: MAX_OVERRIDES + 1 }, (_, i) => [
-				`${100000000000000000n + BigInt(i)}`,
+				`discord:${100000000000000000n + BigInt(i)}`,
 				"admin" as const,
 			]),
 		);

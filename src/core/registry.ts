@@ -114,6 +114,10 @@ function assertNotLooser(childWhere: string, parent: Access, child: Access): voi
 	if (allowed && !child.contexts?.every((c) => allowed.includes(c))) {
 		throw new RegistryError(`${childWhere} can't be allowed in more contexts than its parent`);
 	}
+	const platforms = parent.platforms;
+	if (platforms && !child.platforms?.every((p) => platforms.includes(p))) {
+		throw new RegistryError(`${childWhere} can't run on more platforms than its parent`);
+	}
 }
 
 function validateCommon(

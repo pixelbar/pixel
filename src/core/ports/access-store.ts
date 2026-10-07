@@ -28,10 +28,13 @@ export type MemberRecord = {
 
 /** Everything the rest of Pixel reads. Replaced as a whole after every change. */
 export type AccessView = {
-	/** Discord user ID → tier. Only non-guest tiers appear; guest entries are left out. */
-	readonly discord: ReadonlyMap<string, Exclude<Tier, "guest">>;
 	/**
-	 * Every entry in the members file, including guests, by Discord user ID.
+	 * Platform-prefixed ID ("discord:<id>", "telegram:<id>") → tier. Only non-guest
+	 * tiers appear; guest entries are left out. Every ID of a person has their tier.
+	 */
+	readonly tiers: ReadonlyMap<string, Exclude<Tier, "guest">>;
+	/**
+	 * Every entry in the members file, including guests, by platform-prefixed ID.
 	 * A person with several IDs appears under each (the same record).
 	 */
 	readonly records: ReadonlyMap<string, MemberRecord>;
@@ -41,10 +44,13 @@ export type AccessView = {
 };
 
 export type AccessChange =
-	/** Sets (or creates) someone's tier. Keeps their note and capabilities unless `note` is given. */
-	| { kind: "set-tier"; id: string; tier: MemberTier; note?: string; reason?: string }
+	/**
+	 * Sets (or creates) someone's tier. Keeps their note and capabilities unless `note` is
+	 * given. `ref` is a platform-prefixed ID, such as "discord:123…".
+	 */
+	| { kind: "set-tier"; ref: string; tier: MemberTier; note?: string; reason?: string }
 	/** Replaces someone's capabilities. They must already have an entry. */
-	| { kind: "set-capabilities"; id: string; capabilities: readonly string[]; reason?: string };
+	| { kind: "set-capabilities"; ref: string; capabilities: readonly string[]; reason?: string };
 
 /** Longest reason accepted. It goes into the audit log, not the file. */
 export const MAX_REASON_LENGTH = 200;

@@ -10,6 +10,7 @@ import type {
 	TierOff,
 	WantedLevel,
 } from "../../core/role-mirror.ts";
+import { ADMIN_ON_DISCORD } from "./access.ts";
 
 /**
  * Role mirroring in the admin commands: `/admin sync`, plus the wording shared
@@ -19,9 +20,9 @@ import type {
 
 export type RoleCommandDeps = Pick<RoleMirror, "apply" | "states">;
 
-/** What Pixel's own data says someone should hold. Unlisted people are guests. */
+/** What Pixel's own data says a Discord user should hold. Unlisted people are guests. */
 export function wantedFor(view: Pick<AccessView, "records">, userId: string): WantedLevel {
-	return view.records.get(userId)?.tier ?? "guest";
+	return view.records.get(`discord:${userId}`)?.tier ?? "guest";
 }
 
 /** The audit-log reason Discord shows next to a role change. */
@@ -114,7 +115,7 @@ export function createRoleSubcommands(
 		{
 			name: "sync",
 			description: "Set Discord roles to match Pixel's lists, for one person or everyone listed",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			placeholder: { text: "Syncing Discord roles…", private: true },
 			options: [
@@ -148,7 +149,7 @@ export function createRoleSubcommands(
 									{ name: "Person", value: describe(target) },
 									{
 										name: "Pixel level",
-										value: TIER_LABELS[view.discord.get(target.id) ?? "guest"],
+										value: TIER_LABELS[view.tiers.get(`discord:${target.id}`) ?? "guest"],
 										inline: true,
 									},
 									{ name: "Result", value: mirrorLine(result, "sync") ?? "Nothing to do." },
@@ -160,7 +161,10 @@ export function createRoleSubcommands(
 
 				// Everyone in Pixel's lists. People who hold a role but aren't listed can't be
 				// found without a privileged Discord intent, so they're left alone.
-				const ids = [...view.records.keys()];
+				// Discord roles only concern people's Discord IDs.
+				const ids = [...view.records.keys()]
+					.filter((ref) => ref.startsWith("discord:"))
+					.map((ref) => ref.slice("discord:".length));
 				let updated = 0;
 				let inSync = 0;
 				const failures = new Map<string, number>();

@@ -143,6 +143,30 @@ describe("CommandRegistry subcommands", () => {
 		);
 	});
 
+	it("never lets a subcommand run on more platforms than its group", () => {
+		const discordOnly = { minTier: "guest", platforms: ["discord"] } as const;
+		expect(() => register(group({ access: discordOnly, subcommands: [subcommand()] }))).toThrow(
+			/more platforms than its parent/,
+		);
+		expect(() =>
+			register(
+				group({
+					access: discordOnly,
+					subcommands: [
+						subcommand({ access: { minTier: "guest", platforms: ["discord", "telegram"] } }),
+					],
+				}),
+			),
+		).toThrow(/more platforms than its parent/);
+		expect(() =>
+			register(group({ access: discordOnly, subcommands: [subcommand({ access: discordOnly })] })),
+		).not.toThrow();
+		// A subcommand may narrow an everywhere group.
+		expect(() =>
+			register(group({ name: "g2", subcommands: [subcommand({ access: discordOnly })] })),
+		).not.toThrow();
+	});
+
 	it("never lets a subcommand be allowed in more contexts than its group", () => {
 		const dmOnly = { minTier: "guest", contexts: ["dm"] } as const;
 		expect(() => register(group({ access: dmOnly, subcommands: [subcommand()] }))).toThrow(

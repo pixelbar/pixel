@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
-import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
+import { actorLogFields, actorRef, type PlatformActor } from "../core/access.ts";
 import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
@@ -29,9 +29,9 @@ import {
 	AccessConfigError,
 	type AccessConfigPaths,
 	buildAccessConfig,
-	DISCORD_ID,
 	loadAccessFiles,
 	MAX_CAPABILITIES,
+	PLATFORM_ID,
 	parseMembers,
 	readFile,
 	toRecord,
@@ -165,12 +165,11 @@ export class FileAccessStore implements AccessStore {
 	// Synchronous on purpose: see the class comment.
 	#apply(change: AccessChange, by: PlatformActor): AccessChangeResult {
 		const file = this.#paths.membersFile;
-		const { id } = change;
-		const ref = `discord:${id}`;
+		const { ref } = change;
 		validateChange(change);
 		// Admins come only from admins.yaml. Their members entry may still hold capabilities.
 		// This covers every id of an admin's, so a second account can't be used to demote them.
-		if (change.kind === "set-tier" && this.#isAdminPerson(id)) {
+		if (change.kind === "set-tier" && this.#isAdminPerson(ref)) {
 			throw new AccessStoreError(
 				"That person is an admin. Admins come from admins.yaml, so their level can't be changed here.",
 			);
@@ -209,11 +208,11 @@ export class FileAccessStore implements AccessStore {
 		return { before, after };
 	}
 
-	/** Whether this Discord user, or any other id of the same person, is an admin. */
-	#isAdminPerson(userId: string): boolean {
-		const person = this.#view.records.get(userId);
-		const userIds = person ? person.ids.map((ref) => splitRef(ref).userId) : [userId];
-		return userIds.some((other) => this.#view.discord.get(other) === "admin");
+	/** Whether this ID, or any other ID of the same person, is an admin. */
+	#isAdminPerson(ref: string): boolean {
+		const person = this.#view.records.get(ref);
+		const refs = person ? person.ids : [ref];
+		return refs.some((other) => this.#view.tiers.get(other) === "admin");
 	}
 
 	#read(file: string) {
@@ -272,7 +271,7 @@ export class FileAccessStore implements AccessStore {
 		before: MemberRecord | null,
 		after: MemberRecord,
 	): void {
-		const target = `${by.platform}:${change.id}`;
+		const target = change.ref;
 		this.#logger.info(
 			{
 				event: "access.changed",
@@ -301,7 +300,7 @@ function summarise(record: MemberRecord | null) {
 }
 
 function validateChange(change: AccessChange): void {
-	if (!DISCORD_ID.test(change.id)) throw new AccessStoreError("That isn't a valid user ID.");
+	if (!PLATFORM_ID.test(change.ref)) throw new AccessStoreError("That isn't a valid user ID.");
 	if (change.reason !== undefined && [...change.reason].length > MAX_REASON_LENGTH) {
 		throw new AccessStoreError(`A reason can be at most ${MAX_REASON_LENGTH} characters.`);
 	}
@@ -336,7 +335,7 @@ function edit(doc: ReturnType<typeof parseDocument>, change: AccessChange, index
 	}
 
 	const item = doc.createNode({
-		ids: [`discord:${change.id}`],
+		ids: [change.ref],
 		tier: change.tier,
 		...(change.note !== undefined ? { note: change.note } : {}),
 	}) as YAMLMap;

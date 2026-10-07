@@ -93,6 +93,7 @@ export const MESSAGES = {
 	unknownCommand: "I don't know that command. Try /help.",
 	rateLimited: "Slow down a little — try again in a few seconds.",
 	deniedTier: "You don't have access to this command.",
+	deniedPlatform: "That command isn't available here. Try it on Discord.",
 	deniedContext: "This command can't be used here.",
 	internalError: "Something went wrong on my end. Please try again later.",
 } as const;
@@ -161,7 +162,11 @@ export class Dispatcher {
 				"command denied",
 			);
 			return privateText(
-				decision.reason === "context" ? MESSAGES.deniedContext : MESSAGES.deniedTier,
+				decision.reason === "context"
+					? MESSAGES.deniedContext
+					: decision.reason === "platform"
+						? MESSAGES.deniedPlatform
+						: MESSAGES.deniedTier,
 			);
 		}
 

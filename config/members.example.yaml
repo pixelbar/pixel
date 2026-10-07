@@ -12,8 +12,9 @@
 # tier: member | friend | guest   (guest keeps the entry, but no tier)
 # capabilities: optional named permissions (lowercase words joined by '-')
 # Same shape as admins.yaml: `ids` is a list of "<platform>:<user id>", e.g.
-# ["discord:123456789012345678"]. One person can have several (say, one per
-# platform); an id may appear in only one entry.
+# ["discord:123456789012345678", "telegram:123456789"]. One person can have
+# several (say, one per platform): they share the entry's tier and capabilities.
+# An id may appear in only one entry.
 # IDs MUST be quoted strings.
 members:
   - ids: ["discord:100000000000000001"] # also in admins.yaml

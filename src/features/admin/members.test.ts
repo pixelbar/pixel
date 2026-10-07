@@ -182,8 +182,8 @@ describe("/admin level set", () => {
 			Before: "Guest",
 			Now: "Pixelbar member",
 		});
-		expect(store.view.discord.get(TARGET)).toBe("member");
-		expect(openStore().view.discord.get(TARGET)).toBe("member");
+		expect(store.view.tiers.get(`discord:${TARGET}`)).toBe("member");
+		expect(openStore().view.tiers.get(`discord:${TARGET}`)).toBe("member");
 
 		const [audit] = events("access.changed");
 		expect(audit?.obj).toMatchObject({
@@ -204,7 +204,7 @@ describe("/admin level set", () => {
 			Before: "Friend of Pixelbar",
 			Now: "Pixelbar member",
 		});
-		expect(openStore().view.discord.get(IDS.friend)).toBe("member");
+		expect(openStore().view.tiers.get(`discord:${IDS.friend}`)).toBe("member");
 	});
 
 	it("downgrades a member to guest, keeping their entry and capabilities, and says so", async () => {
@@ -215,9 +215,9 @@ describe("/admin level set", () => {
 			Now: "Guest",
 			Capabilities: "Kept, but inactive while they're a guest.",
 		});
-		expect(store.view.discord.has(IDS.member)).toBe(false);
-		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
-		expect(openStore().view.records.get(IDS.member)?.tier).toBe("guest");
+		expect(store.view.tiers.has(`discord:${IDS.member}`)).toBe(false);
+		expect(store.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual(["front-door"]);
+		expect(openStore().view.records.get(`discord:${IDS.member}`)?.tier).toBe("guest");
 		expect(read()).toContain("front-door");
 	});
 
@@ -329,7 +329,7 @@ describe("/admin level set", () => {
 		const result = await run(dispatcher, "set-level", { level: "member" }, human(TARGET));
 		expect(result.reply.text).toBe("Couldn't save the change, so nothing was changed.");
 		expect(result.private).toBe(true);
-		expect(store.view.discord.has(TARGET)).toBe(false);
+		expect(store.view.tiers.has(`discord:${TARGET}`)).toBe(false);
 		expect(read()).toBe(MEMBERS);
 		expect(reporter.capture).not.toHaveBeenCalled();
 	});

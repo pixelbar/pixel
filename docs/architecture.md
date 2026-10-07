@@ -69,7 +69,7 @@ type ChatContext = "dm" | "group";
 type Access = { minTier: Tier; contexts?: ChatContext[] };   // minTier is required
 
 type PlatformActor = {
-  platform: Platform;            // "discord" for now
+  platform: Platform;            // "discord" | "telegram"
   userId: string;                // immutable platform ID: the only thing used for auth
   displayName: string;           // logs and display only
   handle?: string;               // unique username (Discord handle), logs only

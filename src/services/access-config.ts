@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
-import { type PlatformActor, splitRef, type Tier } from "../core/access.ts";
+import { actorRef, type PlatformActor, type Tier } from "../core/access.ts";
 import { CAPABILITY_NAME } from "../core/capabilities.ts";
 import type { AccessView, MemberRecord, MemberTier } from "../core/ports/access-store.ts";
 import type { CapabilitySource } from "../core/ports/capability-source.ts";
@@ -17,17 +17,18 @@ import type { TierSource } from "../core/ports/tier-source.ts";
 
 export const DISCORD_ID = /^\d{17,20}$/;
 
-// People are identified by platform-prefixed IDs ("discord:<id>") in both files, so other
-// platforms can be told apart later. One person can have several, so each entry holds a list
-// of them, and an admin entry matches its members entry by the IDs they share. Only Discord
-// exists for now. Inside Pixel, lookups use the bare Discord user ID.
-const PLATFORM_ID = /^discord:\d{17,20}$/;
+// People are identified by platform-prefixed IDs ("discord:<id>", "telegram:<id>") in both
+// files, and inside Pixel too, so IDs from different platforms can never be confused. One
+// person can have several, so each entry holds a list of them, and an admin entry matches its
+// members entry by the IDs they share.
+export const TELEGRAM_ID = /^[1-9]\d{0,15}$/;
+export const PLATFORM_ID = /^(discord:\d{17,20}|telegram:[1-9]\d{0,15})$/;
 
 const platformId = z
 	.string({ error: 'must be a quoted string, e.g. "discord:123456789012345678"' })
 	.regex(PLATFORM_ID, {
 		error:
-			'must be a platform and user ID, e.g. "discord:123456789012345678" (Discord IDs are 17–20 digits)',
+			'must be a platform and user ID, e.g. "discord:123456789012345678" (17–20 digits) or "telegram:123456789"',
 	});
 
 const ids = z
@@ -117,15 +118,14 @@ export function buildAccessConfig(
 		"members",
 	);
 
-	// Each person (members entry) is reachable under each of their Discord IDs.
+	// Each person (members entry) is reachable under each of their IDs.
 	const records = new Map<string, MemberRecord>();
 	const ownerOf = new Map<string, number>();
 	members.forEach((member, index) => {
 		const record = toRecord(member);
 		for (const ref of member.ids) {
-			const userId = splitRef(ref).userId;
-			records.set(userId, record);
-			ownerOf.set(userId, index);
+			records.set(ref, record);
+			ownerOf.set(ref, index);
 		}
 	});
 
@@ -133,7 +133,7 @@ export function buildAccessConfig(
 	const adminIds = new Set<string>();
 	const adminPeople = new Set<number>();
 	admins.forEach((refs, index) => {
-		const owners = new Set(refs.map((ref) => ownerOf.get(splitRef(ref).userId)));
+		const owners = new Set(refs.map((ref) => ownerOf.get(ref)));
 		if (owners.has(undefined)) {
 			throw new AccessConfigError(
 				`${paths.adminsFile}: admins[${index}] has an id with no entry in ${paths.membersFile}. Add them there first, with a tier of member, friend or guest`,
@@ -144,11 +144,11 @@ export function buildAccessConfig(
 				`${paths.adminsFile}: admins[${index}] lists ids that belong to different entries in ${paths.membersFile}`,
 			);
 		}
-		for (const ref of refs) adminIds.add(splitRef(ref).userId);
+		for (const ref of refs) adminIds.add(ref);
 		adminPeople.add([...owners][0] as number);
 	});
 
-	const discord = new Map<string, Exclude<Tier, "guest">>();
+	const tiers = new Map<string, Exclude<Tier, "guest">>();
 	const counts = { admins: adminPeople.size, members: 0, friends: 0 };
 
 	members.forEach((member, index) => {
@@ -156,8 +156,7 @@ export function buildAccessConfig(
 		// A guest entry is someone who was demoted: no tier, so they're left out.
 		if (tier !== "guest") {
 			for (const ref of member.ids) {
-				const userId = splitRef(ref).userId;
-				if (!adminIds.has(userId)) discord.set(userId, tier);
+				if (!adminIds.has(ref)) tiers.set(ref, tier);
 			}
 		}
 		// Admins keep their members entry (capabilities, note), but count once, as admins.
@@ -165,9 +164,9 @@ export function buildAccessConfig(
 		if (tier === "member") counts.members++;
 		else counts.friends++;
 	});
-	for (const userId of adminIds) discord.set(userId, "admin");
+	for (const ref of adminIds) tiers.set(ref, "admin");
 
-	return { discord, records, counts, warnings: [] };
+	return { tiers, records, counts, warnings: [] };
 }
 
 /** Each ID may appear once across all entries of a file. Messages name positions, never IDs. */
@@ -241,8 +240,7 @@ export class ConfigTierSource implements TierSource {
 	}
 
 	async tierFor(actor: PlatformActor): Promise<Tier | null> {
-		if (actor.platform !== "discord") return null;
-		return this.#store.view.discord.get(actor.userId) ?? null;
+		return this.#store.view.tiers.get(actorRef(actor)) ?? null;
 	}
 }
 
@@ -256,7 +254,6 @@ export class StoreCapabilitySource implements CapabilitySource {
 	}
 
 	async capabilitiesFor(actor: PlatformActor): Promise<readonly string[]> {
-		if (actor.platform !== "discord") return [];
-		return this.#store.view.records.get(actor.userId)?.capabilities ?? [];
+		return this.#store.view.records.get(actorRef(actor))?.capabilities ?? [];
 	}
 }

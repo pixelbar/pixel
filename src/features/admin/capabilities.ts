@@ -1,9 +1,10 @@
-import { highestTier, splitRef, TIER_LABELS, type Tier } from "../../core/access.ts";
+import { highestTier, TIER_LABELS, type Tier } from "../../core/access.ts";
 import type { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import { type AccessStore, MAX_REASON_LENGTH } from "../../core/ports/access-store.ts";
+import { ADMIN_ON_DISCORD } from "./access.ts";
 
 /**
  * `/admin capabilities grant|revoke|list`: who holds which named permission.
@@ -39,7 +40,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		{
 			name: "grant",
 			description: "Give someone a capability",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			options: [
 				{ name: "user", description: "The person", type: "user", required: true },
@@ -51,20 +52,20 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				const target = pickedUser(users);
 				const reason = checkedReason(args.reason);
 				const view = access.view;
-				const tier: Tier = view.discord.get(target.id) ?? "guest";
+				const tier: Tier = view.tiers.get(`discord:${target.id}`) ?? "guest";
 				if (tier === "guest") {
 					throw new UserFacingError(
 						`${describe(target)} is a guest, so a capability would do nothing. Make them a member or friend first.`,
 					);
 				}
-				const held = view.records.get(target.id)?.capabilities ?? [];
+				const held = view.records.get(`discord:${target.id}`)?.capabilities ?? [];
 				if (held.includes(name)) {
 					return { text: `${describe(target)} already has ${name}. Nothing changed.` };
 				}
 				await access.apply(
 					{
 						kind: "set-capabilities",
-						id: target.id,
+						ref: `discord:${target.id}`,
 						capabilities: [...held, name],
 						...(reason ? { reason } : {}),
 					},
@@ -87,7 +88,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		{
 			name: "revoke",
 			description: "Take a capability away from someone",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			options: [
 				{ name: "user", description: "The person", type: "user", required: true },
@@ -98,14 +99,14 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				const name = registered(String(args.capability));
 				const target = pickedUser(users);
 				const reason = checkedReason(args.reason);
-				const held = access.view.records.get(target.id)?.capabilities ?? [];
+				const held = access.view.records.get(`discord:${target.id}`)?.capabilities ?? [];
 				if (!held.includes(name)) {
 					return { text: `${describe(target)} doesn't have ${name}. Nothing changed.` };
 				}
 				await access.apply(
 					{
 						kind: "set-capabilities",
-						id: target.id,
+						ref: `discord:${target.id}`,
 						capabilities: held.filter((held) => held !== name),
 						...(reason ? { reason } : {}),
 					},
@@ -128,7 +129,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		{
 			name: "list",
 			description: "See which capabilities exist, or what one person has",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			options: [{ name: "user", description: "Show just this person", type: "user" }],
 			handler: async ({ users, logger }) => {
@@ -143,9 +144,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 						const holders = [...new Set(view.records.values())].filter(
 							(r) =>
 								r.capabilities.includes(c.name) &&
-								highestTier(
-									r.ids.map((ref) => view.discord.get(splitRef(ref).userId) ?? "guest"),
-								) !== "guest",
+								highestTier(r.ids.map((ref) => view.tiers.get(ref) ?? "guest")) !== "guest",
 						).length;
 						return `**${c.name}**: ${c.description} (${holders} ${holders === 1 ? "person" : "people"})`;
 					});
@@ -157,8 +156,8 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 					"looked up someone's capabilities",
 				);
 				const view = access.view;
-				const tier: Tier = view.discord.get(target.id) ?? "guest";
-				const held = view.records.get(target.id)?.capabilities ?? [];
+				const tier: Tier = view.tiers.get(`discord:${target.id}`) ?? "guest";
+				const held = view.records.get(`discord:${target.id}`)?.capabilities ?? [];
 				return {
 					embeds: [
 						{
@@ -189,7 +188,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 	return {
 		name: "capabilities",
 		description: "Named permissions for individual people",
-		access: { minTier: "admin" },
+		access: ADMIN_ON_DISCORD,
 		subcommands,
 	};
 

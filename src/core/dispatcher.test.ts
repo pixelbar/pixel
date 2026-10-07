@@ -116,6 +116,23 @@ describe("Dispatcher", () => {
 			expect(entries.some((e) => e.obj.event === "command.executed")).toBe(false);
 		});
 
+		it("says a command isn't available on a platform it doesn't run on", async () => {
+			const handler = vi.fn(async () => ({ text: "x" }));
+			const { dispatcher, entries } = setup([
+				command({ name: "d", access: { minTier: "guest", platforms: ["discord"] }, handler }),
+			]);
+			const result = await dispatcher.dispatch({
+				actor: as(IDS.admin, { platform: "telegram" }),
+				command: "d",
+				args: {},
+			});
+			expect(handler).not.toHaveBeenCalled();
+			expect(result.reply.text).toBe(MESSAGES.deniedPlatform);
+			expect(
+				entries.some((e) => e.obj.event === "command.denied" && e.obj.reason === "platform"),
+			).toBe(true);
+		});
+
 		it("denies commands used in a disallowed context", async () => {
 			const handler = vi.fn(async () => ({ text: "x" }));
 			const { dispatcher } = setup([

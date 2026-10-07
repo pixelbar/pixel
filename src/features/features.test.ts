@@ -26,7 +26,7 @@ import { createWhoamiFeature } from "./whoami/index.ts";
 
 const counts = { admins: 2, members: 10, friends: 3 };
 const access: AccessStore = {
-	view: { discord: new Map(), records: new Map(), counts, warnings: [] },
+	view: { tiers: new Map(), records: new Map(), counts, warnings: [] },
 	apply: async () => {
 		throw new Error("unused");
 	},
@@ -77,6 +77,27 @@ describe("buildFeatures", () => {
 				.map((c) => c.definition.name)
 				.sort(),
 		).toEqual(["admin", "events", "feedback", "ha", "help", "info", "ping", "status", "whoami"]);
+	});
+
+	it("keeps admin commands that pick a person or touch Discord roles on Discord, and the rest everywhere", () => {
+		const registry = new CommandRegistry();
+		for (const f of buildFeatures(deps())) registry.register(f);
+		const admin = registry.get("admin")?.definition;
+		const platforms = Object.fromEntries(
+			(admin?.subcommands ?? []).map((s) => [s.name, s.access.platforms ?? "everywhere"]),
+		);
+		expect(platforms).toMatchObject({
+			status: "everywhere",
+			reload: "everywhere",
+			level: ["discord"],
+			sync: ["discord"],
+			capabilities: ["discord"],
+			doors: "everywhere",
+		});
+		// Nothing outside /admin is limited to a platform.
+		for (const { definition } of registry.all()) {
+			if (definition.name !== "admin") expect(definition.access.platforms).toBeUndefined();
+		}
 	});
 
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {

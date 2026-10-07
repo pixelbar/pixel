@@ -42,10 +42,10 @@ describe("loadAccessConfig", () => {
 	it("loads valid files", () => {
 		write(ADMINS, MEMBERS);
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.admin)).toBe("admin");
-		expect(config.discord.get(IDS.member)).toBe("member");
-		expect(config.discord.get(IDS.friend)).toBe("friend");
-		expect(config.discord.get(IDS.guest)).toBeUndefined();
+		expect(config.tiers.get(`discord:${IDS.admin}`)).toBe("admin");
+		expect(config.tiers.get(`discord:${IDS.member}`)).toBe("member");
+		expect(config.tiers.get(`discord:${IDS.friend}`)).toBe("friend");
+		expect(config.tiers.get(`discord:${IDS.guest}`)).toBeUndefined();
 		expect(config.counts).toEqual({ admins: 1, members: 1, friends: 1 });
 		expect(config.warnings).toEqual([]);
 	});
@@ -56,9 +56,9 @@ describe("loadAccessConfig", () => {
 			`members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: friend\n    note: Ada\n    capabilities:\n      - front-door\n`,
 		);
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.admin)).toBe("admin");
+		expect(config.tiers.get(`discord:${IDS.admin}`)).toBe("admin");
 		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
-		expect(config.records.get(IDS.admin)).toEqual({
+		expect(config.records.get(`discord:${IDS.admin}`)).toEqual({
 			ids: [`discord:${IDS.admin}`],
 			tier: "friend",
 			note: "Ada",
@@ -154,9 +154,9 @@ describe("loadAccessConfig", () => {
 	it("matches an admin to their members entry by the same id string", () => {
 		write(ADMINS, MEMBERS);
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.admin)).toBe("admin");
-		expect(config.records.get(IDS.admin)?.ids).toEqual([`discord:${IDS.admin}`]);
-		expect(config.discord.has(`discord:${IDS.admin}`)).toBe(false);
+		expect(config.tiers.get(`discord:${IDS.admin}`)).toBe("admin");
+		expect(config.records.get(`discord:${IDS.admin}`)?.ids).toEqual([`discord:${IDS.admin}`]);
+		expect(config.tiers.has(`discord:${`discord:${IDS.admin}`}`)).toBe(false);
 	});
 
 	it("rejects an empty admin list", () => {
@@ -252,11 +252,16 @@ describe("one person with several ids", () => {
 	it("gives each of a person's ids the same tier, capabilities and record", () => {
 		write(ADMINS, members(person()));
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.member)).toBe("member");
-		expect(config.discord.get(SECOND)).toBe("member");
-		expect(config.records.get(IDS.member)).toBe(config.records.get(SECOND));
-		expect(config.records.get(SECOND)?.ids).toEqual([`discord:${IDS.member}`, `discord:${SECOND}`]);
-		expect(config.records.get(SECOND)?.capabilities).toEqual(["front-door"]);
+		expect(config.tiers.get(`discord:${IDS.member}`)).toBe("member");
+		expect(config.tiers.get(`discord:${SECOND}`)).toBe("member");
+		expect(config.records.get(`discord:${IDS.member}`)).toBe(
+			config.records.get(`discord:${SECOND}`),
+		);
+		expect(config.records.get(`discord:${SECOND}`)?.ids).toEqual([
+			`discord:${IDS.member}`,
+			`discord:${SECOND}`,
+		]);
+		expect(config.records.get(`discord:${SECOND}`)?.capabilities).toEqual(["front-door"]);
 	});
 
 	it("counts a person once, however many ids they have", () => {
@@ -267,8 +272,8 @@ describe("one person with several ids", () => {
 	it("leaves out all of a guest's ids", () => {
 		write(ADMINS, members(person().replace("tier: member", "tier: guest")));
 		const config = loadAccessConfig(paths);
-		expect(config.discord.has(IDS.member)).toBe(false);
-		expect(config.discord.has(SECOND)).toBe(false);
+		expect(config.tiers.has(`discord:${IDS.member}`)).toBe(false);
+		expect(config.tiers.has(`discord:${SECOND}`)).toBe(false);
 		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
 	});
 
@@ -301,16 +306,16 @@ describe("one person with several ids", () => {
 	it("makes only the listed ids admin, while the whole person counts once as an admin", () => {
 		write(`admins:\n  - ids: ["discord:${IDS.member}"]\n`, members(person()));
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.member)).toBe("admin");
-		expect(config.discord.get(SECOND)).toBe("member");
+		expect(config.tiers.get(`discord:${IDS.member}`)).toBe("admin");
+		expect(config.tiers.get(`discord:${SECOND}`)).toBe("member");
 		expect(config.counts).toEqual({ admins: 1, members: 1, friends: 0 });
 	});
 
 	it("accepts an admin entry that lists several of one person's ids", () => {
 		write(`admins:\n  - ids: ["discord:${IDS.member}", "discord:${SECOND}"]\n`, members(person()));
 		const config = loadAccessConfig(paths);
-		expect(config.discord.get(IDS.member)).toBe("admin");
-		expect(config.discord.get(SECOND)).toBe("admin");
+		expect(config.tiers.get(`discord:${IDS.member}`)).toBe("admin");
+		expect(config.tiers.get(`discord:${SECOND}`)).toBe("admin");
 	});
 
 	it("refuses an admin entry whose ids belong to different people", () => {
@@ -346,9 +351,9 @@ describe("guests and capabilities", () => {
 	it("keeps a guest entry but gives it no tier and doesn't count it", () => {
 		withEntry("    tier: guest\n    capabilities:\n      - front-door\n");
 		const config = loadAccessConfig(paths);
-		expect(config.discord.has(IDS.member)).toBe(false);
+		expect(config.tiers.has(`discord:${IDS.member}`)).toBe(false);
 		expect(config.counts).toEqual({ admins: 1, members: 0, friends: 0 });
-		expect(config.records.get(IDS.member)).toEqual({
+		expect(config.records.get(`discord:${IDS.member}`)).toEqual({
 			ids: [`discord:${IDS.member}`],
 			tier: "guest",
 			capabilities: ["front-door"],
@@ -357,7 +362,7 @@ describe("guests and capabilities", () => {
 
 	it("defaults to no capabilities and passes the note through", () => {
 		withEntry("    tier: member\n    note: hi\n");
-		expect(loadAccessConfig(paths).records.get(IDS.member)).toEqual({
+		expect(loadAccessConfig(paths).records.get(`discord:${IDS.member}`)).toEqual({
 			ids: [`discord:${IDS.member}`],
 			tier: "member",
 			note: "hi",
@@ -414,7 +419,7 @@ describe("StoreCapabilitySource", () => {
 	it("only speaks for Discord identities", async () => {
 		withCapabilities();
 		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
-		const telegramUser = actor({ userId: IDS.member, platform: "telegram" as never });
+		const telegramUser = actor({ userId: IDS.member, platform: "telegram" });
 		expect(await source.capabilitiesFor(telegramUser)).toEqual([]);
 	});
 });
@@ -427,11 +432,68 @@ describe("ConfigTierSource", () => {
 		expect(await source.tierFor(actor({ userId: IDS.guest }))).toBeNull();
 	});
 
-	it("only vouches for Discord identities", async () => {
+	it("never lets one platform's ID stand in for another's", async () => {
 		write(ADMINS, MEMBERS);
 		const source = new ConfigTierSource({ view: loadAccessConfig(paths) });
 		// Another platform's user with a colliding numeric ID must not inherit a Discord tier.
-		const telegramUser = actor({ userId: IDS.admin, platform: "telegram" as never });
+		const telegramUser = actor({ userId: IDS.admin, platform: "telegram" });
 		expect(await source.tierFor(telegramUser)).toBeNull();
+	});
+});
+
+describe("Telegram IDs", () => {
+	const TG = "123456789";
+
+	it("give a person their tier and capabilities on Telegram too, when listed with their entry", async () => {
+		write(
+			ADMINS,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${IDS.member}", "telegram:${TG}"]\n    tier: member\n    capabilities:\n      - ha-lights\n`,
+		);
+		const view = loadAccessConfig(paths);
+		expect(view.tiers.get(`telegram:${TG}`)).toBe("member");
+		expect(view.tiers.get(`discord:${IDS.member}`)).toBe("member");
+		expect(view.counts.members).toBe(1);
+		const telegramUser = actor({ userId: TG, platform: "telegram" });
+		expect(await new ConfigTierSource({ view }).tierFor(telegramUser)).toBe("member");
+		expect(await new StoreCapabilitySource({ view }).capabilitiesFor(telegramUser)).toEqual([
+			"ha-lights",
+		]);
+	});
+
+	it("make an admin's Telegram account an admin when it's in both files", () => {
+		write(
+			`admins:\n  - ids: ["discord:${IDS.admin}", "telegram:${TG}"]\n`,
+			`members:\n  - ids: ["discord:${IDS.admin}", "telegram:${TG}"]\n    tier: member\n`,
+		);
+		expect(loadAccessConfig(paths).tiers.get(`telegram:${TG}`)).toBe("admin");
+	});
+
+	it("aren't an admin when only the members file lists them", () => {
+		write(
+			ADMINS,
+			`members:\n  - ids: ["discord:${IDS.admin}", "telegram:${TG}"]\n    tier: member\n`,
+		);
+		const view = loadAccessConfig(paths);
+		expect(view.tiers.get(`discord:${IDS.admin}`)).toBe("admin");
+		expect(view.tiers.get(`telegram:${TG}`)).toBe("member");
+	});
+
+	it.each([
+		"telegram:0",
+		"telegram:01234",
+		"telegram:12345678901234567",
+		"telegram:abc",
+		"slack:12345",
+	])("refuses %j", (ref) => {
+		write(ADMINS, `members:\n${ADMIN_ENTRY}  - ids: ["${ref}"]\n    tier: member\n`);
+		expect(() => loadAccessConfig(paths)).toThrow(/platform and user ID/);
+	});
+
+	it("refuses one Telegram ID in two entries", () => {
+		write(
+			ADMINS,
+			`members:\n${ADMIN_ENTRY}  - ids: ["telegram:${TG}"]\n    tier: member\n  - ids: ["telegram:${TG}"]\n    tier: friend\n`,
+		);
+		expect(() => loadAccessConfig(paths)).toThrow(AccessConfigError);
 	});
 });

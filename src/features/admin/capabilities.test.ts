@@ -184,8 +184,10 @@ describe("grant", () => {
 			Person: `Grace (${IDS.member})`,
 			Capability: "front-door: Open the front door",
 		});
-		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
-		expect(openStore().view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
+		expect(store.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual(["front-door"]);
+		expect(openStore().view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual([
+			"front-door",
+		]);
 
 		expect(events("access.changed")[0]?.obj).toMatchObject({
 			kind: "set-capabilities",
@@ -201,7 +203,7 @@ describe("grant", () => {
 	it("adds to what someone already has", async () => {
 		const { dispatcher } = setup();
 		await run(dispatcher, "grant", { capability: "front-door" }, human(IDS.friend));
-		expect(openStore().view.records.get(IDS.friend)?.capabilities).toEqual([
+		expect(openStore().view.records.get(`discord:${IDS.friend}`)?.capabilities).toEqual([
 			"workshop",
 			"front-door",
 		]);
@@ -211,8 +213,8 @@ describe("grant", () => {
 		const { dispatcher, store } = setup();
 		const result = await run(dispatcher, "grant", { capability: "front-door" }, human(IDS.admin));
 		expect(result.reply.embeds?.[0]?.title).toBe("Capability granted");
-		expect(store.view.records.get(IDS.admin)?.capabilities).toEqual(["front-door"]);
-		expect(store.view.discord.get(IDS.admin)).toBe("admin");
+		expect(store.view.records.get(`discord:${IDS.admin}`)?.capabilities).toEqual(["front-door"]);
+		expect(store.view.tiers.get(`discord:${IDS.admin}`)).toBe("admin");
 		expect(events("access.changed")[0]?.obj).toMatchObject({
 			user: `discord:${IDS.admin}`,
 			target: `discord:${IDS.admin}`,
@@ -258,7 +260,7 @@ describe("grant", () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "grant", { capability: "front-dor" }, human(IDS.member));
 		expect(result.reply.text).toMatch(/Invalid value for option "capability"/);
-		expect(openStore().view.records.get(IDS.member)?.capabilities).toEqual([]);
+		expect(openStore().view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual([]);
 	});
 
 	it("refuses a reason that is too long", async () => {
@@ -282,7 +284,7 @@ describe("grant", () => {
 		const before = BEFORE();
 		const result = await run(dispatcher, "grant", { capability: "workshop" }, human(IDS.member));
 		expect(result.reply.text).toBe("Couldn't save the change, so nothing was changed.");
-		expect(store.view.records.get(IDS.member)?.capabilities).toEqual([]);
+		expect(store.view.records.get(`discord:${IDS.member}`)?.capabilities).toEqual([]);
 		expect(read()).toBe(before);
 	});
 
@@ -331,8 +333,8 @@ describe("revoke", () => {
 			human(IDS.friend),
 		);
 		expect(result.reply.embeds?.[0]?.title).toBe("Capability revoked");
-		expect(store.view.records.get(IDS.friend)?.capabilities).toEqual([]);
-		expect(openStore().view.records.get(IDS.friend)?.capabilities).toEqual([]);
+		expect(store.view.records.get(`discord:${IDS.friend}`)?.capabilities).toEqual([]);
+		expect(openStore().view.records.get(`discord:${IDS.friend}`)?.capabilities).toEqual([]);
 		expect(events("access.changed")[0]?.obj).toMatchObject({
 			kind: "set-capabilities",
 			before: { tier: "friend", capabilities: ["workshop"] },
@@ -345,13 +347,15 @@ describe("revoke", () => {
 		const { dispatcher } = setup();
 		await run(dispatcher, "grant", { capability: "front-door" }, human(IDS.friend));
 		await run(dispatcher, "revoke", { capability: "workshop" }, human(IDS.friend));
-		expect(openStore().view.records.get(IDS.friend)?.capabilities).toEqual(["front-door"]);
+		expect(openStore().view.records.get(`discord:${IDS.friend}`)?.capabilities).toEqual([
+			"front-door",
+		]);
 	});
 
 	it("also works for someone set to guest", async () => {
 		const { dispatcher } = setup();
 		await run(dispatcher, "revoke", { capability: "front-door" }, human(DEMOTED));
-		expect(openStore().view.records.get(DEMOTED)?.capabilities).toEqual([]);
+		expect(openStore().view.records.get(`discord:${DEMOTED}`)?.capabilities).toEqual([]);
 	});
 
 	it.each([

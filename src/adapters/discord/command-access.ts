@@ -25,9 +25,16 @@ export function hiddenCommandNames(definitions: readonly CommandDefinition[]): s
 export function adminOverrides(
 	access: ReadonlyMap<string, Exclude<Tier, "guest">>,
 ): PermissionOverride[] {
+	// Only Discord IDs can be given a Discord permission override.
 	const overrides = [...access]
-		.filter(([, tier]) => tier === "admin")
-		.map(([id]): PermissionOverride => ({ id, type: USER_OVERRIDE, permission: true }));
+		.filter(([ref, tier]) => tier === "admin" && ref.startsWith("discord:"))
+		.map(
+			([ref]): PermissionOverride => ({
+				id: ref.slice("discord:".length),
+				type: USER_OVERRIDE,
+				permission: true,
+			}),
+		);
 	if (overrides.length > MAX_OVERRIDES) {
 		throw new Error(`Discord allows at most ${MAX_OVERRIDES} overrides per command`);
 	}

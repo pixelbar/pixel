@@ -82,6 +82,24 @@ describe("checkAccess", () => {
 		).toEqual({ allowed: false, reason: "context" });
 	});
 
+	it("denies a command on a platform it doesn't run on, after the tier", () => {
+		const discordOnly = { minTier: "member", platforms: ["discord"] } as const;
+		expect(checkAccess(discordOnly, principal("admin"))).toEqual({ allowed: true });
+		expect(checkAccess(discordOnly, principal("admin", { platform: "telegram" }))).toEqual({
+			allowed: false,
+			reason: "platform",
+		});
+		expect(checkAccess(discordOnly, principal("guest", { platform: "telegram" }))).toEqual({
+			allowed: false,
+			reason: "tier",
+		});
+		expect(checkAccess({ minTier: "guest" }, principal("guest", { platform: "telegram" }))).toEqual(
+			{
+				allowed: true,
+			},
+		);
+	});
+
 	it("checks the tier before the context", () => {
 		expect(
 			checkAccess({ minTier: "admin", contexts: ["dm"] }, principal("guest", { chat: "group" })),

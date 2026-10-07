@@ -9,6 +9,7 @@ import {
 	type MemberTier,
 } from "../../core/ports/access-store.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
+import { ADMIN_ON_DISCORD } from "./access.ts";
 import { inspectionField, mirrorLine, mirrorReason, wantedFor } from "./roles.ts";
 
 /**
@@ -31,7 +32,7 @@ export function createLevelSubgroup(
 		{
 			name: "set",
 			description: "Make someone a member or friend, or set them back to guest",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			options: [
 				{ name: "user", description: "The person", type: "user", required: true },
@@ -57,19 +58,24 @@ export function createLevelSubgroup(
 				}
 
 				const view = access.view;
-				if (view.discord.get(target.id) === "admin") {
+				if (view.tiers.get(`discord:${target.id}`) === "admin") {
 					throw new UserFacingError(
 						`${describe(target)} is a Pixel admin. Admins are managed in admins.yaml only.`,
 					);
 				}
-				const current = view.records.get(target.id)?.tier ?? "guest";
+				const current = view.records.get(`discord:${target.id}`)?.tier ?? "guest";
 
 				// Pixel's data is updated first. Discord's roles then follow, even when nothing
 				// changed in Pixel, so a person who's out of step gets put right.
 				const changed = current !== level;
 				const result = changed
 					? await access.apply(
-							{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
+							{
+								kind: "set-tier",
+								ref: `discord:${target.id}`,
+								tier: level,
+								...(reason ? { reason } : {}),
+							},
 							principal,
 						)
 					: undefined;
@@ -117,7 +123,7 @@ export function createLevelSubgroup(
 		{
 			name: "get",
 			description: "See someone's Pixel access level, where it comes from, and their capabilities",
-			access: { minTier: "admin" },
+			access: ADMIN_ON_DISCORD,
 			private: true,
 			options: [
 				{ name: "user", description: "The person", type: "user", required: true, allowBots: true },
@@ -152,8 +158,8 @@ export function createLevelSubgroup(
 				}
 
 				const view = access.view;
-				const record = view.records.get(target.id);
-				const tier: Tier = view.discord.get(target.id) ?? "guest";
+				const record = view.records.get(`discord:${target.id}`);
+				const tier: Tier = view.tiers.get(`discord:${target.id}`) ?? "guest";
 				const held = record?.capabilities ?? [];
 				const rolesField = inspectionField(
 					await roles.inspect(target.id),
@@ -194,7 +200,7 @@ export function createLevelSubgroup(
 	return {
 		name: "level",
 		description: "Membership levels: member, friend or guest",
-		access: { minTier: "admin" },
+		access: ADMIN_ON_DISCORD,
 		subcommands,
 	};
 }

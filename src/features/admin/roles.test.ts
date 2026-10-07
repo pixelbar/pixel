@@ -240,7 +240,7 @@ describe("/admin level set mirrors to Discord", () => {
 		});
 		const { dispatcher, store } = setup(backend);
 		const result = await run(dispatcher, "set-level", { level: "member" }, human(TARGET));
-		expect(store.view.discord.get(TARGET)).toBe("member");
+		expect(store.view.tiers.get(`discord:${TARGET}`)).toBe("member");
 		expect(read()).toContain(`discord:${TARGET}`);
 		expect(fieldsOf(result)["Discord roles"]).toBe(
 			"Pixel is updated, but the Discord roles weren't changed: that person isn't in the Discord server. Run /admin sync once that's fixed.",
@@ -367,7 +367,7 @@ describe("/admin sync", () => {
 		await run(dispatcher, "sync", {}, human(IDS.guest));
 		await run(dispatcher, "sync", {});
 		expect(read()).toBe(before);
-		expect(store.view.discord.has(IDS.guest)).toBe(false);
+		expect(store.view.tiers.has(`discord:${IDS.guest}`)).toBe(false);
 	});
 
 	it("shows a placeholder while it works", () => {
@@ -703,10 +703,10 @@ describe("Pixel never reads a role to decide a tier", () => {
 			}),
 		});
 		const { dispatcher, store } = setup(backend);
-		expect(store.view.discord.get(TARGET)).toBeUndefined();
+		expect(store.view.tiers.get(`discord:${TARGET}`)).toBeUndefined();
 		const result = await run(dispatcher, "whois", {}, human(IDS.admin), { userId: TARGET });
 		expect(result.reply.text).toBe(MESSAGES.deniedTier);
-		expect(store.view.discord.get(TARGET)).toBeUndefined();
+		expect(store.view.tiers.get(`discord:${TARGET}`)).toBeUndefined();
 		expect(backend.apply).not.toHaveBeenCalled();
 	});
 });
