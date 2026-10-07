@@ -3,6 +3,7 @@ import type { CapabilityRegistry } from "./capabilities.ts";
 import {
 	type CommandDefinition,
 	type CommandOption,
+	type FormField,
 	type GroupCommand,
 	isGroup,
 	isSubgroup,
@@ -152,6 +153,7 @@ function validateRunnable(where: string, def: SubcommandDefinition): void {
 
 	const seen = new Set<string>();
 	let optionalSeen = false;
+	let formFields = 0;
 	for (const option of def.options ?? []) {
 		if (!NAME_PATTERN.test(option.name)) {
 			throw new RegistryError(`Invalid option name "${option.name}" for ${where}`);
@@ -160,11 +162,43 @@ function validateRunnable(where: string, def: SubcommandDefinition): void {
 			throw new RegistryError(`Duplicate option "${option.name}" for ${where}`);
 		}
 		seen.add(option.name);
+		if (option.type === "string" && option.form) {
+			// Form fields aren't typed with the command, so they don't count towards its order.
+			formFields++;
+			validateFormField(option, where);
+			continue;
+		}
 		if (option.required && optionalSeen) {
 			throw new RegistryError(`Required options must come before optional ones for ${where}`);
 		}
 		if (!option.required) optionalSeen = true;
 		validateSuggest(option, where);
+	}
+	if (formFields > MAX_FORM_FIELDS) {
+		throw new RegistryError(`At most ${MAX_FORM_FIELDS} form fields allowed for ${where}`);
+	}
+}
+
+/** Discord's modal limits: five fields, labels of 45 characters, values up to 4000. */
+const MAX_FORM_FIELDS = 5;
+
+function validateFormField(
+	option: Extract<CommandOption, { type: "string" }>,
+	where: string,
+): void {
+	const form = option.form as FormField;
+	if (option.choices !== undefined || option.suggest !== undefined) {
+		throw new RegistryError(
+			`Form field "${option.name}" can't have choices or suggestions for ${where}`,
+		);
+	}
+	if (option.description.length > 45) {
+		throw new RegistryError(
+			`Form field "${option.name}" needs a description of at most 45 characters for ${where}`,
+		);
+	}
+	if (!Number.isInteger(form.maxLength) || form.maxLength < 1 || form.maxLength > 4000) {
+		throw new RegistryError(`Form field "${option.name}" needs a maxLength of 1–4000 for ${where}`);
 	}
 }
 

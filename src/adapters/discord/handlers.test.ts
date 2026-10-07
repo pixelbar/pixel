@@ -4,6 +4,7 @@ import type {
 	DispatchHooks,
 	DispatchRequest,
 	DispatchResult,
+	FormOption,
 	SuggestRequest,
 } from "../../core/dispatcher.ts";
 import { silentLogger } from "../../core/logger.ts";
@@ -25,6 +26,8 @@ function fakeDispatcher(result: DispatchResult = { reply: { text: "ok" }, privat
 	return {
 		dispatch: vi.fn(async (_req: DispatchRequest, _hooks?: DispatchHooks) => result),
 		defaultPrivacy: vi.fn((_name: string, _sub?: string, _group?: string) => false),
+		formFields: vi.fn((_name: string, _sub?: string, _group?: string): FormOption[] => []),
+		prepareForm: vi.fn(async (_req: unknown) => ({ ready: true as const })),
 	};
 }
 
@@ -39,6 +42,7 @@ function fakeInteraction(overrides: Partial<IncomingCommand> = {}) {
 		editReply: vi.fn(async () => {}),
 		followUp: vi.fn(async () => {}),
 		deleteReply: vi.fn(async () => {}),
+		showModal: vi.fn(async () => {}),
 		...overrides,
 	} satisfies IncomingCommand;
 }
@@ -88,6 +92,7 @@ describe("createCommandHandler", () => {
 				command: "info",
 				args: { topic: "hours" },
 				users: {},
+				channels: {},
 			},
 			{ onPending: expect.any(Function) },
 		);

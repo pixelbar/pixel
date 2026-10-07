@@ -32,12 +32,28 @@ export type SuggestContext = {
  */
 export type SuggestFn = (context: SuggestContext) => Promise<readonly Suggestion[]>;
 
+/**
+ * A string option that is filled in on a form (a modal on Discord) instead of being
+ * typed with the command: for long or multi-line text. The form opens once access
+ * has been checked and `beforeForm` (if any) has passed, so slash options such as a
+ * free-form time can be refused before anyone types a long body. What's entered
+ * arrives as an ordinary argument.
+ */
+export type FormField = {
+	style: "short" | "paragraph";
+	/** At most this many characters. */
+	maxLength: number;
+	placeholder?: string;
+};
+
 export type CommandOption =
 	| (OptionBase & {
 			type: "string";
 			choices?: readonly string[];
 			/** Live suggestions. Can't be combined with `choices`. */
 			suggest?: SuggestFn;
+			/** Collected on a form rather than typed. Can't have choices or suggestions. */
+			form?: FormField;
 	  })
 	| (OptionBase & { type: "integer"; suggest?: SuggestFn })
 	| (OptionBase & { type: "boolean" })
@@ -46,7 +62,12 @@ export type CommandOption =
 	 * platform ID as the arg value, plus a `ResolvedUser` in `ctx.users`.
 	 * Bots are refused unless `allowBots` is set.
 	 */
-	| (OptionBase & { type: "user"; allowBots?: boolean });
+	| (OptionBase & { type: "user"; allowBots?: boolean })
+	/**
+	 * A channel picked by the caller. The handler receives its platform ID as the arg
+	 * value, plus a `ResolvedChannel` in `ctx.channels` saying what the caller may do there.
+	 */
+	| (OptionBase & { type: "channel" });
 
 export type ArgValue = string | number | boolean;
 export type Args = Readonly<Record<string, ArgValue | undefined>>;
@@ -61,6 +82,16 @@ export type ResolvedUser = {
 	isBot: boolean;
 };
 
+/** A channel picked through a `channel` option, as resolved by the platform adapter. */
+export type ResolvedChannel = {
+	/** Platform ID. The only field to act on. */
+	id: string;
+	/** For display only. */
+	name: string;
+	/** What the person running the command may do there, as the platform reports it. */
+	caller: { canPost: boolean; canMentionEveryone: boolean; canCreatePolls: boolean };
+};
+
 /** What a command looks like to callers, without its handler. */
 export type CommandSummary = {
 	/** Full name; subcommands are "group sub", e.g. "admin status". */
@@ -72,6 +103,8 @@ export type CommandContext = {
 	args: Args;
 	/** Users picked through `user` options, by option name. */
 	users: Readonly<Record<string, ResolvedUser>>;
+	/** Channels picked through `channel` options, by option name. */
+	channels: Readonly<Record<string, ResolvedChannel>>;
 	principal: Principal;
 	logger: Logger;
 	/** Commands this principal is allowed to run, for /help. */
@@ -86,6 +119,21 @@ type Named = {
 	access: Access;
 };
 
+/**
+ * Slash-option context for `beforeForm`. Form fields are still empty; the rest
+ * has been type-checked the same way as `dispatch`.
+ */
+export type BeforeFormContext = {
+	args: Args;
+	users: Readonly<Record<string, ResolvedUser>>;
+	channels: Readonly<Record<string, ResolvedChannel>>;
+	principal: Principal;
+	logger: Logger;
+};
+
+/** Optional title shown on the form, e.g. the time Pixel understood. */
+export type BeforeFormResult = { title?: string };
+
 type Runnable = {
 	options?: readonly CommandOption[];
 	/** Default reply visibility. Replies can override it with `Reply.private`. */
@@ -95,6 +143,13 @@ type Runnable = {
 	 * replaced by the handler's reply. Only sent once access checks pass.
 	 */
 	placeholder?: Reply;
+	/**
+	 * Extra checks after access, before a form is shown. Form fields are still
+	 * empty. Throw `UserFacingError` to refuse without opening the form, so a
+	 * long body isn't typed against a bad option (a time Pixel can't parse, say).
+	 * The returned title, if any, is shown on the form.
+	 */
+	beforeForm?: (ctx: BeforeFormContext) => Promise<BeforeFormResult | undefined>;
 	handler: (ctx: CommandContext) => Promise<Reply>;
 };
 
@@ -122,6 +177,7 @@ export type GroupCommand = Named & {
 	handler?: undefined;
 	private?: undefined;
 	placeholder?: undefined;
+	beforeForm?: undefined;
 };
 
 export type CommandDefinition = PlainCommand | GroupCommand;

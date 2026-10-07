@@ -9,10 +9,13 @@ import {
 import {
 	type Args,
 	type ArgValue,
+	type CommandOption,
 	type CommandSummary,
+	type FormField,
 	type GroupCommand,
 	isGroup,
 	isSubgroup,
+	type ResolvedChannel,
 	type ResolvedUser,
 	type SubcommandDefinition,
 	type SubgroupDefinition,
@@ -37,6 +40,8 @@ export type DispatchRequest = {
 	args: Args;
 	/** Users picked through `user` options, by option name, as resolved by the adapter. */
 	users?: Readonly<Record<string, ResolvedUser>>;
+	/** Channels picked through `channel` options, by option name, as resolved by the adapter. */
+	channels?: Readonly<Record<string, ResolvedChannel>>;
 };
 
 /** Someone is typing in an option that has live suggestions. */
@@ -114,13 +119,117 @@ export class Dispatcher {
 			deps.suggestRateLimiter ?? new RateLimiter({ capacity: 20, refillPerSecond: 5 });
 	}
 
+	/**
+	 * The options of a command that are filled in on a form, in order. Empty when it has
+	 * none. Adapters show the form first and pass what's entered as arguments.
+	 */
+	formFields(command: string, subcommand?: string, subgroup?: string): FormOption[] {
+		const options = this.#lookup(command, subcommand, subgroup)?.runnable.options ?? [];
+		return options.filter((o): o is FormOption => o.type === "string" && o.form !== undefined);
+	}
+
+	/**
+	 * Whether to open a command's form. Access first, then non-form args, then
+	 * `beforeForm`. Returns a refusal instead of opening the form, so a long body
+	 * isn't typed against a bad option. `dispatch` checks everything again.
+	 */
+	async prepareForm(request: DispatchRequest): Promise<FormPrep> {
+		const found = this.#lookup(request.command, request.subcommand, request.subgroup);
+		if (!found) return { ready: false, refuse: privateText(MESSAGES.unknownCommand) };
+		const refused = await this.precheck(request);
+		if (refused) return { ready: false, refuse: refused };
+		const { actor } = request;
+		const command = [request.command, request.subgroup, request.subcommand]
+			.filter((part) => part !== undefined)
+			.join(" ");
+		const log = this.#deps.logger.child({
+			command,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
+		try {
+			const valid = validateArgs(found.runnable, request.args, request.users, request.channels, {
+				skipMissingFormFields: true,
+			});
+			const beforeForm = found.runnable.beforeForm;
+			if (!beforeForm) return { ready: true };
+			const principal = await this.#deps.identity.resolve(actor);
+			const extra = await beforeForm({
+				args: valid.args,
+				users: valid.users,
+				channels: valid.channels,
+				principal,
+				logger: log,
+			});
+			return { ready: true, title: extra?.title };
+		} catch (error) {
+			if (error instanceof UserFacingError) {
+				log.info({ event: "command.form_refused" }, "form not opened");
+				return { ready: false, refuse: privateText(error.message) };
+			}
+			log.error({ event: "command.form_failed", err: error }, "form checks failed");
+			const principal = await this.#deps.identity.resolve(actor);
+			this.#deps.reporter.capture(error, { command, feature: found.feature, principal });
+			return { ready: false, refuse: privateText(MESSAGES.internalError) };
+		}
+	}
+
+	/**
+	 * Checks whether this person may run a command, without running it, so an adapter
+	 * doesn't open a form for someone who'd be refused. Returns the refusal to show,
+	 * or undefined. `dispatch` checks everything again, so this is only a courtesy.
+	 * Denials are logged the same way as `dispatch`.
+	 */
+	async precheck(
+		request: Pick<DispatchRequest, "actor" | "command" | "subgroup" | "subcommand">,
+	): Promise<DispatchResult | undefined> {
+		const found = this.#lookup(request.command, request.subcommand, request.subgroup);
+		if (!found) return privateText(MESSAGES.unknownCommand);
+		const { actor } = request;
+		const command = [request.command, request.subgroup, request.subcommand]
+			.filter((part) => part !== undefined)
+			.join(" ");
+		const log = this.#deps.logger.child({
+			command,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
+		const principal = await this.#deps.identity.resolve(actor);
+		for (const access of found.gates) {
+			const decision = checkAccess(access, principal);
+			if (decision.allowed) continue;
+			log.warn(
+				{
+					event: "command.denied",
+					reason: decision.reason,
+					tier: principal.tier,
+					required: access.minTier,
+					...(access.capability === undefined ? {} : { capability: access.capability }),
+				},
+				"command denied",
+			);
+			return privateText(
+				decision.reason === "context" ? MESSAGES.deniedContext : MESSAGES.deniedTier,
+			);
+		}
+		return undefined;
+	}
+
 	/** Lets adapters choose visibility before the reply exists (e.g. when deferring). */
 	defaultPrivacy(command: string, subcommand?: string, subgroup?: string): boolean {
 		return this.#lookup(command, subcommand, subgroup)?.runnable.private ?? false;
 	}
 
 	async dispatch(
-		{ actor, command: commandName, subgroup, subcommand, args, users = {} }: DispatchRequest,
+		{
+			actor,
+			command: commandName,
+			subgroup,
+			subcommand,
+			args,
+			users = {},
+			channels = {},
+		}: DispatchRequest,
 		hooks: DispatchHooks = {},
 	): Promise<DispatchResult> {
 		const { identity, rateLimiter, reporter } = this.#deps;
@@ -179,7 +288,7 @@ export class Dispatcher {
 			);
 
 		try {
-			const valid = validateArgs(definition, args, users);
+			const valid = validateArgs(definition, args, users, channels);
 			if (definition.placeholder && hooks.onPending) {
 				const { placeholder } = definition;
 				await hooks.onPending({
@@ -191,6 +300,7 @@ export class Dispatcher {
 				definition.handler({
 					args: valid.args,
 					users: valid.users,
+					channels: valid.channels,
 					principal,
 					logger: log,
 					availableCommands: this.#available(principal),
@@ -384,6 +494,24 @@ function privateText(text: string): DispatchResult {
 export type ValidInput = {
 	args: Args;
 	users: Readonly<Record<string, ResolvedUser>>;
+	channels: Readonly<Record<string, ResolvedChannel>>;
+};
+
+/** A string option filled in on a form. */
+export type FormOption = Extract<CommandOption, { type: "string" }> & { form: FormField };
+
+/**
+ * Whether an adapter should open a form. `title` is the optional form heading
+ * from `beforeForm` (the time Pixel understood, say).
+ */
+export type FormPrep = { ready: false; refuse: DispatchResult } | { ready: true; title?: string };
+
+export type ValidateArgsFlags = {
+	/**
+	 * Required form fields may be missing: they haven't been typed yet. Other
+	 * options are still checked, so a bad time can be refused before the form.
+	 */
+	skipMissingFormFields?: boolean;
 };
 
 /**
@@ -396,19 +524,33 @@ export function validateArgs(
 	definition: Pick<SubcommandDefinition, "options">,
 	args: Args,
 	users: Readonly<Record<string, ResolvedUser>> = {},
+	channels: Readonly<Record<string, ResolvedChannel>> = {},
+	flags: ValidateArgsFlags = {},
 ): ValidInput {
 	const result: Record<string, ArgValue> = {};
 	const resolved: Record<string, ResolvedUser> = {};
+	const resolvedChannels: Record<string, ResolvedChannel> = {};
 	for (const option of definition.options ?? []) {
 		const value = args[option.name];
 		if (value === undefined) {
-			if (option.required) throw new UserFacingError(`Missing required option "${option.name}".`);
+			const formPending =
+				flags.skipMissingFormFields === true &&
+				option.type === "string" &&
+				option.form !== undefined;
+			if (option.required && !formPending) {
+				throw new UserFacingError(`Missing required option "${option.name}".`);
+			}
 			continue;
 		}
 		switch (option.type) {
 			case "string":
 				if (typeof value !== "string") throw invalid(option.name);
 				if (option.choices && !option.choices.includes(value)) throw invalid(option.name);
+				if (option.form && [...value].length > option.form.maxLength) {
+					throw new UserFacingError(
+						`"${option.name}" can be at most ${option.form.maxLength} characters.`,
+					);
+				}
 				break;
 			case "integer":
 				if (typeof value !== "number" || !Number.isSafeInteger(value)) throw invalid(option.name);
@@ -425,10 +567,16 @@ export function validateArgs(
 				resolved[option.name] = user;
 				break;
 			}
+			case "channel": {
+				const channel = channels[option.name];
+				if (typeof value !== "string" || channel?.id !== value) throw invalid(option.name);
+				resolvedChannels[option.name] = channel;
+				break;
+			}
 		}
 		result[option.name] = value;
 	}
-	return { args: result, users: resolved };
+	return { args: result, users: resolved, channels: resolvedChannels };
 }
 
 function invalid(name: string): UserFacingError {

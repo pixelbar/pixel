@@ -1,5 +1,5 @@
-import { ApplicationCommandOptionType } from "discord.js";
-import type { Args, ArgValue, ResolvedUser } from "../../core/command.ts";
+import { ApplicationCommandOptionType, PermissionFlagsBits } from "discord.js";
+import type { Args, ArgValue, ResolvedChannel, ResolvedUser } from "../../core/command.ts";
 
 /** The shape of discord.js's CommandInteractionOption that we read. */
 export type DiscordOption = {
@@ -13,7 +13,28 @@ export type DiscordOption = {
 	user?: { id: string; displayName: string; username: string; bot: boolean };
 	/** Set on User options for guild members: carries the server nickname (`nick` when uncached). */
 	member?: { displayName?: string; nick?: string | null } | null;
+	/** Set on Channel options: the picked channel. */
+	channel?: { id: string; name?: string | null } | null;
+	/**
+	 * Set on Channel options by the adapter: what the person running the command may do in
+	 * that channel (their permission bits there), or null if Discord didn't say.
+	 */
+	callerPermissions?: bigint | null;
 };
+
+/** What a person's permission bits in a channel allow, for scheduled posts. Unknown means nothing. */
+export function callerAbilities(bits: bigint | null | undefined): ResolvedChannel["caller"] {
+	const has = (flag: bigint) =>
+		bits !== null &&
+		bits !== undefined &&
+		((bits & flag) === flag || (bits & PermissionFlagsBits.Administrator) !== 0n);
+	const canPost = has(PermissionFlagsBits.ViewChannel) && has(PermissionFlagsBits.SendMessages);
+	return {
+		canPost,
+		canMentionEveryone: canPost && has(PermissionFlagsBits.MentionEveryone),
+		canCreatePolls: canPost && has(PermissionFlagsBits.SendPolls),
+	};
+}
 
 const PRIMITIVE_TYPES = new Set([
 	ApplicationCommandOptionType.String,
@@ -26,6 +47,7 @@ export type ParsedOptions = {
 	subcommand?: string;
 	args: Args;
 	users: Record<string, ResolvedUser>;
+	channels: Record<string, ResolvedChannel>;
 };
 
 /**
@@ -38,7 +60,7 @@ export function parseOptions(options: readonly DiscordOption[]): ParsedOptions {
 	if (first?.type === ApplicationCommandOptionType.SubcommandGroup) {
 		const inner = first.options?.[0];
 		if (inner?.type !== ApplicationCommandOptionType.Subcommand)
-			return { subgroup: first.name, args: {}, users: {} };
+			return { subgroup: first.name, args: {}, users: {}, channels: {} };
 		return { subgroup: first.name, subcommand: inner.name, ...collect(inner.options ?? []) };
 	}
 	if (first?.type === ApplicationCommandOptionType.Subcommand) {
@@ -50,6 +72,7 @@ export function parseOptions(options: readonly DiscordOption[]): ParsedOptions {
 function collect(options: readonly DiscordOption[]): Omit<ParsedOptions, "subcommand"> {
 	const args: Record<string, ArgValue> = {};
 	const users: Record<string, ResolvedUser> = {};
+	const channels: Record<string, ResolvedChannel> = {};
 	for (const option of options) {
 		if (PRIMITIVE_TYPES.has(option.type) && option.value !== undefined) {
 			args[option.name] = option.value;
@@ -62,9 +85,17 @@ function collect(options: readonly DiscordOption[]): Omit<ParsedOptions, "subcom
 				handle: user.username,
 				isBot: user.bot,
 			};
+		} else if (option.type === ApplicationCommandOptionType.Channel && option.channel) {
+			const { channel } = option;
+			args[option.name] = channel.id;
+			channels[option.name] = {
+				id: channel.id,
+				name: channel.name ?? channel.id,
+				caller: callerAbilities(option.callerPermissions),
+			};
 		}
 	}
-	return { args, users };
+	return { args, users, channels };
 }
 
 export type ParsedAutocomplete = {

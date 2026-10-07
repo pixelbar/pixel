@@ -4,6 +4,7 @@ import {
 	type APIApplicationCommandSubcommandOption,
 	ApplicationCommandOptionType,
 	ApplicationIntegrationType,
+	ChannelType,
 	InteractionContextType,
 	type RESTPostAPIChatInputApplicationCommandsJSONBody,
 } from "discord.js";
@@ -30,7 +31,7 @@ export function toSlashCommand(
 			? def.subcommands.map((child) =>
 					isSubgroup(child) ? toSubgroup(child) : toSubcommand(child),
 				)
-			: (def.options ?? []).map(toOption),
+			: typed(def.options).map(toOption),
 		// "0" hides the command from everyone but server Administrators until the
 		// server grants it (see docs/discord-command-visibility.md). This only
 		// controls what people see: the dispatcher still decides who may run it.
@@ -54,7 +55,7 @@ function toSubcommand(sub: SubcommandDefinition): APIApplicationCommandSubcomman
 		type: ApplicationCommandOptionType.Subcommand,
 		name: sub.name,
 		description: sub.description,
-		options: (sub.options ?? []).map(toOption),
+		options: typed(sub.options).map(toOption),
 	};
 }
 
@@ -86,5 +87,16 @@ function toOption(option: CommandOption): APIApplicationCommandBasicOption {
 			return { ...base, type: ApplicationCommandOptionType.Boolean };
 		case "user":
 			return { ...base, type: ApplicationCommandOptionType.User };
+		case "channel":
+			// Text and announcement channels: the ones a message or poll can be posted in.
+			return {
+				...base,
+				type: ApplicationCommandOptionType.Channel,
+				channel_types: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+			};
 	}
 }
+
+/** Form fields are shown in a modal, not typed with the command, so Discord doesn't list them. */
+const typed = (options: readonly CommandOption[] | undefined) =>
+	(options ?? []).filter((o) => !(o.type === "string" && o.form));

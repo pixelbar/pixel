@@ -263,6 +263,9 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `home`    | `/ha set device: state:`     | friend | ✅    | Private. Changes a device, such as `on` or `off` for a light. Needs the device's tier floor and `ha-admin` or the kind's capability, and an action the devices file allows. Both options autocomplete: `state` offers what that device allows, and what you may run. Reports what really happened. Doors are switched off for now |
 | `home`    | `/ha open door:`             | member | ✅    | Private. Opens a door: `open` (unlatch) if the devices file allows it, otherwise `unlock`. Needs `ha-doors` or `ha-admin`. `door` autocompletes with only the doors you may open. Refused while `/admin doors` is off |
 | `admin`   | `/admin doors off\|on`        | admin  | ✅    | Private. The emergency switch for door control from Pixel, for everyone, at once. Remembered across restarts. Shown in `/admin status` |
+| `schedules` | `/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the text, then schedules a message in a channel. See "Scheduled posts" |
+| `schedules` | `/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the question and answers, then schedules a native Discord poll |
+| `schedules` | `/schedule list`, `preview`, `pause`, `resume`, `delete` | member + `schedule-posts` | ✅ | Private. Manage scheduled posts; `schedule` autocompletes by name or ID |
 | `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The Home Assistant commands
@@ -294,6 +297,19 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
   - **`/ha open door:`** is a shortcut that only takes doors: it runs the door's `open` action (unlatch) when the devices file allows it, and otherwise `unlock`. `/ha set` works on doors too (`lock`, `unlock`, `open`).
   - **An emergency switch.** `/admin doors off` (admins only) stops every door action from `/ha set` and `/ha open` at once, for everyone, and hides doors from autocomplete; `/admin doors on` brings them back. It's on by default and remembered across restarts in `data/home-switches.state` (`services/kind-switch.ts`). If that file exists but can't be read, doors start **off** until an admin switches them on. `/admin status` shows the state, and each switch is logged (`home.kind_switched`, with who) and left as a Sentry breadcrumb.
   - Every door action is logged like any other (`home.action` with who, door, action, before, after and outcome). There is no confirmation step, rate limit or public notice: logging is enough for now, and they can be added later if needed.
+
+### Scheduled posts
+
+`/schedule` posts messages and polls in a channel at set times, once or on a repeat. Discord has no scheduled messages for bots, so Pixel keeps the schedules and posts them itself.
+
+- **Who:** members (and admins) holding the `schedule-posts` capability, granted with `/admin capabilities grant`. A schedule only keeps posting while whoever made it still has that access: when it's due, Pixel checks again and pauses it otherwise.
+- **Where:** a text or announcement channel picked with the command (a new core `channel` option type). People can only schedule into channels where **they** can post, polls only where they can create polls, and `mentions` only where they can ping everyone (from the permissions Discord reports for the person in that channel). Pixel also checks its own permissions there before saving, and again when posting.
+- **What:** a plain **message** (up to 2000 characters of markdown; pings are off unless `mentions` is on), or a native **Discord poll** (a question, 2–10 answers of up to 55 characters, open for 1 hour to 2 weeks, single or multiple choice). Discord counts the votes, shows them live and announces the result when it closes, so Pixel stores nothing about votes.
+- **Forms:** the text, and the poll's question and answers (one per line), are typed in a **modal**, because slash options are one line. Commands declare these as `form` fields on string options. Discord can answer a slash command with a modal **or** a message, not both, so Pixel parses `when` (and the other slash options) **before** opening the modal (`Dispatcher.prepareForm` / `beforeForm`). A bad time is a private error and the modal never opens, so the body isn't typed against a timestamp that would be thrown away. The modal title is the interpreted time. The adapter keeps the typed options under a random token for 15 minutes for that one person, and runs the command when the form is submitted. The dispatcher checks everything again.
+- **When:** Discord has no date picker for bots (no slash option type, no modal component, no Components v2 picker). Autocomplete would force picking from a short list of dates, so `when` is **free-form text**. Pixel parses it (`core/when.ts`: `wed 19:00`, `wed 1900`, `19u30`, `14 oct 19:00`, `tomorrow 9am`, and similar) into one future wall-clock moment in `PIXEL_TIMEZONE` and **confirms that time** in the private reply. Compact 24h (`1900`) and Dutch `19u` are times, not guessed by a date library. A day without a time is 19:00; a time without a day is the next clock hit. `repeat` is once, weekly, fortnightly (on one or more `days`, such as `wed sat` — autocomplete there is only a weekday vocabulary, not dates), monthly or every 2 months (on the start's day of the month, or the month's last day). Times stay on the wall clock through the summer/winter clock change (`core/recurrence.ts`).
+- **Running:** the feature checks every 30 seconds (`features/schedules/runner.ts`). A due post goes out once; if Pixel was down, it still posts up to an hour late, skips anything later, and only the latest of several missed occurrences can go out. Every occurrence is recorded as handled whether it posted, was skipped or failed, and remembered in memory too, so nothing ever posts twice. Failures are logged and reported, never retried. A one-off is removed once it's handled.
+- **Storage:** `data/schedules.yaml` (`services/schedules.ts`), written atomically, at most 50 schedules. Unlike the rest of `data/`, it's **not safe to delete**. If it's invalid, nothing is posted or changed (and it's never overwritten) until it's fixed; Pixel logs and reports why.
+- **Posting** goes through the core `ChannelPosts`, which the Discord adapter plugs a poster into once it's connected, like the calendar. Every create, pause, resume, delete and post is logged with who and which schedule.
 
 ### The events list
 
@@ -338,7 +354,7 @@ When the space opens or closes, the `status` feature announces it through the an
 - **At most once.** A change is never announced twice, even if every publisher failed.
 - **At startup, stale posts are corrected, not re-announced.** Each publisher gets the current state (`Publisher.reconcile`) once SpaceAPI answers. The live style uses it to turn a leftover "open" post into "closed" (without a closing time, since Pixel didn't see it) when the space closed while Pixel was down. It never posts anything new.
 
-There are no member-only features yet. The first one will be the real test of the access layer, but the plumbing and tests come first.
+`/schedule` is member-only and also needs the `schedule-posts` capability. Home Assistant already uses the same pattern (`/ha open` is member-only plus a capability).
 
 ## Observability
 
