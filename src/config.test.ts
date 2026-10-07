@@ -289,6 +289,23 @@ describe("the log directory", () => {
 	});
 });
 
+describe("the heartbeat interval", () => {
+	it("defaults to five minutes", () => {
+		expect(loadConfig(VALID).heartbeatMinutes).toBe(5);
+	});
+
+	it("can be changed, or set to 0 to turn the heartbeat off", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "1" }).heartbeatMinutes).toBe(1);
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "0" }).heartbeatMinutes).toBe(0);
+	});
+
+	it.each(["-1", "2.5", "61", "often"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: value })).toThrow(
+			/PIXEL_HEARTBEAT_MINUTES/,
+		);
+	});
+});
+
 describe("the bot status channel and build info", () => {
 	it("posts Pixel's online status in the announcements channel unless told otherwise", () => {
 		expect(
