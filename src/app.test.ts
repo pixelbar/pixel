@@ -8,6 +8,7 @@ import { CapabilityError } from "./core/capabilities.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
+import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
 
 /** End-to-end through the real wiring: access files → identity → dispatcher → features. */
@@ -262,21 +263,14 @@ describe("buildCore", () => {
 	});
 
 	describe("capabilities", () => {
-		const DOOR = [{ name: "door", description: "Open the door" }];
+		// Every command's capability must be registered, so the tests add theirs to the ones features need.
+		const DOOR = [{ name: "door", description: "Open the door" }, SCHEDULE_CAPABILITY];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
 
-		it("can start with none registered, so admins have nothing to grant", async () => {
-			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: [] });
-			expect(core.capabilities.all()).toEqual([]);
-			const result = await core.dispatcher.dispatch({
-				actor: actor({ userId: IDS.admin }),
-				command: "admin",
-				subgroup: "capabilities",
-				subcommand: "grant",
-				args: { user: IDS.member, capability: "door" },
-				users: { user: person },
-			});
-			expect(result.reply.text).toBe("No capabilities are registered yet.");
+		it("refuses to build when a command needs a capability that isn't registered", () => {
+			expect(() =>
+				buildCore(config, silentLogger, nullErrorReporter, { capabilities: [] }),
+			).toThrow(/Unknown capability required by command "schedule"/);
 		});
 
 		it("registers the Home Assistant capabilities, so admins can grant them", async () => {
@@ -286,6 +280,7 @@ describe("buildCore", () => {
 				"ha-lights",
 				"ha-switches",
 				"ha-doors",
+				"schedule-posts",
 			]);
 			const listed = await core.dispatcher.dispatch({
 				actor: actor({ userId: IDS.admin }),

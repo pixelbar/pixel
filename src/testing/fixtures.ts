@@ -40,6 +40,7 @@ export function context(overrides: Partial<CommandContext> = {}): CommandContext
 	return {
 		args: {},
 		users: {},
+		channels: {},
 		principal: principal("guest"),
 		logger: silentLogger,
 		availableCommands: [],

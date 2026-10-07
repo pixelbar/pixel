@@ -347,6 +347,7 @@ describe("validateArgs", () => {
 		expect(validateArgs(def, { topic: "a", count: 3, loud: true, extra: "x" })).toEqual({
 			args: { topic: "a", count: 3, loud: true },
 			users: {},
+			channels: {},
 		});
 	});
 
@@ -520,6 +521,7 @@ describe("user options", () => {
 		expect(validateArgs(pick(), { who: IDS.friend }, { who: human })).toEqual({
 			args: { who: IDS.friend },
 			users: { who: human },
+			channels: {},
 		});
 	});
 

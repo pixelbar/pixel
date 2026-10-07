@@ -121,7 +121,7 @@ Handlers receive a `Principal { platform, userId, displayName, tier }`. They nev
 
 ### Capabilities
 
-Some features should reach specific people, **not everyone who is a member**, and not based on a Discord role. A **capability** is a named permission granted to an individual, for example `ha-doors`. The Home Assistant ones are the first (see "Home Assistant devices" below), and other features add their own.
+Some features should reach specific people, **not everyone who is a member**, and not based on a Discord role. A **capability** is a named permission granted to an individual, for example `ha-doors` or `schedule-posts`. The Home Assistant ones (see "Home Assistant devices" below) and scheduled posts (`/schedule`) are the ones that exist today.
 
 - **Declared in code.** `src/features/capabilities.ts` lists every capability (name and description). Admins can only grant names that exist there, so a typo can't create a silent grant. A command that requires an unknown name stops startup.
 - **Commands require a tier and a capability**, for example `access: { minTier: "member", capability: "front-door" }`. **Both must hold**, so access can't outlive membership. The dispatcher is the only place this is checked, and the refusal is the same generic message as any other, with the real reason (`capability`) in the log.
@@ -142,7 +142,7 @@ Controlling a device in Home Assistant (HA) is decided with capabilities, never 
 | **See a device and read its status** | Its tier floor (`minTier`, `member` unless the file says `friend` or `admin`). No capability. |
 | **Act on a device** (run an action) | The tier floor, **and** `ha-admin` **or** the capability of the device's kind, **and** the action is one the file allows for that device. |
 
-The capabilities are `ha-admin` (any device, whatever its kind) and one per kind that can be controlled: `ha-lights`, `ha-switches` and `ha-doors`. A kind brings its own capability, so a new kind needs no change here. Sensors only report, so they have none.
+The Home Assistant capabilities are `ha-admin` (any device, whatever its kind) and one per kind that can be controlled: `ha-lights`, `ha-switches` and `ha-doors`. A kind brings its own capability, so a new kind needs no change here. Sensors only report, so they have none. `schedule-posts` is separate: it lets a member schedule messages and native Discord polls (`/schedule`); see "Scheduled posts" in `architecture.md`. A schedule is paused if its creator loses that capability or their membership.
 
 - **Nothing implies one.** Not a tier, not a Discord role and not being a Pixel admin: an admin without the capability is refused, and grants it to themselves (audited) if they want it.
 - **Guests never pass**, even holding `ha-admin`, because the device's tier floor is never guest. A demotion takes effect at once.
@@ -180,7 +180,7 @@ Pixel's own data is the source of truth for tiers. Where the Discord server uses
 
 ## Privacy (GDPR)
 
-- Phase 1 Pixel stores nothing on disk apart from the config files that operators maintain. It does not store message content.
+- Phase 1 Pixel stores the operator-maintained config files, small runtime state in `data/`, and **scheduled post content** in `data/schedules.yaml` (the text or poll someone asked Pixel to post, plus the creator's Discord ID). It does not log message content.
 - `/whoami` shows a person their Discord ID and effective tier, so they can check what Pixel thinks.
 - Logs and Sentry identify users by their platform ID (`discord:<id>`). We chose this over pseudonyms because pseudonyms change whenever the key is rotated, which breaks tracking one user's issues over time. Logs and Sentry also record the user's display name and Discord handle, so people can recognise who did something. IDs and names count as personal data under GDPR, so the privacy notice must mention that they are stored in logs and Sentry, and log and Sentry retention apply. Message content and command arguments are never logged.
 - **Where logs go.** Every log line goes to the console, to a rotating file (`PIXEL_LOG_DIR`, about two weeks, readable only by the owner) and, `info` and above, to Sentry Logs. So the IDs, names and handles that appear in logs are kept in all three, under each one's retention, and the privacy notice must mention that the logs are also kept in Sentry. Token shapes are masked in all of them.

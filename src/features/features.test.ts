@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
 import { CapabilityRegistry } from "../core/capabilities.ts";
+import { ChannelPosts } from "../core/channel-posts.ts";
 import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
@@ -16,9 +17,11 @@ import { RoleMirror } from "../core/role-mirror.ts";
 import { HomeDeviceStore } from "../services/home-devices.ts";
 import { HomeInventory } from "../services/home-inventory.ts";
 import { KindSwitch } from "../services/kind-switch.ts";
+import { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
+import { CAPABILITIES } from "./capabilities.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { buildFeatures } from "./index.ts";
 import { createPingFeature } from "./ping/index.ts";
@@ -45,7 +48,7 @@ const deps = () => ({
 	version: "1.0.0",
 	startedAt: new Date(),
 	access,
-	capabilities: new CapabilityRegistry(),
+	capabilities: new CapabilityRegistry(CAPABILITIES),
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 	homeDevices: HomeDeviceStore.empty(),
@@ -56,6 +59,9 @@ const deps = () => ({
 	spaceStatus,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
+	channelPosts: new ChannelPosts(),
+	schedules: new ScheduleStore({ logger: silentLogger }),
+	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
 	],
@@ -69,18 +75,29 @@ function onlyCommand(feature: Feature) {
 
 describe("buildFeatures", () => {
 	it("registers cleanly (every command declares access)", () => {
-		const registry = new CommandRegistry();
+		const registry = new CommandRegistry({ capabilities: new CapabilityRegistry(CAPABILITIES) });
 		for (const f of buildFeatures(deps())) registry.register(f);
 		expect(
 			registry
 				.all()
 				.map((c) => c.definition.name)
 				.sort(),
-		).toEqual(["admin", "events", "feedback", "ha", "help", "info", "ping", "status", "whoami"]);
+		).toEqual([
+			"admin",
+			"events",
+			"feedback",
+			"ha",
+			"help",
+			"info",
+			"ping",
+			"schedule",
+			"status",
+			"whoami",
+		]);
 	});
 
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {
-		const registry = new CommandRegistry();
+		const registry = new CommandRegistry({ capabilities: new CapabilityRegistry(CAPABILITIES) });
 		for (const f of buildFeatures(deps())) registry.register(f);
 		const admin = registry.get("admin")?.definition;
 		expect(admin?.access.minTier).toBe("admin");
@@ -139,7 +156,7 @@ function adminSubcommand(
 		version: "1.0.0",
 		startedAt: new Date(0),
 		access: store,
-		capabilities: new CapabilityRegistry(),
+		capabilities: new CapabilityRegistry(CAPABILITIES),
 		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 		homeDevices: HomeDeviceStore.empty(),
@@ -197,7 +214,7 @@ describe("admin", () => {
 			version: "1.0.0",
 			startedAt: new Date(0),
 			access: store,
-			capabilities: new CapabilityRegistry(),
+			capabilities: new CapabilityRegistry(CAPABILITIES),
 			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 			homeDevices: HomeDeviceStore.empty(),

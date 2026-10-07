@@ -29,9 +29,9 @@ COPY --from=build /app/dist ./dist
 # Reviewed, public content (the /info topics) is baked into the image; changing it means a deploy.
 COPY content ./content
 # Access lists are mounted at runtime (Key Vault secret volume); never baked in.
-# Runtime state (space.state, announcements.state) goes in /app/data. Mount a volume
-# there for it to survive new deploys; without one it resets, which only costs the
-# "open for 2h" detail and the live post's remembered ID (Pixel then searches the channel).
+# Runtime state goes in /app/data. Mount a persistent volume there: it holds
+# schedules.yaml (the scheduled posts, which are lost without one), plus small state
+# files whose loss only costs details like the "open for 2h" time.
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080

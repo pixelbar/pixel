@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { checkAccess, splitRef } from "./core/access.ts";
 import { Announcer } from "./core/announcer.ts";
 import { Calendar } from "./core/calendar.ts";
 import {
@@ -7,6 +8,7 @@ import {
 	CapabilityRegistry,
 	reportUnknownCapabilities,
 } from "./core/capabilities.ts";
+import { ChannelPosts } from "./core/channel-posts.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { Home } from "./core/home.ts";
@@ -21,12 +23,14 @@ import { CommandRegistry } from "./core/registry.ts";
 import { RoleMirror } from "./core/role-mirror.ts";
 import { CAPABILITIES } from "./features/capabilities.ts";
 import { buildFeatures } from "./features/index.ts";
+import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { HomeInventory, INVENTORY_FILE } from "./services/home-inventory.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
+import { ScheduleStore } from "./services/schedules.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
@@ -47,6 +51,8 @@ export type Core = {
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
 	spaceStatus: SpaceStatus;
+	/** Where scheduled posts go; the Discord adapter plugs in its poster once it's ready. */
+	channelPosts: ChannelPosts;
 	/** Platform adapters register their publishers here once they're ready. */
 	announcer: Announcer;
 	/** A platform adapter plugs its events in here once it's ready. */
@@ -117,6 +123,22 @@ export function buildCore(
 
 	const announcer = new Announcer({ logger, reporter });
 	const calendar = new Calendar({ logger, reporter });
+	const channelPosts = new ChannelPosts();
+	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
+	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
+	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
+	const identity = new IdentityService(
+		[new ConfigTierSource(access)],
+		[new StoreCapabilitySource(access)],
+	);
+	// A schedule keeps posting only while whoever made it may still schedule posts.
+	const canSchedule = async (ref: string) => {
+		const { platform, userId } = splitRef(ref);
+		if (platform !== "discord") return false;
+		const principal = await identity.resolve({ platform, userId, displayName: "", chat: "group" });
+		return checkAccess({ minTier: "member", capability: SCHEDULE_CAPABILITY.name }, principal)
+			.allowed;
+	};
 
 	// Invalid content stops startup, like the access lists. CI loads the real content too.
 	const infoTopics = loadInfoTopics(
@@ -141,6 +163,9 @@ export function buildCore(
 		spaceStatus,
 		announcer,
 		calendar,
+		channelPosts,
+		schedules,
+		canSchedule,
 		infoTopics,
 		timezone: config.timezone,
 		logger,
@@ -149,10 +174,7 @@ export function buildCore(
 
 	const dispatcher = new Dispatcher({
 		registry,
-		identity: new IdentityService(
-			[new ConfigTierSource(access)],
-			[new StoreCapabilitySource(access)],
-		),
+		identity,
 		rateLimiter: new RateLimiter({ capacity: 5, refillPerSecond: 0.5 }),
 		logger,
 		reporter,
@@ -171,6 +193,7 @@ export function buildCore(
 		spaceStatus,
 		announcer,
 		calendar,
+		channelPosts,
 		features,
 	};
 }

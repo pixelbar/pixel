@@ -1,6 +1,7 @@
 import type { CapabilityDefinition } from "../core/capabilities.ts";
 import { homeCapabilities } from "../core/home-access.ts";
 import { HOME_KINDS } from "../core/home-kinds/index.ts";
+import { SCHEDULE_CAPABILITY } from "./schedules/index.ts";
 
 /**
  * Every capability that exists. Admins can only grant names listed here, and a
@@ -13,4 +14,7 @@ import { HOME_KINDS } from "../core/home-kinds/index.ts";
  *
  *   { name: "workshop-laser", description: "Use the laser cutter" }
  */
-export const CAPABILITIES: readonly CapabilityDefinition[] = [...homeCapabilities(HOME_KINDS)];
+export const CAPABILITIES: readonly CapabilityDefinition[] = [
+	...homeCapabilities(HOME_KINDS),
+	SCHEDULE_CAPABILITY,
+];

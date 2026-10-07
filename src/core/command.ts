@@ -32,12 +32,26 @@ export type SuggestContext = {
  */
 export type SuggestFn = (context: SuggestContext) => Promise<readonly Suggestion[]>;
 
+/**
+ * A string option that is filled in on a form (a modal on Discord) instead of being
+ * typed with the command: for long or multi-line text. The form opens once access
+ * has been checked, and what's entered arrives as an ordinary argument.
+ */
+export type FormField = {
+	style: "short" | "paragraph";
+	/** At most this many characters. */
+	maxLength: number;
+	placeholder?: string;
+};
+
 export type CommandOption =
 	| (OptionBase & {
 			type: "string";
 			choices?: readonly string[];
 			/** Live suggestions. Can't be combined with `choices`. */
 			suggest?: SuggestFn;
+			/** Collected on a form rather than typed. Can't have choices or suggestions. */
+			form?: FormField;
 	  })
 	| (OptionBase & { type: "integer"; suggest?: SuggestFn })
 	| (OptionBase & { type: "boolean" })
@@ -46,7 +60,12 @@ export type CommandOption =
 	 * platform ID as the arg value, plus a `ResolvedUser` in `ctx.users`.
 	 * Bots are refused unless `allowBots` is set.
 	 */
-	| (OptionBase & { type: "user"; allowBots?: boolean });
+	| (OptionBase & { type: "user"; allowBots?: boolean })
+	/**
+	 * A channel picked by the caller. The handler receives its platform ID as the arg
+	 * value, plus a `ResolvedChannel` in `ctx.channels` saying what the caller may do there.
+	 */
+	| (OptionBase & { type: "channel" });
 
 export type ArgValue = string | number | boolean;
 export type Args = Readonly<Record<string, ArgValue | undefined>>;
@@ -61,6 +80,16 @@ export type ResolvedUser = {
 	isBot: boolean;
 };
 
+/** A channel picked through a `channel` option, as resolved by the platform adapter. */
+export type ResolvedChannel = {
+	/** Platform ID. The only field to act on. */
+	id: string;
+	/** For display only. */
+	name: string;
+	/** What the person running the command may do there, as the platform reports it. */
+	caller: { canPost: boolean; canMentionEveryone: boolean; canCreatePolls: boolean };
+};
+
 /** What a command looks like to callers, without its handler. */
 export type CommandSummary = {
 	/** Full name; subcommands are "group sub", e.g. "admin status". */
@@ -72,6 +101,8 @@ export type CommandContext = {
 	args: Args;
 	/** Users picked through `user` options, by option name. */
 	users: Readonly<Record<string, ResolvedUser>>;
+	/** Channels picked through `channel` options, by option name. */
+	channels: Readonly<Record<string, ResolvedChannel>>;
 	principal: Principal;
 	logger: Logger;
 	/** Commands this principal is allowed to run, for /help. */

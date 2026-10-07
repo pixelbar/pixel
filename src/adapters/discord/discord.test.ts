@@ -177,12 +177,13 @@ describe("parseOptions", () => {
 			subcommand: "grant",
 			args: { who: user.id, capability: "door" },
 			users: { who: { id: user.id, displayName: "G", handle: "h", isBot: false } },
+			channels: {},
 		});
 	});
 
 	it("leaves the subcommand out when a subgroup has none", () => {
 		const bare = { name: "caps", type: ApplicationCommandOptionType.SubcommandGroup } as const;
-		expect(parseOptions([bare])).toEqual({ subgroup: "caps", args: {}, users: {} });
+		expect(parseOptions([bare])).toEqual({ subgroup: "caps", args: {}, users: {}, channels: {} });
 		expect(
 			parseOptions([
 				{
@@ -190,7 +191,7 @@ describe("parseOptions", () => {
 					options: [{ name: "x", type: ApplicationCommandOptionType.String, value: "y" }],
 				},
 			]),
-		).toEqual({ subgroup: "caps", args: {}, users: {} });
+		).toEqual({ subgroup: "caps", args: {}, users: {}, channels: {} });
 	});
 
 	it("keeps primitive values and ignores other option types", () => {
@@ -201,7 +202,7 @@ describe("parseOptions", () => {
 				{ name: "c", type: ApplicationCommandOptionType.Boolean, value: false },
 				{ name: "u", type: ApplicationCommandOptionType.Mentionable, value: "100000000000000001" },
 			]),
-		).toEqual({ args: { a: "x", b: 2, c: false }, users: {} });
+		).toEqual({ args: { a: "x", b: 2, c: false }, users: {}, channels: {} });
 	});
 
 	it("unwraps a subcommand and its options", () => {
@@ -213,10 +214,10 @@ describe("parseOptions", () => {
 					options: [{ name: "a", type: ApplicationCommandOptionType.String, value: "x" }],
 				},
 			]),
-		).toEqual({ subcommand: "status", args: { a: "x" }, users: {} });
+		).toEqual({ subcommand: "status", args: { a: "x" }, users: {}, channels: {} });
 		expect(
 			parseOptions([{ name: "status", type: ApplicationCommandOptionType.Subcommand }]),
-		).toEqual({ subcommand: "status", args: {}, users: {} });
+		).toEqual({ subcommand: "status", args: {}, users: {}, channels: {} });
 	});
 
 	it("passes a picked user as an immutable ID plus a resolved description", () => {
@@ -259,7 +260,7 @@ describe("parseOptions", () => {
 	it("ignores a user option that wasn't resolved", () => {
 		expect(
 			parseOptions([{ name: "who", type: ApplicationCommandOptionType.User, value: "1" }]),
-		).toEqual({ args: {}, users: {} });
+		).toEqual({ args: {}, users: {}, channels: {} });
 	});
 });
 
