@@ -206,6 +206,7 @@ describe("defineKinds", () => {
 	it("shows what's useful about each built-in kind", () => {
 		expect(HOME_KINDS.get("light")?.attributes?.map((a) => a.key)).toEqual(["brightness"]);
 		expect(HOME_KINDS.get("door")?.warnStates).toEqual(["jammed"]);
+		expect(HOME_KINDS.get("door")?.minTier).toBe("member");
 		expect(HOME_KINDS.get("sensor")?.attributes?.map((a) => a.key)).toEqual([
 			"device_class",
 			"battery_level",

@@ -19,6 +19,7 @@ import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { HomeInventory } from "../../services/home-inventory.ts";
+import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 import { createLevelSubgroup } from "./members.ts";
@@ -79,6 +80,7 @@ function setup(ops = nodeFileOps) {
 			home: new Home({ logger: silentLogger, reporter }),
 			homeDevices: HomeDeviceStore.empty(),
 			homeInventory: HomeInventory.off(),
+			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 		}),
 	);

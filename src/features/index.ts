@@ -11,6 +11,7 @@ import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { HomeInventory } from "../services/home-inventory.ts";
 import type { InfoTopic } from "../services/info-content.ts";
+import type { KindSwitch } from "../services/kind-switch.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createEventsFeature } from "./events/index.ts";
@@ -32,6 +33,8 @@ export type FeatureDeps = {
 	home: Home;
 	homeDevices: HomeDeviceStore;
 	homeInventory: HomeInventory;
+	/** Emergency switches for kinds of device (`/admin doors`). */
+	switches: KindSwitch;
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
@@ -57,7 +60,12 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
-		createHomeFeature({ home: deps.home, homeDevices: deps.homeDevices, reporter: deps.reporter }),
+		createHomeFeature({
+			home: deps.home,
+			homeDevices: deps.homeDevices,
+			reporter: deps.reporter,
+			switches: deps.switches,
+		}),
 		createHomeInventoryFeature({ inventory: deps.homeInventory, logger: deps.logger }),
 		createAdminFeature({
 			version: deps.version,
@@ -68,6 +76,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			home: deps.home,
 			homeDevices: deps.homeDevices,
 			homeInventory: deps.homeInventory,
+			switches: deps.switches,
 			reporter: deps.reporter,
 		}),
 	];
