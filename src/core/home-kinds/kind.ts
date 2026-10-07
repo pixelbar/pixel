@@ -59,6 +59,11 @@ export type HomeKind = {
 	actions: readonly KindAction[];
 	/** The attributes `/ha status` shows besides the state. */
 	attributes?: readonly KindAttribute[];
+	/**
+	 * The lowest tier any device of this kind may be opened to. The devices file can
+	 * raise a device's floor but not go below this. Doors use it to stay member-only.
+	 */
+	minTier?: "friend" | "member" | "admin";
 	/** States worth a warning mark, such as "jammed". "unavailable" and "unknown" always get one. */
 	warnStates?: readonly string[];
 	/**

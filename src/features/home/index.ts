@@ -1,4 +1,4 @@
-import type { Suggestion } from "../../core/command.ts";
+import type { CommandContext, Suggestion } from "../../core/command.ts";
 import { MAX_SUGGESTIONS } from "../../core/dispatcher.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, formatDuration, inlineCode } from "../../core/format.ts";
@@ -14,6 +14,7 @@ import type { KindAction, KindAttribute } from "../../core/home-kinds/index.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Embed, EmbedField, Reply } from "../../core/reply.ts";
 import type { HomeDevice, HomeDeviceStore } from "../../services/home-devices.ts";
+import type { KindSwitch } from "../../services/kind-switch.ts";
 import { type ControlResult, DeviceControl } from "./control.ts";
 
 export type HomeFeatureDeps = {
@@ -23,16 +24,12 @@ export type HomeFeatureDeps = {
 	/** Runs the actions. Defaults to one that talks to `home`. */
 	control?: Pick<DeviceControl, "run" | "timeoutMs">;
 	/**
-	 * Kinds that `/ha set` refuses to act on at all, even for someone who holds the
-	 * capability. Doors are off until their extra safeguards exist (the public notice,
-	 * a confirmation and conditions, issue #29).
+	 * Emergency switches (`/admin doors`): a kind that is switched off can't be acted
+	 * on by anyone, whatever they hold. Everything is on when this is left out.
 	 */
-	blockedKinds?: ReadonlySet<string>;
+	switches?: Pick<KindSwitch, "isOn">;
 	now?: () => Date;
 };
-
-/** Kinds that can't be acted on yet. See `HomeFeatureDeps.blockedKinds`. */
-export const DEFAULT_BLOCKED_KINDS: ReadonlySet<string> = new Set(["door"]);
 
 /** An embed field holds at most 1024 characters. */
 const FIELD_LIMIT = 1000;
@@ -54,8 +51,78 @@ const NO_READING: Readonly<Record<string, string>> = {
 export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const control = deps.control ?? new DeviceControl({ home: deps.home });
-	const blocked = deps.blockedKinds ?? DEFAULT_BLOCKED_KINDS;
+	const isOff = (kind: string) => (deps.switches ? !deps.switches.isOn(kind) : false);
 	const notSetUp = (): Reply => ({ text: HOME_MESSAGES.notSetUp, private: true });
+
+	/**
+	 * Runs one action for `/ha set` and `/ha open`: checks the device, the action and
+	 * the person with the shared rule, refuses a kind an admin has switched off, then
+	 * runs it through `DeviceControl` and logs it. Everything typed is checked here.
+	 */
+	const act = async (
+		device: HomeDevice | undefined,
+		wanted: string,
+		{ principal, logger }: Pick<CommandContext, "principal" | "logger">,
+	): Promise<Reply> => {
+		// Everything typed is checked again, here, whatever was suggested.
+		const decision = device ? canActOnDevice(device, wanted, principal) : undefined;
+		const action = device?.actions.find((a) => a.name === wanted);
+		if (!device || !decision?.allowed || !action) {
+			// The real reason goes in the log. What was typed doesn't: it could be anything.
+			logger.warn(
+				{
+					event: "home.action_denied",
+					reason: !device
+						? "unknown-device"
+						: decision && !decision.allowed
+							? decision.reason
+							: "action",
+					...(device ? { device: device.name } : {}),
+				},
+				"refused a device action",
+			);
+			return { text: HOME_DENIED, private: true };
+		}
+		if (isOff(device.kind.name)) {
+			logger.warn(
+				{
+					event: "home.action_denied",
+					reason: "kind-off",
+					device: device.name,
+					kind: device.kind.name,
+				},
+				"refused a device action: this kind is switched off",
+			);
+			return {
+				text: `Controlling ${device.kind.name}s from Pixel is switched off by an admin right now.`,
+				private: true,
+			};
+		}
+
+		const result = await control.run(device, action);
+		const fields = {
+			event: "home.action",
+			device: device.name,
+			kind: device.kind.name,
+			action: action.name,
+			outcome: result.outcome,
+			...(result.outcome === "not-attempted" ? { reason: result.reason } : {}),
+			...(before(result) ? { before: shorten(before(result)) } : {}),
+			...(after(result) ? { after: shorten(after(result)) } : {}),
+			durationMs: result.durationMs,
+		};
+		logger.info(fields, "ran a device action");
+		deps.reporter?.breadcrumb("home.action", `${action.name} ${device.name}: ${result.outcome}`, {
+			user: `${principal.platform}:${principal.userId}`,
+			device: device.name,
+			action: action.name,
+			outcome: result.outcome,
+		});
+		return {
+			embeds: [describeResult(device, action, result, control.timeoutMs)],
+			private: true,
+		};
+	};
 
 	return {
 		name: "home",
@@ -157,7 +224,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 										devices.some((d) => d.actions.some((a) => a.name === chosen));
 									return suggestDevices(
 										actionableDevices(devices, principal, known ? chosen : undefined).filter(
-											(device) => !blocked.has(device.kind.name),
+											(device) => !isOff(device.kind.name),
 										),
 										typed,
 									);
@@ -173,8 +240,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 									const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
 									const usable = (d: HomeDevice) =>
 										d.actions.filter(
-											(a) =>
-												!blocked.has(d.kind.name) && canActOnDevice(d, a.name, principal).allowed,
+											(a) => !isOff(d.kind.name) && canActOnDevice(d, a.name, principal).allowed,
 										);
 									// With a device chosen: what that device allows. Without: the values that work somewhere.
 									const actions = device
@@ -184,72 +250,48 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 								},
 							},
 						],
-						handler: async ({ args, principal, logger }): Promise<Reply> => {
+						handler: async (context): Promise<Reply> => {
 							if (!deps.homeDevices.configured) return notSetUp();
-							// Everything typed is checked again, here, whatever was suggested.
-							const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
-							const wanted = String(args.state ?? "");
-							const decision = device ? canActOnDevice(device, wanted, principal) : undefined;
-							const action = device?.actions.find((a) => a.name === wanted);
-							if (!device || !decision?.allowed || !action) {
-								// The real reason goes in the log. What was typed doesn't: it could be anything.
-								logger.warn(
-									{
-										event: "home.action_denied",
-										reason: !device
-											? "unknown-device"
-											: decision && !decision.allowed
-												? decision.reason
-												: "action",
-										...(device ? { device: device.name } : {}),
-									},
+							const device = deps.homeDevices.view.byName.get(String(context.args.device ?? ""));
+							return act(device, String(context.args.state ?? ""), context);
+						},
+					},
+					{
+						name: "open",
+						description: "Open a door (unlatch it, or unlock it if it can't be unlatched)",
+						access: { minTier: "member" },
+						private: true,
+						placeholder: { text: "Working on it…", private: true },
+						options: [
+							{
+								name: "door",
+								description: "Which door",
+								type: "string",
+								required: true,
+								suggest: async ({ typed, principal }) => {
+									if (!deps.homeDevices.configured || isOff("door")) return [];
+									const doors = deps.homeDevices.view.devices.filter(
+										(d) =>
+											d.kind.name === "door" &&
+											canActOnDevice(d, openingAction(d), principal).allowed,
+									);
+									return suggestDevices(doors, typed);
+								},
+							},
+						],
+						handler: async (context): Promise<Reply> => {
+							if (!deps.homeDevices.configured) return notSetUp();
+							const device = deps.homeDevices.view.byName.get(String(context.args.door ?? ""));
+							// Only doors: anything else gets the same answer as a device that doesn't exist.
+							const door = device?.kind.name === "door" ? device : undefined;
+							if (device && !door) {
+								context.logger.warn(
+									{ event: "home.action_denied", reason: "not-a-door", device: device.name },
 									"refused a device action",
 								);
 								return { text: HOME_DENIED, private: true };
 							}
-							if (blocked.has(device.kind.name)) {
-								logger.warn(
-									{
-										event: "home.action_denied",
-										reason: "kind-off",
-										device: device.name,
-										kind: device.kind.name,
-									},
-									"refused a device action: this kind isn't switched on",
-								);
-								return {
-									text: `Controlling ${device.kind.name}s from Pixel isn't switched on yet.`,
-									private: true,
-								};
-							}
-
-							const result = await control.run(device, action);
-							const fields = {
-								event: "home.action",
-								device: device.name,
-								kind: device.kind.name,
-								action: action.name,
-								outcome: result.outcome,
-								...(result.outcome === "not-attempted" ? { reason: result.reason } : {}),
-								...(before(result) ? { before: shorten(before(result)) } : {}),
-								...(after(result) ? { after: shorten(after(result)) } : {}),
-								durationMs: result.durationMs,
-							};
-							logger.info(fields, "ran a device action");
-							deps.reporter?.breadcrumb(
-								"home.action",
-								`${action.name} ${device.name}: ${result.outcome}`,
-								{
-									user: `${principal.platform}:${principal.userId}`,
-									device: device.name,
-									action: action.name,
-									outcome: result.outcome,
-								},
-							);
-							return {
-								embeds: [describeResult(device, action, result, control.timeoutMs)],
-								private: true,
-							};
+							return act(door, door ? openingAction(door) : "open", context);
 						},
 					},
 				],
@@ -516,4 +558,9 @@ function suggestActions(actions: readonly KindAction[], typed: string): Suggesti
 			name: `${action.name} · ${action.description}`.slice(0, 100),
 			value: action.name,
 		}));
+}
+
+/** What `/ha open` runs on a door: `open` (unlatch) when the devices file allows it, otherwise `unlock`. */
+export function openingAction(door: Pick<HomeDevice, "actions">): string {
+	return door.actions.some((a) => a.name === "open") ? "open" : "unlock";
 }

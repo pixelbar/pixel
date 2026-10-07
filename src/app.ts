@@ -26,6 +26,7 @@ import { FileAccessStore } from "./services/access-store.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { HomeInventory, INVENTORY_FILE } from "./services/home-inventory.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
+import { KindSwitch } from "./services/kind-switch.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
@@ -40,6 +41,8 @@ export type Core = {
 	homeDevices: HomeDeviceStore;
 	/** Everything Home Assistant has, written to a file for people to read. Never an allow-list. */
 	homeInventory: HomeInventory;
+	/** Emergency switches for kinds of device, such as doors (`/admin doors`). */
+	switches: KindSwitch;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;
 	/** Not started here — the bot calls `start()`; scripts never poll. */
@@ -97,6 +100,12 @@ export function buildCore(
 				intervalMs: config.homeSyncMinutes * 60_000,
 			})
 		: HomeInventory.off();
+	// Everything starts on; what an admin switches off is remembered across restarts.
+	const switches = new KindSwitch({
+		file: join(config.dataDir, "home-switches.state"),
+		logger,
+		switchable: ["door"],
+	});
 
 	const spaceStatus = new SpaceApiStatus({
 		url: config.spaceApiUrl,
@@ -127,6 +136,7 @@ export function buildCore(
 		home,
 		homeDevices,
 		homeInventory,
+		switches,
 		reporter,
 		spaceStatus,
 		announcer,
@@ -155,6 +165,7 @@ export function buildCore(
 		home,
 		homeDevices,
 		homeInventory,
+		switches,
 		registry,
 		dispatcher,
 		spaceStatus,

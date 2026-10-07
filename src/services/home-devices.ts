@@ -49,6 +49,8 @@ export class HomeDevicesError extends Error {
 	override name = "HomeDevicesError";
 }
 
+const TIER_ORDER = ["friend", "member", "admin"] as const;
+
 const EMPTY: HomeDevicesView = { devices: [], byName: new Map() };
 
 function schemaFor(kinds: ReadonlyMap<string, HomeKind>) {
@@ -96,6 +98,14 @@ function schemaFor(kinds: ReadonlyMap<string, HomeKind>) {
 			});
 			if (new Set(actions).size !== actions.length) {
 				ctx.addIssue({ code: "custom", path: ["actions"], message: "must not repeat an action" });
+			}
+			const floor = kind.minTier;
+			if (floor && TIER_ORDER.indexOf(d.minTier ?? "member") < TIER_ORDER.indexOf(floor)) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["minTier"],
+					message: `must be at least ${floor} for this kind`,
+				});
 			}
 		});
 	return z.strictObject({

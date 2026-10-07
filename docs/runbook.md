@@ -140,7 +140,9 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **Take a device away from people quickly:** remove its `actions` (or the whole entry) from `devices.yaml` and `/admin reload`. Changing it back is the same in reverse.
 
-**Doors:** controlling doors from `/ha set` is switched off in the code until the door safeguards exist (#29), whatever `devices.yaml` says.
+**Doors:** members with `ha-doors` (or `ha-admin`) can open a door with `/ha open door:` or use `/ha set`. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
+
+**Stop all door control at once:** `/admin doors off` (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin doors on`. It survives restarts. Check it in `/admin status`. If you think an account with door access was taken over: `/admin doors off` first, then revoke their capabilities (see [Moderation](#moderation)), then look at what it did by searching the logs for `"kind":"door"` and their ID. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin doors on` fixes it.
 
 **Emergency stop for everything:** revoke Pixel's token **in Home Assistant** (profile of the Pixel user → Security → Long-lived access tokens → delete). Pixel's next call is refused and the connection turns off. It takes effect at once and doesn't depend on Pixel being healthy. To bring it back, make a new token and put it in `HOME_ASSISTANT_TOKEN` (see [Secrets](#secrets)).
 

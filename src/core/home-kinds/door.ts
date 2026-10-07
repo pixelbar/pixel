@@ -1,13 +1,16 @@
 import type { HomeKind } from "./kind.ts";
 
 /**
- * A door lock. The sensitive kind: see the door safeguards (#29) for what's added
- * on top, such as a public notice and a confirmation.
+ * A door lock. The sensitive kind: member-only (a device can't be opened to
+ * friends), and admins can switch control of every door off at once with
+ * `/admin doors off`.
  */
 export const door: HomeKind = {
 	name: "door",
 	description: "A door with a lock",
 	domains: ["lock"],
+	// Opening the building is for members (and admins), never friends.
+	minTier: "member",
 	warnStates: ["jammed"],
 	capability: {
 		name: "ha-doors",

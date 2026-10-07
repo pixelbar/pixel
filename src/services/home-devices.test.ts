@@ -240,6 +240,23 @@ describe("loadHomeDevices", () => {
 		});
 	});
 
+	it("keeps doors member-only: a friend floor is refused, member and admin are fine", () => {
+		write(
+			"devices:\n  - name: door\n    entity: lock.front\n    kind: door\n    minTier: friend\n",
+		);
+		expect(failure().message).toMatch(
+			/devices\[0\]\.minTier: must be at least member for this kind/,
+		);
+		for (const tier of ["member", "admin"]) {
+			write(
+				`devices:\n  - name: door\n    entity: lock.front\n    kind: door\n    minTier: ${tier}\n`,
+			);
+			expect(load().devices[0]?.minTier).toBe(tier);
+		}
+		write("devices:\n  - name: door\n    entity: lock.front\n    kind: door\n");
+		expect(load().devices[0]?.minTier).toBe("member");
+	});
+
 	it("reports every problem at once, so they can all be fixed in one go", () => {
 		write("devices:\n  - name: A\n    entity: nope\n    kind: nope\n");
 		const message = failure().message;
