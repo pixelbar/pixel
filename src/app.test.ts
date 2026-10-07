@@ -32,6 +32,8 @@ describe("buildCore", () => {
 		config = {
 			env: "local",
 			version: "test",
+			gitSha: undefined,
+			gitBranch: undefined,
 			logLevel: "info",
 			access: { adminsFile, membersFile },
 			dataDir: join(dir, "data"),
@@ -48,7 +50,11 @@ describe("buildCore", () => {
 				appId: "100000000000000010",
 				guildId: "100000000000000020",
 				announcementsChannelId: undefined,
-				announce: { liveChannelId: undefined, timelineChannelId: undefined },
+				announce: {
+					liveChannelId: undefined,
+					timelineChannelId: undefined,
+					botChannelId: undefined,
+				},
 				roles: { member: undefined, friend: undefined },
 			},
 			homeAssistant: undefined,

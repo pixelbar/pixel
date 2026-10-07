@@ -19,6 +19,7 @@ import {
 	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
 import { FileLivePostStore } from "./announce-state.ts";
+import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import {
 	createAutocompleteHandler,
@@ -33,10 +34,17 @@ export type DiscordAdapterDeps = {
 	guildId: string;
 	dispatcher: Dispatcher;
 	logger: Logger;
-	/** Discord channels that get space announcements. Each is optional; unset means off. */
-	announce: { liveChannelId: string | undefined; timelineChannelId: string | undefined };
+	/** Discord channels that get announcements. Each is optional; unset means off. */
+	announce: {
+		liveChannelId: string | undefined;
+		timelineChannelId: string | undefined;
+		/** Where Pixel says it's online or offline. */
+		botChannelId: string | undefined;
+	};
 	/** Where the live style remembers which post is open (`announcements.state`). */
 	announceStateFile: string;
+	/** Where the bot status remembers this run's post (`bot-status.state`). */
+	botStatusStateFile: string;
 	/** Where this adapter's announcement publishers register once they're ready. */
 	announcer: Pick<Announcer, "register">;
 	/** Where this adapter plugs in the server's scheduled events once it's ready. */
@@ -100,6 +108,22 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				channelId: deps.announce.timelineChannelId,
 				required: TIMELINE_PERMISSIONS,
 				create: (channel) => createTimelinePublisher(channel),
+			},
+			{
+				id: BOT_STATUS_PUBLISHER_ID,
+				channelId: deps.announce.botChannelId,
+				// Reading history lets it find the post to update when Pixel goes offline.
+				required: LIVE_PERMISSIONS,
+				create: (channel, channelId) =>
+					createBotStatusPublisher(
+						channel,
+						logger,
+						new FileLivePostStore(
+							deps.botStatusStateFile,
+							channelId,
+							"# Pixel's record of its online status post. Safe to delete or edit.\n",
+						),
+					),
 			},
 		];
 
