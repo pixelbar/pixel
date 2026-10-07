@@ -153,7 +153,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 
 	/** Checks the person and Pixel may make this post in the picked channel. Returns its name. */
 	async function checkChannel(
-		ctx: CommandContext,
+		ctx: Pick<CommandContext, "channels">,
 		post: ChannelPost,
 	): Promise<{ id: string; name: string }> {
 		const channel = ctx.channels.channel;
@@ -212,6 +212,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		return { embeds: [describeSchedule(schedule, zone, now(), "✅ Scheduled")], private: true };
 	}
 
+	/** Parse `when` (and days) and the channel before the body form opens. */
+	async function prepareBodyForm(
+		ctx: Pick<CommandContext, "args" | "channels">,
+		post: ChannelPost,
+	): Promise<{ title: string }> {
+		const { start } = timing(ctx.args);
+		await checkChannel(ctx, post);
+		return { title: describeWhen(start) };
+	}
+
 	const manage = (
 		name: string,
 		description: string,
@@ -266,6 +276,12 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							},
 							nameOption,
 						],
+						beforeForm: (ctx) =>
+							prepareBodyForm(ctx, {
+								kind: "message",
+								text: ".",
+								mentions: ctx.args.mentions === true,
+							}),
 						handler: async (ctx) => {
 							const text = String(ctx.args.text ?? "").trim();
 							if (text === "") throw new UserFacingError("The message can't be empty.");
@@ -317,6 +333,14 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							},
 							nameOption,
 						],
+						beforeForm: (ctx) =>
+							prepareBodyForm(ctx, {
+								kind: "poll",
+								question: ".",
+								answers: ["a", "b"],
+								durationHours: 1,
+								multiple: ctx.args.multiple === true,
+							}),
 						handler: async (ctx) => {
 							const question = String(ctx.args.question ?? "").trim();
 							if (question === "") throw new UserFacingError("The question can't be empty.");

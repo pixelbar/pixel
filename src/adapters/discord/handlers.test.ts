@@ -27,7 +27,7 @@ function fakeDispatcher(result: DispatchResult = { reply: { text: "ok" }, privat
 		dispatch: vi.fn(async (_req: DispatchRequest, _hooks?: DispatchHooks) => result),
 		defaultPrivacy: vi.fn((_name: string, _sub?: string, _group?: string) => false),
 		formFields: vi.fn((_name: string, _sub?: string, _group?: string): FormOption[] => []),
-		precheck: vi.fn(async (_req: unknown): Promise<DispatchResult | undefined> => undefined),
+		prepareForm: vi.fn(async (_req: unknown) => ({ ready: true as const })),
 	};
 }
 

@@ -129,6 +129,52 @@ export class Dispatcher {
 	}
 
 	/**
+	 * Whether to open a command's form. Access first, then non-form args, then
+	 * `beforeForm`. Returns a refusal instead of opening the form, so a long body
+	 * isn't typed against a bad option. `dispatch` checks everything again.
+	 */
+	async prepareForm(request: DispatchRequest): Promise<FormPrep> {
+		const found = this.#lookup(request.command, request.subcommand, request.subgroup);
+		if (!found) return { ready: false, refuse: privateText(MESSAGES.unknownCommand) };
+		const refused = await this.precheck(request);
+		if (refused) return { ready: false, refuse: refused };
+		const { actor } = request;
+		const command = [request.command, request.subgroup, request.subcommand]
+			.filter((part) => part !== undefined)
+			.join(" ");
+		const log = this.#deps.logger.child({
+			command,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
+		try {
+			const valid = validateArgs(found.runnable, request.args, request.users, request.channels, {
+				skipMissingFormFields: true,
+			});
+			const beforeForm = found.runnable.beforeForm;
+			if (!beforeForm) return { ready: true };
+			const principal = await this.#deps.identity.resolve(actor);
+			const extra = await beforeForm({
+				args: valid.args,
+				users: valid.users,
+				channels: valid.channels,
+				principal,
+				logger: log,
+			});
+			return { ready: true, title: extra?.title };
+		} catch (error) {
+			if (error instanceof UserFacingError) {
+				log.info({ event: "command.form_refused" }, "form not opened");
+				return { ready: false, refuse: privateText(error.message) };
+			}
+			log.error({ event: "command.form_failed", err: error }, "form checks failed");
+			const principal = await this.#deps.identity.resolve(actor);
+			this.#deps.reporter.capture(error, { command, feature: found.feature, principal });
+			return { ready: false, refuse: privateText(MESSAGES.internalError) };
+		}
+	}
+
+	/**
 	 * Checks whether this person may run a command, without running it, so an adapter
 	 * doesn't open a form for someone who'd be refused. Returns the refusal to show,
 	 * or undefined. `dispatch` checks everything again, so this is only a courtesy.
@@ -455,6 +501,20 @@ export type ValidInput = {
 export type FormOption = Extract<CommandOption, { type: "string" }> & { form: FormField };
 
 /**
+ * Whether an adapter should open a form. `title` is the optional form heading
+ * from `beforeForm` (the time Pixel understood, say).
+ */
+export type FormPrep = { ready: false; refuse: DispatchResult } | { ready: true; title?: string };
+
+export type ValidateArgsFlags = {
+	/**
+	 * Required form fields may be missing: they haven't been typed yet. Other
+	 * options are still checked, so a bad time can be refused before the form.
+	 */
+	skipMissingFormFields?: boolean;
+};
+
+/**
  * Checks args against the command's declared options. Platforms like Discord
  * already enforce this, but adapters are untrusted input boundaries, so the
  * core checks again. Unknown args are dropped. `user` options must carry the
@@ -465,6 +525,7 @@ export function validateArgs(
 	args: Args,
 	users: Readonly<Record<string, ResolvedUser>> = {},
 	channels: Readonly<Record<string, ResolvedChannel>> = {},
+	flags: ValidateArgsFlags = {},
 ): ValidInput {
 	const result: Record<string, ArgValue> = {};
 	const resolved: Record<string, ResolvedUser> = {};
@@ -472,7 +533,13 @@ export function validateArgs(
 	for (const option of definition.options ?? []) {
 		const value = args[option.name];
 		if (value === undefined) {
-			if (option.required) throw new UserFacingError(`Missing required option "${option.name}".`);
+			const formPending =
+				flags.skipMissingFormFields === true &&
+				option.type === "string" &&
+				option.form !== undefined;
+			if (option.required && !formPending) {
+				throw new UserFacingError(`Missing required option "${option.name}".`);
+			}
 			continue;
 		}
 		switch (option.type) {

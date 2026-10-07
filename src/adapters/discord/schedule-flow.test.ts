@@ -5,6 +5,7 @@ import type {
 	DispatchRequest,
 	DispatchResult,
 	FormOption,
+	FormPrep,
 } from "../../core/dispatcher.ts";
 import { command, IDS } from "../../testing/fixtures.ts";
 import { callerAbilities, parseOptions } from "./args.ts";
@@ -255,7 +256,7 @@ describe("PendingForms", () => {
 	});
 });
 
-function fakeDispatcher(fields: FormOption[], refused?: DispatchResult) {
+function fakeDispatcher(fields: FormOption[], prepared?: FormPrep) {
 	return {
 		dispatch: vi.fn(
 			async (_req: DispatchRequest, _hooks?: DispatchHooks): Promise<DispatchResult> => ({
@@ -265,7 +266,7 @@ function fakeDispatcher(fields: FormOption[], refused?: DispatchResult) {
 		),
 		defaultPrivacy: vi.fn(() => true),
 		formFields: vi.fn(() => fields),
-		precheck: vi.fn(async (): Promise<DispatchResult | undefined> => refused),
+		prepareForm: vi.fn(async (): Promise<FormPrep> => prepared ?? { ready: true }),
 	};
 }
 const respondable = () => ({
@@ -338,11 +339,23 @@ describe("commands with a form", () => {
 	});
 
 	it("tell someone who'd be refused straight away, without opening the form", async () => {
-		const dispatcher = fakeDispatcher([TEXT], { reply: { text: "no" }, private: true });
+		const dispatcher = fakeDispatcher([TEXT], {
+			ready: false,
+			refuse: { reply: { text: "no" }, private: true },
+		});
 		const command = incoming();
 		await createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 })(command);
 		expect(command.showModal).not.toHaveBeenCalled();
 		expect(command.reply).toHaveBeenCalledWith(expect.objectContaining({ content: "no" }));
+	});
+
+	it("puts the interpreted time on the form once `when` has parsed", async () => {
+		const dispatcher = fakeDispatcher([TEXT], { ready: true, title: "Wed 14 Oct 2026, 19:00" });
+		const command = incoming();
+		await createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 })(command);
+		const [shown] = vi.mocked(command.showModal).mock.calls[0] as [ReturnType<typeof formModal>];
+		expect(shown.title).toBe("Wed 14 Oct 2026, 19:00");
+		expect(dispatcher.dispatch).not.toHaveBeenCalled();
 	});
 
 	it("refuse a form that expired, was already used, or isn't theirs", async () => {

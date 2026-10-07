@@ -51,7 +51,7 @@ export type IncomingModal = Respondable & {
 
 export type CommandHandlerDeps = {
 	guildId: string;
-	dispatcher: Pick<Dispatcher, "dispatch" | "defaultPrivacy" | "formFields" | "precheck">;
+	dispatcher: Pick<Dispatcher, "dispatch" | "defaultPrivacy" | "formFields" | "prepareForm">;
 	deferAfterMs: number;
 	/** Commands waiting for their form. Shared with the modal handler. */
 	forms?: PendingForms;
@@ -91,14 +91,16 @@ export function createCommandHandler({
 		};
 		const fields = dispatcher.formFields(interaction.commandName, subcommand, subgroup);
 		if (fields.length > 0) {
-			// Don't open a form for someone who'd be refused: tell them now instead.
-			const refused = await dispatcher.precheck(request);
-			if (refused) {
-				await interaction.reply(renderReply(refused.reply, true));
+			// Access, then slash options such as `when`, before the body form opens.
+			const prepared = await dispatcher.prepareForm(request);
+			if (!prepared.ready) {
+				await interaction.reply(renderReply(prepared.refuse.reply, true));
 				return;
 			}
-			const title = [interaction.commandName, subgroup, subcommand].filter(Boolean).join(" ");
-			await interaction.showModal(formModal(forms.hold(request, fields), `/${title}`, fields));
+			const fallback = [interaction.commandName, subgroup, subcommand].filter(Boolean).join(" ");
+			await interaction.showModal(
+				formModal(forms.hold(request, fields), prepared.title ?? `/${fallback}`, fields),
+			);
 			return;
 		}
 		await run(interaction, request, dispatcher, deferAfterMs);

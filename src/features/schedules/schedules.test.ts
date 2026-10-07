@@ -149,6 +149,66 @@ describe("who may schedule", () => {
 	});
 });
 
+describe("before the body form", () => {
+	const form = (dispatcher: Dispatcher, args: Record<string, string | boolean>, ch = channel()) =>
+		dispatcher.prepareForm({
+			actor: actor({ userId: IDS.member, displayName: "Ada" }),
+			command: "schedule",
+			subcommand: "message",
+			args: { channel: CHANNEL, ...args },
+			channels: { channel: ch },
+		});
+
+	it("parses a good `when` and puts the interpreted time on the form title", async () => {
+		const { dispatcher, store } = setup();
+		expect(await form(dispatcher, { when: "wed 19:00" })).toEqual({
+			ready: true,
+			title: "Wed 14 Oct 2026, 19:00",
+		});
+		expect(await form(dispatcher, { when: "tomorrow 9am" })).toEqual({
+			ready: true,
+			title: "Tue 13 Oct 2026, 09:00",
+		});
+		expect(store.all()).toEqual([]);
+	});
+
+	it("refuses a bad or past `when` without opening the form, so the body is never typed", async () => {
+		const { dispatcher, store } = setup();
+		const bad = await form(dispatcher, { when: "someday" });
+		expect(bad.ready).toBe(false);
+		if (!bad.ready) expect(bad.refuse.reply.text).toMatch(/couldn't understand that time/);
+		const past = await form(dispatcher, { when: "today 9" });
+		expect(past.ready).toBe(false);
+		if (!past.ready) expect(past.refuse.reply.text).toMatch(/past/);
+		expect(store.all()).toEqual([]);
+	});
+
+	it("refuses a weekly `days` it can't read, still without a form", async () => {
+		const { dispatcher } = setup();
+		const result = await form(dispatcher, {
+			when: "wed 19:00",
+			repeat: "weekly",
+			days: "blursday",
+		});
+		expect(result.ready).toBe(false);
+		if (!result.ready) expect(result.refuse.reply.text).toMatch(/couldn't understand those days/);
+	});
+
+	it("does the same for a poll", async () => {
+		const { dispatcher, store } = setup();
+		const result = await dispatcher.prepareForm({
+			actor: actor({ userId: IDS.member, displayName: "Ada" }),
+			command: "schedule",
+			subcommand: "poll",
+			args: { channel: CHANNEL, when: "someday" },
+			channels: { channel: channel() },
+		});
+		expect(result.ready).toBe(false);
+		if (!result.ready) expect(result.refuse.reply.text).toMatch(/couldn't understand that time/);
+		expect(store.all()).toEqual([]);
+	});
+});
+
 describe("/schedule message", () => {
 	it("saves the message with its channel, time and repeat, and previews the next posts", async () => {
 		const { message, store, info } = setup();

@@ -35,7 +35,9 @@ export type SuggestFn = (context: SuggestContext) => Promise<readonly Suggestion
 /**
  * A string option that is filled in on a form (a modal on Discord) instead of being
  * typed with the command: for long or multi-line text. The form opens once access
- * has been checked, and what's entered arrives as an ordinary argument.
+ * has been checked and `beforeForm` (if any) has passed, so slash options such as a
+ * free-form time can be refused before anyone types a long body. What's entered
+ * arrives as an ordinary argument.
  */
 export type FormField = {
 	style: "short" | "paragraph";
@@ -117,6 +119,21 @@ type Named = {
 	access: Access;
 };
 
+/**
+ * Slash-option context for `beforeForm`. Form fields are still empty; the rest
+ * has been type-checked the same way as `dispatch`.
+ */
+export type BeforeFormContext = {
+	args: Args;
+	users: Readonly<Record<string, ResolvedUser>>;
+	channels: Readonly<Record<string, ResolvedChannel>>;
+	principal: Principal;
+	logger: Logger;
+};
+
+/** Optional title shown on the form, e.g. the time Pixel understood. */
+export type BeforeFormResult = { title?: string };
+
 type Runnable = {
 	options?: readonly CommandOption[];
 	/** Default reply visibility. Replies can override it with `Reply.private`. */
@@ -126,6 +143,13 @@ type Runnable = {
 	 * replaced by the handler's reply. Only sent once access checks pass.
 	 */
 	placeholder?: Reply;
+	/**
+	 * Extra checks after access, before a form is shown. Form fields are still
+	 * empty. Throw `UserFacingError` to refuse without opening the form, so a
+	 * long body isn't typed against a bad option (a time Pixel can't parse, say).
+	 * The returned title, if any, is shown on the form.
+	 */
+	beforeForm?: (ctx: BeforeFormContext) => Promise<BeforeFormResult | undefined>;
 	handler: (ctx: CommandContext) => Promise<Reply>;
 };
 
@@ -153,6 +177,7 @@ export type GroupCommand = Named & {
 	handler?: undefined;
 	private?: undefined;
 	placeholder?: undefined;
+	beforeForm?: undefined;
 };
 
 export type CommandDefinition = PlainCommand | GroupCommand;

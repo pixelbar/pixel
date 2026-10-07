@@ -5,6 +5,7 @@ import { CapabilityRegistry } from "./capabilities.ts";
 import { ChannelPosts, ChannelPostsUnavailableError, POSTS_UNAVAILABLE } from "./channel-posts.ts";
 import type { CommandDefinition, CommandOption, ResolvedChannel } from "./command.ts";
 import { Dispatcher, MESSAGES, validateArgs } from "./dispatcher.ts";
+import { UserFacingError } from "./errors.ts";
 import { IdentityService } from "./identity.ts";
 import { silentLogger } from "./logger.ts";
 import { nullErrorReporter } from "./ports/error-reporter.ts";
@@ -66,6 +67,22 @@ describe("form fields", () => {
 			/at most 10 characters/,
 		);
 		expect(validateArgs({ options: [text] }, { text: "short" }).args).toEqual({ text: "short" });
+	});
+
+	it("can be omitted when skipMissingFormFields is set, so the form hasn't opened yet", () => {
+		expect(() => validateArgs({ options: [where, text] }, {})).toThrow(/where/);
+		expect(
+			validateArgs(
+				{ options: [where, text] },
+				{ where: channel.id },
+				{},
+				{ where: channel },
+				{ skipMissingFormFields: true },
+			).args,
+		).toEqual({ where: channel.id });
+		expect(() =>
+			validateArgs({ options: [where, text] }, {}, {}, {}, { skipMissingFormFields: true }),
+		).toThrow(/where/);
 	});
 
 	it("don't count towards the order of typed options", () => {
@@ -206,6 +223,154 @@ describe("precheck", () => {
 			reason: "tier",
 			required: "member",
 			command: "members",
+		});
+	});
+});
+
+describe("prepareForm", () => {
+	it("opens the form with no extra title when the command has no beforeForm", async () => {
+		const dispatcher = build([command({ name: "post", options: [where, text] })]);
+		expect(
+			await dispatcher.prepareForm({
+				actor: actor(),
+				command: "post",
+				args: { where: channel.id },
+				channels: { where: channel },
+			}),
+		).toEqual({ ready: true });
+	});
+
+	it("lets the form open once access and slash options pass, with an optional title", async () => {
+		const dispatcher = build([
+			command({
+				name: "post",
+				options: [where, text],
+				beforeForm: async () => ({ title: "Wed 14 Oct 2026, 19:00" }),
+			}),
+		]);
+		expect(
+			await dispatcher.prepareForm({
+				actor: actor(),
+				command: "post",
+				args: { where: channel.id },
+				channels: { where: channel },
+			}),
+		).toEqual({ ready: true, title: "Wed 14 Oct 2026, 19:00" });
+	});
+
+	it("does not require form fields yet, so a long body isn't asked for against a bad option", async () => {
+		const dispatcher = build([
+			command({
+				name: "post",
+				options: [where, text],
+				beforeForm: async ({ args }) => {
+					if (args.when === "someday") throw new Error("should not run");
+					return { title: "ok" };
+				},
+			}),
+		]);
+		// `text` is required on the form; it is missing here on purpose.
+		const ready = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "post",
+			args: { where: channel.id },
+			channels: { where: channel },
+		});
+		expect(ready.ready).toBe(true);
+	});
+
+	it("refuses a bad slash option without running the handler, so nothing is saved", async () => {
+		const handler = vi.fn(async () => ({ text: "saved" }));
+		const dispatcher = build([
+			command({
+				name: "post",
+				options: [where, text],
+				beforeForm: async () => {
+					throw new UserFacingError("bad time");
+				},
+				handler,
+			}),
+		]);
+		const result = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "post",
+			args: { where: channel.id, when: "someday" },
+			channels: { where: channel },
+		});
+		expect(result).toEqual({
+			ready: false,
+			refuse: { reply: { text: "bad time", private: true }, private: true },
+		});
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("still refuses someone who may not run the command, without opening the form", async () => {
+		const dispatcher = build([
+			command({
+				name: "members",
+				access: { minTier: "member" },
+				options: [text],
+				beforeForm: async () => ({ title: "nope" }),
+			}),
+		]);
+		const result = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "members",
+			args: {},
+		});
+		expect(result).toEqual({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.deniedTier, private: true }, private: true },
+		});
+	});
+
+	it("turns a failure in beforeForm into a reported internal error", async () => {
+		const dispatcher = build([
+			command({
+				name: "post",
+				options: [text],
+				beforeForm: async () => {
+					throw new Error("boom");
+				},
+			}),
+		]);
+		const result = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "post",
+			args: {},
+		});
+		expect(result).toEqual({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.internalError, private: true }, private: true },
+		});
+	});
+
+	it("refuses an unknown command without opening a form", async () => {
+		const dispatcher = build([command({ name: "post", options: [text] })]);
+		const result = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "nope",
+			args: {},
+		});
+		expect(result).toEqual({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.unknownCommand, private: true }, private: true },
+		});
+	});
+
+	it("still requires non-form options", async () => {
+		const dispatcher = build([command({ name: "post", options: [where, text] })]);
+		const result = await dispatcher.prepareForm({
+			actor: actor(),
+			command: "post",
+			args: {},
+		});
+		expect(result).toEqual({
+			ready: false,
+			refuse: {
+				reply: { text: 'Missing required option "where".', private: true },
+				private: true,
+			},
 		});
 	});
 });
