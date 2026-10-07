@@ -48,6 +48,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 
 | I want to… | Do this |
 | --- | --- |
+| See when Pixel last started, crashed or stopped, and which version | The announcements channel: a "🟢 Pixel is online" post per run, edited to "🔴 offline" on shutdown, or marked "⚠️ stopped unexpectedly" after a crash |
 | See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, Node, uptime, access list counts, Discord roles, Home Assistant) |
 | Check readiness from outside | `GET /healthz` (process is up) and `GET /readyz` (200 only while the Discord gateway is connected, otherwise 503), on `HEALTH_PORT` (default 8080) |
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
@@ -193,7 +194,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **The bot is offline or doesn't answer**
 
-1. `/ping` in Discord. No answer? Check `/readyz` and `/healthz`. 503 on `/readyz` means the process is up but the Discord gateway isn't connected.
+1. Look at Pixel's latest status post in the announcements channel: "offline" means it was shut down, "stopped unexpectedly" means it crashed (check the logs and Sentry for why), and a missing post for a start you expected means it never got as far as Discord. `/ping` in Discord. No answer? Check `/readyz` and `/healthz`. 503 on `/readyz` means the process is up but the Discord gateway isn't connected.
 2. Look at the logs for the last few minutes (console, `data/logs/current.log` or Sentry Logs). A start-up failure prints `Pixel failed to start:` with the reason (a bad config file, a missing admin list, an invalid token).
 3. Common causes: a bad edit to an access file (`just validate-config`), a reset or expired Discord token (rotate it, restart), Discord itself being down (check Discord's status page, then wait), or the host being out of resources.
 4. Restart it. If it keeps failing, roll back (see [Deploys](#deploys)).

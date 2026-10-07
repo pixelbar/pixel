@@ -16,6 +16,14 @@ const envSchema = z
 	.object({
 		PIXEL_ENV: pixelEnv,
 		PIXEL_VERSION: z.string().default("dev"),
+		// Set by CI and the Docker build; from a checkout Pixel asks git instead.
+		PIXEL_GIT_SHA: optional(
+			z
+				.string()
+				.trim()
+				.regex(/^[0-9a-f]{7,40}$/),
+		),
+		PIXEL_GIT_BRANCH: optional(z.string().trim().min(1).max(100)),
 		LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 		PIXEL_ADMINS_FILE: z.string().default("config/admins.yaml"),
 		PIXEL_MEMBERS_FILE: z.string().default("config/members.yaml"),
@@ -39,6 +47,7 @@ const envSchema = z
 		DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
+		DISCORD_ANNOUNCE_BOT_CHANNEL_ID: optional(snowflake),
 		// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
 		DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
 		DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
@@ -55,6 +64,9 @@ const envSchema = z
 export type Config = {
 	env: "local" | "dev" | "prod";
 	version: string;
+	/** The git commit and branch Pixel was built from, when given. */
+	gitSha: string | undefined;
+	gitBranch: string | undefined;
 	logLevel: "debug" | "info" | "warn" | "error";
 	access: { adminsFile: string; membersFile: string };
 	/** Where Pixel keeps small bits of runtime state (e.g. `space.state`). */
@@ -86,6 +98,11 @@ export type Config = {
 			liveChannelId: string | undefined;
 			/** A new post for every open and every close; never edited. */
 			timelineChannelId: string | undefined;
+			/**
+			 * Where Pixel says it came online or is going offline. Defaults to the
+			 * announcements channel. Undefined means off.
+			 */
+			botChannelId: string | undefined;
 		};
 		/**
 		 * The Discord role each tier is mirrored to, by name or ID. Pixel pushes tiers
@@ -117,6 +134,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	return {
 		env: e.PIXEL_ENV,
 		version: e.PIXEL_VERSION,
+		gitSha: e.PIXEL_GIT_SHA,
+		gitBranch: e.PIXEL_GIT_BRANCH,
 		logLevel: e.LOG_LEVEL,
 		access: { adminsFile: e.PIXEL_ADMINS_FILE, membersFile: e.PIXEL_MEMBERS_FILE },
 		dataDir: e.PIXEL_DATA_DIR,
@@ -136,6 +155,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			announce: {
 				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
 				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,
+				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 		},

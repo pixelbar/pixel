@@ -192,7 +192,9 @@ describe("announcing changes", () => {
 		emit({ from: "open", to: "closed", previousSince: T0 });
 		await advance(INTERVAL * 3);
 
-		expect(announcer.announce.mock.calls.map(([a]) => a.state)).toEqual(["open", "closed"]);
+		expect(
+			announcer.announce.mock.calls.map(([a]) => (a.kind === "space.status" ? a.state : a.kind)),
+		).toEqual(["open", "closed"]);
 	});
 
 	it("doesn't announce a change twice even if every publisher failed", async () => {

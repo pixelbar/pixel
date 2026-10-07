@@ -5,6 +5,8 @@ import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
+import { createBotStatus } from "./features/bot-status/index.ts";
+import { loadBuildInfo } from "./observability/build-info.ts";
 import { startHealthServer } from "./observability/health.ts";
 import { createLogger } from "./observability/logger.ts";
 import { logProcessFailures } from "./observability/process-logging.ts";
@@ -36,6 +38,17 @@ async function main(): Promise<void> {
 		"starting Pixel",
 	);
 
+	const build = loadBuildInfo(config);
+	const botStatus = createBotStatus({
+		announcer,
+		build,
+		startedAt: new Date(),
+		home,
+		spaceStatus,
+		logger,
+	});
+	logger.info({ event: "build", ...build }, "build info");
+
 	// Background work (e.g. announcing space changes) starts once Discord is ready,
 	// so the announcement publishers exist before the first change is announced.
 	let stopFeatures: Stop = () => {};
@@ -46,6 +59,7 @@ async function main(): Promise<void> {
 		logger,
 		announce: config.discord.announce,
 		announceStateFile: join(config.dataDir, "announcements.state"),
+		botStatusStateFile: join(config.dataDir, "bot-status.state"),
 		announcer,
 		calendar,
 		roles,
@@ -53,11 +67,15 @@ async function main(): Promise<void> {
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
+			// Say Pixel is online once Home Assistant has had a moment to connect, so the
+			// status it posts is meaningful. Never holds anything up.
+			void Promise.race([homeAssistantSettled(), delay(10_000)]).then(() => botStatus.up());
 		},
 	});
 	// Home Assistant connects in the background and reconnects forever, so it never holds up the
 	// bot. It doesn't count towards health either: Home Assistant being down shouldn't restart Pixel.
 	let homeAssistant: HomeAssistantBackend | undefined;
+	const homeAssistantSettled = () => homeAssistant?.settled ?? Promise.resolve();
 	if (config.homeAssistant) {
 		homeAssistant = new HomeAssistantBackend({ ...config.homeAssistant, logger });
 		home.attach(homeAssistant);
@@ -86,6 +104,8 @@ async function main(): Promise<void> {
 		if (stopping) return;
 		stopping = true;
 		logger.info({ event: "shutdown", signal }, "shutting down");
+		// Say goodbye while still connected, but never let it hold up the shutdown.
+		await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
 		stopFeatures();
 		spaceStatus.stop();
 		homeAssistant?.close();
@@ -109,3 +129,7 @@ main().catch(async (error: unknown) => {
 	await Sentry.flush(2000);
 	process.exit(1);
 });
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}

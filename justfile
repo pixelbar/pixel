@@ -58,4 +58,8 @@ command-access:
 
 # Build the container image
 docker-build tag="pixel:local":
-    docker build --build-arg PIXEL_VERSION=$(git rev-parse --short HEAD) -t {{tag}} .
+    docker build \
+      --build-arg PIXEL_VERSION=$(git rev-parse --short HEAD) \
+      --build-arg PIXEL_GIT_SHA=$(git rev-parse HEAD) \
+      --build-arg PIXEL_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
+      -t {{tag}} .
