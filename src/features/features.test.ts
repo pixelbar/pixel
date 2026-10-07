@@ -15,6 +15,7 @@ import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
 import { HomeDeviceStore } from "../services/home-devices.ts";
 import { HomeInventory } from "../services/home-inventory.ts";
+import { KindSwitch } from "../services/kind-switch.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -49,6 +50,7 @@ const deps = () => ({
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 	homeDevices: HomeDeviceStore.empty(),
 	homeInventory: HomeInventory.off(),
+	switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
 	spaceStatus,
@@ -88,6 +90,7 @@ describe("buildFeatures", () => {
 			["level", "admin"],
 			["sync", "admin"],
 			["capabilities", "admin"],
+			["doors", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -141,6 +144,7 @@ function adminSubcommand(
 		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 		homeDevices: HomeDeviceStore.empty(),
 		homeInventory: HomeInventory.off(),
+		switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 	}).commands?.[0];
@@ -198,6 +202,7 @@ describe("admin", () => {
 			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 			homeDevices: HomeDeviceStore.empty(),
 			homeInventory: HomeInventory.off(),
+			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter: { ...nullErrorReporter, captureBackground },
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");

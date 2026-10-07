@@ -30,10 +30,12 @@ const HEADER = "# Pixel's record of its live Discord status post. Safe to delete
 export class FileLivePostStore implements LivePostStore {
 	readonly #path: string;
 	readonly #channelId: string;
+	readonly #header: string;
 
-	constructor(path: string, channelId: string) {
+	constructor(path: string, channelId: string, header = HEADER) {
 		this.#path = path;
 		this.#channelId = channelId;
+		this.#header = header;
 	}
 
 	load(): string | undefined {
@@ -67,7 +69,7 @@ export class FileLivePostStore implements LivePostStore {
 		mkdirSync(dirname(this.#path), { recursive: true });
 		// Write to a temp file and rename, so a crash can't leave a half-written file.
 		const temp = `${this.#path}.tmp`;
-		writeFileSync(temp, HEADER + stringify({ channelId: this.#channelId, messageId }));
+		writeFileSync(temp, this.#header + stringify({ channelId: this.#channelId, messageId }));
 		renameSync(temp, this.#path);
 	}
 }

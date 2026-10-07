@@ -68,6 +68,9 @@ jobs:
         with:
           context: .
           push: false
-          build-args: PIXEL_VERSION=${{ github.sha }}
+          build-args: |
+            PIXEL_VERSION=${{ github.sha }}
+            PIXEL_GIT_SHA=${{ github.sha }}
+            PIXEL_GIT_BRANCH=${{ github.head_ref || github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

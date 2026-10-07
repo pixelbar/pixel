@@ -15,7 +15,7 @@ import { CommandRegistry } from "../../core/registry.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { type ControlResult, DeviceControl } from "./control.ts";
-import { createHomeFeature, DEFAULT_BLOCKED_KINDS } from "./index.ts";
+import { createHomeFeature, openingAction } from "./index.ts";
 
 const DEVICES = `devices:
   - name: lamp
@@ -79,7 +79,7 @@ function setup(
 		yaml?: string | null;
 		result?: ControlResult & { durationMs: number };
 		run?: (...args: unknown[]) => Promise<ControlResult & { durationMs: number }>;
-		blockedKinds?: ReadonlySet<string>;
+		doorsOff?: boolean;
 		control?: DeviceControl;
 		states?: EntityState[];
 	} = {},
@@ -106,7 +106,7 @@ function setup(
 		homeDevices: devices,
 		reporter,
 		control,
-		...(options.blockedKinds ? { blockedKinds: options.blockedKinds } : {}),
+		switches: { isOn: (kind: string) => !(options.doorsOff && kind === "door") },
 	});
 	const registry = new CommandRegistry();
 	registry.register(feature);
@@ -153,7 +153,34 @@ function setup(
 			typed,
 			args,
 		});
-	return { set, suggest, run, logger, reporter, getStates, callService, feature };
+	const dispatch = (who: Who, subcommand: string, args: Record<string, string>) =>
+		dispatcher.dispatch({
+			actor: actor({ userId: PEOPLE[who].id }),
+			command: "ha",
+			subcommand,
+			args,
+		});
+	const suggestFor = (who: Who, subcommand: string, option: string, typed = "") =>
+		dispatcher.suggest({
+			actor: actor({ userId: PEOPLE[who].id }),
+			command: "ha",
+			subcommand,
+			option,
+			typed,
+			args: {},
+		});
+	return {
+		set,
+		suggest,
+		dispatch,
+		suggestFor,
+		run,
+		logger,
+		reporter,
+		getStates,
+		callService,
+		feature,
+	};
 }
 
 const names = (suggestions: { value: string | number }[]) => suggestions.map((s) => s.value);
@@ -248,12 +275,21 @@ describe("/ha set: who may", () => {
 });
 
 describe("/ha set: doors", () => {
-	it("is switched off for doors until their safeguards exist, even for ha-doors and ha-admin", async () => {
-		expect([...DEFAULT_BLOCKED_KINDS]).toEqual(["door"]);
+	it("works for someone with ha-doors or ha-admin", async () => {
 		for (const who of ["doors", "haAdmin"] as const) {
-			const { set, run, logger } = setup();
+			const { set, run } = setup();
+			expect((await set(who, "front-door", "unlock")).reply.embeds?.[0]?.title).toBe("✅ Done");
+			expect(run).toHaveBeenCalledTimes(1);
+		}
+	});
+
+	it("is refused to everyone while an admin has switched doors off", async () => {
+		for (const who of ["doors", "haAdmin"] as const) {
+			const { set, run, logger } = setup({ doorsOff: true });
 			const result = await set(who, "front-door", "unlock");
-			expect(result.reply.text).toBe("Controlling doors from Pixel isn't switched on yet.");
+			expect(result.reply.text).toBe(
+				"Controlling doors from Pixel is switched off by an admin right now.",
+			);
 			expect(run).not.toHaveBeenCalled();
 			expect(logged(logger.warn.mock.calls)).toContainEqual({
 				event: "home.action_denied",
@@ -264,21 +300,33 @@ describe("/ha set: doors", () => {
 		}
 	});
 
+	it("leaves lights alone when doors are switched off", async () => {
+		const { set } = setup({ doorsOff: true });
+		expect((await set("lights", "lamp", "on")).reply.embeds?.[0]?.title).toBe("✅ Done");
+	});
+
 	it("says nothing about doors to someone who may not use one", async () => {
 		const { set } = setup();
 		expect((await set("lights", "front-door", "unlock")).reply.text).toBe(HOME_DENIED);
 	});
 
-	it("works once the kind is allowed", async () => {
-		const { set, run } = setup({ blockedKinds: new Set() });
-		expect((await set("doors", "front-door", "unlock")).reply.embeds?.[0]?.title).toBe("✅ Done");
-		expect(run).toHaveBeenCalledTimes(1);
+	it("logs every door action with the device, action and outcome", async () => {
+		const { set, logger } = setup();
+		await set("doors", "front-door", "unlock");
+		expect(logged(logger.info.mock.calls)).toContainEqual(
+			expect.objectContaining({
+				event: "home.action",
+				device: "front-door",
+				kind: "door",
+				action: "unlock",
+			}),
+		);
 	});
 });
 
 describe("/ha set: what it says", () => {
 	const reply = async (result: ControlResult & { durationMs: number }, state = "") => {
-		const { set } = setup({ result, blockedKinds: new Set() });
+		const { set } = setup({ result });
 		const out = await set(
 			"haAdmin",
 			state === "door" ? "front-door" : "lamp",
@@ -581,7 +629,13 @@ describe("autocomplete for /ha set", () => {
 		const { suggest } = setup();
 		expect(names(await suggest("lights", "state"))).toEqual(["off", "on", "toggle"]);
 		expect(names(await suggest("switches", "state"))).toEqual(["off", "on"]);
-		expect(names(await suggest("haAdmin", "state"))).toEqual(["off", "on", "toggle"]);
+		expect(names(await suggest("haAdmin", "state"))).toEqual([
+			"lock",
+			"off",
+			"on",
+			"toggle",
+			"unlock",
+		]);
 		expect(await suggest("plainMember", "state")).toEqual([]);
 		expect(await suggest("guestWithEverything", "state")).toEqual([]);
 	});
@@ -597,23 +651,28 @@ describe("autocomplete for /ha set", () => {
 		expect(await suggest("haAdmin", "state", "zzz", { device: "lamp" })).toEqual([]);
 	});
 
-	it("leaves doors out while they're switched off, so they're never offered", async () => {
+	it("offers doors, and leaves them out while they're switched off", async () => {
 		const { suggest } = setup();
-		expect(await suggest("doors", "state", "", { device: "front-door" })).toEqual([]);
-		expect(await suggest("doors", "device")).toEqual([]);
-		const open = setup({ blockedKinds: new Set() });
-		expect(names(await open.suggest("doors", "state", "", { device: "front-door" }))).toEqual([
+		expect(names(await suggest("doors", "state", "", { device: "front-door" }))).toEqual([
 			"lock",
 			"unlock",
 		]);
-		expect(names(await open.suggest("doors", "device"))).toEqual(["front-door"]);
+		expect(names(await suggest("doors", "device"))).toEqual(["front-door"]);
+		const off = setup({ doorsOff: true });
+		expect(await off.suggest("doors", "state", "", { device: "front-door" })).toEqual([]);
+		expect(await off.suggest("doors", "device")).toEqual([]);
 	});
 
 	it("offers for device only what the person may act on, never read-only ones", async () => {
 		const { suggest } = setup();
 		expect(names(await suggest("lights", "device"))).toEqual(["lamp", "sign"]);
 		expect(names(await suggest("switches", "device"))).toEqual(["socket"]);
-		expect(names(await suggest("haAdmin", "device"))).toEqual(["lamp", "sign", "socket"]);
+		expect(names(await suggest("haAdmin", "device"))).toEqual([
+			"front-door",
+			"lamp",
+			"sign",
+			"socket",
+		]);
 		expect(names(await suggest("friendLights", "device"))).toEqual(["sign"]);
 		expect(await suggest("plainMember", "device")).toEqual([]);
 		expect(await suggest("plainAdmin", "device")).toEqual([]);
@@ -629,6 +688,7 @@ describe("autocomplete for /ha set", () => {
 			"socket",
 		]);
 		expect(names(await suggest("haAdmin", "device", "", { state: "no-such-state" }))).toEqual([
+			"front-door",
 			"lamp",
 			"sign",
 			"socket",
@@ -652,5 +712,76 @@ describe("autocomplete for /ha set", () => {
 		const { set, run } = setup();
 		expect((await set("lights", "socket", "on")).reply.text).toBe(HOME_DENIED);
 		expect(run).not.toHaveBeenCalled();
+	});
+});
+
+describe("/ha open", () => {
+	const OPENABLE = DEVICES.replace("actions: [lock, unlock]", "actions: [lock, unlock, open]");
+	const open = (ctx: ReturnType<typeof setup>, who: Who, door: string) =>
+		ctx.dispatch(who, "open", { door });
+
+	it("unlocks a door that can't be unlatched, and unlatches one that can", async () => {
+		const plain = setup();
+		await open(plain, "doors", "front-door");
+		expect((plain.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
+		const openable = setup({ yaml: OPENABLE });
+		await open(openable, "doors", "front-door");
+		expect((openable.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("open");
+		expect(openingAction({ actions: [{ name: "open" }] as never })).toBe("open");
+		expect(openingAction({ actions: [] })).toBe("unlock");
+	});
+
+	it("needs member tier and ha-doors or ha-admin, like /ha set", async () => {
+		const ctx = setup();
+		expect((await open(ctx, "doors", "front-door")).reply.embeds?.[0]?.title).toBe("✅ Done");
+		expect((await open(ctx, "haAdmin", "front-door")).reply.embeds?.[0]?.title).toBe("✅ Done");
+		for (const who of ["lights", "plainMember", "plainAdmin"] as const) {
+			expect((await open(ctx, who, "front-door")).reply.text).toBe(HOME_DENIED);
+		}
+		expect((await open(ctx, "friendAdmin", "front-door")).reply.text).toBe(MESSAGES.deniedTier);
+		expect((await open(ctx, "guestWithEverything", "front-door")).reply.text).toBe(
+			MESSAGES.deniedTier,
+		);
+		expect(ctx.run).toHaveBeenCalledTimes(2);
+	});
+
+	it("only opens doors: anything else gets the generic answer, and so does a door that doesn't exist", async () => {
+		const ctx = setup();
+		expect((await open(ctx, "haAdmin", "lamp")).reply.text).toBe(HOME_DENIED);
+		expect((await open(ctx, "haAdmin", "back-door")).reply.text).toBe(HOME_DENIED);
+		expect(ctx.run).not.toHaveBeenCalled();
+		expect(logged(ctx.logger.warn.mock.calls).map((f) => f.reason)).toEqual([
+			"not-a-door",
+			"unknown-device",
+		]);
+	});
+
+	it("is refused while doors are switched off", async () => {
+		const ctx = setup({ doorsOff: true });
+		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(
+			"Controlling doors from Pixel is switched off by an admin right now.",
+		);
+		expect(ctx.run).not.toHaveBeenCalled();
+	});
+
+	it("needs a door that allows unlocking or opening", async () => {
+		const ctx = setup({ yaml: DEVICES.replace("actions: [lock, unlock]", "actions: [lock]") });
+		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(HOME_DENIED);
+		expect(ctx.run).not.toHaveBeenCalled();
+	});
+
+	it("says it isn't set up when Home Assistant isn't configured", async () => {
+		const ctx = setup({ yaml: null });
+		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(HOME_MESSAGES.notSetUp);
+	});
+
+	it("offers only the doors the person may open, and none while switched off", async () => {
+		const ctx = setup();
+		expect(names(await ctx.suggestFor("doors", "open", "door"))).toEqual(["front-door"]);
+		expect(names(await ctx.suggestFor("haAdmin", "open", "door"))).toEqual(["front-door"]);
+		expect(await ctx.suggestFor("lights", "open", "door")).toEqual([]);
+		expect(await ctx.suggestFor("plainAdmin", "open", "door")).toEqual([]);
+		expect(await setup({ doorsOff: true }).suggestFor("doors", "open", "door")).toEqual([]);
+		expect(await setup({ yaml: null }).suggestFor("doors", "open", "door")).toEqual([]);
 	});
 });

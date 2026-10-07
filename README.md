@@ -58,7 +58,9 @@ Pixel can post when Pixelbar opens or closes, in two styles. Each has its own ch
 - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
 - **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
 
-A change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
+Pixel also says when **it** comes online and goes offline, in the announcements channel (`DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, or `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` to put it elsewhere): a new "🟢 Pixel is online" post on every start with the version, commit, branch (when it isn't `main`) and a short status, edited to "🔴 Pixel is offline" with the uptime when it shuts down. If it crashed, the next start marks the old post "stopped unexpectedly".
+
+A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
@@ -104,6 +106,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
 | `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` | Optional. Where announcements and the weekly poll are posted. `/info` points people at it |
 | `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` | Optional. Channel for the **live** style: one post per opening, edited to "closed" when the space closes |
+| `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | Optional. Post Pixel's own online/offline status here instead of the announcements channel |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |

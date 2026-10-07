@@ -44,7 +44,8 @@ export function createTimelinePublisher(channel: AnnouncementChannel): Publisher
 	return {
 		id: TIMELINE_PUBLISHER_ID,
 		async publish(announcement) {
-			// When more kinds of announcement exist, handle (or skip) each one explicitly here.
+			// Only the space's own changes belong in a timeline channel.
+			if (announcement.kind !== "space.status") return;
 			await channel.send(timelinePost(announcement));
 		},
 	};
@@ -139,6 +140,7 @@ export function createLivePublisher(
 		id: LIVE_PUBLISHER_ID,
 
 		async publish(announcement) {
+			if (announcement.kind !== "space.status") return;
 			const open = await findOpenPosts();
 
 			if (announcement.state === "open") {

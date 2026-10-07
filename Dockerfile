@@ -15,8 +15,13 @@ RUN pnpm prune --prod
 
 FROM node:24-slim AS runtime
 ARG PIXEL_VERSION=dev
+# The commit and branch the image was built from, shown when Pixel says it's online.
+ARG PIXEL_GIT_SHA=""
+ARG PIXEL_GIT_BRANCH=""
 ENV NODE_ENV=production \
-    PIXEL_VERSION=${PIXEL_VERSION}
+    PIXEL_VERSION=${PIXEL_VERSION} \
+    PIXEL_GIT_SHA=${PIXEL_GIT_SHA} \
+    PIXEL_GIT_BRANCH=${PIXEL_GIT_BRANCH}
 WORKDIR /app
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules

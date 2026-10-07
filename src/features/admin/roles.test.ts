@@ -9,6 +9,7 @@ import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { Home, type HomeBackend, type HomeStatus } from "../../core/home.ts";
 import { IdentityService } from "../../core/identity.ts";
 import type { Logger } from "../../core/logger.ts";
+import { silentLogger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
@@ -23,6 +24,7 @@ import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { HomeInventory } from "../../services/home-inventory.ts";
+import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
 
@@ -101,6 +103,7 @@ function setup(backend?: Fake, homeBackend?: HomeBackend) {
 			home,
 			homeDevices: HomeDeviceStore.empty(),
 			homeInventory: HomeInventory.off(),
+			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 		}),
 	);

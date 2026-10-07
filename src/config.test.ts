@@ -86,6 +86,7 @@ describe("loadConfig", () => {
 		expect(loadConfig(VALID).discord.announce).toEqual({
 			liveChannelId: undefined,
 			timelineChannelId: undefined,
+			botChannelId: undefined,
 		});
 		expect(
 			loadConfig({
@@ -93,7 +94,7 @@ describe("loadConfig", () => {
 				DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "",
 				DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "",
 			}).discord.announce,
-		).toEqual({ liveChannelId: undefined, timelineChannelId: undefined });
+		).toEqual({ liveChannelId: undefined, timelineChannelId: undefined, botChannelId: undefined });
 	});
 
 	it("reads one channel for each announcement style, which may be the same channel", () => {
@@ -105,6 +106,7 @@ describe("loadConfig", () => {
 		expect(announce).toEqual({
 			liveChannelId: "100000000000000031",
 			timelineChannelId: "100000000000000032",
+			botChannelId: undefined,
 		});
 		const same = loadConfig({
 			...VALID,
@@ -301,5 +303,32 @@ describe("the heartbeat interval", () => {
 		expect(() => loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: value })).toThrow(
 			/PIXEL_HEARTBEAT_MINUTES/,
 		);
+	});
+});
+
+describe("the bot status channel and build info", () => {
+	it("posts Pixel's online status in the announcements channel unless told otherwise", () => {
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000041" }).discord
+				.announce.botChannelId,
+		).toBe("100000000000000041");
+		expect(
+			loadConfig({
+				...VALID,
+				DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000041",
+				DISCORD_ANNOUNCE_BOT_CHANNEL_ID: "100000000000000042",
+			}).discord.announce.botChannelId,
+		).toBe("100000000000000042");
+		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_BOT_CHANNEL_ID: "123" })).toThrow(
+			/DISCORD_ANNOUNCE_BOT_CHANNEL_ID/,
+		);
+	});
+
+	it("reads the git commit and branch when given, and checks the commit looks like one", () => {
+		expect(loadConfig(VALID)).toMatchObject({ gitSha: undefined, gitBranch: undefined });
+		expect(
+			loadConfig({ ...VALID, PIXEL_GIT_SHA: "abc1234def", PIXEL_GIT_BRANCH: "feature/doors" }),
+		).toMatchObject({ gitSha: "abc1234def", gitBranch: "feature/doors" });
+		expect(() => loadConfig({ ...VALID, PIXEL_GIT_SHA: "not a sha" })).toThrow(/PIXEL_GIT_SHA/);
 	});
 });

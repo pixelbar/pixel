@@ -28,6 +28,9 @@ devices:
     description: Power to the laser cutter
     minTier: member
 
+  # Doors are member-only (minTier friend is refused) and need ha-doors or ha-admin.
+  # Add `open` to unlatch with /ha open; without it, /ha open unlocks.
+  # Admins can stop all door control at once with /admin doors off.
   - name: front-door
     entity: lock.front_door
     kind: door
