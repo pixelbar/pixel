@@ -191,7 +191,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **The bot is offline or doesn't answer**
 
-1. `/ping` in Discord. No answer? Check `/readyz` and `/healthz`. 503 on `/readyz` means the process is up but the Discord gateway isn't connected.
+1. If Sentry's `pixel-<env>` cron monitor alerted, it tells you when the last good check-in was. `/ping` in Discord. No answer? Check `/readyz` and `/healthz`. 503 on `/readyz` means the process is up but the Discord gateway isn't connected.
 2. Look at the logs for the last few minutes (console, `data/logs/current.log` or Sentry Logs). A start-up failure prints `Pixel failed to start:` with the reason (a bad config file, a missing admin list, an invalid token).
 3. Common causes: a bad edit to an access file (`just validate-config`), a reset or expired Discord token (rotate it, restart), Discord itself being down (check Discord's status page, then wait), or the host being out of resources.
 4. Restart it. If it keeps failing, roll back (see [Deploys](#deploys)).
@@ -221,7 +221,9 @@ Pixel can't tell whether the space is open, so it says so rather than guess. Che
 
 Sentry gets three things: errors (with the tags `command`, `feature`, `platform`, `tier` and the user's ID, so you can see who ran into it), Logs (every log line at `info` and above), and **User Feedback** from people using `/feedback`.
 
-- **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and for Pixel going quiet, and write here who is notified and where (email, Discord channel).
+- **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and write here who is notified and where (email, Discord channel).
+- **Pixel going quiet:** Pixel checks in with a Sentry cron monitor, `pixel-prod` or `pixel-dev` (Sentry → **Crons**), every 5 minutes while it's connected to Discord. If check-ins stop (a crash, a hang, the host down) or say it's disconnected, the monitor opens an issue within about ten minutes, and closes it by itself when Pixel is back. In the monitor's settings, set who is alerted. 🚧 Record here who that is.
+- **Planned downtime:** a restart or deploy fits in the five-minute margin. For anything longer, mute the monitor in Sentry first (Crons → the monitor → Mute) and unmute it after, or you'll be alerted.
 - **Triage an error:**
   1. Open the issue and read the stack, the tags and the user. The user is their ID, so you can find what they did in the logs (see [Moderation](#moderation)).
   2. Check the breadcrumbs: recent access changes and device actions leave notes there.

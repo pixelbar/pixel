@@ -6,6 +6,12 @@ import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
 import { startHealthServer } from "./observability/health.ts";
+import {
+	type Heartbeat,
+	monitorSlug,
+	sentryCheckIn,
+	startHeartbeat,
+} from "./observability/heartbeat.ts";
 import { createLogger } from "./observability/logger.ts";
 import { logProcessFailures } from "./observability/process-logging.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
@@ -39,6 +45,7 @@ async function main(): Promise<void> {
 	// Background work (e.g. announcing space changes) starts once Discord is ready,
 	// so the announcement publishers exist before the first change is announced.
 	let stopFeatures: Stop = () => {};
+	let heartbeat: Heartbeat | undefined;
 	const discord = createDiscordAdapter({
 		token: config.discord.token,
 		guildId: config.discord.guildId,
@@ -53,6 +60,7 @@ async function main(): Promise<void> {
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
+			heartbeat?.beat();
 		},
 	});
 	// Home Assistant connects in the background and reconnects forever, so it never holds up the
@@ -79,6 +87,16 @@ async function main(): Promise<void> {
 		logger.info({ event: "home.unconfigured" }, "Home Assistant isn't configured");
 	}
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
+	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
+	// hang, the host going down). Only with Sentry set up.
+	if (config.sentryDsn && config.heartbeatMinutes > 0) {
+		heartbeat = startHeartbeat({
+			intervalMs: config.heartbeatMinutes * 60_000,
+			isHealthy: () => discord.isReady(),
+			checkIn: sentryCheckIn(monitorSlug(config.env), config.heartbeatMinutes),
+			logger,
+		});
+	}
 	spaceStatus.start();
 
 	let stopping = false;
@@ -87,6 +105,7 @@ async function main(): Promise<void> {
 		stopping = true;
 		logger.info({ event: "shutdown", signal }, "shutting down");
 		stopFeatures();
+		heartbeat?.stop();
 		spaceStatus.stop();
 		homeAssistant?.close();
 		await discord.stop();

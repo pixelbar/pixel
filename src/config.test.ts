@@ -286,3 +286,20 @@ describe("the log directory", () => {
 		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: "   " }).logDir).toBeUndefined();
 	});
 });
+
+describe("the heartbeat interval", () => {
+	it("defaults to five minutes", () => {
+		expect(loadConfig(VALID).heartbeatMinutes).toBe(5);
+	});
+
+	it("can be changed, or set to 0 to turn the heartbeat off", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "1" }).heartbeatMinutes).toBe(1);
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "0" }).heartbeatMinutes).toBe(0);
+	});
+
+	it.each(["-1", "2.5", "61", "often"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: value })).toThrow(
+			/PIXEL_HEARTBEAT_MINUTES/,
+		);
+	});
+});

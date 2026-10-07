@@ -38,6 +38,7 @@ describe("buildCore", () => {
 			contentDir: join(dir, "content"),
 			homeAssistantDir: "config/home-assistant",
 			homeSyncMinutes: 60,
+			heartbeatMinutes: 0,
 			logDir: undefined,
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
