@@ -51,6 +51,19 @@ describe("parseWhen", () => {
 		expect(parsed("wed 12pm")).toBe("2026-10-14T12:00");
 	});
 
+	it("takes compact 24h and Dutch uur, without a colon", () => {
+		expect(parsed("1900")).toBe("2026-10-12T19:00");
+		expect(parsed("wed 1900")).toBe("2026-10-14T19:00");
+		expect(parsed("1930")).toBe("2026-10-12T19:30");
+		expect(parsed("0930")).toBe("2026-10-13T09:30");
+		expect(parsed("930")).toBe("2026-10-13T09:30");
+		expect(parsed("19u")).toBe("2026-10-12T19:00");
+		expect(parsed("19u30")).toBe("2026-10-12T19:30");
+		expect(parsed("wed 19 uur")).toBe("2026-10-14T19:00");
+		expect(parsed("2400")).toBeUndefined();
+		expect(parsed("1960")).toBeUndefined();
+	});
+
 	it("accepts its own canonical value, but only in the future", () => {
 		expect(parsed("2026-10-14T19:00")).toBe("2026-10-14T19:00");
 		expect(parsed("2026-10-01T19:00")).toBeUndefined();

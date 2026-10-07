@@ -18,9 +18,10 @@ import {
  * in `PIXEL_TIMEZONE`. The command then confirms it ("Wed 14 Oct 2026, 19:00").
  *
  * Accepted: a day ("today", "tomorrow", "wed", "wednesday", "14 oct", "oct 14",
- * "14-10", "14-10-2026", "2026-10-14") and/or a time ("19", "19:00", "19.30",
- * "7pm", "7:30pm"), in either order. A day without a time is 19:00 (Pixelbar's
- * usual evening). A time without a day is the next time the clock hits it.
+ * "14-10", "14-10-2026", "2026-10-14") and/or a time ("19", "19:00", "1900",
+ * "19.30", "19u", "19u30", "7pm", "7:30pm"), in either order. A day without a
+ * time is 19:00 (Pixelbar's usual evening). A time without a day is the next
+ * time the clock hits it. Unparsed strings are refused, not guessed.
  */
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -46,7 +47,7 @@ const DAY_ALIASES: Record<string, Weekday> = {
 };
 
 /** Words people type around a date that carry no meaning here. */
-const FILLER = new Set(["at", "on", "the", "of", "in", "next"]);
+const FILLER = new Set(["at", "on", "the", "of", "in", "next", "uur"]);
 
 type DayPart = { year: number; month: number; day: number };
 type TimePart = { hour: number; minute: number };
@@ -132,14 +133,29 @@ function readTime(
 		if (twelve[3] === "am" && hour === 12) hour = 0;
 		return { value: { hour, minute }, used: ampm ? 1 : 2 };
 	}
+	// Compact 24h (1900, 0930, 930) and Dutch "19u" / "19u30". Not a library:
+	// chrono-style parsers guess (1900 as a year), and we refuse anything unclear.
+	const compact = /^(\d{1,2})(\d{2})$/.exec(token);
+	if (compact) {
+		const value = clock(Number(compact[1]), Number(compact[2]));
+		return value ? { value, used: 1 } : undefined;
+	}
+	const dutch = /^(\d{1,2})u(\d{2})?$/.exec(token);
+	if (dutch) {
+		const value = clock(Number(dutch[1]), Number(dutch[2] ?? 0));
+		return value ? { value, used: 1 } : undefined;
+	}
 	const plain = /^(\d{1,2})(?:[:.h](\d{2}))?$/.exec(token);
 	if (plain) {
-		const hour = Number(plain[1]);
-		const minute = Number(plain[2] ?? 0);
-		if (hour > 23 || minute > 59) return undefined;
-		return { value: { hour, minute }, used: 1 };
+		const value = clock(Number(plain[1]), Number(plain[2] ?? 0));
+		return value ? { value, used: 1 } : undefined;
 	}
 	return undefined;
+}
+
+function clock(hour: number, minute: number): TimePart | undefined {
+	if (hour > 23 || minute > 59) return undefined;
+	return { hour, minute };
 }
 
 /** Removes a day (a date, today/tomorrow, or a weekday) from the tokens. */

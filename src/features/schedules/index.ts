@@ -87,7 +87,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	};
 	const whenOption: CommandOption = {
 		name: "when",
-		description: "When to post (Europe/Amsterdam), e.g. wed 19:00, 14 oct 19:00, tomorrow 9am",
+		description: "When to post (Europe/Amsterdam), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
 		type: "string",
 		required: true,
 	};
@@ -121,7 +121,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const start = parseWhen(String(args.when ?? ""), now(), zone);
 		if (!start) {
 			throw new UserFacingError(
-				`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 19:00\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
+				`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
 			);
 		}
 		const repeat = (args.repeat ?? "once") as Repeat;
