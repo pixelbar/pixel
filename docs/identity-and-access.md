@@ -142,6 +142,8 @@ Controlling a device in Home Assistant (HA) is decided with capabilities, never 
 | **See a device and read its status** | Its tier floor (`minTier`, `member` unless the file says `friend` or `admin`). No capability. |
 | **Act on a device** (run an action) | The tier floor, **and** `ha-admin` **or** the capability of the device's kind, **and** the action is one the file allows for that device. |
 
+Besides Home Assistant, `schedule-posts` lets someone schedule messages and polls (`/schedule`); see "Scheduled posts" in `architecture.md`. A schedule stops (is paused) if its creator loses that capability or their membership.
+
 The capabilities are `ha-admin` (any device, whatever its kind) and one per kind that can be controlled: `ha-lights`, `ha-switches` and `ha-doors`. A kind brings its own capability, so a new kind needs no change here. Sensors only report, so they have none.
 
 - **Nothing implies one.** Not a tier, not a Discord role and not being a Pixel admin: an admin without the capability is refused, and grants it to themselves (audited) if they want it.

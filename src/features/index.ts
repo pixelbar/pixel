@@ -1,6 +1,7 @@
 import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
+import type { ChannelPosts } from "../core/channel-posts.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Home } from "../core/home.ts";
 import type { Logger } from "../core/logger.ts";
@@ -12,6 +13,7 @@ import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { HomeInventory } from "../services/home-inventory.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
+import type { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createEventsFeature } from "./events/index.ts";
@@ -21,6 +23,7 @@ import { createHomeFeature } from "./home/index.ts";
 import { createHomeInventoryFeature } from "./home-inventory/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
+import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 
@@ -40,6 +43,11 @@ export type FeatureDeps = {
 	spaceStatus: SpaceStatus;
 	announcer: Announcer;
 	calendar: Calendar;
+	/** Where scheduled posts go, once the platform adapter is ready. */
+	channelPosts: ChannelPosts;
+	schedules: ScheduleStore;
+	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
+	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
@@ -60,6 +68,14 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
+		createSchedulesFeature({
+			store: deps.schedules,
+			posts: deps.channelPosts,
+			timezone: deps.timezone,
+			stillAllowed: deps.canSchedule,
+			logger: deps.logger,
+			reporter: deps.reporter,
+		}),
 		createHomeFeature({
 			home: deps.home,
 			homeDevices: deps.homeDevices,

@@ -3,6 +3,7 @@ import { actorLogFields, type PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
 import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
+import type { ChannelPosts } from "../../core/channel-posts.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
@@ -19,12 +20,16 @@ import {
 	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
 import { FileLivePostStore } from "./announce-state.ts";
+import type { DiscordOption } from "./args.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
+import { createDiscordPoster } from "./channel-poster.ts";
+import { PendingForms } from "./forms.ts";
 import {
 	createAutocompleteHandler,
 	createCommandHandler,
 	createGuildGuard,
+	createModalHandler,
 	discordActor,
 } from "./handlers.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
@@ -49,6 +54,8 @@ export type DiscordAdapterDeps = {
 	announcer: Pick<Announcer, "register">;
 	/** Where this adapter plugs in the server's scheduled events once it's ready. */
 	calendar: Pick<Calendar, "use">;
+	/** Where this adapter plugs in posting to channels (scheduled posts) once it's ready. */
+	channelPosts: Pick<ChannelPosts, "use">;
 	/** Where this adapter plugs in the role mirror once it's ready. */
 	roles: Pick<RoleMirror, "attach" | "check">;
 	/** Which Discord role each tier is mirrored to. Unset tiers aren't mirrored. */
@@ -74,7 +81,19 @@ const DEFER_AFTER_MS = 1500;
 export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	const { guildId, dispatcher, reportError } = deps;
 	const logger = deps.logger.child({ adapter: "discord" });
-	const handleCommand = createCommandHandler({ guildId, dispatcher, deferAfterMs: DEFER_AFTER_MS });
+	const forms = new PendingForms();
+	const handleCommand = createCommandHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
+		forms,
+	});
+	const handleModal = createModalHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
+		forms,
+	});
 	const handleAutocomplete = createAutocompleteHandler({ guildId, dispatcher });
 	const leaveIfForeign = createGuildGuard({ guildId, logger, reportError });
 
@@ -153,6 +172,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		);
 		await Promise.all(ready.guilds.cache.map(leaveIfForeign));
 		deps.calendar.use(createDiscordCalendarSource(ready, guildId));
+		deps.channelPosts.use(createDiscordPoster(ready, guildId));
 		// Mirror tiers to roles (Pixel to Discord only), and say plainly what works and what doesn't.
 		deps.roles.attach(
 			new DiscordRoleMirror({
@@ -189,9 +209,42 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			});
 			return;
 		}
+		if (interaction.isModalSubmit()) {
+			handleModal(interaction).catch((error: unknown) => {
+				logger.error(
+					{ err: error, ...actorLogFields(discordActor(interaction.user)) },
+					"failed to handle a form",
+				);
+				reportError(error, discordActor(interaction.user));
+			});
+			return;
+		}
 		if (!interaction.isChatInputCommand()) return;
 		const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
-		handleCommand(interaction, displayName).catch((error: unknown) => {
+		// For a channel picked in the command: what this person may do there.
+		const permissionsIn = (channelId: string): bigint | null => {
+			const resolved = interaction.options.resolved?.channels?.get(channelId);
+			if (resolved && "permissions" in resolved && typeof resolved.permissions === "string") {
+				return BigInt(resolved.permissions);
+			}
+			if (resolved && interaction.inCachedGuild() && "permissionsFor" in resolved) {
+				return resolved.permissionsFor(interaction.member)?.bitfield ?? null;
+			}
+			return null;
+		};
+		const withPermissions = (options: readonly DiscordOption[]): DiscordOption[] =>
+			options.map((option) => ({
+				...option,
+				...(option.options ? { options: withPermissions(option.options) } : {}),
+				...(option.channel ? { callerPermissions: permissionsIn(option.channel.id) } : {}),
+			}));
+		const incoming = Object.assign(Object.create(interaction) as typeof interaction, {
+			options: {
+				...interaction.options,
+				data: withPermissions(interaction.options.data as readonly DiscordOption[]),
+			},
+		});
+		handleCommand(incoming, displayName).catch((error: unknown) => {
 			logger.error(
 				{
 					err: error,
