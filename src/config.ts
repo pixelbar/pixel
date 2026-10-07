@@ -55,6 +55,8 @@ const envSchema = z
 		DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
 
 		// Both unset means Home Assistant is off. Setting only one is a mistake, so it stops startup.
+		// A bot token from @BotFather turns the Telegram adapter on. Unset means off.
+		TELEGRAM_BOT_TOKEN: optional(z.string().trim().regex(/^\d{5,15}:[A-Za-z0-9_-]{30,64}$/)),
 		HOME_ASSISTANT_URL: optional(z.url({ protocol: /^https?$/ })),
 		HOME_ASSISTANT_TOKEN: optional(z.string().trim().min(1)),
 	})
@@ -120,6 +122,8 @@ export type Config = {
 	 * limit a token. The token is a secret. Undefined means Home Assistant is off.
 	 */
 	homeAssistant: { url: string; token: string } | undefined;
+	/** The Telegram bot, when set up. The token is a secret. Undefined means Telegram is off. */
+	telegram: { token: string } | undefined;
 };
 
 export class ConfigError extends Error {
@@ -164,6 +168,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 		},
+		telegram: e.TELEGRAM_BOT_TOKEN !== undefined ? { token: e.TELEGRAM_BOT_TOKEN } : undefined,
 		homeAssistant:
 			e.HOME_ASSISTANT_URL !== undefined && e.HOME_ASSISTANT_TOKEN !== undefined
 				? { url: e.HOME_ASSISTANT_URL, token: e.HOME_ASSISTANT_TOKEN }

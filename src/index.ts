@@ -2,6 +2,7 @@ import { join } from "node:path";
 import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
+import { createTelegramAdapter, type TelegramAdapter } from "./adapters/telegram/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -104,6 +105,24 @@ async function main(): Promise<void> {
 	} else {
 		logger.info({ event: "home.unconfigured" }, "Home Assistant isn't configured");
 	}
+	// Telegram is optional: with a bot token, Pixel also answers in Telegram DMs. It isn't part of
+	// health, so a Telegram outage never restarts the bot that Discord depends on.
+	let telegram: TelegramAdapter | undefined;
+	if (config.telegram) {
+		telegram = createTelegramAdapter({
+			token: config.telegram.token,
+			dispatcher,
+			commands: registry.all().map((c) => c.definition),
+			logger,
+			reportError: (error) => reporter.captureBackground(error, "telegram"),
+		});
+		telegram.start().catch((error: unknown) => {
+			logger.error({ event: "telegram.start_failed", err: error }, "couldn't start Telegram");
+			reporter.captureBackground(error, "telegram");
+		});
+	} else {
+		logger.info({ event: "telegram.unconfigured" }, "Telegram isn't configured");
+	}
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
 	// hang, the host going down). Only with Sentry set up.
@@ -128,6 +147,7 @@ async function main(): Promise<void> {
 		heartbeat?.stop();
 		spaceStatus.stop();
 		homeAssistant?.close();
+		await telegram?.stop().catch(() => {});
 		await discord.stop();
 		health.close();
 		await Sentry.flush(2000);

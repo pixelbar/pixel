@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@sentry/node": "^11.2.0",
 		"discord.js": "^14.27.0",
+		"grammy": "^1.46.0",
 		"home-assistant-js-websocket": "^9.7.0",
 		"pino": "^10.3.1",
 		"pino-roll": "^4.0.0",

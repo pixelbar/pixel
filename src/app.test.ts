@@ -59,6 +59,7 @@ describe("buildCore", () => {
 				roles: { member: undefined, friend: undefined },
 			},
 			homeAssistant: undefined,
+			telegram: undefined,
 		};
 	});
 
