@@ -58,15 +58,17 @@ Later applies use the remote backend. Defaults match Pixel. Override with `terra
 
 ## GitHub variables (not secrets)
 
-In each GitHub Environment (`dev`, `prod`), set **variables**:
+In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). Applied bootstrap values:
 
-| Variable | Value |
-| --- | --- |
-| `ARM_CLIENT_ID` | `github_client_ids["dev"]` or `["prod"]` from the apply output |
-| `ARM_TENANT_ID` | `tenant_id` |
-| `ARM_SUBSCRIPTION_ID` | `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4` |
+| Variable | `dev` | `prod` |
+| --- | --- | --- |
+| `ARM_CLIENT_ID` | `8cb13b94-5941-4788-8071-9f1ba80dada8` | `7cb1d0a8-5314-4c9b-a0ba-10f5c75367d7` |
+| `ARM_TENANT_ID` | `2cd2bab0-0dd0-41ff-8f13-592500857ea6` | same |
+| `ARM_SUBSCRIPTION_ID` | `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4` | same |
 
-CD (#10) will also need `id-token: write` on the workflow. Do not store an Azure client secret.
+Create Environment `prod` if it is missing (reviewers, deploying branch `main`). `dev` exists; its `ARM_*` variables are still empty.
+
+CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token: write` on the **prod** deploy job. Azure `dev` is `just deploy-dev` with local `az`, not these variables. Do not store an Azure client secret. Until Environment `prod` has `ARM_*`, prod fails closed.
 
 ## Recover
 
@@ -77,5 +79,5 @@ CD (#10) will also need `id-token: write` on the workflow. Do not store an Azure
 ## What this is not
 
 - Not the Container App, volume, Key Vault, or Tailscale sidecar (#9, #43).
-- Not CD, GHCR, or Sentry releases (#10).
+- Not the Container App image rollout (that is [CD](../../.github/workflows/cd.yml), #10). Sentry releases are still later.
 - Not Postgres. Pixel’s state is files on a volume.

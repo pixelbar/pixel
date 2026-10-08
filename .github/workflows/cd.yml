@@ -1,0 +1,218 @@
+name: CD
+
+# Temporary routing (ADR 0010, #10): merges to `main` publish GHCR and deploy
+# that SHA to prod. Azure `dev` is a local build (`just deploy-dev`), not CI.
+# Prod is fail-closed until infra/envs/prod and prod Key Vault secrets exist.
+# This workflow never copies pixel-dev (or Mini local) Discord tokens into prod.
+
+on:
+  push:
+    branches: [main]
+
+# Least privilege at the workflow level. The publish job is the only one that
+# writes packages. The prod deploy job gets id-token: write for Azure OIDC.
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  publish:
+    name: Publish GHCR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.pin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          pin="${IMAGE_NAME}:${SHA}"
+          tags="${pin},${IMAGE_NAME}:main"
+          echo "pin=${pin}" >> "${GITHUB_OUTPUT}"
+          echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
+          echo "Publishing ${tags}"
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            PIXEL_VERSION=${{ github.sha }}
+            PIXEL_GIT_SHA=${{ github.sha }}
+            PIXEL_GIT_BRANCH=${{ github.head_ref || github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Fail if the image contains secrets or access lists
+        env:
+          PIN: ${{ steps.meta.outputs.pin }}
+        run: |
+          docker pull "${PIN}"
+          if docker run --rm --entrypoint sh "${PIN}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+            echo "::error::Image ${PIN} contains .env or access lists. Do not deploy it."
+            exit 1
+          fi
+          echo "No .env or access lists in ${PIN}."
+
+      - name: Make GHCR package public (no secrets in the image)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Azure Container Apps cannot pull a private ghcr.io/pixelbar/pixel
+          # image (401 / DENIED). Public is the intended fix; the image has no
+          # secrets. This token may lack package-admin; then a maintainer must
+          # flip visibility in the GitHub UI.
+          package="/orgs/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name }}"
+          for attempt in 1 2 3 4 5; do
+            if gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "${package}" \
+              -f visibility=public; then
+              echo "Package ${{ github.repository }} is public."
+              exit 0
+            fi
+            echo "Visibility update failed (attempt ${attempt}); waiting for the package to exist."
+            sleep 5
+          done
+          echo "::warning::Could not set ghcr.io/${{ github.repository }} public from this job. A maintainer must: GitHub → Packages → pixel → Package settings → Change visibility → Public. Until then Azure pulls 401."
+
+  prod-preflight:
+    name: Prod preflight (fail closed)
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Require prod Terraform and refuse a Mini/dev token
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [ ! -d infra/envs/prod ] || [ ! -f infra/envs/prod/main.tf ]; then
+            echo "::error::infra/envs/prod is missing (#12). ${IMAGE} was published. Prod was NOT deployed. Discord will not answer on prod."
+            missing=1
+          fi
+          if [ -d infra/envs/dev ] && [ -d infra/envs/prod ]; then
+            if cmp -s infra/envs/dev/terraform.example.tfvars infra/envs/prod/terraform.example.tfvars 2>/dev/null; then
+              echo "::error::prod tfvars match dev. Prod must not reuse the Mini/Pixel Dev Discord application or token."
+              missing=1
+            fi
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Do not copy pixel-dev-kv discord-token (Pixel Dev / Mini local bot 1555857000049541231) into prod."
+            exit 1
+          fi
+          echo "infra/envs/prod is present. Deploy job will still fail closed if ARM_* or prod Key Vault secrets are missing."
+
+  deploy-prod:
+    name: Deploy Azure prod
+    needs: [publish, prod-preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: azure-pixel-prod
+      cancel-in-progress: false
+    steps:
+      - name: Skip until GitHub Environment prod has ARM_* variables
+        if: vars.ARM_CLIENT_ID == ''
+        run: |
+          echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod. ${{ needs.publish.outputs.image }} was published. Prod was NOT deployed. Create Environment prod (reviewers, branch main) and set ARM_CLIENT_ID 7cb1d0a8-5314-4c9b-a0ba-10f5c75367d7, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID as variables. Not inventing credentials."
+          exit 1
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: vars.ARM_CLIENT_ID != ''
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Update pixel-prod to this SHA (fail closed, one replica)
+        if: vars.ARM_CLIENT_ID != ''
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          RESOURCE_GROUP: pixel-prod
+          APP_NAME: pixel-prod
+          KEY_VAULT: pixel-prod-kv
+        run: |
+          set -euo pipefail
+          if [ "${RESOURCE_GROUP}" = "pixel-dev" ] || [ "${KEY_VAULT}" = "pixel-dev-kv" ] || [ "${APP_NAME}" = "pixel-dev" ]; then
+            echo "::error::Refusing to deploy prod using the dev resource group, app, or vault. Mini/dev Discord token must not go to prod."
+            exit 1
+          fi
+          if ! az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" >/dev/null 2>&1; then
+            echo "::error::Container App ${APP_NAME} is not in ${RESOURCE_GROUP} (#12). ${IMAGE} was published. Prod was NOT deployed. Discord will not answer on prod."
+            exit 1
+          fi
+          if ! az keyvault show --name "${KEY_VAULT}" >/dev/null 2>&1; then
+            echo "::error::Key Vault ${KEY_VAULT} is missing (#12). ${IMAGE} was published. Prod was NOT deployed."
+            exit 1
+          fi
+          if ! az keyvault secret show --vault-name "${KEY_VAULT}" --name discord-token --query name -o tsv >/dev/null 2>&1; then
+            echo "::error::Key Vault ${KEY_VAULT} has no discord-token. Prod secrets are missing. Not copying pixel-dev-kv or the Mini local token. Prod was NOT deployed."
+            exit 1
+          fi
+          if ! az keyvault secret show --vault-name "${KEY_VAULT}" --name admins-yaml --query name -o tsv >/dev/null 2>&1; then
+            echo "::error::Key Vault ${KEY_VAULT} has no admins-yaml. Prod secrets are missing. Prod was NOT deployed."
+            exit 1
+          fi
+          az containerapp update \
+            -g "${RESOURCE_GROUP}" \
+            -n "${APP_NAME}" \
+            --image "${IMAGE}" \
+            --min-replicas 1 \
+            --max-replicas 1
+          image=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.containers[0].image" -o tsv)
+          min=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.minReplicas" -o tsv)
+          max=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.maxReplicas" -o tsv)
+          echo "Running ${image} min=${min} max=${max}"
+          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
+            echo "::error::Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
+            exit 1
+          fi
+          case "${image}" in
+            *"${{ github.sha }}"*) ;;
+            *)
+              echo "::error::Container App image is ${image}, expected SHA ${{ github.sha }}."
+              exit 1
+              ;;
+          esac
