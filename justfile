@@ -76,9 +76,11 @@ register:
 command-access:
     pnpm exec tsx --env-file=.env scripts/command-access.ts
 
-# Build the container image
+# Build the container image for Azure (linux/amd64). Mini is arm64; Container
+# Apps reject arm64 images.
 docker-build tag="pixel:local":
     docker build \
+      --platform linux/amd64 \
       --build-arg PIXEL_VERSION=$(git rev-parse --short HEAD) \
       --build-arg PIXEL_GIT_SHA=$(git rev-parse HEAD) \
       --build-arg PIXEL_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
@@ -121,13 +123,14 @@ deploy-dev: docker-login-ghcr
       exit 1
     fi
     docker build \
+      --platform linux/amd64 \
       --build-arg PIXEL_VERSION="${version}" \
       --build-arg PIXEL_GIT_SHA="${sha}" \
       --build-arg PIXEL_GIT_BRANCH="${branch}" \
       -t "${pin}" \
       -t "${image_name}:dev" \
       .
-    if docker run --rm --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+    if docker run --rm --platform linux/amd64 --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
       echo "Image ${pin} contains .env or access lists. Not pushing."
       exit 1
     fi
