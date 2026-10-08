@@ -258,7 +258,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 					},
 					{
 						name: "open",
-						description: "Open a door (unlatch it, or unlock it if it can't be unlatched)",
+						description: "Open a door (unlock it, or unlatch it if it can't be unlocked)",
 						access: { minTier: "member" },
 						private: true,
 						placeholder: { text: "Working on it…", private: true },
@@ -291,7 +291,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 								);
 								return { text: HOME_DENIED, private: true };
 							}
-							return act(door, door ? openingAction(door) : "open", context);
+							return act(door, door ? openingAction(door) : "unlock", context);
 						},
 					},
 				],
@@ -560,7 +560,7 @@ function suggestActions(actions: readonly KindAction[], typed: string): Suggesti
 		}));
 }
 
-/** What `/ha open` runs on a door: `open` (unlatch) when the devices file allows it, otherwise `unlock`. */
+/** What `/ha open` runs on a door: `unlock` when the devices file allows it, otherwise `open` (unlatch). */
 export function openingAction(door: Pick<HomeDevice, "actions">): string {
-	return door.actions.some((a) => a.name === "open") ? "open" : "unlock";
+	return door.actions.some((a) => a.name === "unlock") ? "unlock" : "open";
 }
