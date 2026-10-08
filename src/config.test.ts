@@ -18,6 +18,8 @@ describe("loadConfig", () => {
 			dataDir: "data",
 			healthPort: 8080,
 			sentryDsn: undefined,
+			sentryTracesSampleRate: 1,
+			sentryProfileSessionSampleRate: 1,
 			spaceApiUrl: "https://spaceapi.pixelbar.nl/",
 		});
 	});
@@ -182,14 +184,63 @@ describe("loadSentryConfig", () => {
 		expect(loadSentryConfig({ SENTRY_DSN: "not a url" })).toBeUndefined();
 	});
 
-	it("returns DSN, environment and release", () => {
+	it("returns DSN, environment, release and sample rates of 1", () => {
 		expect(
 			loadSentryConfig({
 				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
 				PIXEL_ENV: "prod",
 				PIXEL_VERSION: "abc123",
 			}),
-		).toEqual({ dsn: "https://key@o0.ingest.sentry.io/1", environment: "prod", release: "abc123" });
+		).toEqual({
+			dsn: "https://key@o0.ingest.sentry.io/1",
+			environment: "prod",
+			release: "abc123",
+			tracesSampleRate: 1,
+			profileSessionSampleRate: 1,
+		});
+	});
+
+	it("keeps sample rates from the environment", () => {
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_TRACES_SAMPLE_RATE: "0.25",
+				SENTRY_PROFILE_SESSION_SAMPLE_RATE: "0.5",
+			}),
+		).toMatchObject({ tracesSampleRate: 0.25, profileSessionSampleRate: 0.5 });
+	});
+
+	it("is undefined for an invalid sample rate instead of throwing", () => {
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_TRACES_SAMPLE_RATE: "2",
+			}),
+		).toBeUndefined();
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_PROFILE_SESSION_SAMPLE_RATE: "2",
+			}),
+		).toBeUndefined();
+	});
+});
+
+describe.each([
+	["traces", "SENTRY_TRACES_SAMPLE_RATE", "sentryTracesSampleRate"],
+	["profile session", "SENTRY_PROFILE_SESSION_SAMPLE_RATE", "sentryProfileSessionSampleRate"],
+] as const)("the %s sample rate", (_label, envKey, configKey) => {
+	it("defaults to 1, and accepts 0 through 1", () => {
+		expect(loadConfig(VALID)[configKey]).toBe(1);
+		expect(loadConfig({ ...VALID, [envKey]: "" })[configKey]).toBe(1);
+		expect(loadConfig({ ...VALID, [envKey]: "0" })[configKey]).toBe(0);
+		expect(loadConfig({ ...VALID, [envKey]: "0.5" })[configKey]).toBe(0.5);
+	});
+
+	it("rejects a rate outside 0–1", () => {
+		expect(() => loadConfig({ ...VALID, [envKey]: "-0.1" })).toThrow(new RegExp(envKey));
+		expect(() => loadConfig({ ...VALID, [envKey]: "2" })).toThrow(new RegExp(envKey));
+		expect(() => loadConfig({ ...VALID, [envKey]: "nope" })).toThrow(new RegExp(envKey));
 	});
 });
 

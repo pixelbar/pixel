@@ -3,13 +3,17 @@ import * as Sentry from "@sentry/node";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { REDACT_PATHS } from "./logger.ts";
-import { SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
+import { isHealthProbe, SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
 
-const options = sentryOptions({
+const sentryCfg = {
 	dsn: "https://key@o0.ingest.sentry.io/1",
 	environment: "test",
 	release: "1.2.3",
-});
+	tracesSampleRate: 1,
+	profileSessionSampleRate: 1,
+};
+
+const options = sentryOptions(sentryCfg);
 
 // Shaped like a Discord token and a Home Assistant token, but not real ones.
 const discordToken = `${"A".repeat(26)}.${"B".repeat(6)}.${"C".repeat(38)}`;
@@ -33,13 +37,45 @@ describe("sentryOptions", () => {
 			stackFrameVariables: false,
 		});
 		expect(options.includeServerName).toBe(false);
-		expect(options.tracesSampleRate).toBe(0);
+		expect(options.sampleRate).toBe(1);
+		expect(options.tracesSampleRate).toBe(1);
+		expect(options.profileSessionSampleRate).toBe(1);
+		expect(options.profileLifecycle).toBe("trace");
 	});
 
-	it("includes the pino integration, so log lines become Sentry Logs", () => {
-		expect(options.integrations).toHaveLength(1);
-		expect(Array.isArray(options.integrations) && options.integrations[0]?.name).toBe("Pino");
+	it("keeps the sample rates it was given", () => {
+		const given = sentryOptions({
+			...sentryCfg,
+			release: "1",
+			tracesSampleRate: 0.25,
+			profileSessionSampleRate: 0.5,
+		});
+		expect(given.tracesSampleRate).toBe(0.25);
+		expect(given.profileSessionSampleRate).toBe(0.5);
+	});
+
+	it("includes HTTP, pino, runtime metrics and profiling integrations", () => {
+		expect(Array.isArray(options.integrations) && options.integrations.map((i) => i?.name)).toEqual(
+			["Http", "Pino", "NodeRuntimeMetrics", "ProfilingIntegration"],
+		);
 		expect(SENTRY_LOG_LEVELS).toEqual(["info", "warn", "error", "fatal"]);
+	});
+
+	it("leaves the profiler unwired when the profile session sample rate is 0", () => {
+		const names = sentryOptions({ ...sentryCfg, profileSessionSampleRate: 0 }).integrations ?? [];
+		expect(Array.isArray(names) && names.map((i) => i?.name)).toEqual([
+			"Http",
+			"Pino",
+			"NodeRuntimeMetrics",
+		]);
+	});
+
+	it("ignores health probes, including ones with a query string", () => {
+		expect(isHealthProbe("/healthz")).toBe(true);
+		expect(isHealthProbe("/readyz")).toBe(true);
+		expect(isHealthProbe("/healthz?ready=1")).toBe(true);
+		expect(isHealthProbe("/")).toBe(false);
+		expect(isHealthProbe("/api")).toBe(false);
 	});
 
 	it("scrubs secrets from a log before it is sent: the message and every attribute", () => {
@@ -70,7 +106,7 @@ describe("log lines reach Sentry", () => {
 	const envelopes: unknown[][] = [];
 	beforeAll(() => {
 		Sentry.init({
-			...options,
+			...sentryOptions({ ...sentryCfg, profileSessionSampleRate: 0 }),
 			transport: () => ({
 				send: async (envelope: unknown[]) => {
 					envelopes.push(envelope);

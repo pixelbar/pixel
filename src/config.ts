@@ -9,6 +9,8 @@ import { isValidTimeZone } from "./core/format.ts";
 const snowflake = z.string().regex(/^\d{17,20}$/, { error: "must be a Discord ID (17–20 digits)" });
 const optional = <T extends z.ZodType>(schema: T) =>
 	z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+/** 0 drops everything, 1 keeps it all. Empty means the default. */
+const sampleRate = optional(z.coerce.number().min(0).max(1));
 
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
 const pixelRuntime = z.enum(["local", "cloud"]).default("local");
@@ -43,6 +45,10 @@ const envSchema = z
 			.refine(isValidTimeZone, { error: "must be a time zone name like Europe/Amsterdam" }),
 		HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
 		SENTRY_DSN: optional(z.url()),
+		// 0 drops every trace, 1 keeps them all. Empty uses the default (1).
+		SENTRY_TRACES_SAMPLE_RATE: sampleRate,
+		// Same for CPU profiles of those traces. Empty uses the default (1).
+		SENTRY_PROFILE_SESSION_SAMPLE_RATE: sampleRate,
 		SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
 
 		DISCORD_TOKEN: z.string().min(1),
@@ -91,6 +97,10 @@ export type Config = {
 	timezone: string;
 	healthPort: number;
 	sentryDsn: string | undefined;
+	/** How many traces Sentry keeps (0–1). Default 1. Unused without a DSN. */
+	sentryTracesSampleRate: number;
+	/** How many of those traces get a CPU profile (0–1). Default 1. Unused without a DSN. */
+	sentryProfileSessionSampleRate: number;
 	spaceApiUrl: string;
 	discord: {
 		token: string;
@@ -156,6 +166,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,
 		sentryDsn: e.SENTRY_DSN,
+		sentryTracesSampleRate: e.SENTRY_TRACES_SAMPLE_RATE ?? 1,
+		sentryProfileSessionSampleRate: e.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,
 		spaceApiUrl: e.SPACEAPI_URL,
 		discord: {
 			token: e.DISCORD_TOKEN,
@@ -180,13 +192,21 @@ const sentrySchema = z.object({
 	PIXEL_ENV: pixelEnv,
 	PIXEL_VERSION: z.string().default("dev"),
 	SENTRY_DSN: optional(z.url()),
+	SENTRY_TRACES_SAMPLE_RATE: sampleRate,
+	SENTRY_PROFILE_SESSION_SAMPLE_RATE: sampleRate,
 });
 
 /**
  * The narrow slice instrument.ts needs before the app loads. Never throws:
  * a bad DSN just disables Sentry, and loadConfig reports it properly later.
  */
-export type SentryConfig = { dsn: string; environment: string; release: string };
+export type SentryConfig = {
+	dsn: string;
+	environment: string;
+	release: string;
+	tracesSampleRate: number;
+	profileSessionSampleRate: number;
+};
 
 export function loadSentryConfig(env: NodeJS.ProcessEnv = process.env): SentryConfig | undefined {
 	const result = sentrySchema.safeParse(env);
@@ -195,5 +215,7 @@ export function loadSentryConfig(env: NodeJS.ProcessEnv = process.env): SentryCo
 		dsn: result.data.SENTRY_DSN,
 		environment: result.data.PIXEL_ENV,
 		release: result.data.PIXEL_VERSION,
+		tracesSampleRate: result.data.SENTRY_TRACES_SAMPLE_RATE ?? 1,
+		profileSessionSampleRate: result.data.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,
 	};
 }

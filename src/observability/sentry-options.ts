@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import type { SentryConfig } from "../config.ts";
 import { scrubDeep } from "./scrub.ts";
 
@@ -10,10 +11,24 @@ import { scrubDeep } from "./scrub.ts";
 export const SENTRY_LOG_LEVELS = ["info", "warn", "error", "fatal"] as const;
 
 /**
+ * Azure (and local) probes hit these. They aren't worth a Sentry trace, and they
+ * must not be counted as request sessions: Pixel's session is the process, not
+ * an HTTP request.
+ */
+export function isHealthProbe(urlPath: string): boolean {
+	const path = urlPath.split("?")[0] ?? urlPath;
+	return path === "/healthz" || path === "/readyz";
+}
+
+/**
  * The Sentry settings, in one place so they can be tested. `instrument.ts` passes
  * them to `Sentry.init`. Pixel's pino logger is picked up by the pino integration, so
  * every log line goes to Sentry Logs as well as to the file and the console, after
  * secrets have been scrubbed from it.
+ *
+ * Tracing, process sessions, runtime metrics and CPU profiling are on: this is
+ * a long-running Discord bot, not a request-scoped web app. Incoming `/healthz`
+ * and `/readyz` probes are ignored. A missing DSN never reaches here.
  */
 export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 	return {
@@ -31,8 +46,24 @@ export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 			stackFrameVariables: false,
 		},
 		includeServerName: false,
-		tracesSampleRate: 0,
-		integrations: [Sentry.pinoIntegration({ log: { levels: [...SENTRY_LOG_LEVELS] } })],
+		sampleRate: 1,
+		tracesSampleRate: sentry.tracesSampleRate,
+		profileSessionSampleRate: sentry.profileSessionSampleRate,
+		// Profile sampled command spans (and their outbound HTTP), not the whole process.
+		profileLifecycle: "trace",
+		integrations: [
+			Sentry.httpIntegration({
+				ignoreIncomingRequests: isHealthProbe,
+				// Health probes would otherwise be one "session" each. Crash-free
+				// rate comes from processSessionIntegration (a default), not HTTP.
+				sessions: false,
+			}),
+			Sentry.pinoIntegration({ log: { levels: [...SENTRY_LOG_LEVELS] } }),
+			Sentry.nodeRuntimeMetricsIntegration(),
+			// Skip wiring the profiler when the rate is 0: in trace mode the SDK
+			// still starts it otherwise.
+			...(sentry.profileSessionSampleRate > 0 ? [nodeProfilingIntegration()] : []),
+		],
 		beforeSend: (event) => scrubDeep(event),
 		beforeBreadcrumb: (breadcrumb) => scrubDeep(breadcrumb),
 		beforeSendLog: (log) => scrubDeep(log),

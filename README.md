@@ -118,7 +118,9 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
 | `PIXEL_RUNTIME`               | Optional. `local` (default) or `cloud`. Azure sets `cloud`. `/admin status` and the online post show it as Where |
-| `SENTRY_DSN`                  | Optional. Error reporting and Sentry Logs are off if unset |
+| `SENTRY_DSN`                  | Optional. Error reporting, traces, profiles, sessions, metrics and Sentry Logs are off if unset |
+| `SENTRY_TRACES_SAMPLE_RATE`   | Optional. How many traces Sentry keeps (`0`–`1`). Default `1`. Errors are always kept |
+| `SENTRY_PROFILE_SESSION_SAMPLE_RATE` | Optional. How many of those traces get a CPU profile (`0`–`1`). Default `1`. `0` turns profiling off |
 | `PIXEL_LOG_DIR`               | Optional. Where the rotating log file goes (about two weeks, JSON lines). Defaults to `data/logs/`. Empty turns the file off. Logs also go to the console and to Sentry Logs |
 
 ## Common commands
