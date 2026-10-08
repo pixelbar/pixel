@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module and `dev` (`infra/modules/pixel`, `infra/envs/dev`, #9) are in repo. **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
 
 ## Project at a glance
 
@@ -28,7 +28,9 @@ just check            # lint + typecheck + tests with coverage thresholds; must 
 just test             # tests only
 just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
-just tf-validate      # terraform fmt -check and validate infra/bootstrap
+just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
+just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)
+just tf-apply dev     # apply the dev stack — only when a maintainer says so
 just deploy-dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
 ```
 
@@ -54,7 +56,7 @@ data/                   # runtime state; gitignored. Safe to delete EXCEPT sched
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # register-commands, validate-config
 docs/                   # architecture, identity, ADRs
-infra/                  # Terraform. bootstrap/ is #8 (apply by hand). modules/ and envs/ come with #9
+infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/dev are #9 (do not apply until asked)
 ```
 
 ## Security rules (non-negotiable)

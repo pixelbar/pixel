@@ -19,7 +19,7 @@ In West Europe, subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`:
 
 Each GitHub identity can federate only from this repository’s matching GitHub Environment (`dev` or `prod`). It is Contributor on that environment’s resource group, and can read/write that environment’s state container. It cannot use the other environment’s group or container.
 
-`pixel-dev` and `pixel-prod` are empty on purpose. #9 deploys into them.
+`pixel-dev` and `pixel-prod` stay as the env resource groups. #9 deploys *into* `pixel-dev`; it does not recreate them.
 
 ## Before you apply
 
@@ -78,6 +78,6 @@ CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token
 
 ## What this is not
 
-- Not the Container App, volume, Key Vault, or Tailscale sidecar (#9, #43).
-- Not the Container App image rollout (that is [CD](../../.github/workflows/cd.yml), #10). Sentry releases are still later.
+- Not the Container App, volume, Key Vault, or Tailscale sidecar (`infra/envs/dev`, #9 / #43).
+- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` for prod). Sentry releases are still later.
 - Not Postgres. Pixel’s state is files on a volume.

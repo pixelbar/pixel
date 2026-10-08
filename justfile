@@ -45,11 +45,24 @@ typecheck:
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
 
-# Format-check and validate infra/bootstrap (needs Terraform 1.9+; CI runs this when infra/ changes)
+# Format-check and validate bootstrap + envs/dev (needs Terraform 1.9+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false
     terraform -chdir=infra/bootstrap validate
+    terraform -chdir=infra/envs/dev init -backend=false -input=false
+    terraform -chdir=infra/envs/dev validate
+
+# Plan an env stack (dev). Needs Azure CLI signed in. Does not apply.
+tf-plan env:
+    terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
+    terraform -chdir=infra/envs/{{env}} plan
+
+# Apply an env stack. Do not run until a maintainer says so. Never start a
+# second Pixel on the same Discord token.
+tf-apply env:
+    terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
+    terraform -chdir=infra/envs/{{env}} apply
 
 # Validate the access list files and the Home Assistant devices file
 validate-config:
