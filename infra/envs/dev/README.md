@@ -146,7 +146,7 @@ About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analy
 
 ## What this is not
 
-- Not CD, GHCR, or Sentry releases (#10).
+- Not GHCR publish or prod CD (#10 / #12). `just deploy-dev` rolls this app.
 - Not stop-then-start during deploys (#11). This stack only pins min=max replicas to 1 and `revision_mode = Single`.
 - Not `prod` (#12).
 - Not Postgres.

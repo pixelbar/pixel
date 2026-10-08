@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module and `dev` (`infra/modules/pixel`, `infra/envs/dev`, #9) are in repo. **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module and `dev` (`infra/modules/pixel`, `infra/envs/dev`, #9) are in repo; `pixel-dev` is live. **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. **Do not deploy prod** until #12. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
 
 ## Project at a glance
 

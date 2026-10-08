@@ -37,6 +37,30 @@ variable "github_repository" {
   }
 }
 
+# This repo was created after 2026-07-15, so GitHub OIDC subjects are immutable
+# (owner and repo numeric IDs). The name-only subject never matches.
+variable "github_owner_id" {
+  type        = string
+  description = "GitHub organization numeric ID for the OIDC subject. pixelbar is 1690472."
+  default     = "1690472"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must be a numeric GitHub org or user ID."
+  }
+}
+
+variable "github_repository_id" {
+  type        = string
+  description = "GitHub repository numeric ID for the OIDC subject. pixelbar/pixel is 1402859166."
+  default     = "1402859166"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be a numeric GitHub repository ID."
+  }
+}
+
 variable "storage_account_name" {
   type        = string
   description = "Globally unique storage account for Terraform state (3–24 lowercase letters or digits)."

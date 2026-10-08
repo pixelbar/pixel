@@ -32,7 +32,7 @@ Each GitHub identity can federate only from this repository’s matching GitHub 
    az account show --query '{name:name,id:id,user:user.name}' -o json
    ```
 
-3. In the GitHub repo: **Settings → Environments**. Create `dev` and `prod` if they are missing. On `prod`, require reviewers (and limit the deploying branch to `main`) before anything in #10 can use it. The federated subject is `repo:pixelbar/pixel:environment:<name>`, so a workflow that does not use that environment cannot log in.
+3. In the GitHub repo: **Settings → Environments**. Create `dev` and `prod` if they are missing. On `prod`, require reviewers (and limit the deploying branch to `main`) before anything in #10 can use it. This repo was created after 2026-07-15, so GitHub’s OIDC subject is immutable: `repo:pixelbar@1690472/pixel@1402859166:environment:<name>`. A workflow that does not use that environment cannot log in. If Azure still has the old name-only subject, `azure/login` fails with AADSTS700213 until you apply this stack (or update the federated credential by hand).
 
 ## Apply
 
@@ -66,9 +66,9 @@ In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). App
 | `ARM_TENANT_ID` | `2cd2bab0-0dd0-41ff-8f13-592500857ea6` | same |
 | `ARM_SUBSCRIPTION_ID` | `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4` | same |
 
-Create Environment `prod` if it is missing (reviewers, deploying branch `main`). `dev` exists; its `ARM_*` variables are still empty.
+Create Environment `prod` if it is missing (reviewers, deploying branch `main`). Terraform plan on PRs uses Environment `dev` and **fails closed** without `ARM_*`. Do not store an Azure client secret.
 
-CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token: write` on the **prod** deploy job. Azure `dev` is `just deploy-dev` with local `az`, not these variables. Do not store an Azure client secret. Until Environment `prod` has `ARM_*`, prod fails closed.
+Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12 — it does not Azure-login or update `pixel-prod`.
 
 ## Recover
 
@@ -79,5 +79,5 @@ CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token
 ## What this is not
 
 - Not the Container App, volume, Key Vault, or Tailscale sidecar (`infra/envs/dev`, #9 / #43).
-- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` for prod). Sentry releases are still later.
+- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12).
 - Not Postgres. Pixel’s state is files on a volume.

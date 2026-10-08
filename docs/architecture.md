@@ -1,6 +1,6 @@
 # Pixel architecture
 
-> Status: **living draft**. The bot is built; Azure bootstrap is applied; the Container Apps `dev` stack is in Terraform but not applied until a maintainer says so. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md).
+> Status: **living draft**. The bot is built; Azure bootstrap is applied; Container App `pixel-dev` is live. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md).
 
 ## Goals
 
@@ -18,7 +18,7 @@
 | Discord adapter (interactive + publisher + calendar)        | Account linking across platforms                    |
 | Tiers from `config/admins.yaml` and `config/members.yaml`   | Reading Discord roles (never: roles are only mirrored to) |
 | SpaceAPI status, Discord events, info, help, whoami         | A database (none: access, schedules and planned linking are files) |
-| Sentry, pino, `just`, CI, Terraform bootstrap + `dev` stack | CD to GHCR/dev (#10), prod (#12)                    |
+| Sentry, pino, `just`, CI, Terraform bootstrap + `dev` stack | Remaining CD (#10: Sentry org, `ARM_*`), prod (#12) |
 
 **Non-goals:** horizontal scaling, input from broadcast platforms, LLM chat, languages other than English.
 
@@ -362,7 +362,7 @@ When the space opens or closes, the `status` feature announces it through the an
   - Each command scope carries the tags `command`, `feature`, `platform` and `tier`. The Sentry user is the stable platform ID (`discord:<id>`), so a user's issues can be traced over time, with their Discord handle as `username` and display name as `name` so people can recognise them.
   - **The Discord ID is on every error that can be traced to someone.** The dispatcher runs each command (and each autocomplete) inside `ErrorReporter.withContext`, which sets the user and tags on Sentry's isolation scope for the whole run. So an error reported anywhere beneath it, however deep (Home Assistant unreachable, the role mirror, a background report) carries who asked, as do breadcrumbs and Sentry Logs from that moment. Two commands at once stay separate. A failure handling an interaction in the Discord adapter names the person too (`captureBackground(error, source, actor)`). Errors with no person behind them (SpaceAPI polling, startup, an uncaught exception outside a command) have no user. `dataCollection.userInfo: false` doesn't affect this: it only stops Sentry inferring IP addresses and the like. A test with a real Sentry client checks the ID is on the sent events.
   - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
-  - Releases are tagged with the git SHA, and source maps are uploaded from CI later.
+  - Releases are tagged with the git SHA (`PIXEL_VERSION`). Source maps upload from CD / `just sentry-release`. The CD job **fails closed** if `SENTRY_ORG`, `SENTRY_PROJECT`, or `SENTRY_AUTH_TOKEN` is missing.
   - `environment` is `local`, `dev` or `prod`.
 - **Logs:** everything is logged through the one pino logger (`observability/logger.ts`, no `console`), and each line goes to **three** places:
   - **The console:** JSON, or readable with pino-pretty when `PIXEL_ENV=local`.
@@ -401,7 +401,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
-| `SENTRY_DSN`                  | yes    | Optional                                       |
+| `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
 | `LOG_LEVEL`                   |        | Default `info`                                 |
 | `PIXEL_HEARTBEAT_MINUTES`     |        | Default `5`. How often Pixel checks in with its Sentry cron monitor (`pixel-<env>`), so Sentry alerts when it goes quiet. 0 turns it off. Needs `SENTRY_DSN` |
 | `PIXEL_LOG_DIR`               |        | Default `data/logs`. A rotating JSON log file is written here (about two weeks, readable only by the owner). Empty turns the file off; the console and Sentry Logs still get every line |
@@ -421,16 +421,16 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 There is **no database**. Access, schedules and (planned) account linking are files. Do not add Postgres because an old issue said so (#15, #18).
 
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. Max replicas = 1 (not a variable). Deploys **stop the old instance before starting the new one** (#11). This stack only pins min=max=1 and `revision_mode = Single`. A database lock is not a plan; there is no database.
-- **Images:** local `just deploy-dev` pushes `ghcr.io/pixelbar/pixel:<sha>` (or a `dev-dirty-*` tag) and moving `:dev` for Azure `dev`. Merges to `main` push the SHA and moving `:main` via [`.github/workflows/cd.yml`](../.github/workflows/cd.yml). Builds are **linux/amd64** (Azure Container Apps); the Mini is arm64, so `just deploy-dev` cross-builds. The images contain no secrets and no access lists. The GHCR package should be **public** so Container Apps can pull without a registry password. Until a maintainer flips that in the GitHub UI (the org Packages API cannot), `dev` can set `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`. The running app pins an explicit tag, never `latest` alone. CI still builds with `push: false` as a smoke check.
+- **Images:** local `just deploy-dev` pushes `ghcr.io/pixelbar/pixel:<sha>` (or a `dev-dirty-*` tag) and moving `:dev` for Azure `dev`. Merges to `main` push the SHA and moving `:main` via [`.github/workflows/cd.yml`](../.github/workflows/cd.yml). Builds are **linux/amd64** (Azure Container Apps); the Mini is arm64, so `just deploy-dev` cross-builds. The images contain no secrets and no access lists. The GHCR package is **public** so Container Apps can pull without a registry password. If it is ever private again, `dev` can set `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`. The running app pins an explicit tag, never `latest` alone. CI still builds with `push: false` as a smoke check.
 - **Secrets:** Key Vault. Discord token, Home Assistant token, Sentry DSN, Tailscale auth key, `admins.yaml`, and optional `ghcr-pull-token` (private GHCR only) reach the container as secrets, never as image layers or Terraform state. Terraform may write them at apply from ephemeral write-only inputs (`write_secrets`); otherwise set them with `az` or the portal. Prod must not receive the Mini local / Pixel Dev token (that bot lives in `pixel-dev-kv`).
 - **Access files:** `admins.yaml` is a **read-only** Key Vault secret mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It lives on a **writable Azure Files volume with snapshots**. `config/home-assistant/` is on the same volume: `devices.yaml` is a human allow-list; `inventory.yaml` is rewritten by Pixel. There is no block-list (#6).
 - **Runtime files:** the Azure Files share is mounted at `/app/persist` as uid 1000 (`node`), covering `members.yaml`, `home-assistant/`, and `PIXEL_DATA_DIR` (`schedules.yaml` must persist; `home-switches.state` lost → doors start **off**; `space.state` and `announcements.state` only cost details). A container's own filesystem is thrown away on every deploy.
-- **Environments (temporary routing):** `dev` (Pixel Dev bot, test guild) is `infra/envs/dev`. `prod` (Pixel bot, Pixelbar guild) is #12. Separate bots, tokens and vaults. **`just deploy-dev`** (a local build) rolls Azure `dev`. **Merges to `main`** deploy to **prod**. CI does not deploy pull requests. This overrides the earlier `main` → `dev` plan until [ADR 0010](adr/0010-ghcr-cd.md) is reverted. Prod is fail-closed while `#12` / prod secrets are missing.
+- **Environments (temporary routing):** `dev` (Pixel Dev bot, test guild) is `infra/envs/dev`. `prod` (Pixel bot, Pixelbar guild) is #12. Separate bots, tokens and vaults. **`just deploy-dev`** (a local build) rolls Azure `dev` (one replica, then `just register`, then Sentry release). **Merges to `main`** publish GHCR only. CI does not deploy pull requests, and **does not deploy prod** until #12. This overrides the earlier `main` → `dev` plan until [ADR 0010](adr/0010-ghcr-cd.md) is reverted. Fail closed: never copy the Mini / Pixel Dev Discord token into prod.
 - **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC, applied) then `infra/modules/pixel` and `infra/envs/dev` (#9). Secret values never go into Terraform state; apply can take them as ephemeral write-only inputs. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md) and [ADR 0009](adr/0009-container-apps-dev.md). CD does **not** apply Terraform; it updates the Container App image.
 - **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path (`tailscale_enabled`); `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Both URL and token or neither. Sidecar is userspace (no TUN). LAN MagicDNS through it is remaining work for #43.
 - **Cost (rough):** always-on `dev` is about €40–55/month West Europe without Tailscale, plus about €15 with the sidecar. Not a quote.
-- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` (bootstrap and `envs/dev`) only when `infra/`, that workflow, or the `justfile` change, and `terraform plan` on `envs/dev` when GitHub Environment `dev` has `ARM_*` variables. No apply on merge. Actions are pinned to commit SHAs.
-- **CD (built, temporary routing):** `just deploy-dev` for Azure `dev` (local GHCR push + `az`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only: publish with `GITHUB_TOKEN` (`packages: write` on that job) and deploy prod via GitHub Environment OIDC (`ARM_*` variables). Prod fails closed if the stack or secrets are missing. Sentry releases and command registration are still later. See [ADR 0010](adr/0010-ghcr-cd.md).
+- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` (bootstrap and `envs/dev`) only when `infra/`, that workflow, or the `justfile` change, then `terraform plan` on `envs/dev` via GitHub Environment `dev` OIDC. Missing `ARM_*` **fails closed**. No apply on merge. Actions are pinned to commit SHAs.
+- **CD (built, temporary routing):** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register` + Sentry release). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only: publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). **No Azure login and no `pixel-prod` update** until #12. See [ADR 0010](adr/0010-ghcr-cd.md).
 
 ## Adding a platform (later)
 
@@ -440,7 +440,7 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 ## Open questions
 
 - Who has Owner (or Contributor) on the Pixel Azure subscription, besides the person applying bootstrap?
-- Which Sentry org? (Needed for Sentry releases from CD; image publish does not use it.)
+- Which Sentry org? (Needed for Sentry releases from CD / `just sentry-release`. Set repository variables `SENTRY_ORG` and `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN`. Image publish does not use them; the CD Sentry job fails closed if they are missing.)
 - Where should private change history for `admins.yaml` live (a private repo, or Key Vault versions)? `members.yaml` is bot-managed; backups are volume snapshots, not Key Vault secret versions.
 - Which channels should the live and timeline announcements go to in the real server?
 
@@ -457,4 +457,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
 | 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
 | 0009 | Container Apps module + `dev`: one replica, required Azure Files volume, Key Vault, optional Tailscale sidecar | accepted |
-| 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` → prod (fail closed until #12) | accepted |
+| 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` publishes GHCR only (prod CD off until #12) | accepted |

@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. The Container Apps `dev` stack (#9) is in Terraform. CD (#10): **temporarily** `just deploy-dev` (a local GHCR push) rolls Azure `dev`, and merges to `main` go to prod (fail closed until #12). Every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). CD (#10): `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until #12. Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
@@ -42,7 +42,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild). Separate bots, tokens and secrets. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. Container App `pixel-dev` in `pixel-dev` (one replica, no public ingress) after #9 apply. `just deploy-dev` rolls that app; `main` rolls `pixel-prod` once #12 exists. |
+| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. `main` does not roll `pixel-prod` until #12. |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
@@ -59,11 +59,13 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
 | Look up a person | `/admin level get user:` (admins only) |
 
-Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`. Run `just` to list them all.
+Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just sentry-release`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`. Run `just` to list them all.
 
 ## Running Pixel today
 
-There is no hosted deployment yet. To run Pixel (for dev, or as a stopgap):
+**Azure `dev` is live** (`pixel-dev`, one replica). Prefer `just deploy-dev` for that bot. If `pixel-dev` is up, do **not** also `just dev` on the same Pixel Dev token (two bots would both answer).
+
+To run Pixel from a laptop (your own bot, or the Pixel Dev bot only when the Azure app is stopped):
 
 **From source** (needs Node.js and pnpm):
 
@@ -163,7 +165,7 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Later changes: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md).
 
-**GitHub Environment `prod`** (reviewers, deploying branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. CD on `main` uses them for OIDC to prod. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`), not those variables.
+**GitHub Environment `prod`** (reviewers, branch `main`) will need `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets, when prod CD is turned on (#12). Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. **CD on `main` does not deploy prod** and does not read those variables. Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`). Terraform plan on PRs uses Environment `dev` `ARM_*` and **fails closed** if they are missing.
 
 **Do not** apply bootstrap from GitHub Actions, and do not run a second Pixel bot against the same Discord token.
 
@@ -191,7 +193,7 @@ az containerapp revision restart -g pixel-dev -n pixel-dev
 
 **Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 with the sidecar. West Europe. Not a quote.
 
-🚧 **CD / prod:** publishing `ghcr.io/pixelbar/pixel:<sha>`, Sentry releases, register-on-deploy, and prod are #10 and #12. No apply on merge from this stack.
+🚧 **Prod** is #12. `just deploy-dev` already publishes GHCR, rolls `pixel-dev`, registers commands, and creates a Sentry release when org/token are set. `main` publishes GHCR (and source maps) only. No Terraform apply on merge.
 
 ## Scheduled posts
 
@@ -247,15 +249,14 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **Azure CD (temporary routing, [ADR 0010](adr/0010-ghcr-cd.md)):**
 
-- **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only. Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, and `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Max replicas stay 1. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
-- **`prod`:** merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) push the SHA and moving tag `main`, then deploy that SHA. If `infra/envs/prod` or prod Key Vault secrets are missing, that job **fails closed**. Discord will not answer on prod until #12. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
-- GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package should be **public** (no secrets in the image) so Azure can pull. Org package visibility cannot be changed via the API; until a maintainer uses GitHub → Packages → pixel → Change visibility → Public, `just tf-apply dev` needs `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`.
-- Prod Azure login is GitHub Environment OIDC (`ARM_*` variables). Missing `ARM_*` fails closed. `dev` uses local `az`.
-- Neither path applies Terraform. If `pixel-dev` does not exist yet, apply #9 first (`just tf-apply dev`), then `just deploy-dev`.
-- Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`.
+- **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register` against the Pixel Dev guild from local `.env`, then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
+- **`prod`:** **off** until #12. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the SHA and moving tag `main`, and upload Sentry source maps when org/token are set. The workflow does **not** log in to Azure and has no path to `pixel-prod`. Discord will not answer on prod. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
+- GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
+- Prod Azure login would be GitHub Environment OIDC (`ARM_*` variables) once prod CD is re-enabled. `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` `ARM_*` and fails closed if they are missing.
+- Neither path applies Terraform.
+- Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register` so Discord matches.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
-
-🚧 **Sentry releases and `just register` from CD** are still later. After a deploy that changes commands, register against that environment's guild by hand.
+- **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. The CD job **fails closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
 
 ## Incidents
 
@@ -300,7 +301,7 @@ Sentry gets three things: errors (with the tags `command`, `feature`, `platform`
   3. Decide: a bug in Pixel (open a GitHub issue, link the Sentry issue), a problem outside it (SpaceAPI, Home Assistant, Discord: see [Incidents](#incidents)), or noise (resolve or ignore it).
   4. If it's urgent and recent, roll back (see [Deploys](#deploys)).
 - **Read feedback:** Sentry → **User Feedback**. Each has the sender's Discord name and ID, so you can reply in Discord.
-- Errors from before a release can be filtered by the `release` tag, which is the git SHA.
+- Errors from before a release can be filtered by the `release` tag, which is `PIXEL_VERSION` (the git SHA the image was built from). Source maps upload from `just sentry-release` / CD when `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` are set.
 
 ## Privacy requests
 
