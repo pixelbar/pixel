@@ -29,6 +29,7 @@ import { createWhoamiFeature } from "./whoami/index.ts";
 
 export type FeatureDeps = {
 	version: string;
+	runtime: "local" | "cloud";
 	startedAt: Date;
 	access: AccessStore;
 	capabilities: CapabilityRegistry;
@@ -85,6 +86,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createHomeInventoryFeature({ inventory: deps.homeInventory, logger: deps.logger }),
 		createAdminFeature({
 			version: deps.version,
+			runtime: deps.runtime,
 			startedAt: deps.startedAt,
 			access: deps.access,
 			capabilities: deps.capabilities,

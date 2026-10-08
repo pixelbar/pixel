@@ -11,10 +11,12 @@ const optional = <T extends z.ZodType>(schema: T) =>
 	z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
 
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
+const pixelRuntime = z.enum(["local", "cloud"]).default("local");
 
 const envSchema = z
 	.object({
 		PIXEL_ENV: pixelEnv,
+		PIXEL_RUNTIME: pixelRuntime,
 		PIXEL_VERSION: z.string().default("dev"),
 		// Set by CI and the Docker build; from a checkout Pixel asks git instead.
 		PIXEL_GIT_SHA: optional(
@@ -65,6 +67,8 @@ const envSchema = z
 
 export type Config = {
 	env: "local" | "dev" | "prod";
+	/** Where this process is running. Azure Container Apps sets `cloud`. `/admin status` shows this. */
+	runtime: "local" | "cloud";
 	version: string;
 	/** The git commit and branch Pixel was built from, when given. */
 	gitSha: string | undefined;
@@ -137,6 +141,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	const e = result.data;
 	return {
 		env: e.PIXEL_ENV,
+		runtime: e.PIXEL_RUNTIME,
 		version: e.PIXEL_VERSION,
 		gitSha: e.PIXEL_GIT_SHA,
 		gitBranch: e.PIXEL_GIT_BRANCH,

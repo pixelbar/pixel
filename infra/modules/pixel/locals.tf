@@ -32,6 +32,7 @@ locals {
   pixel_plain_env = merge(
     {
       PIXEL_ENV                = var.environment
+      PIXEL_RUNTIME            = "cloud"
       PIXEL_ADMINS_FILE        = "${local.secrets_mount}/admins-yaml"
       PIXEL_MEMBERS_FILE       = "${local.persist_mount}/members.yaml"
       PIXEL_DATA_DIR           = "${local.persist_mount}/data"

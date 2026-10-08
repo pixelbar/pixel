@@ -12,6 +12,7 @@ describe("loadConfig", () => {
 		const config = loadConfig(VALID);
 		expect(config).toMatchObject({
 			env: "local",
+			runtime: "local",
 			logLevel: "info",
 			access: { adminsFile: "config/admins.yaml", membersFile: "config/members.yaml" },
 			dataDir: "data",
@@ -143,6 +144,12 @@ describe("loadConfig", () => {
 
 	it("treats an empty SENTRY_DSN as unset", () => {
 		expect(loadConfig({ ...VALID, SENTRY_DSN: "" }).sentryDsn).toBeUndefined();
+	});
+
+	it("defaults PIXEL_RUNTIME to local, and accepts cloud", () => {
+		expect(loadConfig(VALID).runtime).toBe("local");
+		expect(loadConfig({ ...VALID, PIXEL_RUNTIME: "cloud" }).runtime).toBe("cloud");
+		expect(() => loadConfig({ ...VALID, PIXEL_RUNTIME: "azure" })).toThrow(/PIXEL_RUNTIME/);
 	});
 
 	it("lists every invalid variable without echoing values", () => {

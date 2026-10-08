@@ -150,6 +150,7 @@ export function buildCore(
 	const registry = new CommandRegistry({ capabilities });
 	const features = buildFeatures({
 		version: config.version,
+		runtime: config.runtime,
 		startedAt: options.startedAt ?? new Date(),
 		access,
 		capabilities,

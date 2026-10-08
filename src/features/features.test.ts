@@ -46,6 +46,7 @@ const spaceStatus: SpaceStatus = {
 
 const deps = () => ({
 	version: "1.0.0",
+	runtime: "local" as const,
 	startedAt: new Date(),
 	access,
 	capabilities: new CapabilityRegistry(CAPABILITIES),

@@ -32,6 +32,7 @@ describe("buildCore", () => {
 		);
 		config = {
 			env: "local",
+			runtime: "local",
 			version: "test",
 			gitSha: undefined,
 			gitBranch: undefined,

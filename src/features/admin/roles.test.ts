@@ -81,7 +81,7 @@ function fakeBackend(overrides: Partial<MirrorBackend> = {}): Fake {
 	};
 }
 
-function setup(backend?: Fake, homeBackend?: HomeBackend) {
+function setup(backend?: Fake, homeBackend?: HomeBackend, runtime: "local" | "cloud" = "local") {
 	const store = FileAccessStore.open({
 		paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
 		logger: logger(),
@@ -96,6 +96,7 @@ function setup(backend?: Fake, homeBackend?: HomeBackend) {
 	commands.register(
 		createAdminFeature({
 			version: "1",
+			runtime,
 			startedAt: new Date(),
 			access: store,
 			capabilities: new CapabilityRegistry(),
@@ -563,6 +564,13 @@ describe("/admin level get shows Discord roles", () => {
 });
 
 describe("/admin status and reload", () => {
+	it("says local unless PIXEL_RUNTIME is cloud", async () => {
+		expect(fieldsOf(await run(setup().dispatcher, "status", {})).Where).toBe("local");
+		expect(
+			fieldsOf(await run(setup(undefined, undefined, "cloud").dispatcher, "status", {})).Where,
+		).toBe("cloud");
+	});
+
 	it("shows each tier's state, with reasons", async () => {
 		const backend = fakeBackend({
 			states: async () => [

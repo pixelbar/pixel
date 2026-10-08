@@ -380,6 +380,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | Variable                      | Secret | Notes                                          |
 | ----------------------------- | ------ | ---------------------------------------------- |
 | `PIXEL_ENV`                   |        | `local`, `dev` or `prod` (default `local`)     |
+| `PIXEL_RUNTIME`               |        | `local` or `cloud` (default `local`). Azure Container Apps sets `cloud`. `/admin status` shows it as **Where** |
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`. Pixel writes to it (and to `<file>.bak` and a temp file in the same folder), so the folder must be writable |

@@ -20,7 +20,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | Azure Files account + share `pixel` | `pixeldevdata` |
 | Daily file-share backup, 14-day keep | `pixel-dev-rsv` |
 
-Optional Tailscale sidecar (off by default): same replica, userspace networking. Nabu Casa (`HOME_ASSISTANT_URL`) still works when it is off.
+Optional Tailscale sidecar (off by default): same replica, userspace networking. Nabu Casa (`HOME_ASSISTANT_URL`) still works when it is off. The app sets `PIXEL_RUNTIME=cloud` so `/admin status` shows **Where: cloud**.
 
 There is **no database**.
 
