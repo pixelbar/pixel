@@ -86,7 +86,7 @@ docker run -d --name pixel \
   -p 8080:8080 pixel:local
 ```
 
-Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files, and is safe to delete. See [`architecture.md`](architecture.md) for every setting.
+Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` is not safe to delete** (it is the scheduled posts). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
@@ -111,7 +111,7 @@ That's all: Pixel updates `members.yaml` itself, keeps `members.yaml.bak`, and l
 
 **Capabilities** (extra permissions such as `ha-lights`): `/admin capabilities grant|revoke user: capability:` and `/admin capabilities list [user:]`. They only ever work for members, friends and admins, never guests.
 
-🚧 **Azure:** admin and member files live in Key Vault / a persistent volume. Fill in how to edit them and how the change reaches the running container (restart? remount?), and per environment.
+🚧 **Azure:** `admins.yaml` can be a read-only Key Vault mount; `members.yaml` (and Home Assistant files, and `data/` including `schedules.yaml`) live on a **writable persistent volume with snapshots**. Fill in how to edit them and how the change reaches the running container (restart? remount?), and per environment.
 
 ## Moderation
 

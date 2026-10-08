@@ -115,7 +115,7 @@ type TierSource = {
 };
 ```
 
-Phase 1 has a single `ConfigTierSource`. Later sources implement the same interface: database grants and linked identities. Discord roles are deliberately not a source (see "Discord role mirroring"). Neither the dispatcher nor any feature changes when a source is added.
+Phase 1 has a single `ConfigTierSource`. Linked identities will use the same access store (several ids on one `members.yaml` entry). Discord roles are deliberately not a source (see "Discord role mirroring"). Neither the dispatcher nor any feature changes when a source is added.
 
 Handlers receive a `Principal { platform, userId, displayName, tier }`. They never receive raw platform objects they could misuse to make their own authorisation decisions.
 
@@ -224,10 +224,10 @@ Pixel's own data is the source of truth for tiers. Where the Discord server uses
 These are recorded so that phase 1 doesn't make them harder. Each will get an ADR before it is built.
 
 - ~~**Discord role sync** (roles as a tier source)~~: decided against. Roles are only ever *mirrored to* from Pixel's data (see "Discord role mirroring"), never read to decide a tier.
-- **More interactive platforms (Telegram):** these need **account linking** and therefore a database (Postgres): `people`, `identities`, `link_codes` and an append-only `audit_log`. The planned flow:
-  1. The person runs `/link telegram` on Discord.
-  2. Pixel replies ephemerally with a one-time code: about 40 bits of entropy, stored only as a hash, valid for 10 minutes, single use.
-  3. The person sends the code to the bot in a Telegram DM. It is rate-limited, and redeeming it marks it used in the same transaction that creates the link.
-  4. Both accounts are notified.
-- **Database-backed grants:** admin commands (`/access grant|revoke`) with expiry and audit, possibly replacing `members.yaml`.
+- **More interactive platforms (Telegram):** these need **account linking** (#16). **No database:** linking writes `telegram:<id>` onto the person's `members.yaml` entry through the access store. The planned flow:
+  1. The person runs `/link` on Discord.
+  2. Pixel replies ephemerally with a one-time code: about 40 bits of entropy, stored only as a hash **in memory**, valid for 10 minutes, single use. Codes pending at a restart are lost (Pixel is a single instance).
+  3. The person sends the code to the bot in a Telegram DM. It is rate-limited per Telegram user, and redeeming it adds the id through the store, which audits it.
+  4. Both accounts are notified. `/unlink` from either side. Guests can't link (no entry to add to). Admins' Telegram IDs are added by hand in both files.
+- ~~**Database-backed grants**~~: done without a database (#25; #18 closed). Admin commands rewrite `members.yaml`.
 - **Freshness:** once tiers come from outside sources, re-verify a tier older than 24 hours before privileged commands, and reconcile every night.

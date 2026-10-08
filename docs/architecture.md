@@ -1,6 +1,6 @@
 # Pixel architecture
 
-> Status: **draft**. Nothing is built yet. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md).
+> Status: **living draft**. The bot is built; Azure hosting is designed, not built. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md).
 
 ## Goals
 
@@ -17,8 +17,8 @@
 | Core: commands, access, dispatcher, registry, announcer     | Telegram, Mastodon, other adapters                  |
 | Discord adapter (interactive + publisher + calendar)        | Account linking across platforms                    |
 | Tiers from `config/admins.yaml` and `config/members.yaml`   | Reading Discord roles (never: roles are only mirrored to) |
-| SpaceAPI status, Discord events, info, help, whoami         | A database (none is needed until linking or grants) |
-| Sentry, pino, `just`                                        | Terraform and CI/CD (designed below, built later)   |
+| SpaceAPI status, Discord events, info, help, whoami         | A database (none: access, schedules and planned linking are files) |
+| Sentry, pino, `just`, CI                                    | Terraform and CD (designed below, built later)      |
 
 **Non-goals:** horizontal scaling, input from broadcast platforms, LLM chat, languages other than English.
 
@@ -383,7 +383,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`. Pixel writes to it (and to `<file>.bak` and a temp file in the same folder), so the folder must be writable |
-| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state (`space.state`, `announcements.state`); gitignored |
+| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state: `schedules.yaml` (must persist), `home-switches.state`, `space.state`, `announcements.state`. Gitignored |
 | `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in |
 | `PIXEL_CONTENT_DIR`           |        | Default `content`. The reviewed content Pixel reads (`info/*.md` for `/info`). Read-only |
 | `DISCORD_TOKEN`               | yes    |                                                |
@@ -415,26 +415,30 @@ Per-platform settings for later adapters (Telegram tokens, the Mastodon instance
 
 Every task goes through the [`justfile`](../justfile). Run `just` to list the recipes. `just dev` runs the bot with `tsx watch`, which also restarts it when `config/*.yaml` changes. `just check` runs the same lint, type-check and test steps that CI will run.
 
-## Deployment (designed, not built in phase 1)
+## Deployment (designed, not built)
 
-- **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. That means max replicas = 1, and deploys should use a stop-then-start strategy, or a lock once a database exists.
+There is **no database**. Access, schedules and (planned) account linking are files. Do not add Postgres because an old issue said so (#15, #18).
+
+- **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. Max replicas = 1. Deploys **stop the old instance before starting the new one** (#11). A database lock is not a plan; there is no database.
 - **Images:** built by GitHub Actions and pushed to `ghcr.io/pixelbar/pixel:<sha>`. The images contain no secrets and no access lists.
-- **Secrets and access files:** Key Vault. The two YAML files are stored as secrets and mounted into the container as files.
-- **Runtime state:** the container writes `space.state` and `announcements.state` to `/app/data`. A container's own filesystem is thrown away on every deploy, so without a mounted volume (for example Azure Files) the "open for 2h" detail resets after each deploy, and the live style loses its remembered post and relies on searching the channel's recent messages instead. Pixel works fine either way, so a volume is optional (#9).
+- **Secrets:** Key Vault. Discord token, Home Assistant token, Sentry DSN, and similar values reach the container as secrets, never as image layers, Terraform variables or state.
+- **Access files:** `admins.yaml` is hand-edited and can be a **read-only** Key Vault mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It needs a **writable persistent volume with snapshots** (a lost file is a fail-closed outage). `config/home-assistant/` is the same class of data: `devices.yaml` is a human allow-list; `inventory.yaml` is rewritten by Pixel.
+- **Runtime files:** `/app/data` (`PIXEL_DATA_DIR`) holds `schedules.yaml` (scheduled posts: **not safe to delete**), `home-switches.state` (lost file → doors start **off**), plus `space.state` and `announcements.state` (losing those only costs the "open for 2h" text and the remembered live-post ID). A container's own filesystem is thrown away on every deploy, so this directory **must** be a mounted volume (for example Azure Files), shared with `members.yaml` if that is simpler than two mounts. Confirm the non-root `node` user can write to the mount (#9).
 - **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
-- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC), `infra/modules/pixel`, and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state.
+- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC) first (#8), then `infra/modules/pixel` and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state. Blocked on which Azure subscription (see Open questions).
 - **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. Actions are pinned to commit SHAs, and the workflow can only read the repo.
-- **CD (planned):** on `main`, push the image to GHCR, create a Sentry release with source maps, and deploy to dev. Prod deploys need approval.
+- **CD (planned):** on `main`, push the image to GHCR, create a Sentry release with source maps, register commands, and deploy to dev. Prod deploys need approval.
 
 ## Adding a platform (later)
 
-- **Interactive** (for example Telegram): create `src/adapters/telegram/`. It builds a `PlatformActor`, calls the dispatcher and renders `Reply`. Telegram users get tiers only after account linking, which brings in Postgres (see the identity doc).
+- **Interactive** (for example Telegram): create `src/adapters/telegram/`. It builds a `PlatformActor`, calls the dispatcher and renders `Reply`. Telegram users get tiers only after account linking, which writes a second id onto the existing `members.yaml` entry (see the identity doc). No database.
 - **Outbound only** (for example Mastodon): implement `Publisher`, configure the instance and account through environment variables, and register it with the announcer. Features do not change. When there are several publishers, add per-kind routing as config.
 
 ## Open questions
 
-- Where should private change history for `admins.yaml` and `members.yaml` live (a private repo, or Key Vault versions)?
-- Which Azure subscription and which Sentry org? (Needed once infrastructure work starts.)
+- **Which Azure subscription, and who owns it?** Blocker for Terraform bootstrap (#8). Who has Owner or Contributor?
+- Which Sentry org? (Needed for CD, #10.)
+- Where should private change history for `admins.yaml` live (a private repo, or Key Vault versions)? `members.yaml` is bot-managed; backups are volume snapshots, not Key Vault secret versions.
 - Which channels should the live and timeline announcements go to in the real server?
 
 ## Decision log
@@ -445,6 +449,6 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | ---- | --------------------------------------------------------------------- | -------- |
 | 0001 | TypeScript, ports-and-adapters core, interactive vs publisher adapters | proposed |
 | 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | proposed |
-| 0003 | No database until account linking or grants need one                  | proposed |
+| 0003 | No database: access, schedules and planned linking are files          | accepted |
 | 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
 | 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |

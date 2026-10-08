@@ -113,7 +113,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
 | `PIXEL_HOME_SYNC_MINUTES`     | Optional. How often (minutes) Pixel refreshes `inventory.yaml`, a list of everything Home Assistant has so you can copy devices into `devices.yaml`. It is not an allow-list. Defaults to 60, 0 for only at startup and on `/admin reload` |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Where Pixel keeps small bits of state (`space.state`, `announcements.state`). Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`. Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
@@ -143,7 +143,7 @@ Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It ru
 
 ## Deployment
 
-Not set up yet. The plan is a single container on Azure Container Apps, with `dev` and `prod` environments provisioned by Terraform. See [Deployment](docs/architecture.md#deployment-designed-not-built-in-phase-1).
+Not set up yet. The plan is a single container on Azure Container Apps, with `dev` and `prod` environments provisioned by Terraform, a required persistent volume for `members.yaml` and `data/` (including `schedules.yaml`), and **no database**. See [Deployment](docs/architecture.md#deployment-designed-not-built).
 
 ## Running and operating Pixel
 
