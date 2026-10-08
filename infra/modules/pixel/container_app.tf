@@ -11,6 +11,7 @@ resource "azurerm_container_app_environment" "this" {
   name                       = "${local.name_prefix}-cae"
   location                   = local.location
   resource_group_name        = data.azurerm_resource_group.this.name
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
   tags                       = local.tags
 }
