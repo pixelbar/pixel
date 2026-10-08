@@ -14,7 +14,7 @@ Pixel will run on Azure Container Apps. Terraform must not keep state on a lapto
 - **`infra/bootstrap`** is applied by hand, by an Owner of that subscription. It creates:
   - resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`
   - a storage account for state, with shared keys off, Azure AD auth, versioning, and soft delete
-  - one user-assigned identity per environment, federated only to `repo:pixelbar/pixel:environment:<env>`
+  - one user-assigned identity per environment, federated only to GitHub’s immutable OIDC subject `repo:pixelbar@1690472/pixel@1402859166:environment:<env>` (this repo was created after 2026-07-15; the name-only subject does not match)
 - Environment configs (#9, #12) use the `dev` and `prod` containers as their backend and deploy **into** the env resource groups. They do not create those groups.
 - GitHub identities are **Contributor on their env resource group**, not on the subscription. They cannot see the other environment’s group.
 - Bootstrap’s own state is local for the first apply, then migrated into the `bootstrap` container.

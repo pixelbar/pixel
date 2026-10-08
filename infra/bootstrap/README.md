@@ -32,7 +32,7 @@ Each GitHub identity can federate only from this repository’s matching GitHub 
    az account show --query '{name:name,id:id,user:user.name}' -o json
    ```
 
-3. In the GitHub repo: **Settings → Environments**. Create `dev` and `prod` if they are missing. On `prod`, require reviewers (and limit the deploying branch to `main`) before anything in #10 can use it. The federated subject is `repo:pixelbar/pixel:environment:<name>`, so a workflow that does not use that environment cannot log in.
+3. In the GitHub repo: **Settings → Environments**. Create `dev` and `prod` if they are missing. On `prod`, require reviewers (and limit the deploying branch to `main`) before anything in #10 can use it. This repo was created after 2026-07-15, so GitHub’s OIDC subject is immutable: `repo:pixelbar@1690472/pixel@1402859166:environment:<name>`. A workflow that does not use that environment cannot log in. If Azure still has the old name-only subject, `azure/login` fails with AADSTS700213 until you apply this stack (or update the federated credential by hand).
 
 ## Apply
 

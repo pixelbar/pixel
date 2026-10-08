@@ -14,7 +14,8 @@ resource "azurerm_federated_identity_credential" "github" {
   user_assigned_identity_id = azurerm_user_assigned_identity.github[each.key].id
   issuer                    = "https://token.actions.githubusercontent.com"
   audience                  = ["api://AzureADTokenExchange"]
-  subject                   = "repo:${var.github_repository}:environment:${each.key}"
+  # GitHub immutable OIDC: repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:ENV
+  subject = "repo:${split("/", var.github_repository)[0]}@${var.github_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:environment:${each.key}"
 }
 
 # The identity that applies this stack must be able to read and write blobs
