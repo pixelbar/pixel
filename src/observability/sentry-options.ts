@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
 import type { SentryConfig } from "../config.ts";
 import { scrubDeep } from "./scrub.ts";
 
@@ -25,9 +26,9 @@ export function isHealthProbe(urlPath: string): boolean {
  * every log line goes to Sentry Logs as well as to the file and the console, after
  * secrets have been scrubbed from it.
  *
- * Tracing, process sessions and runtime metrics are on: this is a long-running
- * Discord bot, not a request-scoped web app. Incoming `/healthz` and `/readyz`
- * probes are ignored. A missing DSN never reaches here.
+ * Tracing, process sessions, runtime metrics and CPU profiling are on: this is
+ * a long-running Discord bot, not a request-scoped web app. Incoming `/healthz`
+ * and `/readyz` probes are ignored. A missing DSN never reaches here.
  */
 export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 	return {
@@ -47,6 +48,9 @@ export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 		includeServerName: false,
 		sampleRate: 1,
 		tracesSampleRate: sentry.tracesSampleRate,
+		profileSessionSampleRate: sentry.profileSessionSampleRate,
+		// Profile sampled command spans (and their outbound HTTP), not the whole process.
+		profileLifecycle: "trace",
 		integrations: [
 			Sentry.httpIntegration({
 				ignoreIncomingRequests: isHealthProbe,
@@ -56,6 +60,9 @@ export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 			}),
 			Sentry.pinoIntegration({ log: { levels: [...SENTRY_LOG_LEVELS] } }),
 			Sentry.nodeRuntimeMetricsIntegration(),
+			// Skip wiring the profiler when the rate is 0: in trace mode the SDK
+			// still starts it otherwise.
+			...(sentry.profileSessionSampleRate > 0 ? [nodeProfilingIntegration()] : []),
 		],
 		beforeSend: (event) => scrubDeep(event),
 		beforeBreadcrumb: (breadcrumb) => scrubDeep(breadcrumb),

@@ -99,6 +99,7 @@ describe("sentryCheckIn, with a real Sentry client", () => {
 				environment: "test",
 				release: "1",
 				tracesSampleRate: 1,
+				profileSessionSampleRate: 0,
 			}),
 			transport: () => ({
 				send: async (envelope: unknown[]) => {

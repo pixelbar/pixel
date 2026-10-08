@@ -48,6 +48,7 @@ describe("buildCore", () => {
 			healthPort: 0,
 			sentryDsn: undefined,
 			sentryTracesSampleRate: 1,
+			sentryProfileSessionSampleRate: 1,
 			spaceApiUrl: "https://spaceapi.example/",
 			discord: {
 				token: "x",

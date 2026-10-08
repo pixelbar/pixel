@@ -17,6 +17,7 @@ beforeAll(() => {
 			environment: "test",
 			release: "1",
 			tracesSampleRate: 1,
+			profileSessionSampleRate: 0,
 		}),
 		transport: () => ({
 			send: async (envelope: unknown[]) => {
