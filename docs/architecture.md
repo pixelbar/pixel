@@ -415,20 +415,20 @@ Per-platform settings for later adapters (Telegram tokens, the Mastodon instance
 
 Every task goes through the [`justfile`](../justfile). Run `just` to list the recipes. `just dev` runs the bot with `tsx watch`, which also restarts it when `config/*.yaml` changes. `just check` runs the same lint, type-check and test steps that CI will run.
 
-## Deployment (designed, not built)
+## Deployment
 
 There is **no database**. Access, schedules and (planned) account linking are files. Do not add Postgres because an old issue said so (#15, #18).
 
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. Max replicas = 1. Deploys **stop the old instance before starting the new one** (#11). A database lock is not a plan; there is no database.
-- **Images:** built by GitHub Actions and pushed to `ghcr.io/pixelbar/pixel:<sha>`. The images contain no secrets and no access lists.
-- **Secrets:** Key Vault. Discord token, Home Assistant token, Sentry DSN, and similar values reach the container as secrets, never as image layers, Terraform variables or state.
+- **Images:** [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) pushes `ghcr.io/pixelbar/pixel:<sha>` (and `pr-<n>` on pull requests, `main` as a moving tag on `main`). The images contain no secrets and no access lists. The GHCR package is **public** so Container Apps can pull without a registry password. The running app pins the SHA, never `latest` alone. CI still builds with `push: false` as a smoke check.
+- **Secrets:** Key Vault. Discord token, Home Assistant token, Sentry DSN, and similar values reach the container as secrets, never as image layers, Terraform variables or state. Prod must not receive the Mini local / Pixel Dev token (that bot lives in `pixel-dev-kv`).
 - **Access files:** `admins.yaml` is hand-edited and can be a **read-only** Key Vault mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It needs a **writable persistent volume with snapshots** (a lost file is a fail-closed outage). `config/home-assistant/` is the same class of data: `devices.yaml` is a human allow-list; `inventory.yaml` is rewritten by Pixel.
 - **Runtime files:** `/app/data` (`PIXEL_DATA_DIR`) holds `schedules.yaml` (scheduled posts: **not safe to delete**), `home-switches.state` (lost file → doors start **off**), plus `space.state` and `announcements.state` (losing those only costs the "open for 2h" text and the remembered live-post ID). A container's own filesystem is thrown away on every deploy, so this directory **must** be a mounted volume (for example Azure Files), shared with `members.yaml` if that is simpler than two mounts. Confirm the non-root `node` user can write to the mount (#9).
-- **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
-- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC) first (#8), then `infra/modules/pixel` and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md).
+- **Environments (temporary routing):** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. **Pull requests** deploy their SHA to Azure `dev`. **Merges to `main`** deploy to **prod**. This overrides the earlier `main` → `dev` plan until [ADR 0010](adr/0010-ghcr-cd.md) is reverted. Prod is fail-closed while `#12` / prod secrets are missing.
+- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC) first (#8), then `infra/modules/pixel` and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md). CD does **not** apply Terraform; it updates the Container App image.
 - **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path; `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Sidecar is part of #9 / #43, not bootstrap.
 - **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` only when `infra/`, that workflow, or the `justfile` recipe change. Actions are pinned to commit SHAs, and the workflows can only read the repo.
-- **CD (planned):** on `main`, push the image to GHCR, create a Sentry release with source maps, register commands, and deploy to dev. Prod deploys need approval.
+- **CD (built, temporary routing):** [`.github/workflows/cd.yml`](../.github/workflows/cd.yml). Publish uses `GITHUB_TOKEN` against GHCR (`packages: write` on that job only). Deploy uses GitHub Environment OIDC (`ARM_*` variables, `id-token: write`). `dev` skips if `ARM_*` is unset; prod fails closed if the stack or secrets are missing. Sentry releases and command registration are still later. See [ADR 0010](adr/0010-ghcr-cd.md).
 
 ## Adding a platform (later)
 
@@ -438,7 +438,7 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 ## Open questions
 
 - Who has Owner (or Contributor) on the Pixel Azure subscription, besides the person applying bootstrap?
-- Which Sentry org? (Needed for CD, #10.)
+- Which Sentry org? (Needed for Sentry releases from CD; image publish does not use it.)
 - Where should private change history for `admins.yaml` live (a private repo, or Key Vault versions)? `members.yaml` is bot-managed; backups are volume snapshots, not Key Vault secret versions.
 - Which channels should the live and timeline announcements go to in the real server?
 
@@ -454,3 +454,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
 | 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
 | 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
+| 0010 | Temporary GHCR CD: PRs → Azure `dev`, `main` → prod (fail closed until #12) | accepted |

@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). **CD (#10, temporary):** pull requests publish GHCR and deploy to Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
 
 ## Project at a glance
 
@@ -75,7 +75,7 @@ infra/                  # Terraform. bootstrap/ is #8 (apply by hand). modules/ 
 
 ## Conventions
 
-- **Dependency direction:** `adapters → core ← features → services`. `core` imports nothing from other folders. **discord.js is imported only in `src/adapters/discord/`.** When the core needs platform data, define a port in `core/ports/` and implement it in the adapter.
+- **Dependency direction:** `adapters → core ↝ features → services`. `core` imports nothing from other folders. **discord.js is imported only in `src/adapters/discord/`.** When the core needs platform data, define a port in `core/ports/` and implement it in the adapter.
 - **Adding a feature:**
   1. Create `src/features/<name>/index.ts` that exports a `create<Name>Feature(deps)` factory returning a `Feature`. Dependencies come in through `deps`, never as module-level singletons.
   2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register` so Discord sees it.

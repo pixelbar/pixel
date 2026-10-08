@@ -11,3 +11,5 @@ Terraform for Pixel on Azure. There is **no database**. Secrets never go in Terr
 Region is West Europe. The Azure subscription is in `bootstrap` variables.
 
 How to apply the bootstrap: [`bootstrap/README.md`](bootstrap/README.md) and the [runbook](../docs/runbook.md#terraform-bootstrap).
+
+Images and Container App rollouts: [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) (temporary PR → `dev`, `main` → prod). That workflow does not apply Terraform.

@@ -20,7 +20,7 @@ Pixel starts on Discord. Its core doesn't depend on any platform, so other platf
 | Logging          | pino (JSON to stdout)                                    |
 | Task runner      | [just](https://just.systems)                             |
 | Infrastructure   | [Terraform](https://www.terraform.io) → Azure (`infra/bootstrap` is #8; the app is #9) |
-| Images           | GitHub Container Registry (later)                        |
+| Images           | GitHub Container Registry (`ghcr.io/pixelbar/pixel`)     |
 | Tooling          | pnpm, Vitest, Biome, zod                                 |
 
 ## Getting started
@@ -139,11 +139,11 @@ Run `just` to list every recipe.
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates `infra/bootstrap` only when that stack, its workflow, or the `justfile` recipe change.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates `infra/bootstrap` only when that stack, its workflow, or the `justfile` recipe change. [CD](.github/workflows/cd.yml) publishes `ghcr.io/pixelbar/pixel:<sha>` and, temporarily, deploys pull requests to Azure `dev` and `main` to prod (fail closed until #12).
 
 ## Deployment
 
-The app is not hosted yet. Terraform **bootstrap** (`infra/bootstrap`, #8) is the first Azure stack: remote state and GitHub OIDC, applied by hand. Container Apps, the volume and Key Vault are #9. **No database.** See [Deployment](docs/architecture.md#deployment-designed-not-built) and the [bootstrap README](infra/bootstrap/README.md).
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. [CD](.github/workflows/cd.yml) pushes images to GHCR. **Temporarily**, pull requests deploy to Azure `dev` and merges to `main` deploy to prod; prod stays fail-closed until `#12`. The Container Apps stack is #9. **No database.** See [Deployment](docs/architecture.md#deployment) and the [bootstrap README](infra/bootstrap/README.md).
 
 ## Running and operating Pixel
 
