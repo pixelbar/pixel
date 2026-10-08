@@ -35,11 +35,19 @@ export function createSentryReporter(): ErrorReporter {
 		},
 		withContext({ command, feature, principal }, run) {
 			// The isolation scope follows the work across awaits, so anything reported while
-			// the command runs, however deep, carries the user and the command.
+			// the command runs, however deep, carries the user and the command. The span
+			// is the trace for this command (Discord isn't HTTP, so nothing else starts one).
 			return Sentry.withIsolationScope((scope) => {
-				scope.setTags({ command, feature, platform: principal.platform, tier: principal.tier });
+				const attributes = {
+					command,
+					feature,
+					platform: principal.platform,
+					tier: principal.tier,
+				};
+				scope.setTags(attributes);
 				scope.setUser(sentryUser(principal));
-				return run();
+				Sentry.metrics.count("pixel.command", 1, { attributes });
+				return Sentry.startSpan({ name: command, op: "command", attributes }, run);
 			});
 		},
 		breadcrumb(category, message, data) {

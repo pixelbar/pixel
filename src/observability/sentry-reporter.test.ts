@@ -5,12 +5,16 @@ const scope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
 const isolationScope = { setTags: vi.fn(), setTag: vi.fn(), setUser: vi.fn() };
 const captureException = vi.fn();
 const addBreadcrumb = vi.fn();
+const startSpan = vi.fn((_opts: unknown, run: (span: unknown) => unknown) => run({}));
+const metricsCount = vi.fn();
 
 vi.mock("@sentry/node", () => ({
 	withScope: (callback: (s: typeof scope) => void) => callback(scope),
 	withIsolationScope: <T>(callback: (s: typeof isolationScope) => T) => callback(isolationScope),
 	captureException: (error: unknown) => captureException(error),
 	addBreadcrumb: (crumb: unknown) => addBreadcrumb(crumb),
+	startSpan: (opts: unknown, run: (span: unknown) => unknown) => startSpan(opts, run),
+	metrics: { count: (...args: unknown[]) => metricsCount(...args) },
 }));
 
 const { createSentryReporter } = await import("./sentry-reporter.ts");
@@ -119,6 +123,27 @@ describe("createSentryReporter", () => {
 			id: `discord:${IDS.member}`,
 			username: "ada_l",
 			name: "Ada Lovelace",
+		});
+		expect(startSpan).toHaveBeenCalledWith(
+			{
+				name: "ha set",
+				op: "command",
+				attributes: {
+					command: "ha set",
+					feature: "home",
+					platform: "discord",
+					tier: "member",
+				},
+			},
+			run,
+		);
+		expect(metricsCount).toHaveBeenCalledWith("pixel.command", 1, {
+			attributes: {
+				command: "ha set",
+				feature: "home",
+				platform: "discord",
+				tier: "member",
+			},
 		});
 	});
 

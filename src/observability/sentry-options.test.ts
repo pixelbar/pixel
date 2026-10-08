@@ -3,12 +3,13 @@ import * as Sentry from "@sentry/node";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { REDACT_PATHS } from "./logger.ts";
-import { SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
+import { isHealthProbe, SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
 
 const options = sentryOptions({
 	dsn: "https://key@o0.ingest.sentry.io/1",
 	environment: "test",
 	release: "1.2.3",
+	tracesSampleRate: 1,
 });
 
 // Shaped like a Discord token and a Home Assistant token, but not real ones.
@@ -33,13 +34,34 @@ describe("sentryOptions", () => {
 			stackFrameVariables: false,
 		});
 		expect(options.includeServerName).toBe(false);
-		expect(options.tracesSampleRate).toBe(0);
+		expect(options.sampleRate).toBe(1);
+		expect(options.tracesSampleRate).toBe(1);
 	});
 
-	it("includes the pino integration, so log lines become Sentry Logs", () => {
-		expect(options.integrations).toHaveLength(1);
-		expect(Array.isArray(options.integrations) && options.integrations[0]?.name).toBe("Pino");
+	it("keeps the traces sample rate it was given", () => {
+		expect(
+			sentryOptions({
+				dsn: "https://key@o0.ingest.sentry.io/1",
+				environment: "test",
+				release: "1",
+				tracesSampleRate: 0.25,
+			}).tracesSampleRate,
+		).toBe(0.25);
+	});
+
+	it("includes HTTP, pino and Node runtime metrics integrations", () => {
+		expect(Array.isArray(options.integrations) && options.integrations.map((i) => i?.name)).toEqual(
+			["Http", "Pino", "NodeRuntimeMetrics"],
+		);
 		expect(SENTRY_LOG_LEVELS).toEqual(["info", "warn", "error", "fatal"]);
+	});
+
+	it("ignores health probes, including ones with a query string", () => {
+		expect(isHealthProbe("/healthz")).toBe(true);
+		expect(isHealthProbe("/readyz")).toBe(true);
+		expect(isHealthProbe("/healthz?ready=1")).toBe(true);
+		expect(isHealthProbe("/")).toBe(false);
+		expect(isHealthProbe("/api")).toBe(false);
 	});
 
 	it("scrubs secrets from a log before it is sent: the message and every attribute", () => {

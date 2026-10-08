@@ -290,7 +290,9 @@ Pixel can't tell whether the space is open, so it says so rather than guess. Che
 
 ## Sentry
 
-Sentry gets three things: errors (with the tags `command`, `feature`, `platform`, `tier` and the user's ID, so you can see who ran into it), Logs (every log line at `info` and above), and **User Feedback** from people using `/feedback`.
+Sentry gets errors (with the tags `command`, `feature`, `platform`, `tier` and the user's ID, so you can see who ran into it), Logs (every log line at `info` and above), **traces** (a span per command, plus outbound HTTP), **runtime metrics** (CPU, memory, event-loop delay), process **sessions** (crash-free rate for the bot staying up), and **User Feedback** from people using `/feedback`.
+
+Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` (default 1: keep them all). `/healthz` and `/readyz` are not traced.
 
 - **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and write here who is notified and where (email, Discord channel).
 - **Pixel going quiet:** Pixel checks in with a Sentry cron monitor, `pixel-prod` or `pixel-dev` (Sentry → **Crons**), every 5 minutes while it's connected to Discord. If check-ins stop (a crash, a hang, the host down) or say it's disconnected, the monitor opens an issue within about ten minutes, and closes it by itself when Pixel is back. In the monitor's settings, set who is alerted. 🚧 Record here who that is.

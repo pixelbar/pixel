@@ -98,6 +98,7 @@ describe("sentryCheckIn, with a real Sentry client", () => {
 				dsn: "https://key@o0.ingest.sentry.io/1",
 				environment: "test",
 				release: "1",
+				tracesSampleRate: 1,
 			}),
 			transport: () => ({
 				send: async (envelope: unknown[]) => {
