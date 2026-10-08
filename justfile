@@ -194,5 +194,8 @@ deploy-dev: docker-login-ghcr
     # skip Discord command updates. sentry-release still fails the recipe.
     just register
     just build
-    just sentry-release "${version}" dev
+    if ! just sentry-release "${version}" dev; then
+      echo "Sentry release failed after Discord commands were registered. pixel-dev is already on ${pin}."
+      exit 1
+    fi
     echo "Do not run just dev against the Pixel Dev token while this app is up."
