@@ -186,11 +186,13 @@ deploy-dev: docker-login-ghcr
       echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
       exit 1
     fi
-    just build
-    just sentry-release "${version}" dev
     if [ "${PIXEL_ENV:-local}" = "prod" ]; then
       echo "Refusing just register: PIXEL_ENV=prod. deploy-dev is the Pixel Dev guild only. Never copy a prod token into this path."
       exit 1
     fi
+    # Register before Sentry: the app is already live. A Sentry outage must not
+    # skip Discord command updates. sentry-release still fails the recipe.
     just register
+    just build
+    just sentry-release "${version}" dev
     echo "Do not run just dev against the Pixel Dev token while this app is up."
