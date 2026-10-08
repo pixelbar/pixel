@@ -26,8 +26,9 @@ Always go through `just`:
 just dev              # run locally with hot reload
 just check            # lint + typecheck + tests with coverage thresholds; must pass before you call a change done
 just test             # tests only
-just fmt              # auto-format
+just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
+just tf-validate      # terraform fmt -check and validate infra/bootstrap
 ```
 
 If you need a new repeatable task, add a `just` recipe instead of documenting a raw command.
@@ -52,6 +53,7 @@ data/                   # runtime state; gitignored. Safe to delete EXCEPT sched
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # register-commands, validate-config
 docs/                   # architecture, identity, ADRs
+infra/                  # Terraform. bootstrap/ is #8 (apply by hand). modules/ and envs/ come with #9
 ```
 
 ## Security rules (non-negotiable)

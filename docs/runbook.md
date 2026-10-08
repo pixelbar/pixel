@@ -18,6 +18,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Access lists](#access-lists)
 - [Moderation](#moderation)
 - [Home Assistant](#home-assistant)
+- [Terraform bootstrap](#terraform-bootstrap)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [Incidents](#incidents)
@@ -40,9 +41,9 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild). Separate bots, tokens and secrets. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | 🚧 Azure: fill in the subscription, resource group and app names once they exist. For now it runs wherever someone starts it (see [Running Pixel today](#running-pixel-today)). |
+| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. After bootstrap: resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. 🚧 App names land with #9. |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. |
-| **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, and the host. |
+| **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
 
@@ -57,7 +58,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
 | Look up a person | `/admin level get user:` (admins only) |
 
-Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just command-access`, `just docker-build`. Run `just` to list them all.
+Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just command-access`, `just docker-build`, `just tf-validate`. Run `just` to list them all.
 
 ## Running Pixel today
 
@@ -148,6 +149,20 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 **Emergency stop for everything:** revoke Pixel's token **in Home Assistant** (profile of the Pixel user → Security → Long-lived access tokens → delete). Pixel's next call is refused and the connection turns off. It takes effect at once and doesn't depend on Pixel being healthy. To bring it back, make a new token and put it in `HOME_ASSISTANT_TOKEN` (see [Secrets](#secrets)).
 
 **If Home Assistant is unreachable:** see [Incidents](#incidents).
+
+**How Pixel reaches HA:** locally, `HOME_ASSISTANT_URL` is usually the Nabu Casa cloud URL. On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN (#9, #43). A Nabu Casa URL still works if the sidecar is not there yet.
+
+## Terraform bootstrap
+
+This is the only Azure that exists as code today (`infra/bootstrap`, #8). It does **not** run Pixel. It creates remote Terraform state and GitHub → Azure login without a client secret.
+
+**Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Sign in with Azure CLI, then follow [`infra/bootstrap/README.md`](../infra/bootstrap/README.md): `just tf-validate`, `terraform init`, `terraform plan`, `terraform apply` in `infra/bootstrap`. First apply uses **local** state; migrate it into the `bootstrap` container as that README says so it is not only on one laptop.
+
+**After apply:** create GitHub Environments `dev` and `prod` if they are missing (`prod` needs reviewers). Put `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` in each environment as **variables**, not secrets. Values come from `terraform output`.
+
+**Do not** apply this stack from GitHub Actions, and do not run a second Pixel bot against the same Discord token while you are doing this.
+
+🚧 **Azure app:** how the Container App is deployed, the volume for `members.yaml` and `data/`, and Tailscale or Nabu Casa for HA all wait on #9.
 
 ## Scheduled posts
 
@@ -294,7 +309,9 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 If `members.yaml` is lost and there's no backup, Pixel won't start (it fails closed). Restore the last backup, or rebuild the file from `members.example.yaml` and re-add people with `/admin level set` once an admin can start it.
 
-🚧 **Azure:** recreate an environment from scratch with Terraform (state, vault, app, volume), where the backups live, and how long it should take. Practise it in dev.
+**Bootstrap state:** the storage account `pixelbartfstate` has versioning and 14-day soft delete. Restore a previous `terraform.tfstate` blob if remote state is damaged. If bootstrap was never migrated off the laptop, that local file is the backup — migrate it.
+
+🚧 **Azure app:** recreate `dev` or `prod` from scratch with Terraform (vault, app, volume) once #9 exists. Practise it in dev.
 
 ## Keeping this up to date
 
