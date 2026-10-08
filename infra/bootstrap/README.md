@@ -79,5 +79,5 @@ CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token
 ## What this is not
 
 - Not the Container App, volume, Key Vault, or Tailscale sidecar (`infra/envs/dev`, #9 / #43).
-- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` for prod). Sentry releases are still later.
+- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12).
 - Not Postgres. Pixel’s state is files on a volume.

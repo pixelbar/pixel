@@ -140,15 +140,16 @@ Run `just` to list every recipe.
 | `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` |
 | `just tf-plan dev`     | Plan the `dev` Container App stack            |
 | `just tf-apply dev`    | Apply `dev` — only when a maintainer says so  |
-| `just deploy-dev`      | Local GHCR push and roll onto Azure `pixel-dev` (never prod) |
+| `just deploy-dev`      | Local GHCR push, roll onto Azure `pixel-dev`, Sentry release, `just register` (never prod) |
+| `just sentry-release`  | Upload source maps; skipped unless Sentry org/token are set |
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, and plans `dev` when GitHub Environment `dev` has `ARM_*` variables. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and deploys to prod (fail closed until #12). Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, and plans `dev` when GitHub Environment `dev` has `ARM_*` variables. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps when org/token are set. It does **not** deploy prod. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. The Container Apps **`dev` stack** (`infra/modules/pixel`, `infra/envs/dev`, #9) is in the repo. **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`, and merges to `main` deploy to prod; prod stays fail-closed until `#12`. **No database.** See [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). Discord will not answer until #9 is applied **and** secrets, volume files and an image exist.
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
 
 ## Running and operating Pixel
 

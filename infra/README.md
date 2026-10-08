@@ -15,4 +15,4 @@ Region is West Europe. The Azure subscription is in bootstrap / env variables.
 - Dev: [`envs/dev/README.md`](envs/dev/README.md)
 - Runbook: [Terraform bootstrap](../docs/runbook.md#terraform-bootstrap) and [Azure Container App (`dev`)](../docs/runbook.md#azure-container-app-dev)
 
-`just tf-validate`, `just tf-plan dev`, `just tf-apply dev`. Images and Container App rollouts: `just deploy-dev` for Azure `dev`; [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` for prod. CD does not apply Terraform.
+`just tf-validate`, `just tf-plan dev`, `just tf-apply dev`. Images and Container App rollouts: `just deploy-dev` for Azure `dev`. [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` publishes GHCR only; prod CD is off until #12. CD does not apply Terraform.

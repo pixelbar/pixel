@@ -4,7 +4,8 @@
 		"noEmit": false,
 		"rootDir": "src",
 		"outDir": "dist",
-		"sourceMap": true
+		"sourceMap": true,
+		"inlineSources": true
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts", "src/testing"]

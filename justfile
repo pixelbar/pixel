@@ -72,6 +72,38 @@ validate-config:
 register:
     pnpm exec tsx --env-file=.env scripts/register-commands.ts
 
+# Create a Sentry release and upload dist/ maps. Skip (do not fail) if
+# SENTRY_AUTH_TOKEN, SENTRY_ORG, or SENTRY_PROJECT is unset — do not invent
+# an org. Pixel itself does not read these; they are for this recipe and CD.
+# `version` must match PIXEL_VERSION in the running image (git SHA on main).
+# Pass environment=dev after a real deploy; omit it for publish-only.
+sentry-release version="" environment="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -z "${SENTRY_AUTH_TOKEN:-}" ] || [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
+      echo "Sentry release skipped: set SENTRY_AUTH_TOKEN, SENTRY_ORG, and SENTRY_PROJECT. Not inventing an org (#10)."
+      exit 0
+    fi
+    release="{{version}}"
+    if [ -z "${release}" ]; then
+      release="$(git rev-parse HEAD)"
+    fi
+    if [ ! -d dist ]; then
+      echo "dist/ is missing; run just build first."
+      exit 1
+    fi
+    run_cli() {
+      pnpm dlx --yes @sentry/cli@2.58.2 "$@"
+    }
+    run_cli releases new "${release}"
+    run_cli releases set-commits "${release}" --auto --ignore-missing || true
+    run_cli sourcemaps upload --release "${release}" --url-prefix /app/dist dist
+    if [ -n "{{environment}}" ]; then
+      run_cli deploys new -e "{{environment}}" -r "${release}"
+    fi
+    run_cli releases finalize "${release}"
+    echo "Sentry release ${release}."
+
 # Show admin-tier commands to the people in admins.yaml (run after `register`; needs a one-off sign-in as a server manager)
 command-access:
     pnpm exec tsx --env-file=.env scripts/command-access.ts
@@ -154,4 +186,11 @@ deploy-dev: docker-login-ghcr
       echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
       exit 1
     fi
+    just build
+    just sentry-release "${version}" dev
+    if [ "${PIXEL_ENV:-local}" = "prod" ]; then
+      echo "Refusing just register: PIXEL_ENV=prod. deploy-dev is the Pixel Dev guild only. Never copy a prod token into this path."
+      exit 1
+    fi
+    just register
     echo "Do not run just dev against the Pixel Dev token while this app is up."

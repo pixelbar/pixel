@@ -1,16 +1,16 @@
 name: CD
 
-# Temporary routing (ADR 0010, #10): merges to `main` publish GHCR and deploy
-# that SHA to prod. Azure `dev` is a local build (`just deploy-dev`), not CI.
-# Prod is fail-closed until infra/envs/prod and prod Key Vault secrets exist.
-# This workflow never copies pixel-dev (or Mini local) Discord tokens into prod.
+# Temporary routing (ADR 0010, #10): merges to `main` publish GHCR only.
+# Azure `dev` is a local build (`just deploy-dev`), not CI. Prod CD is
+# disabled until #12 and prod Key Vault secrets exist — this workflow has
+# no path to pixel-prod and never copies pixel-dev / Mini Discord tokens.
 
 on:
   push:
     branches: [main]
 
 # Least privilege at the workflow level. The publish job is the only one that
-# writes packages. The prod deploy job gets id-token: write for Azure OIDC.
+# writes packages. Nothing here gets id-token: write (that would be prod Azure).
 permissions:
   contents: read
 
@@ -107,113 +107,74 @@ jobs:
           done
           echo "::warning::Could not set ghcr.io/${{ github.repository }} public from this job. A maintainer must: GitHub → Packages → pixel → Package settings → Change visibility → Public. Until then Azure pulls 401."
 
-  prod-preflight:
-    name: Prod preflight (fail closed)
+  sentry-release:
+    name: Sentry release (source maps)
     needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
     steps:
+      - name: Skip until Sentry org and token are set
+        if: env.SENTRY_AUTH_TOKEN == '' || env.SENTRY_ORG == '' || env.SENTRY_PROJECT == ''
+        run: |
+          echo "::notice::Sentry release skipped. Set secret SENTRY_AUTH_TOKEN and repository variables SENTRY_ORG and SENTRY_PROJECT (architecture still asks which org). ${{ needs.publish.outputs.image }} was published. Not inventing an org. Prod was not deployed."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - name: Require prod Terraform and refuse a Mini/dev token
-        env:
-          IMAGE: ${{ needs.publish.outputs.image }}
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
+
+      - name: Install and compile (source maps)
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         run: |
-          set -euo pipefail
-          missing=0
-          if [ ! -d infra/envs/prod ] || [ ! -f infra/envs/prod/main.tf ]; then
-            echo "::error::infra/envs/prod is missing (#12). ${IMAGE} was published. Prod was NOT deployed. Discord will not answer on prod."
-            missing=1
-          fi
-          if [ -d infra/envs/dev ] && [ -d infra/envs/prod ]; then
-            if cmp -s infra/envs/dev/terraform.example.tfvars infra/envs/prod/terraform.example.tfvars 2>/dev/null; then
-              echo "::error::prod tfvars match dev. Prod must not reuse the Mini/Pixel Dev Discord application or token."
-              missing=1
-            fi
-          fi
-          if [ "${missing}" -ne 0 ]; then
-            echo "Fail closed. Do not copy pixel-dev-kv discord-token (Pixel Dev / Mini local bot 1555857000049541231) into prod."
-            exit 1
-          fi
-          echo "infra/envs/prod is present. Deploy job will still fail closed if ARM_* or prod Key Vault secrets are missing."
+          pnpm install --frozen-lockfile
+          just build
 
-  deploy-prod:
-    name: Deploy Azure prod
-    needs: [publish, prod-preflight]
+      - name: Create Sentry release and upload source maps
+        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
+        uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
+        with:
+          # No environment: this job is publish-only. Prod CD is off until #12.
+          release: ${{ github.sha }}
+          sourcemaps: dist
+          inject: false
+          url_prefix: /app/dist
+          set_commits: auto
+          ignore_missing: true
+          disable_telemetry: true
+
+  prod-cd:
+    name: Prod CD (disabled until #12)
+    needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: prod
+    timeout-minutes: 2
     permissions:
       contents: read
-      id-token: write
-    concurrency:
-      group: azure-pixel-prod
-      cancel-in-progress: false
     steps:
-      - name: Skip until GitHub Environment prod has ARM_* variables
-        if: vars.ARM_CLIENT_ID == ''
-        run: |
-          echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod. ${{ needs.publish.outputs.image }} was published. Prod was NOT deployed. Create Environment prod (reviewers, branch main) and set ARM_CLIENT_ID 7cb1d0a8-5314-4c9b-a0ba-10f5c75367d7, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID as variables. Not inventing credentials."
-          exit 1
-
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: vars.ARM_CLIENT_ID != ''
-        with:
-          client-id: ${{ vars.ARM_CLIENT_ID }}
-          tenant-id: ${{ vars.ARM_TENANT_ID }}
-          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
-
-      - name: Update pixel-prod to this SHA (fail closed, one replica)
-        if: vars.ARM_CLIENT_ID != ''
+      - name: Do not deploy to prod
         env:
           IMAGE: ${{ needs.publish.outputs.image }}
-          RESOURCE_GROUP: pixel-prod
-          APP_NAME: pixel-prod
-          KEY_VAULT: pixel-prod-kv
         run: |
-          set -euo pipefail
-          if [ "${RESOURCE_GROUP}" = "pixel-dev" ] || [ "${KEY_VAULT}" = "pixel-dev-kv" ] || [ "${APP_NAME}" = "pixel-dev" ]; then
-            echo "::error::Refusing to deploy prod using the dev resource group, app, or vault. Mini/dev Discord token must not go to prod."
-            exit 1
-          fi
-          if ! az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" >/dev/null 2>&1; then
-            echo "::error::Container App ${APP_NAME} is not in ${RESOURCE_GROUP} (#12). ${IMAGE} was published. Prod was NOT deployed. Discord will not answer on prod."
-            exit 1
-          fi
-          if ! az keyvault show --name "${KEY_VAULT}" >/dev/null 2>&1; then
-            echo "::error::Key Vault ${KEY_VAULT} is missing (#12). ${IMAGE} was published. Prod was NOT deployed."
-            exit 1
-          fi
-          if ! az keyvault secret show --vault-name "${KEY_VAULT}" --name discord-token --query name -o tsv >/dev/null 2>&1; then
-            echo "::error::Key Vault ${KEY_VAULT} has no discord-token. Prod secrets are missing. Not copying pixel-dev-kv or the Mini local token. Prod was NOT deployed."
-            exit 1
-          fi
-          if ! az keyvault secret show --vault-name "${KEY_VAULT}" --name admins-yaml --query name -o tsv >/dev/null 2>&1; then
-            echo "::error::Key Vault ${KEY_VAULT} has no admins-yaml. Prod secrets are missing. Prod was NOT deployed."
-            exit 1
-          fi
-          az containerapp update \
-            -g "${RESOURCE_GROUP}" \
-            -n "${APP_NAME}" \
-            --image "${IMAGE}" \
-            --min-replicas 1 \
-            --max-replicas 1
-          image=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.containers[0].image" -o tsv)
-          min=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.minReplicas" -o tsv)
-          max=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.maxReplicas" -o tsv)
-          echo "Running ${image} min=${min} max=${max}"
-          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
-            echo "::error::Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
-            exit 1
-          fi
-          case "${image}" in
-            *"${{ github.sha }}"*) ;;
-            *)
-              echo "::error::Container App image is ${image}, expected SHA ${{ github.sha }}."
-              exit 1
-              ;;
-          esac
+          echo "Prod CD is disabled until #12 and prod Key Vault secrets exist."
+          echo "Published ${IMAGE}. Did not log in to Azure. Did not update pixel-prod."
+          echo "Fail closed: this workflow has no path to the prod Container App."
+          echo "Never copy pixel-dev-kv / Mini Discord token (bot 1555857000049541231) into prod."
+          echo "Azure dev stays just deploy-dev (one replica). Do not also just dev on that token."
