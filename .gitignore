@@ -33,6 +33,8 @@ data/
 *.tfstate.*
 *.tfvars
 !*.example.tfvars
+backend.azurerm.hcl
+tfplan
 
 # claude
 .claude/worktrees/

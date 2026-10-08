@@ -36,13 +36,20 @@ lint:
 # Fix formatting and safe lint issues
 fmt:
     pnpm exec biome check --write .
+    -terraform fmt -recursive infra
 
 # Type-check everything, including tests and scripts
 typecheck:
     pnpm exec tsc --noEmit
 
-# Everything CI runs: lint, types, tests with coverage thresholds
+# Everything CI runs for the Node app: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
+
+# Format-check and validate infra/bootstrap (needs Terraform 1.9+; CI runs this when infra/ changes)
+tf-validate:
+    terraform fmt -check -recursive infra
+    terraform -chdir=infra/bootstrap init -backend=false -input=false
+    terraform -chdir=infra/bootstrap validate
 
 # Validate the access list files and the Home Assistant devices file
 validate-config:

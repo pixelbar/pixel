@@ -188,7 +188,7 @@ type Feature = {
 
 Pixel can read and control a Home Assistant (HA) instance: lights, switches, doors. Unlike Discord this is not a place where commands come from. Pixel is the client, and features reach HA only through the core `Home` (`core/home.ts`), the same way they use the calendar. The adapter in `adapters/home-assistant/` is the **only** place that imports the official `home-assistant-js-websocket` library, and it plugs a backend into `Home` at startup.
 
-- **Connection:** `HOME_ASSISTANT_URL` (for example the Nabu Casa cloud address) and `HOME_ASSISTANT_TOKEN`, a long-lived token. Both unset means off, and only one set stops startup. It connects in the background and reconnects forever, so a slow or absent HA never holds up the bot, and it doesn't count towards `/healthz`: HA being down shouldn't restart Pixel.
+- **Connection:** `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN`, a long-lived token. Both unset means off, and only one set stops startup. It connects in the background and reconnects forever, so a slow or absent HA never holds up the bot, and it doesn't count towards `/healthz`: HA being down shouldn't restart Pixel. On Azure, prefer a **Tailscale sidecar** so the container reaches HA on the LAN (#9, #43). A **Nabu Casa** URL still works and is what local/dev use today.
 - **A non-admin token:** HA can't scope a token, so a long-lived token can do whatever its user can. Use a **non-admin** HA user: that blocks the admin-only commands. Pixel asks HA whose token it is (`auth/current_user`) and warns, in the logs and Sentry, if it belongs to an admin. `/admin status` shows the warning too. The real fence is Pixel's own allow-list of devices (below).
 - **Fails closed:** while HA isn't connected, or the token was refused, a call fails at once with a plain message. Nothing is queued, nothing is retried (a late unlock must never happen), and every call has a time limit. An outage is reported once, not on every command.
 - **No cache:** every read asks HA, so a change in HA shows on the next read.
@@ -396,7 +396,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
-| `HOME_ASSISTANT_URL`          |        | Optional, with the token. The address Pixel reaches Home Assistant at, such as the Nabu Casa cloud URL (http or https) |
+| `HOME_ASSISTANT_URL`          |        | Optional, with the token. Where Pixel reaches Home Assistant (http or https). On Azure prefer the Tailscale sidecar address; a Nabu Casa URL still works |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
@@ -425,8 +425,9 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 - **Access files:** `admins.yaml` is hand-edited and can be a **read-only** Key Vault mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It needs a **writable persistent volume with snapshots** (a lost file is a fail-closed outage). `config/home-assistant/` is the same class of data: `devices.yaml` is a human allow-list; `inventory.yaml` is rewritten by Pixel.
 - **Runtime files:** `/app/data` (`PIXEL_DATA_DIR`) holds `schedules.yaml` (scheduled posts: **not safe to delete**), `home-switches.state` (lost file → doors start **off**), plus `space.state` and `announcements.state` (losing those only costs the "open for 2h" text and the remembered live-post ID). A container's own filesystem is thrown away on every deploy, so this directory **must** be a mounted volume (for example Azure Files), shared with `members.yaml` if that is simpler than two mounts. Confirm the non-root `node` user can write to the mount (#9).
 - **Environments:** `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild), with separate bots, tokens and vaults. Merges to `main` deploy to dev. Prod needs manual approval through a GitHub Environment.
-- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC) first (#8), then `infra/modules/pixel` and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state. Blocked on which Azure subscription (see Open questions).
-- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. Actions are pinned to commit SHAs, and the workflow can only read the repo.
+- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC) first (#8), then `infra/modules/pixel` and `infra/envs/{dev,prod}`. Secret values never go into Terraform variables or state. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md).
+- **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path; `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Sidecar is part of #9 / #43, not bootstrap.
+- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` only when `infra/`, that workflow, or the `justfile` recipe change. Actions are pinned to commit SHAs, and the workflows can only read the repo.
 - **CD (planned):** on `main`, push the image to GHCR, create a Sentry release with source maps, register commands, and deploy to dev. Prod deploys need approval.
 
 ## Adding a platform (later)
@@ -436,7 +437,7 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 
 ## Open questions
 
-- **Which Azure subscription, and who owns it?** Blocker for Terraform bootstrap (#8). Who has Owner or Contributor?
+- Who has Owner (or Contributor) on the Pixel Azure subscription, besides the person applying bootstrap?
 - Which Sentry org? (Needed for CD, #10.)
 - Where should private change history for `admins.yaml` live (a private repo, or Key Vault versions)? `members.yaml` is bot-managed; backups are volume snapshots, not Key Vault secret versions.
 - Which channels should the live and timeline announcements go to in the real server?
@@ -452,3 +453,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | 0003 | No database: access, schedules and planned linking are files          | accepted |
 | 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
 | 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
+| 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
