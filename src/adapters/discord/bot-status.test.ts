@@ -22,7 +22,13 @@ const later = new Date("2026-10-07T13:05:00Z");
 const up: BotStatusAnnouncement = {
 	kind: "bot.status",
 	phase: "up",
-	build: { version: "0.1.0", commit: "abc1234", branch: "feature/doors", env: "dev" },
+	build: {
+		version: "0.1.0",
+		commit: "abc1234",
+		branch: "feature/doors",
+		env: "dev",
+		runtime: "cloud",
+	},
 	startedAt: started,
 	at: started,
 	checks: [
@@ -49,19 +55,35 @@ const space: SpaceStatusAnnouncement = {
 const embed = (post: AnnouncementPost) => post.embeds[0];
 
 describe("rendering", () => {
-	it("shows version, commit, a branch that isn't main, and an environment that isn't prod", () => {
+	it("shows version, commit, a branch that isn't main, environment when it isn't prod, and Where", () => {
 		expect(buildFields(up.build)).toEqual([
 			{ name: "Version", value: "`0.1.0`", inline: true },
 			{ name: "Commit", value: "`abc1234`", inline: true },
 			{ name: "Branch", value: "`feature/doors`", inline: true },
 			{ name: "Environment", value: "dev", inline: true },
+			{ name: "Where", value: "cloud", inline: true },
 		]);
 		expect(
-			buildFields({ version: "1.0.0", commit: undefined, branch: "main", env: "prod" }),
-		).toEqual([{ name: "Version", value: "`1.0.0`", inline: true }]);
+			buildFields({
+				version: "1.0.0",
+				commit: undefined,
+				branch: "main",
+				env: "prod",
+				runtime: "cloud",
+			}),
+		).toEqual([
+			{ name: "Version", value: "`1.0.0`", inline: true },
+			{ name: "Where", value: "cloud", inline: true },
+		]);
 		expect(
-			buildFields({ version: "1", commit: "a", branch: "master", env: "prod" }).map((f) => f.name),
-		).toEqual(["Version", "Commit"]);
+			buildFields({
+				version: "1",
+				commit: "a",
+				branch: "master",
+				env: "prod",
+				runtime: "local",
+			}).map((f) => f.name),
+		).toEqual(["Version", "Commit", "Where"]);
 	});
 
 	it("keeps an odd branch name inert", () => {

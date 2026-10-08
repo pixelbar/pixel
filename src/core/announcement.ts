@@ -27,6 +27,8 @@ export type BuildInfo = {
 	branch: string | undefined;
 	/** "local", "dev" or "prod". */
 	env: string;
+	/** "local" on a laptop, "cloud" on Azure. */
+	runtime: "local" | "cloud";
 };
 
 /** One line of "how is Pixel doing", such as Home Assistant being connected. */

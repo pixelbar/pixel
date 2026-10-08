@@ -4,7 +4,13 @@ import type { HomeStatus } from "../../core/home.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { checks, createBotStatus } from "./index.ts";
 
-const build: BuildInfo = { version: "0.1.0", commit: "abc1234", branch: "feature/x", env: "dev" };
+const build: BuildInfo = {
+	version: "0.1.0",
+	commit: "abc1234",
+	branch: "feature/x",
+	env: "dev",
+	runtime: "cloud",
+};
 const started = new Date("2026-10-07T10:00:00Z");
 const later = new Date("2026-10-07T13:00:00Z");
 const space = (state: "open" | "closed" | "unknown") => ({

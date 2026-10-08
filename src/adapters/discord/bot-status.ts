@@ -40,7 +40,7 @@ const post = (embed: APIEmbed): AnnouncementPost => ({
 	allowedMentions: { parse: [] },
 });
 
-/** Version, commit and (when it isn't main) branch, plus the environment when it isn't prod. */
+/** Version, commit, Where, and (when it isn't main) branch, plus the environment when it isn't prod. */
 export function buildFields(build: BuildInfo): APIEmbedField[] {
 	const fields: APIEmbedField[] = [
 		{ name: "Version", value: inlineCode(build.version, 40), inline: true },
@@ -51,6 +51,7 @@ export function buildFields(build: BuildInfo): APIEmbedField[] {
 		fields.push({ name: "Branch", value: inlineCode(build.branch, 100), inline: true });
 	}
 	if (build.env !== "prod") fields.push({ name: "Environment", value: build.env, inline: true });
+	fields.push({ name: "Where", value: build.runtime, inline: true });
 	return fields;
 }
 

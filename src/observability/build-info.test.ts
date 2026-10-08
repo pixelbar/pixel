@@ -10,7 +10,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-const config = { env: "dev", gitSha: undefined, gitBranch: undefined };
+const config = { env: "dev", runtime: "local" as const, gitSha: undefined, gitBranch: undefined };
 
 describe("loadBuildInfo", () => {
 	it("reads the version from package.json", () => {
@@ -35,7 +35,13 @@ describe("loadBuildInfo", () => {
 		const git = vi.fn(() => "ignored");
 		expect(
 			loadBuildInfo({ env: "prod", gitSha: "0123456789abcdef", gitBranch: "main" }, { git }),
-		).toMatchObject({ commit: "0123456", branch: "main", env: "prod" });
+		).toMatchObject({ commit: "0123456", branch: "main", env: "prod", runtime: "local" });
+		expect(
+			loadBuildInfo(
+				{ env: "dev", runtime: "cloud", gitSha: "0123456789abcdef", gitBranch: "main" },
+				{ git },
+			),
+		).toMatchObject({ runtime: "cloud", env: "dev" });
 		expect(git).not.toHaveBeenCalled();
 	});
 

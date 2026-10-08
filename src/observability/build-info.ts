@@ -4,13 +4,18 @@ import type { BuildInfo } from "../core/announcement.ts";
 
 /**
  * What this copy of Pixel is: the package version, the git commit and branch it
- * was built from, and the environment. CI and the Docker build pass the commit and
- * branch in (`PIXEL_GIT_SHA`, `PIXEL_GIT_BRANCH`), since an image has no `.git`.
- * When running from a checkout without them, it asks git. Never throws: anything it
- * can't find is left out.
+ * was built from, the environment, and whether it is running locally or in the
+ * cloud. CI and the Docker build pass the commit and branch in (`PIXEL_GIT_SHA`,
+ * `PIXEL_GIT_BRANCH`), since an image has no `.git`. When running from a checkout
+ * without them, it asks git. Never throws: anything it can't find is left out.
  */
 export function loadBuildInfo(
-	config: { env: string; gitSha: string | undefined; gitBranch: string | undefined },
+	config: {
+		env: string;
+		runtime?: "local" | "cloud";
+		gitSha: string | undefined;
+		gitBranch: string | undefined;
+	},
 	options: { git?: (args: string[]) => string | undefined; packageJson?: string } = {},
 ): BuildInfo {
 	const git = options.git ?? runGit;
@@ -22,6 +27,7 @@ export function loadBuildInfo(
 		// "HEAD" means a detached checkout: there is no branch to name.
 		branch: branch && branch !== "HEAD" ? branch : undefined,
 		env: config.env,
+		runtime: config.runtime === "cloud" ? "cloud" : "local",
 	};
 }
 
