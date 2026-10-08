@@ -66,9 +66,9 @@ In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). App
 | `ARM_TENANT_ID` | `2cd2bab0-0dd0-41ff-8f13-592500857ea6` | same |
 | `ARM_SUBSCRIPTION_ID` | `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4` | same |
 
-Create Environment `prod` if it is missing (reviewers, deploying branch `main`). `dev` exists; its `ARM_*` variables are still empty.
+Create Environment `prod` if it is missing (reviewers, deploying branch `main`). Terraform plan on PRs uses Environment `dev` and **fails closed** without `ARM_*`. Do not store an Azure client secret.
 
-CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token: write` on the **prod** deploy job. Azure `dev` is `just deploy-dev` with local `az`, not these variables. Do not store an Azure client secret. Until Environment `prod` has `ARM_*`, prod fails closed.
+Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12 — it does not Azure-login or update `pixel-prod`.
 
 ## Recover
 

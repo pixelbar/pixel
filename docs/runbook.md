@@ -165,7 +165,7 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Later changes: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md).
 
-**GitHub Environment `prod`** (reviewers, branch `main`) will need `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets, when prod CD is turned on (#12). Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. **CD on `main` does not deploy prod** and does not read those variables. Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`). Environment `dev` exists but has no `ARM_*` yet (Terraform plan skips).
+**GitHub Environment `prod`** (reviewers, branch `main`) will need `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets, when prod CD is turned on (#12). Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. **CD on `main` does not deploy prod** and does not read those variables. Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`). Terraform plan on PRs uses Environment `dev` `ARM_*` and **fails closed** if they are missing.
 
 **Do not** apply bootstrap from GitHub Actions, and do not run a second Pixel bot against the same Discord token.
 
@@ -252,11 +252,11 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 - **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just sentry-release` (skipped without org/token) and `just register` against the Pixel Dev guild from local `.env`. Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
 - **`prod`:** **off** until #12. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the SHA and moving tag `main`, and upload Sentry source maps when org/token are set. The workflow does **not** log in to Azure and has no path to `pixel-prod`. Discord will not answer on prod. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
-- Prod Azure login would be GitHub Environment OIDC (`ARM_*` variables) once prod CD is re-enabled. `dev` uses local `az`. Environment `dev` `ARM_*` is still unset (Terraform plan skips).
+- Prod Azure login would be GitHub Environment OIDC (`ARM_*` variables) once prod CD is re-enabled. `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` `ARM_*` and fails closed if they are missing.
 - Neither path applies Terraform.
 - Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register` so Discord matches.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
-- **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT` (org is still an open question). Missing any of those skips; it does not invent an org.
+- **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. The CD job **fails closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
 
 ## Incidents
 

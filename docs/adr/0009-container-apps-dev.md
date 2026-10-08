@@ -21,7 +21,7 @@ Ground truth is the architecture Deployment section and the comments on #9, not 
 - **Home Assistant:** a Tailscale sidecar on the replica is the preferred path (`tailscale_enabled`). It runs userspace (no TUN). `HOME_ASSISTANT_URL` + `HOME_ASSISTANT_TOKEN` stay as today, so a Nabu Casa URL works if Tailscale is not ready. Both URL and token or neither. Dev must not control the real doors.
 - **Images:** `ghcr.io/pixelbar/pixel:<sha>` is #10. First apply may use a public GHCR tag. If the package is still private, the module accepts an optional registry (`container_registry_server` + username + Key Vault `ghcr-pull-token`). The image contains `content/` only.
 - **Logs:** Log Analytics, 30 days, until #7 decides retention for the privacy notice.
-- **CI:** `just tf-validate` format-checks and validates bootstrap and `envs/dev`. `terraform plan` on `envs/dev` runs when GitHub Environment `dev` has `ARM_*` variables. No apply on merge.
+- **CI:** `just tf-validate` format-checks and validates bootstrap and `envs/dev`. `terraform plan` on `envs/dev` uses GitHub Environment `dev` OIDC and **fails closed** if `ARM_*` is missing. No apply on merge.
 
 ## Consequences
 

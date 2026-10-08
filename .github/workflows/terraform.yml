@@ -61,19 +61,37 @@ jobs:
           terraform_version: 1.16.5
           terraform_wrapper: false
 
-      - name: Skip plan until GitHub Environment dev has ARM_* variables
-        if: vars.ARM_CLIENT_ID == ''
-        run: echo "ARM_CLIENT_ID is not set on GitHub Environment dev yet. Validate still ran. Plan starts once those variables exist (#10)."
+      - name: Require ARM_* on GitHub Environment dev
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          if [ -z "${ARM_CLIENT_ID}" ]; then
+            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment dev (variable, not secret)."
+            missing=1
+          fi
+          if [ -z "${ARM_TENANT_ID}" ]; then
+            echo "::error::ARM_TENANT_ID is not set on GitHub Environment dev."
+            missing=1
+          fi
+          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
+            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment dev."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Validate still ran. Not inventing credentials. This job does not apply and does not touch pixel-prod."
+            exit 1
+          fi
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: vars.ARM_CLIENT_ID != ''
         with:
           client-id: ${{ vars.ARM_CLIENT_ID }}
           tenant-id: ${{ vars.ARM_TENANT_ID }}
           subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
 
       - name: Plan infra/envs/dev
-        if: vars.ARM_CLIENT_ID != ''
         working-directory: infra/envs/dev
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false

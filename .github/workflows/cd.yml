@@ -119,37 +119,46 @@ jobs:
       SENTRY_ORG: ${{ vars.SENTRY_ORG }}
       SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
     steps:
-      - name: Skip until Sentry org and token are set
-        if: env.SENTRY_AUTH_TOKEN == '' || env.SENTRY_ORG == '' || env.SENTRY_PROJECT == ''
+      - name: Require Sentry org and token
         run: |
-          echo "::notice::Sentry release skipped. Set secret SENTRY_AUTH_TOKEN and repository variables SENTRY_ORG and SENTRY_PROJECT (architecture still asks which org). ${{ needs.publish.outputs.image }} was published. Not inventing an org. Prod was not deployed."
+          missing=0
+          if [ -z "${SENTRY_AUTH_TOKEN}" ]; then
+            echo "::error::SENTRY_AUTH_TOKEN is not set (repository secret)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_ORG}" ]; then
+            echo "::error::SENTRY_ORG is not set (repository variable)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_PROJECT}" ]; then
+            echo "::error::SENTRY_PROJECT is not set (repository variable)."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. ${{ needs.publish.outputs.image }} was published. Prod was not deployed."
+            exit 1
+          fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
 
       - name: Install and compile (source maps)
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         run: |
           pnpm install --frozen-lockfile
           just build
 
       - name: Create Sentry release and upload source maps
-        if: env.SENTRY_AUTH_TOKEN != '' && env.SENTRY_ORG != '' && env.SENTRY_PROJECT != ''
         uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
         with:
           # No environment: this job is publish-only. Prod CD is off until #12.

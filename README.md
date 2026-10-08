@@ -145,7 +145,7 @@ Run `just` to list every recipe.
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, and plans `dev` when GitHub Environment `dev` has `ARM_*` variables. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps when org/token are set. It does **not** deploy prod. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, then plans `dev` (fails closed without Environment `dev` `ARM_*`). [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps (fails closed without org/token). It does **not** deploy prod. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
 
 ## Deployment
 
