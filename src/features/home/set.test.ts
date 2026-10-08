@@ -720,15 +720,23 @@ describe("/ha open", () => {
 	const open = (ctx: ReturnType<typeof setup>, who: Who, door: string) =>
 		ctx.dispatch(who, "open", { door });
 
-	it("unlocks a door that can't be unlatched, and unlatches one that can", async () => {
+	it("unlocks when it can, and only unlatches if unlock isn't allowed", async () => {
 		const plain = setup();
 		await open(plain, "doors", "front-door");
 		expect((plain.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
-		const openable = setup({ yaml: OPENABLE });
-		await open(openable, "doors", "front-door");
-		expect((openable.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("open");
+		const both = setup({ yaml: OPENABLE });
+		await open(both, "doors", "front-door");
+		expect((both.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
+		const unlatchOnly = setup({
+			yaml: DEVICES.replace("actions: [lock, unlock]", "actions: [open]"),
+		});
+		await open(unlatchOnly, "doors", "front-door");
+		expect((unlatchOnly.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("open");
+		expect(openingAction({ actions: [{ name: "unlock" }, { name: "open" }] as never })).toBe(
+			"unlock",
+		);
 		expect(openingAction({ actions: [{ name: "open" }] as never })).toBe("open");
-		expect(openingAction({ actions: [] })).toBe("unlock");
+		expect(openingAction({ actions: [] })).toBe("open");
 	});
 
 	it("needs member tier and ha-doors or ha-admin, like /ha set", async () => {
