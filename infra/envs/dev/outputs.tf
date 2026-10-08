@@ -12,7 +12,7 @@ output "key_vault_name" {
 
 output "key_vault_secret_names" {
   value       = module.pixel.key_vault_secret_names
-  description = "Create these in the vault before the Container App will start. Values never go in Terraform."
+  description = "Secrets the Container App reads. write_secrets writes them from ephemeral inputs; otherwise create each name before the app can start."
 }
 
 output "data_storage_account_name" {

@@ -13,7 +13,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | Resource | Name (defaults) |
 | --- | --- |
 | User-assigned identity | `pixel-dev-app` |
-| Key Vault (RBAC, no secret values) | `pixel-dev-kv` |
+| Key Vault (RBAC, no secret values in state) | `pixel-dev-kv` |
 | Log Analytics (30-day retention, pending #7) | `pixel-dev-logs` |
 | Container Apps environment | `pixel-dev-cae` |
 | Container App, min=max replicas **1**, no public ingress | `pixel-dev` |
@@ -28,8 +28,8 @@ There is **no database**.
 
 1. Bootstrap is applied ([`infra/bootstrap/README.md`](../../bootstrap/README.md)).
 2. Azure CLI, signed in as someone who can write role assignments on `pixel-dev` (Owner, or Contributor plus the custom role used for bootstrap).
-3. Terraform 1.9+ (`just tf-validate` uses 1.16.5, same as CI).
-4. Copy `terraform.example.tfvars` to `terraform.tfvars` (gitignored) and put the **Pixel Dev** application ID and test guild ID. Never put tokens in tfvars.
+3. Terraform 1.11+ (`just tf-validate` uses 1.16.5, same as CI). Write-only secret inputs need 1.11.
+4. Copy `terraform.example.tfvars` to `terraform.tfvars` (gitignored) and put the **Pixel Dev** application ID and test guild ID. Secret values belong in that gitignored file with `write_secrets = true`, or in `TF_VAR_*` — never in `terraform.example.tfvars`.
 5. Register providers once per subscription if they are not already:
 
    ```sh
@@ -49,32 +49,35 @@ just tf-plan dev
 just tf-apply dev
 ```
 
-The Container App references Key Vault secrets by URI and **does not create their values**. The first apply may create the vault, volume and environment, then fail on the app until the secrets exist. That is expected. Set the secrets, seed the volume, apply again.
+The Container App references Key Vault secrets by URI. Values are either **ephemeral apply inputs** (`write_secrets = true`, not stored in state) or set later with `az` / the portal. `terraform.example.tfvars` leaves `write_secrets` off so CI plan cannot clobber a real vault.
 
 Do not run Pixel locally against the same Discord token while this app is up.
 
-## Secrets (Key Vault, not Terraform)
+## Secrets (Key Vault)
+
+**Preferred for a local apply:** gitignored `terraform.tfvars` (or `TF_VAR_discord_token`). Values are write-only and are not stored in Terraform state.
+
+```hcl
+write_secrets    = true
+secrets_version  = 1
+discord_token    = "..."
+admins_yaml_file = "../../../config/admins.yaml"
+```
+
+Bump `secrets_version` to rotate. HA / Sentry / Tailscale use `home_assistant_token`, `sentry_dsn`, and `tailscale_auth_key` the same way when those features are on.
+
+**Without `write_secrets`:** create the names yourself, then apply again:
 
 ```sh
 vault=$(terraform -chdir=infra/envs/dev output -raw key_vault_name)
 
-# required
 az keyvault secret set --vault-name "$vault" --name discord-token --file -   # paste token, Ctrl-D
 az keyvault secret set --vault-name "$vault" --name admins-yaml --file config/admins.yaml
-
-# if home_assistant_url is set in tfvars
-az keyvault secret set --vault-name "$vault" --name home-assistant-token --file -
-
-# if sentry_enabled = true
-az keyvault secret set --vault-name "$vault" --name sentry-dsn --file -
-
-# if tailscale_enabled = true
-az keyvault secret set --vault-name "$vault" --name tailscale-auth-key --file -
 ```
 
-`admins.yaml` is mounted read-only at `/app/secrets/admins-yaml`. After changing it, restart the Container App. Key Vault versions keep history. Azure Container Apps secret volumes also expose the other secrets as files in `/app/secrets/`; treat that directory as private.
+Never commit secret values. Never put them in `terraform.example.tfvars`.
 
-Never put these values in `*.tfvars` or in state.
+`admins.yaml` is mounted read-only at `/app/secrets/admins-yaml`. After changing it, bump `secrets_version` and re-apply, or set the secret with `az` and restart the Container App. Key Vault versions keep history. Azure Container Apps secret volumes also expose the other secrets as files in `/app/secrets/`; treat that directory as private.
 
 ## Volume files (Azure Files)
 
@@ -119,7 +122,7 @@ Dev must not control the real doors. Use a test HA, or leave HA off.
 
 ## After apply, Discord still will not answer until
 
-1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`).
+1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `write_secrets` or `az`.
 2. `members.yaml` (and HA files if used) are on the share.
 3. The image exists (`ghcr.io/pixelbar/pixel:main` waits on #10; override `container_image` if you pushed a tag).
 4. `just register` has been run against the Dev guild (or #10 does it).

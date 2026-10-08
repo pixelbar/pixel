@@ -1,6 +1,6 @@
 # Pixel infrastructure
 
-Terraform for Pixel on Azure. There is **no database**. Secret *values* never go in Terraform variables or state.
+Terraform for Pixel on Azure. There is **no database**. Secret *values* never go in state. They may be passed as ephemeral write-only apply inputs (`write_secrets`) or set with `az` / the portal.
 
 | Path | What | Issue |
 | --- | --- | --- |

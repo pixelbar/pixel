@@ -45,7 +45,7 @@ typecheck:
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
 
-# Format-check and validate bootstrap + envs/dev (needs Terraform 1.9+; CI runs this when infra/ changes)
+# Format-check and validate bootstrap + envs/dev (needs Terraform 1.11+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false

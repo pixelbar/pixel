@@ -5,7 +5,7 @@ resource "azurerm_user_assigned_identity" "app" {
   tags                = local.tags
 }
 
-# The person applying this stack sets Key Vault secret values with az / the portal.
+# Key Vault Administrator so this apply can write secrets (write-only inputs or az).
 resource "azurerm_role_assignment" "kv_admin_applyer" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Administrator"

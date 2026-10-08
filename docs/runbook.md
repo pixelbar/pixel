@@ -177,7 +177,7 @@ just tf-plan dev
 just tf-apply dev    # only when told
 ```
 
-After apply, Discord still will not answer until Key Vault secrets exist, `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
+After apply, Discord still will not answer until Key Vault secrets exist (`write_secrets` or `az`), `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
 
 **Restart the app** (after rotating a secret or changing `admins.yaml`):
 
@@ -233,7 +233,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **If a secret leaked:** rotate it first, then work out where it leaked from. Check the logs and Sentry for the time window. A leaked Discord token lets someone act as the bot in your server, so treat it as urgent.
 
-**Azure (`dev`):** `az keyvault secret set --vault-name pixel-dev-kv --name discord-token --file -` (and the other names above), then `az containerapp revision restart -g pixel-dev -n pixel-dev`. Prod vaults are #12. Do not put values in Terraform.
+**Azure (`dev`):** put values in gitignored `terraform.tfvars` with `write_secrets = true` and re-apply (not stored in state), or `az keyvault secret set --vault-name pixel-dev-kv --name discord-token --file -` (and the other names above), then `az containerapp revision restart -g pixel-dev -n pixel-dev`. Prod vaults are #12. Never commit secret values.
 
 ## Deploys
 
@@ -352,7 +352,7 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 
 **Bootstrap state:** the storage account `pixelbartfstate` has versioning and 14-day soft delete. Restore a previous `terraform.tfstate` blob if remote state is damaged. If bootstrap was never migrated off the laptop, that local file is the backup — migrate it.
 
-**Azure app (`dev`):** recreate with `just tf-apply dev` after bootstrap exists (the resource group is already there). Restore Key Vault secret values from wherever you keep them (they are not in Terraform state). Restore `members.yaml` / HA files / `schedules.yaml` from Azure Backup of the file share (14 days) or a copy you kept. Practise this in `dev`. Prod is #12.
+**Azure app (`dev`):** recreate with `just tf-apply dev` after bootstrap exists (the resource group is already there). Restore Key Vault secret values from wherever you keep them (they are not in Terraform state; re-apply with `write_secrets` or `az keyvault secret set`). Restore `members.yaml` / HA files / `schedules.yaml` from Azure Backup of the file share (14 days) or a copy you kept. Practise this in `dev`. Prod is #12.
 
 ## Keeping this up to date
 

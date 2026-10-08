@@ -91,13 +91,71 @@ variable "discord_role_friend" {
 variable "home_assistant_url" {
   type        = string
   default     = null
-  description = "Optional Nabu Casa or Tailscale/LAN URL. The token is a Key Vault secret, not a variable. Set both or neither."
+  description = "Optional Nabu Casa or Tailscale/LAN URL. The token is an ephemeral input / Key Vault secret. Set both or neither."
+}
+
+variable "write_secrets" {
+  type        = bool
+  default     = false
+  description = "If true, write ephemeral secret inputs into Key Vault (not stored in state). Leave false in terraform.example.tfvars so CI plan cannot clobber a real vault."
+}
+
+variable "secrets_version" {
+  type        = number
+  default     = 1
+  description = "Bump to rotate write-only Key Vault secret values. Not a secret."
+}
+
+variable "discord_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "DISCORD_TOKEN. Used when write_secrets is true. Gitignored tfvars or TF_VAR_discord_token. Never stored in state."
+}
+
+variable "admins_yaml" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Contents of admins.yaml. Used when write_secrets is true and admins_yaml_file is unset."
+}
+
+variable "admins_yaml_file" {
+  type        = string
+  default     = null
+  description = "Path to admins.yaml (gitignored). Contents are passed write-only into Key Vault; the path is not a secret."
+}
+
+variable "home_assistant_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+}
+
+variable "sentry_dsn" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SENTRY_DSN. Required when write_secrets is true and sentry_enabled is true."
+}
+
+variable "tailscale_auth_key" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Tailscale auth key. Required when write_secrets is true and tailscale_enabled is true."
 }
 
 variable "sentry_enabled" {
   type        = bool
   default     = false
-  description = "If true, create Key Vault secret sentry-dsn before apply."
+  description = "If true, the app reads sentry-dsn from Key Vault."
 }
 
 variable "tailscale_enabled" {

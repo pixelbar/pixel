@@ -140,7 +140,70 @@ variable "home_assistant_url" {
 variable "sentry_enabled" {
   type        = bool
   default     = false
-  description = "If true, the app reads SENTRY_DSN from Key Vault secret sentry-dsn. Create that secret before apply."
+  description = "If true, the app reads SENTRY_DSN from Key Vault secret sentry-dsn."
+}
+
+variable "write_secrets" {
+  type        = bool
+  default     = false
+  description = "If true, write ephemeral secret inputs into Key Vault (write-only; values are not stored in state). If false, set secrets with az or the portal before the Container App will start. Leave false in CI example tfvars so a plan cannot clobber a real vault."
+}
+
+variable "secrets_version" {
+  type        = number
+  default     = 1
+  description = "Bump to rotate write-only Key Vault secret values. Not a secret."
+
+  validation {
+    condition     = var.secrets_version >= 1
+    error_message = "secrets_version must be >= 1."
+  }
+}
+
+variable "discord_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "DISCORD_TOKEN. Written to Key Vault when write_secrets is true. Never stored in state."
+}
+
+variable "admins_yaml" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Contents of admins.yaml. Written to Key Vault when write_secrets is true and admins_yaml_file is unset. Never stored in state."
+}
+
+variable "admins_yaml_file" {
+  type        = string
+  default     = null
+  description = "Path to admins.yaml. Contents are written write-only into Key Vault; the path is not a secret."
+}
+
+variable "home_assistant_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+}
+
+variable "sentry_dsn" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SENTRY_DSN. Required when write_secrets is true and sentry_enabled is true."
+}
+
+variable "tailscale_auth_key" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Tailscale auth key. Required when write_secrets is true and tailscale_enabled is true."
 }
 
 variable "tailscale_enabled" {

@@ -9,8 +9,8 @@ resource "azurerm_key_vault" "this" {
   soft_delete_retention_days    = 7
   public_network_access_enabled = true
 
-  # Container Apps reads secrets over the platform network. Do not put secret
-  # *values* in Terraform; this vault only exists so values can be set later.
+  # Container Apps reads secrets over the platform network. Secret *values*
+  # are write-only apply inputs or az / the portal; they never land in state.
   network_acls {
     default_action = "Allow"
     bypass         = "AzureServices"

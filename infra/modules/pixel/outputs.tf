@@ -13,7 +13,7 @@ output "container_app_environment_name" {
 
 output "key_vault_name" {
   value       = azurerm_key_vault.this.name
-  description = "Set secret values here with az / the portal. Terraform never writes them."
+  description = "Secret values are write-only Terraform inputs (write_secrets) or az / the portal. Never stored in state."
 }
 
 output "key_vault_uri" {
@@ -22,7 +22,7 @@ output "key_vault_uri" {
 
 output "key_vault_secret_names" {
   value       = sort(tolist(local.kv_secret_names))
-  description = "Secrets the Container App will read. Create each one before the app can start."
+  description = "Secrets the Container App reads. write_secrets writes them from ephemeral inputs; otherwise create each name before the app can start."
 }
 
 output "data_storage_account_name" {

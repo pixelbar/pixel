@@ -20,4 +20,12 @@ module "pixel" {
   tailscale_enabled                    = var.tailscale_enabled
   tailscale_image                      = var.tailscale_image
   purge_protection_enabled             = false
+  write_secrets                        = var.write_secrets
+  secrets_version                      = var.secrets_version
+  discord_token                        = var.discord_token
+  admins_yaml                          = var.admins_yaml
+  admins_yaml_file                     = var.admins_yaml_file
+  home_assistant_token                 = var.home_assistant_token
+  sentry_dsn                           = var.sentry_dsn
+  tailscale_auth_key                   = var.tailscale_auth_key
 }
