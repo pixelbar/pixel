@@ -34,42 +34,27 @@ Each GitHub identity can federate only from this repository’s matching GitHub 
 
 3. In the GitHub repo: **Settings → Environments**. Create `dev` and `prod` if they are missing. On `prod`, require reviewers (and limit the deploying branch to `main`) before anything in #10 can use it. The federated subject is `repo:pixelbar/pixel:environment:<name>`, so a workflow that does not use that environment cannot log in.
 
-## Apply (local state)
+## Apply
 
-From the repository root:
+From the repository root (needs Azure CLI, signed in as Owner or Contributor plus a role that can write role assignments):
 
 ```sh
 just tf-validate
 cd infra/bootstrap
-terraform init
+terraform init -backend-config=backend.azurerm.example.hcl
 terraform plan
 terraform apply
 ```
 
-Defaults match Pixel. Override with `terraform.tfvars` (gitignored) only if the storage account name is taken.
+The first apply on a new subscription has a chicken-and-egg: the storage account does not exist yet. Apply once with `-backend=false` (local state), then:
 
-`terraform apply` prints `tenant_id` and `github_client_ids`. Keep that output.
+```sh
+terraform init -migrate-state -force-copy -backend-config=backend.azurerm.example.hcl
+```
 
-## Move bootstrap state into Azure
+Later applies use the remote backend. Defaults match Pixel. Override with `terraform.tfvars` (gitignored) only if the storage account name is taken.
 
-The first apply used local state (a `terraform.tfstate` file on the laptop, gitignored). Put it in the `bootstrap` container so it is not only on one machine:
-
-1. Copy [`backend.azurerm.example.hcl`](backend.azurerm.example.hcl) to `backend.azurerm.hcl` if you changed names; otherwise the example is fine.
-2. Add this to `versions.tf` (a follow-up commit after the first apply is the right place):
-
-   ```hcl
-   terraform {
-     backend "azurerm" {}
-   }
-   ```
-
-3. Still signed in with Azure CLI:
-
-   ```sh
-   terraform init -migrate-state -backend-config=backend.azurerm.example.hcl
-   ```
-
-4. Confirm the local `terraform.tfstate` was replaced by a backend config, then delete the local state files. Do not commit them.
+`terraform apply` prints `tenant_id` and `github_client_ids`. Keep that output. Do not commit `terraform.tfstate` or `tfplan`.
 
 ## GitHub variables (not secrets)
 
