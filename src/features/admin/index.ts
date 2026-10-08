@@ -16,6 +16,8 @@ import { createRoleSubcommands, describeStates } from "./roles.ts";
 
 export type AdminDeps = {
 	version: string;
+	/** `cloud` on Azure Container Apps, `local` on a laptop. Shown on `/admin status`. */
+	runtime?: "local" | "cloud";
 	startedAt: Date;
 	access: Pick<AccessStore, "view" | "apply" | "reload">;
 	capabilities: CapabilityRegistry;
@@ -34,6 +36,7 @@ function describeCounts(counts: AccessStore["view"]["counts"]): string {
 
 export function createAdminFeature(deps: AdminDeps): Feature {
 	const now = deps.now ?? (() => new Date());
+	const runtime = deps.runtime ?? "local";
 	return {
 		name: "admin",
 		commands: [
@@ -53,6 +56,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 									title: "Pixel status",
 									fields: [
 										{ name: "Version", value: deps.version, inline: true },
+										{ name: "Where", value: runtime, inline: true },
 										{ name: "Node.js", value: process.version, inline: true },
 										{
 											name: "Uptime",

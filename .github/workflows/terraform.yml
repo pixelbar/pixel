@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate bootstrap
+    name: Validate Terraform
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -39,5 +39,42 @@ jobs:
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
-      - name: Format-check and validate infra/bootstrap
+      - name: Format-check and validate bootstrap and envs/dev
         run: just tf-validate
+
+  plan-dev:
+    name: Plan envs/dev
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - name: Skip plan until GitHub Environment dev has ARM_* variables
+        if: vars.ARM_CLIENT_ID == ''
+        run: echo "ARM_CLIENT_ID is not set on GitHub Environment dev yet. Validate still ran. Plan starts once those variables exist (#10)."
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: vars.ARM_CLIENT_ID != ''
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Plan infra/envs/dev
+        if: vars.ARM_CLIENT_ID != ''
+        working-directory: infra/envs/dev
+        run: |
+          terraform init -backend-config=backend.azurerm.example.hcl -input=false
+          terraform plan -input=false -var-file=terraform.example.tfvars

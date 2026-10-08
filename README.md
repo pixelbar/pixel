@@ -19,7 +19,7 @@ Pixel starts on Discord. Its core doesn't depend on any platform, so other platf
 | Error reporting  | [Sentry](https://sentry.io)                              |
 | Logging          | pino (JSON to stdout)                                    |
 | Task runner      | [just](https://just.systems)                             |
-| Infrastructure   | [Terraform](https://www.terraform.io) → Azure (`infra/bootstrap` is #8; the app is #9) |
+| Infrastructure   | [Terraform](https://www.terraform.io) → Azure (bootstrap applied; `dev` Container App is #9) |
 | Images           | GitHub Container Registry (`ghcr.io/pixelbar/pixel`)     |
 | Tooling          | pnpm, Vitest, Biome, zod                                 |
 
@@ -117,6 +117,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
+| `PIXEL_RUNTIME`               | Optional. `local` (default) or `cloud`. Azure sets `cloud`. `/admin status` and the online post show it as Where |
 | `SENTRY_DSN`                  | Optional. Error reporting and Sentry Logs are off if unset |
 | `PIXEL_LOG_DIR`               | Optional. Where the rotating log file goes (about two weeks, JSON lines). Defaults to `data/logs/`. Empty turns the file off. Logs also go to the console and to Sentry Logs |
 
@@ -136,15 +137,18 @@ Run `just` to list every recipe.
 | `just register`        | Register slash commands with Discord          |
 | `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docker-build`    | Build the container image                     |
+| `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` |
+| `just tf-plan dev`     | Plan the `dev` Container App stack            |
+| `just tf-apply dev`    | Apply `dev` — only when a maintainer says so  |
 | `just deploy-dev`      | Local GHCR push and roll onto Azure `pixel-dev` (never prod) |
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates `infra/bootstrap` only when that stack, its workflow, or the `justfile` recipe change. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and deploys to prod (fail closed until #12). Azure `dev` is `just deploy-dev` from a local build.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, and plans `dev` when GitHub Environment `dev` has `ARM_*` variables. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and deploys to prod (fail closed until #12). Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`, and merges to `main` deploy to prod; prod stays fail-closed until `#12`. The Container Apps stack is #9. **No database.** See [Deployment](docs/architecture.md#deployment) and the [bootstrap README](infra/bootstrap/README.md).
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. The Container Apps **`dev` stack** (`infra/modules/pixel`, `infra/envs/dev`, #9) is in the repo. **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`, and merges to `main` deploy to prod; prod stays fail-closed until `#12`. **No database.** See [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). Discord will not answer until #9 is applied **and** secrets, volume files and an image exist.
 
 ## Running and operating Pixel
 

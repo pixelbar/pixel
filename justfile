@@ -45,11 +45,24 @@ typecheck:
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
 
-# Format-check and validate infra/bootstrap (needs Terraform 1.9+; CI runs this when infra/ changes)
+# Format-check and validate bootstrap + envs/dev (needs Terraform 1.11+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false
     terraform -chdir=infra/bootstrap validate
+    terraform -chdir=infra/envs/dev init -backend=false -input=false
+    terraform -chdir=infra/envs/dev validate
+
+# Plan an env stack (dev). Needs Azure CLI signed in. Does not apply.
+tf-plan env:
+    terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
+    terraform -chdir=infra/envs/{{env}} plan
+
+# Apply an env stack. Do not run until a maintainer says so. Never start a
+# second Pixel on the same Discord token.
+tf-apply env:
+    terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
+    terraform -chdir=infra/envs/{{env}} apply
 
 # Validate the access list files and the Home Assistant devices file
 validate-config:
@@ -63,9 +76,11 @@ register:
 command-access:
     pnpm exec tsx --env-file=.env scripts/command-access.ts
 
-# Build the container image
+# Build the container image for Azure (linux/amd64). Mini is arm64; Container
+# Apps reject arm64 images.
 docker-build tag="pixel:local":
     docker build \
+      --platform linux/amd64 \
       --build-arg PIXEL_VERSION=$(git rev-parse --short HEAD) \
       --build-arg PIXEL_GIT_SHA=$(git rev-parse HEAD) \
       --build-arg PIXEL_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
@@ -108,13 +123,14 @@ deploy-dev: docker-login-ghcr
       exit 1
     fi
     docker build \
+      --platform linux/amd64 \
       --build-arg PIXEL_VERSION="${version}" \
       --build-arg PIXEL_GIT_SHA="${sha}" \
       --build-arg PIXEL_GIT_BRANCH="${branch}" \
       -t "${pin}" \
       -t "${image_name}:dev" \
       .
-    if docker run --rm --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+    if docker run --rm --platform linux/amd64 --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
       echo "Image ${pin} contains .env or access lists. Not pushing."
       exit 1
     fi

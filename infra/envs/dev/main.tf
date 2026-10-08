@@ -1,0 +1,34 @@
+module "pixel" {
+  source = "../../modules/pixel"
+
+  environment                          = "dev"
+  prefix                               = var.prefix
+  resource_group_name                  = "${var.prefix}-dev"
+  key_vault_name                       = var.key_vault_name
+  data_storage_account_name            = var.data_storage_account_name
+  container_image                      = var.container_image
+  container_registry_server            = var.container_registry_server
+  container_registry_username          = var.container_registry_username
+  container_registry_password          = var.container_registry_password
+  discord_app_id                       = var.discord_app_id
+  discord_guild_id                     = var.discord_guild_id
+  discord_announcements_channel_id     = var.discord_announcements_channel_id
+  discord_announce_live_channel_id     = var.discord_announce_live_channel_id
+  discord_announce_timeline_channel_id = var.discord_announce_timeline_channel_id
+  discord_announce_bot_channel_id      = var.discord_announce_bot_channel_id
+  discord_role_member                  = var.discord_role_member
+  discord_role_friend                  = var.discord_role_friend
+  home_assistant_url                   = var.home_assistant_url
+  sentry_enabled                       = var.sentry_enabled
+  tailscale_enabled                    = var.tailscale_enabled
+  tailscale_image                      = var.tailscale_image
+  purge_protection_enabled             = false
+  write_secrets                        = var.write_secrets
+  secrets_version                      = var.secrets_version
+  discord_token                        = var.discord_token
+  admins_yaml                          = var.admins_yaml
+  admins_yaml_file                     = var.admins_yaml_file
+  home_assistant_token                 = var.home_assistant_token
+  sentry_dsn                           = var.sentry_dsn
+  tailscale_auth_key                   = var.tailscale_auth_key
+}

@@ -2,10 +2,10 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. CD (#10): **temporarily** `just deploy-dev` (a local GHCR push) rolls Azure `dev`, and merges to `main` go to prod (fail closed until #12). The `dev` Container App itself is still #9. So every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. The Container Apps `dev` stack (#9) is in Terraform. CD (#10): **temporarily** `just deploy-dev` (a local GHCR push) rolls Azure `dev`, and merges to `main` go to prod (fail closed until #12). Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
-- **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #9 / #12. Search for `🚧` to find what's left.
+- **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
 
 Before you change anything on **prod**, read "Rules of thumb" below.
 
@@ -19,6 +19,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Moderation](#moderation)
 - [Home Assistant](#home-assistant)
 - [Terraform bootstrap](#terraform-bootstrap)
+- [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [Incidents](#incidents)
@@ -41,7 +42,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild). Separate bots, tokens and secrets. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls Container App `pixel-dev`; `main` rolls `pixel-prod` once those apps exist (#9 / #12). |
+| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. Container App `pixel-dev` in `pixel-dev` (one replica, no public ingress) after #9 apply. `just deploy-dev` rolls that app; `main` rolls `pixel-prod` once #12 exists. |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
@@ -49,8 +50,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 
 | I want to… | Do this |
 | --- | --- |
-| See when Pixel last started, crashed or stopped, and which version | The announcements channel: a "🟢 Pixel is online" post per run, edited to "🔴 offline" on shutdown, or marked "⚠️ stopped unexpectedly" after a crash |
-| See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, Node, uptime, access list counts, Discord roles, Home Assistant) |
+| See when Pixel last started, crashed or stopped, and which version | The announcements channel: a "🟢 Pixel is online" post per run (version, commit, **Where** `local` or `cloud`), edited to "🔴 offline" on shutdown, or marked "⚠️ stopped unexpectedly" after a crash |
+| See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, **Where** `local` or `cloud`, Node, uptime, access list counts, Discord roles, Home Assistant) |
 | Check readiness from outside | `GET /healthz` (process is up) and `GET /readyz` (200 only while the Discord gateway is connected, otherwise 503), on `HEALTH_PORT` (default 8080) |
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
 | Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
@@ -91,7 +92,7 @@ Mount the **config directory writable**: `members.yaml` is changed by admin comm
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
-🚧 **Azure:** how the app is deployed, where the secrets and access files come from, and which volume holds `members.yaml` and `data/`.
+**Azure (`dev`, after apply):** Container App `pixel-dev` in resource group `pixel-dev`. Secrets from Key Vault `pixel-dev-kv`. `admins.yaml` is a read-only Key Vault file. `members.yaml`, Home Assistant files and `data/` (including `schedules.yaml`) live on Azure Files share `pixel` on account `pixeldevdata`, mounted at `/app/persist`. How to apply, seed files, and restart: [Azure Container App (`dev`)](#azure-container-app-dev). Do not start a local Pixel on the same token while that app is up.
 
 ## Access lists
 
@@ -112,7 +113,11 @@ That's all: Pixel updates `members.yaml` itself, keeps `members.yaml.bak`, and l
 
 **Capabilities** (extra permissions such as `ha-lights`): `/admin capabilities grant|revoke user: capability:` and `/admin capabilities list [user:]`. They only ever work for members, friends and admins, never guests.
 
-🚧 **Azure:** `admins.yaml` can be a read-only Key Vault mount; `members.yaml` (and Home Assistant files, and `data/` including `schedules.yaml`) live on a **writable persistent volume with snapshots**. Fill in how to edit them and how the change reaches the running container (restart? remount?), and per environment.
+**Azure (`dev`):**
+
+- **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. Edit the secret (`az keyvault secret set --vault-name pixel-dev-kv --name admins-yaml --file config/admins.yaml`), then restart the Container App. Versions of the secret are history.
+- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit: upload the file to the share (see [Azure Container App (`dev`)](#azure-container-app-dev)) then `/admin reload`, or restart. Daily backups of the share keep 14 days.
+- Prod (#12) will be the same layout in `pixel-prod`.
 
 ## Moderation
 
@@ -154,15 +159,39 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 ## Terraform bootstrap
 
-This is the only Azure that exists as code today (`infra/bootstrap`, #8). It does **not** run Pixel. It creates remote Terraform state and GitHub → Azure login without a client secret.
+`infra/bootstrap` (#8) is applied. It does **not** run Pixel. It created remote Terraform state and GitHub → Azure login without a client secret.
 
-**Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Sign in with Azure CLI, then follow [`infra/bootstrap/README.md`](../infra/bootstrap/README.md): `just tf-validate`, `terraform init`, `terraform plan`, `terraform apply` in `infra/bootstrap`. First apply uses **local** state; migrate it into the `bootstrap` container as that README says so it is not only on one laptop.
+**Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Later changes: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md).
 
-**GitHub Environment `prod`** (reviewers, deploying branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. CD on `main` uses them for OIDC to prod. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. Azure `dev` uses local `az`, not those variables.
+**GitHub Environment `prod`** (reviewers, deploying branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. CD on `main` uses them for OIDC to prod. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`), not those variables.
 
-**Do not** apply this stack from GitHub Actions, and do not run a second Pixel bot against the same Discord token while you are doing this.
+**Do not** apply bootstrap from GitHub Actions, and do not run a second Pixel bot against the same Discord token.
 
-🚧 **Azure app:** how the Container App is deployed, the volume for `members.yaml` and `data/`, and Tailscale or Nabu Casa for HA all wait on #9.
+## Azure Container App (`dev`)
+
+Terraform: `infra/modules/pixel` + `infra/envs/dev` (#9). **Do not apply until a maintainer says so.** Steps, secret names, volume layout and tear-down: [`infra/envs/dev/README.md`](../infra/envs/dev/README.md).
+
+```sh
+just tf-validate
+just tf-plan dev
+just tf-apply dev    # only when told
+```
+
+After apply, Discord still will not answer until Key Vault secrets exist (`write_secrets` or `az`), `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
+
+**Restart the app** (after rotating a secret or changing `admins.yaml`):
+
+```sh
+az containerapp revision restart -g pixel-dev -n pixel-dev
+```
+
+**See that there is exactly one replica:** `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. If a command is answered twice, stop the extra instance (a laptop, or an old revision). Never raise `max_replicas`. Overlap during a deploy is #11.
+
+**Home Assistant:** Tailscale sidecar is preferred (`tailscale_enabled = true` plus Key Vault `tailscale-auth-key`). A Nabu Casa URL in `home_assistant_url` plus `home-assistant-token` still works when Tailscale is off. Set both URL and token, or neither. Dev must not point at the real doors.
+
+**Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 with the sidecar. West Europe. Not a quote.
+
+🚧 **CD / prod:** publishing `ghcr.io/pixelbar/pixel:<sha>`, Sentry releases, register-on-deploy, and prod are #10 and #12. No apply on merge from this stack.
 
 ## Scheduled posts
 
@@ -177,13 +206,15 @@ After a deploy that adds `/schedule`, run **`just register`** so Discord lists t
 
 ## Secrets
 
-Every secret lives in the secret store for its environment (a local `.env` for development, 🚧 Key Vault in Azure) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
+Every secret lives in the secret store for its environment (a local `.env` for development, Key Vault `pixel-dev-kv` in Azure `dev`) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
 
 | Secret | Where it comes from | Rotate when |
 | --- | --- | --- |
-| `DISCORD_TOKEN` | Discord Developer Portal | It may have leaked, someone with access leaves, or on a schedule |
-| `HOME_ASSISTANT_TOKEN` | A long-lived token in HA | It may have leaked, or the Pixel user changes |
-| `SENTRY_DSN` | Sentry project settings | It's being abused, or you move projects |
+| `DISCORD_TOKEN` | Discord Developer Portal; Key Vault `discord-token` | It may have leaked, someone with access leaves, or on a schedule |
+| `HOME_ASSISTANT_TOKEN` | A long-lived token in HA; Key Vault `home-assistant-token` | It may have leaked, or the Pixel user changes |
+| `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
+| Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
+| `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
 
 **Rotate the Discord bot token** (the old one stops working the moment you reset it, so expect a short outage):
 
@@ -202,7 +233,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **If a secret leaked:** rotate it first, then work out where it leaked from. Check the logs and Sentry for the time window. A leaked Discord token lets someone act as the bot in your server, so treat it as urgent.
 
-🚧 **Azure:** where each secret is stored per environment, how to update it, and how to restart the app after.
+**Azure (`dev`):** put values in gitignored `terraform.tfvars` with `write_secrets = true` and re-apply (not stored in state), or `az keyvault secret set --vault-name pixel-dev-kv --name discord-token --file -` (and the other names above), then `az containerapp revision restart -g pixel-dev -n pixel-dev`. Prod vaults are #12. Never commit secret values.
 
 ## Deploys
 
@@ -216,11 +247,11 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **Azure CD (temporary routing, [ADR 0010](adr/0010-ghcr-cd.md)):**
 
-- **`dev`:** from this tree, `just deploy-dev`. Builds locally, pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only. Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, and `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Max replicas stay 1. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
+- **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only. Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, and `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Max replicas stay 1. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
 - **`prod`:** merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) push the SHA and moving tag `main`, then deploy that SHA. If `infra/envs/prod` or prod Key Vault secrets are missing, that job **fails closed**. Discord will not answer on prod until #12. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
-- GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package should be **public** (no secrets in the image) so Azure can pull. If it stays private, Container Apps get 401 / DENIED.
+- GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package should be **public** (no secrets in the image) so Azure can pull. Org package visibility cannot be changed via the API; until a maintainer uses GitHub → Packages → pixel → Change visibility → Public, `just tf-apply dev` needs `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`.
 - Prod Azure login is GitHub Environment OIDC (`ARM_*` variables). Missing `ARM_*` fails closed. `dev` uses local `az`.
-- Neither path applies Terraform. If `pixel-dev` does not exist yet, apply #9 first, then `just deploy-dev`.
+- Neither path applies Terraform. If `pixel-dev` does not exist yet, apply #9 first (`just tf-apply dev`), then `just deploy-dev`.
 - Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
 
@@ -236,7 +267,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 4. Restart it. If it keeps failing, roll back (see [Deploys](#deploys)).
 5. Tell the team in the channel what you found.
 
-🚧 **Azure:** how to see the container's state and restart it, and where alerts for this arrive.
+**Azure (`dev`):** Portal → Container App `pixel-dev` → Log stream / Console, or `az containerapp logs show -g pixel-dev -n pixel-dev --follow`. Restart: `az containerapp revision restart -g pixel-dev -n pixel-dev`. 🚧 Where alerts arrive is still not decided.
 
 **Duplicate replies (every command answered twice)**
 
@@ -283,7 +314,7 @@ Under GDPR, someone can ask what Pixel holds about them, or ask for it to be del
 | --- | --- | --- |
 | `members.yaml` | ID, tier, any note, capabilities | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
-| Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | The log file keeps about two weeks. 🚧 Console and host logs depend on the hosting |
+| Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | The log file keeps about two weeks. Azure Log Analytics for `dev` keeps 30 days (provisional until #7) |
 | Sentry (errors, Logs, User Feedback) | The same, plus any feedback they sent | Sentry's retention for the project 🚧 (write it down) |
 | Discord | Everything Discord itself holds | Not Pixel's data: refer them to Discord |
 
@@ -321,7 +352,7 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 
 **Bootstrap state:** the storage account `pixelbartfstate` has versioning and 14-day soft delete. Restore a previous `terraform.tfstate` blob if remote state is damaged. If bootstrap was never migrated off the laptop, that local file is the backup — migrate it.
 
-🚧 **Azure app:** recreate `dev` or `prod` from scratch with Terraform (vault, app, volume) once #9 exists. Practise it in dev.
+**Azure app (`dev`):** recreate with `just tf-apply dev` after bootstrap exists (the resource group is already there). Restore Key Vault secret values from wherever you keep them (they are not in Terraform state; re-apply with `write_secrets` or `az keyvault secret set`). Restore `members.yaml` / HA files / `schedules.yaml` from Azure Backup of the file share (14 days) or a copy you kept. Practise this in `dev`. Prod is #12.
 
 ## Keeping this up to date
 
