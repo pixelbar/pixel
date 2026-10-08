@@ -68,7 +68,7 @@ In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). App
 
 Create Environment `prod` if it is missing (reviewers, deploying branch `main`). `dev` exists; its `ARM_*` variables are still empty.
 
-CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) already uses `id-token: write` on the deploy jobs. Do not store an Azure client secret. Until these variables exist, the `dev` deploy skips; prod fails closed.
+CD ([`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)) uses `id-token: write` on the **prod** deploy job. Azure `dev` is `just deploy-dev` with local `az`, not these variables. Do not store an Azure client secret. Until Environment `prod` has `ARM_*`, prod fails closed.
 
 ## Recover
 

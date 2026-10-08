@@ -136,14 +136,15 @@ Run `just` to list every recipe.
 | `just register`        | Register slash commands with Discord          |
 | `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docker-build`    | Build the container image                     |
+| `just deploy-dev`      | Local GHCR push and roll onto Azure `pixel-dev` (never prod) |
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates `infra/bootstrap` only when that stack, its workflow, or the `justfile` recipe change. [CD](.github/workflows/cd.yml) publishes `ghcr.io/pixelbar/pixel:<sha>` and, temporarily, deploys pull requests to Azure `dev` and `main` to prod (fail closed until #12).
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates `infra/bootstrap` only when that stack, its workflow, or the `justfile` recipe change. [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and deploys to prod (fail closed until #12). Azure `dev` is `just deploy-dev` from a local build.
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. [CD](.github/workflows/cd.yml) pushes images to GHCR. **Temporarily**, pull requests deploy to Azure `dev` and merges to `main` deploy to prod; prod stays fail-closed until `#12`. The Container Apps stack is #9. **No database.** See [Deployment](docs/architecture.md#deployment) and the [bootstrap README](infra/bootstrap/README.md).
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`, and merges to `main` deploy to prod; prod stays fail-closed until `#12`. The Container Apps stack is #9. **No database.** See [Deployment](docs/architecture.md#deployment) and the [bootstrap README](infra/bootstrap/README.md).
 
 ## Running and operating Pixel
 

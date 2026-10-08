@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. CD (#10) publishes GHCR images; **temporarily** pull requests deploy to Azure `dev` and merges to `main` go to prod (fail closed until #12). The `dev` Container App itself is still #9. So every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. CD (#10): **temporarily** `just deploy-dev` (a local GHCR push) rolls Azure `dev`, and merges to `main` go to prod (fail closed until #12). The `dev` Container App itself is still #9. So every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #9 / #12. Search for `🚧` to find what's left.
@@ -41,8 +41,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild). Separate bots, tokens and secrets. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. CD deploys to Container App `pixel-dev` (PRs) or `pixel-prod` (`main`) once those apps exist (#9 / #12). |
-| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publishes `ghcr.io/pixelbar/pixel:<sha>`. |
+| **Where Pixel runs** | Today: wherever someone starts it (see [Running Pixel today](#running-pixel-today)). Azure subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls Container App `pixel-dev`; `main` rolls `pixel-prod` once those apps exist (#9 / #12). |
+| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
@@ -58,7 +58,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
 | Look up a person | `/admin level get user:` (admins only) |
 
-Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just command-access`, `just docker-build`, `just tf-validate`. Run `just` to list them all.
+Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`. Run `just` to list them all.
 
 ## Running Pixel today
 
@@ -158,7 +158,7 @@ This is the only Azure that exists as code today (`infra/bootstrap`, #8). It doe
 
 **Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Sign in with Azure CLI, then follow [`infra/bootstrap/README.md`](../infra/bootstrap/README.md): `just tf-validate`, `terraform init`, `terraform plan`, `terraform apply` in `infra/bootstrap`. First apply uses **local** state; migrate it into the `bootstrap` container as that README says so it is not only on one laptop.
 
-**GitHub Environments** `dev` and `prod` (`prod` with reviewers, deploying branch `main`) need `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. CD uses them for OIDC. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). `dev` exists but the `ARM_*` variables are still empty; `prod` is not created yet. CD does not invent them.
+**GitHub Environment `prod`** (reviewers, deploying branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. CD on `main` uses them for OIDC to prod. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Environment `prod` is not created yet. Azure `dev` uses local `az`, not those variables.
 
 **Do not** apply this stack from GitHub Actions, and do not run a second Pixel bot against the same Discord token while you are doing this.
 
@@ -214,15 +214,15 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **Deploys must stop the old instance before starting the new one,** so two never answer at once. Expect a short gap while it restarts. Overlap during a revision swap is still #11.
 
-**Azure CD (temporary routing, [ADR 0010](adr/0010-ghcr-cd.md)):** [`.github/workflows/cd.yml`](../.github/workflows/cd.yml).
+**Azure CD (temporary routing, [ADR 0010](adr/0010-ghcr-cd.md)):**
 
-- **Pull requests** push `ghcr.io/pixelbar/pixel:<sha>` and `pr-<n>`, then deploy that SHA to Container App `pixel-dev` (resource group `pixel-dev`). Latest PR wins. Max replicas stay 1.
-- **Merges to `main`** push the SHA and the moving tag `main`, then deploy to **prod**. If `infra/envs/prod` or prod Key Vault secrets are missing, that job **fails closed** and does not deploy. Discord will not answer on prod until #12. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
-- GHCR login is `GITHUB_TOKEN` (`packages: write` on the publish job only). The package should be **public** (no secrets in the image) so Azure can pull. If it stays private, Container Apps get 401 / DENIED.
-- Azure login is GitHub Environment OIDC (`ARM_*` variables). If `dev` has no `ARM_*`, the `dev` deploy **skips**. Prod missing `ARM_*` fails closed.
-- This workflow does **not** apply Terraform. If `pixel-dev` does not exist yet, apply #9 first, then re-run CD.
+- **`dev`:** from this tree, `just deploy-dev`. Builds locally, pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only. Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, and `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Max replicas stay 1. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
+- **`prod`:** merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) push the SHA and moving tag `main`, then deploy that SHA. If `infra/envs/prod` or prod Key Vault secrets are missing, that job **fails closed**. Discord will not answer on prod until #12. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
+- GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package should be **public** (no secrets in the image) so Azure can pull. If it stays private, Container Apps get 401 / DENIED.
+- Prod Azure login is GitHub Environment OIDC (`ARM_*` variables). Missing `ARM_*` fails closed. `dev` uses local `az`.
+- Neither path applies Terraform. If `pixel-dev` does not exist yet, apply #9 first, then `just deploy-dev`.
 - Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`.
-- If `pixel-dev` is up, do not start the Mini bot on the same Pixel Dev token.
+- If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
 
 🚧 **Sentry releases and `just register` from CD** are still later. After a deploy that changes commands, register against that environment's guild by hand.
 

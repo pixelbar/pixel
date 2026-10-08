@@ -8,7 +8,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). **CD (#10, temporary):** pull requests publish GHCR and deploy to Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform is starting:** first remote-state bootstrap (`infra/bootstrap`, #8), then the Container Apps module and `dev` (#9). **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` deploy to prod and fail closed until #12. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
 
 ## Project at a glance
 
@@ -29,6 +29,7 @@ just test             # tests only
 just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
 just tf-validate      # terraform fmt -check and validate infra/bootstrap
+just deploy-dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
 ```
 
 If you need a new repeatable task, add a `just` recipe instead of documenting a raw command.

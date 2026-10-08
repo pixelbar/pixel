@@ -1,17 +1,16 @@
 name: CD
 
-# Temporary routing (ADR 0010, #10): pull requests publish a GHCR image and
-# deploy that SHA to Azure `dev`. Merges to `main` publish and deploy to prod.
+# Temporary routing (ADR 0010, #10): merges to `main` publish GHCR and deploy
+# that SHA to prod. Azure `dev` is a local build (`just deploy-dev`), not CI.
 # Prod is fail-closed until infra/envs/prod and prod Key Vault secrets exist.
 # This workflow never copies pixel-dev (or Mini local) Discord tokens into prod.
 
 on:
-  pull_request:
   push:
     branches: [main]
 
 # Least privilege at the workflow level. The publish job is the only one that
-# writes packages. Deploy jobs get id-token: write for Azure OIDC.
+# writes packages. The prod deploy job gets id-token: write for Azure OIDC.
 permissions:
   contents: read
 
@@ -28,7 +27,6 @@ env:
 jobs:
   publish:
     name: Publish GHCR
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -52,19 +50,10 @@ jobs:
       - name: Image tags
         id: meta
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF: ${{ github.ref }}
           SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           pin="${IMAGE_NAME}:${SHA}"
-          tags="${pin}"
-          if [ "${EVENT_NAME}" = "pull_request" ] && [ -n "${PR_NUMBER}" ]; then
-            tags="${tags},${IMAGE_NAME}:pr-${PR_NUMBER}"
-          fi
-          if [ "${REF}" = "refs/heads/main" ]; then
-            tags="${tags},${IMAGE_NAME}:main"
-          fi
+          tags="${pin},${IMAGE_NAME}:main"
           echo "pin=${pin}" >> "${GITHUB_OUTPUT}"
           echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
           echo "Publishing ${tags}"
@@ -117,71 +106,9 @@ jobs:
           done
           echo "::warning::Could not set ghcr.io/${{ github.repository }} public from this job. A maintainer must: GitHub → Packages → pixel → Package settings → Change visibility → Public. Until then Azure pulls 401."
 
-  deploy-dev:
-    name: Deploy Azure dev
-    needs: publish
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: dev
-    permissions:
-      contents: read
-      id-token: write
-    concurrency:
-      group: azure-pixel-dev
-      cancel-in-progress: true
-    steps:
-      - name: Skip until GitHub Environment dev has ARM_* variables
-        if: vars.ARM_CLIENT_ID == ''
-        run: |
-          echo "ARM_CLIENT_ID is not set on GitHub Environment dev. Image ${{ needs.publish.outputs.image }} was published. Azure deploy skipped; not inventing credentials."
-          echo "Set ARM_CLIENT_ID, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID as environment variables (not secrets). Values: infra/bootstrap README (client id 8cb13b94-5941-4788-8071-9f1ba80dada8)."
-
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: vars.ARM_CLIENT_ID != ''
-        with:
-          client-id: ${{ vars.ARM_CLIENT_ID }}
-          tenant-id: ${{ vars.ARM_TENANT_ID }}
-          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
-
-      - name: Update pixel-dev to this SHA (one replica)
-        if: vars.ARM_CLIENT_ID != ''
-        env:
-          IMAGE: ${{ needs.publish.outputs.image }}
-          RESOURCE_GROUP: pixel-dev
-          APP_NAME: pixel-dev
-        run: |
-          set -euo pipefail
-          if ! az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" >/dev/null 2>&1; then
-            echo "::error::Container App ${APP_NAME} is not in ${RESOURCE_GROUP} yet (#9). Image ${IMAGE} was published. Apply infra/envs/dev (PR 66), then re-run this workflow. This job does not apply Terraform."
-            exit 1
-          fi
-          az containerapp update \
-            -g "${RESOURCE_GROUP}" \
-            -n "${APP_NAME}" \
-            --image "${IMAGE}" \
-            --min-replicas 1 \
-            --max-replicas 1
-          image=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.containers[0].image" -o tsv)
-          min=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.minReplicas" -o tsv)
-          max=$(az containerapp show -g "${RESOURCE_GROUP}" -n "${APP_NAME}" --query "properties.template.scale.maxReplicas" -o tsv)
-          echo "Running ${image} min=${min} max=${max}"
-          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
-            echo "::error::Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice. Not leaving it this way."
-            exit 1
-          fi
-          case "${image}" in
-            *"${{ github.sha }}"*) ;;
-            *)
-              echo "::error::Container App image is ${image}, expected SHA ${{ github.sha }}."
-              exit 1
-              ;;
-          esac
-
   prod-preflight:
     name: Prod preflight (fail closed)
     needs: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -216,7 +143,6 @@ jobs:
   deploy-prod:
     name: Deploy Azure prod
     needs: [publish, prod-preflight]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: prod

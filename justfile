@@ -70,3 +70,72 @@ docker-build tag="pixel:local":
       --build-arg PIXEL_GIT_SHA=$(git rev-parse HEAD) \
       --build-arg PIXEL_GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD) \
       -t {{tag}} .
+
+# Log in to GHCR. Needs `gh auth refresh --scopes write:packages,read:packages,repo`.
+docker-login-ghcr:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    user="$(gh api user --jq .login)"
+    echo "$(gh auth token)" | docker login ghcr.io -u "${user}" --password-stdin
+
+# Does not start Pixel. Needs docker, gh (write:packages), and az on the Pixel subscription.
+# If pixel-dev is up, do not also run `just dev` on the same Discord token.
+# Build this tree, push to GHCR, roll onto Azure pixel-dev. Never prod.
+deploy-dev: docker-login-ghcr
+    #!/usr/bin/env bash
+    set -euo pipefail
+    image_name="ghcr.io/pixelbar/pixel"
+    sha="$(git rev-parse HEAD)"
+    short="$(git rev-parse --short HEAD)"
+    branch="$(git rev-parse --abbrev-ref HEAD)"
+    subscription="d150e252-e2f0-47fb-8a4a-c3f29e9aebd4"
+    resource_group="pixel-dev"
+    app_name="pixel-dev"
+    if [ "${resource_group}" != "pixel-dev" ] || [ "${app_name}" != "pixel-dev" ]; then
+      echo "Refusing to deploy: this recipe only updates pixel-dev, never prod."
+      exit 1
+    fi
+    version="${short}"
+    pin="${image_name}:${sha}"
+    if [ -n "$(git status --porcelain)" ]; then
+      version="${short}-dirty"
+      pin="${image_name}:dev-dirty-$(date -u +%Y%m%dT%H%M%SZ)"
+      echo "Working tree is dirty; tagging ${pin} instead of ${sha}."
+    fi
+    current_sub="$(az account show --query id -o tsv)"
+    if [ "${current_sub}" != "${subscription}" ]; then
+      echo "az is not on the Pixel subscription (${subscription}). Run: az account set --subscription ${subscription}"
+      exit 1
+    fi
+    docker build \
+      --build-arg PIXEL_VERSION="${version}" \
+      --build-arg PIXEL_GIT_SHA="${sha}" \
+      --build-arg PIXEL_GIT_BRANCH="${branch}" \
+      -t "${pin}" \
+      -t "${image_name}:dev" \
+      .
+    if docker run --rm --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+      echo "Image ${pin} contains .env or access lists. Not pushing."
+      exit 1
+    fi
+    docker push "${pin}"
+    docker push "${image_name}:dev"
+    if ! az containerapp show -g "${resource_group}" -n "${app_name}" >/dev/null 2>&1; then
+      echo "Container App ${app_name} is not in ${resource_group} yet (#9). Image ${pin} was pushed. Apply infra/envs/dev, then re-run. This recipe does not apply Terraform."
+      exit 1
+    fi
+    az containerapp update \
+      -g "${resource_group}" \
+      -n "${app_name}" \
+      --image "${pin}" \
+      --min-replicas 1 \
+      --max-replicas 1
+    running="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.containers[0].image" -o tsv)"
+    min="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.minReplicas" -o tsv)"
+    max="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.maxReplicas" -o tsv)"
+    echo "Running ${running} min=${min} max=${max}"
+    if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
+      echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
+      exit 1
+    fi
+    echo "Do not run just dev against the Pixel Dev token while this app is up."
