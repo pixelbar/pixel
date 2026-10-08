@@ -11,6 +11,11 @@ key_vault_name            = "pixel-dev-kv"
 data_storage_account_name = "pixeldevdata"
 container_image           = "ghcr.io/pixelbar/pixel:main"
 
+# Until a maintainer makes ghcr.io/pixelbar/pixel public in the GitHub UI,
+# Azure cannot pull it (401). Set these and Key Vault secret ghcr-pull-token.
+# container_registry_server   = "ghcr.io"
+# container_registry_username = "your-github-username"
+
 # Obviously fake. Never commit real Discord IDs.
 discord_app_id   = "100000000000000001"
 discord_guild_id = "100000000000000002"
@@ -33,3 +38,4 @@ tailscale_enabled = false
 # home_assistant_token = "..."
 # sentry_dsn           = "..."
 # tailscale_auth_key   = "..."
+# container_registry_password = "..."

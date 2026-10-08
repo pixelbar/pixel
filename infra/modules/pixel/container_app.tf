@@ -46,6 +46,15 @@ resource "azurerm_container_app" "this" {
     }
   }
 
+  dynamic "registry" {
+    for_each = var.container_registry_server != null ? [1] : []
+    content {
+      server               = var.container_registry_server
+      username             = var.container_registry_username
+      password_secret_name = "ghcr-pull-token"
+    }
+  }
+
   template {
     # Discord connects a long-lived gateway. Two replicas answer every command
     # twice. min=max=1 is a hard constraint, not a default. Overlap during a
@@ -189,6 +198,13 @@ resource "azurerm_container_app" "this" {
   }
 
   tags = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = var.container_registry_server == null || (var.container_registry_username != null && var.container_registry_username != "")
+      error_message = "container_registry_username is required when container_registry_server is set."
+    }
+  }
 
   depends_on = [
     azurerm_role_assignment.kv_secrets_app,

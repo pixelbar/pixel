@@ -73,6 +73,8 @@ vault=$(terraform -chdir=infra/envs/dev output -raw key_vault_name)
 
 az keyvault secret set --vault-name "$vault" --name discord-token --file -   # paste token, Ctrl-D
 az keyvault secret set --vault-name "$vault" --name admins-yaml --file config/admins.yaml
+# If GHCR is still private:
+# az keyvault secret set --vault-name "$vault" --name ghcr-pull-token --file -
 ```
 
 Never commit secret values. Never put them in `terraform.example.tfvars`.
@@ -124,7 +126,7 @@ Dev must not control the real doors. Use a test HA, or leave HA off.
 
 1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `write_secrets` or `az`.
 2. `members.yaml` (and HA files if used) are on the share.
-3. The image exists (`ghcr.io/pixelbar/pixel:main` waits on #10; override `container_image` if you pushed a tag).
+3. The image exists (`ghcr.io/pixelbar/pixel:<sha>`). If that GHCR package is still **private**, set `container_registry_server` / `container_registry_username` and create Key Vault `ghcr-pull-token` (a `read:packages` token; Azure otherwise gets 401).
 4. `just register` has been run against the Dev guild (or #10 does it).
 5. Nobody else is connected with that bot token.
 

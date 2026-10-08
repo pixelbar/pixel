@@ -20,6 +20,7 @@ locals {
     var.home_assistant_url != null ? ["home-assistant-token"] : [],
     var.sentry_enabled ? ["sentry-dsn"] : [],
     var.tailscale_enabled ? ["tailscale-auth-key"] : [],
+    var.container_registry_server != null ? ["ghcr-pull-token"] : [],
   ))
 
   # URIs only. Terraform never reads the secret values into state.

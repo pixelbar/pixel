@@ -50,6 +50,26 @@ variable "container_image" {
   default     = "ghcr.io/pixelbar/pixel:main"
 }
 
+variable "container_registry_server" {
+  type        = string
+  default     = null
+  description = "Optional private registry host (e.g. ghcr.io). Leave null when the image is public. Org GHCR visibility cannot be changed via the API; until a maintainer makes ghcr.io/pixelbar/pixel public in the GitHub UI, Azure needs this plus Key Vault secret ghcr-pull-token."
+}
+
+variable "container_registry_username" {
+  type        = string
+  default     = null
+  description = "Username for container_registry_server (GitHub username for GHCR). Not a secret. Required when the server is set."
+}
+
+variable "container_registry_password" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Registry password / GHCR token. Written to Key Vault as ghcr-pull-token when write_secrets is true. Prefer a token with only read:packages. Never stored in state."
+}
+
 variable "discord_app_id" {
   type        = string
   description = "Discord application ID for this environment's bot. Not a secret."

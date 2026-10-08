@@ -48,6 +48,26 @@ variable "container_image" {
   default     = "ghcr.io/pixelbar/pixel:main"
 }
 
+variable "container_registry_server" {
+  type        = string
+  default     = null
+  description = "Optional private registry host (e.g. ghcr.io). Leave null when the image is public."
+}
+
+variable "container_registry_username" {
+  type        = string
+  default     = null
+  description = "Username for container_registry_server. Not a secret. Required when the server is set."
+}
+
+variable "container_registry_password" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "Registry password / GHCR token. Used when write_secrets is true. Gitignored tfvars or TF_VAR_container_registry_password. Never stored in state."
+}
+
 variable "discord_app_id" {
   type        = string
   description = "Pixel Dev application ID. Not a secret. Real value in terraform.tfvars (gitignored)."

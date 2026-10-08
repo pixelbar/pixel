@@ -9,6 +9,7 @@ locals {
     "home-assistant-token" = var.home_assistant_token
     "sentry-dsn"           = var.sentry_dsn
     "tailscale-auth-key"   = var.tailscale_auth_key
+    "ghcr-pull-token"      = var.container_registry_password
   }
 }
 

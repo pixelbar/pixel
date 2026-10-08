@@ -7,6 +7,9 @@ module "pixel" {
   key_vault_name                       = var.key_vault_name
   data_storage_account_name            = var.data_storage_account_name
   container_image                      = var.container_image
+  container_registry_server            = var.container_registry_server
+  container_registry_username          = var.container_registry_username
+  container_registry_password          = var.container_registry_password
   discord_app_id                       = var.discord_app_id
   discord_guild_id                     = var.discord_guild_id
   discord_announcements_channel_id     = var.discord_announcements_channel_id
