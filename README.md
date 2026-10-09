@@ -151,7 +151,7 @@ Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It ru
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See the [infra overview](docs/infra.md) (diagrams), [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
 
 ## Running and operating Pixel
 
