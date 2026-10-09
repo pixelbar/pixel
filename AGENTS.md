@@ -5,10 +5,11 @@ Guidance for AI coding agents (and humans) working on Pixel, the assistant bot f
 Before making structural changes, read:
 - [`docs/architecture.md`](docs/architecture.md): design, phase 1 scope, configuration
 - [`docs/identity-and-access.md`](docs/identity-and-access.md): tiers and authorisation. **Read this before touching anything auth-related.**
+- [`docs/infra.md`](docs/infra.md): how Azure, GitHub, Discord, Home Assistant and Sentry fit together (diagrams). **Read this before touching `infra/`.**
 
 ## Current scope: phase 1
 
-Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module and `dev` (`infra/modules/pixel`, `infra/envs/dev`, #9) are in repo; `pixel-dev` is live. **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. **Do not deploy prod** until #12. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, or `docs/runbook.md`.
+Build **only the core and the Discord adapter**. Do not add Telegram, Mastodon, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module and `dev` (`infra/modules/pixel`, `infra/envs/dev`, #9) are in repo; `pixel-dev` is live. **CD (#10, temporary):** `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. **Do not deploy prod** until #12. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, `docs/infra.md`, or `docs/runbook.md`.
 
 ## Project at a glance
 
@@ -55,7 +56,7 @@ config/                 # *.example.yaml committed; real admins.yaml / members.y
 data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml (the scheduled posts)
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # register-commands, validate-config
-docs/                   # architecture, identity, ADRs
+docs/                   # architecture, identity, infra overview, ADRs
 infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/dev are #9 (do not apply until asked)
 ```
 

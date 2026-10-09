@@ -14,6 +14,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Rules of thumb](#rules-of-thumb)
 - [Who and what](#who-and-what)
 - [Quick reference](#quick-reference)
+- [Infra overview](infra.md) (diagrams)
 - [Running Pixel today](#running-pixel-today)
 - [Access lists](#access-lists)
 - [Moderation](#moderation)
@@ -42,7 +43,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (Pixel bot, Pixelbar guild). Separate bots, tokens and secrets. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. `main` does not roll `pixel-prod` until #12. |
+| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. `main` does not roll `pixel-prod` until #12. Diagrams: [`infra.md`](infra.md). |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
