@@ -15,9 +15,15 @@ locals {
   # image, so the mount must make that user the owner.
   azure_file_mount_options = "uid=1000,gid=1000,dir_mode=0775,file_mode=0664,nobrl,mfsymlinks,cache=none"
 
+  # Tailscale on ⇒ Pixel talks to HA at localhost (ha-proxy). Off-mesh still
+  # uses home_assistant_url (Nabu Casa). One URL — never both.
+  home_assistant_enabled   = var.tailscale_enabled || var.home_assistant_url != null
+  home_assistant_pixel_url = var.tailscale_enabled ? "http://127.0.0.1:8123" : var.home_assistant_url
+  tailscale_advertise_tags = "--advertise-tags=tag:pixel-${var.environment}"
+
   kv_secret_names = toset(concat(
     ["discord-token", "admins-yaml"],
-    var.home_assistant_url != null ? ["home-assistant-token"] : [],
+    local.home_assistant_enabled ? ["home-assistant-token"] : [],
     var.sentry_enabled ? ["sentry-dsn"] : [],
     var.tailscale_enabled ? ["tailscale-auth-key"] : [],
     var.container_registry_server != null ? ["ghcr-pull-token"] : [],
@@ -49,12 +55,12 @@ locals {
     var.discord_announce_bot_channel_id != null ? { DISCORD_ANNOUNCE_BOT_CHANNEL_ID = var.discord_announce_bot_channel_id } : {},
     var.discord_role_member != null ? { DISCORD_ROLE_MEMBER = var.discord_role_member } : {},
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},
-    var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
+    local.home_assistant_pixel_url != null ? { HOME_ASSISTANT_URL = local.home_assistant_pixel_url } : {},
   )
 
   pixel_secret_env = merge(
     { DISCORD_TOKEN = "discord-token" },
-    var.home_assistant_url != null ? { HOME_ASSISTANT_TOKEN = "home-assistant-token" } : {},
+    local.home_assistant_enabled ? { HOME_ASSISTANT_TOKEN = "home-assistant-token" } : {},
     var.sentry_enabled ? { SENTRY_DSN = "sentry-dsn" } : {},
   )
 }

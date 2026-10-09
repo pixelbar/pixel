@@ -19,9 +19,11 @@ module "pixel" {
   discord_role_member                  = var.discord_role_member
   discord_role_friend                  = var.discord_role_friend
   home_assistant_url                   = var.home_assistant_url
+  home_assistant_mesh_host             = var.home_assistant_mesh_host
   sentry_enabled                       = var.sentry_enabled
   tailscale_enabled                    = var.tailscale_enabled
   tailscale_image                      = var.tailscale_image
+  ha_proxy_image                       = var.ha_proxy_image
   purge_protection_enabled             = false
   write_secrets                        = var.write_secrets
   secrets_version                      = var.secrets_version

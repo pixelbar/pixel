@@ -23,12 +23,20 @@ discord_guild_id = "100000000000000002"
 # Optional. Leave null / commented until the test-guild channels exist.
 # discord_announcements_channel_id = "100000000000000003"
 
-# Nabu Casa still works without Tailscale. Set the matching Key Vault secret
-# home-assistant-token as well, or leave both unset (HA off).
+# Off-mesh HA (Nabu Casa). Do not set this when tailscale_enabled is true —
+# Pixel then uses http://127.0.0.1:8123. Set home-assistant-token as well,
+# or leave HA unset.
 # home_assistant_url = "https://example.ui.nabu.casa"
 
 sentry_enabled    = false
 tailscale_enabled = false
+
+# Mesh HA: enable only in gitignored terraform.tfvars after Key Vault
+# tailscale-auth-key exists. Unset home_assistant_url. Do not flip this
+# example file on — the old stub was not enough to enable as-is.
+# tailscale_enabled          = true
+# home_assistant_mesh_host   = "homeassistant"
+# # write_secrets requires home_assistant_token and tailscale_auth_key too.
 
 # Leave false here. Real apply: write_secrets = true plus gitignored values.
 # write_secrets   = true

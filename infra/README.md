@@ -5,7 +5,7 @@ Terraform for Pixel on Azure. There is **no database**. Secret *values* never go
 | Path | What | Issue |
 | --- | --- | --- |
 | [`bootstrap/`](bootstrap/) | Remote state storage and GitHub → Azure OIDC. Apply this by hand, once. | #8 |
-| [`modules/pixel/`](modules/pixel/) | Container App, Azure Files volume, Key Vault, optional Tailscale sidecar. | #9 |
+| [`modules/pixel/`](modules/pixel/) | Container App, Azure Files volume, Key Vault, optional Tailscale sidecar + ha-proxy. | #9, #74 |
 | [`envs/dev/`](envs/dev/) | Dev root: Pixel Dev bot, test guild, into `pixel-dev`. | #9 |
 | `envs/prod` | Same module, Pixelbar guild. Not in this PR. | #12 |
 
