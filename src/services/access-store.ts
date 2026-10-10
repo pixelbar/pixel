@@ -12,8 +12,8 @@ import {
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
 import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
-import type { CapabilityNotifier } from "../core/capability-notify.ts";
 import { CAPABILITY_NAME } from "../core/capabilities.ts";
+import type { CapabilityNotifier } from "../core/capability-notify.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import type {

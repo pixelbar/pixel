@@ -2,21 +2,17 @@ import { Routes } from "discord.js";
 import { describe, expect, it } from "vitest";
 import { IDS } from "../../testing/fixtures.ts";
 import {
-	describeDmFailure,
 	DiscordDirectMessenger,
-	dmChannelId,
 	type DmRest,
+	describeDmFailure,
+	dmChannelId,
 	sendDirectMessage,
 } from "./direct-message.ts";
 
 const CHANNEL = "100000000000000200";
 const TEXT = "Pixel granted you the **front-door** capability.";
 
-function fakeRest(options: {
-	channel?: unknown;
-	failOn?: "open" | "send";
-	code?: number;
-} = {}) {
+function fakeRest(options: { channel?: unknown; failOn?: "open" | "send"; code?: number } = {}) {
 	const calls: { route: string; body: unknown }[] = [];
 	const rest: DmRest = {
 		async post(route, opts) {

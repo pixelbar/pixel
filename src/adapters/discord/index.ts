@@ -25,6 +25,7 @@ import type { DiscordOption } from "./args.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
+import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
 import {
 	createAutocompleteHandler,
@@ -33,7 +34,6 @@ import {
 	createModalHandler,
 	discordActor,
 } from "./handlers.ts";
-import { DiscordDirectMessenger } from "./direct-message.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {

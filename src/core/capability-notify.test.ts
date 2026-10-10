@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { actor, IDS } from "../testing/fixtures.ts";
+import { CapabilityRegistry } from "./capabilities.ts";
 import {
 	CapabilityNotifier,
 	capabilityChangeText,
 	capabilityDiff,
 	capabilityLabel,
 } from "./capability-notify.ts";
-import { CapabilityRegistry } from "./capabilities.ts";
 import { silentLogger } from "./logger.ts";
 import type { DirectMessenger } from "./ports/direct-message.ts";
 

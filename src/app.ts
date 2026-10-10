@@ -3,12 +3,12 @@ import type { Config } from "./config.ts";
 import { checkAccess, splitRef } from "./core/access.ts";
 import { Announcer } from "./core/announcer.ts";
 import { Calendar } from "./core/calendar.ts";
-import { CapabilityNotifier } from "./core/capability-notify.ts";
 import {
 	type CapabilityDefinition,
 	CapabilityRegistry,
 	reportUnknownCapabilities,
 } from "./core/capabilities.ts";
+import { CapabilityNotifier } from "./core/capability-notify.ts";
 import { ChannelPosts } from "./core/channel-posts.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
