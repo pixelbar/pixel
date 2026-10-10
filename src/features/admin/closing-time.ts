@@ -1,15 +1,20 @@
 import { actorLogFields } from "../../core/access.ts";
 import type { SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
-import { MAX_CLOSING_TIME_MESSAGE, writeClosingTimeMessage } from "../closing-time/index.ts";
+import {
+	MAX_CLOSING_TIME_MESSAGE,
+	savedClosingTimeMessage,
+	writeClosingTimeMessage,
+} from "../closing-time/index.ts";
 
 /**
- * `/admin set closing-time`: a modal for the reminder text, written to the
+ * `/admin closing-time set`: a modal for the reminder text, written to the
  * persist file (`PIXEL_DATA_DIR/closing-time.md`, the Azure Files share on cloud).
+ * Opens with the saved message when one is already set.
  */
-export function createSetSubgroup(deps: { closingTimeFile: string }): SubgroupDefinition {
-	const closingTime: SubcommandDefinition = {
-		name: "closing-time",
+export function createClosingTimeSubgroup(deps: { closingTimeFile: string }): SubgroupDefinition {
+	const set: SubcommandDefinition = {
+		name: "set",
 		description: "Set the closing-time reminder",
 		access: { minTier: "admin" },
 		private: true,
@@ -26,6 +31,10 @@ export function createSetSubgroup(deps: { closingTimeFile: string }): SubgroupDe
 				},
 			},
 		],
+		beforeForm: async () => {
+			const saved = savedClosingTimeMessage(deps.closingTimeFile);
+			return saved === undefined ? undefined : { values: { message: saved } };
+		},
 		handler: async ({ args, principal, logger }) => {
 			const message = String(args.message ?? "");
 			try {
@@ -46,9 +55,9 @@ export function createSetSubgroup(deps: { closingTimeFile: string }): SubgroupDe
 		},
 	};
 	return {
-		name: "set",
-		description: "Change settings (admins only)",
+		name: "closing-time",
+		description: "Closing-time reminder (admins only)",
 		access: { minTier: "admin" },
-		subcommands: [closingTime],
+		subcommands: [set],
 	};
 }

@@ -216,6 +216,19 @@ describe("formModal", () => {
 	it("keeps the title within Discord's limit", () => {
 		expect(formModal("x", "y".repeat(60), [TEXT]).title).toHaveLength(45);
 	});
+
+	it("prefills a field when a value is given, clipped to the field limit", () => {
+		const shown = formModal("pixel-form:x", "/admin closing-time set", [TEXT], {
+			text: `Please tidy up.\n${"x".repeat(3000)}`,
+		});
+		expect(shown.components[0]?.components[0]).toMatchObject({
+			custom_id: "text",
+			value: `Please tidy up.\n${"x".repeat(3000)}`.slice(0, 2000),
+		});
+		expect(
+			formModal("pixel-form:x", "/admin closing-time set", [TEXT]).components[0]?.components[0],
+		).not.toHaveProperty("value");
+	});
 });
 
 describe("PendingForms", () => {
@@ -356,6 +369,19 @@ describe("commands with a form", () => {
 		const [shown] = vi.mocked(command.showModal).mock.calls[0] as [ReturnType<typeof formModal>];
 		expect(shown.title).toBe("Wed 14 Oct 2026, 19:00");
 		expect(dispatcher.dispatch).not.toHaveBeenCalled();
+	});
+
+	it("prefills the form with values from prepareForm", async () => {
+		const dispatcher = fakeDispatcher([TEXT], {
+			ready: true,
+			values: { text: "Please tidy the kitchen." },
+		});
+		const command = incoming();
+		await createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 })(command);
+		const [shown] = vi.mocked(command.showModal).mock.calls[0] as [ReturnType<typeof formModal>];
+		expect(shown.components[0]?.components[0]).toMatchObject({
+			value: "Please tidy the kitchen.",
+		});
 	});
 
 	it("refuse a form that expired, was already used, or isn't theirs", async () => {

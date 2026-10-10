@@ -12,6 +12,7 @@ import {
 	createClosingTimeFeature,
 	DEFAULT_CLOSING_TIME_MESSAGE,
 	MAX_CLOSING_TIME_MESSAGE,
+	savedClosingTimeMessage,
 	writeClosingTimeMessage,
 } from "./index.ts";
 
@@ -155,6 +156,24 @@ describe("closingTimeMessage", () => {
 			expect.objectContaining({ event: "closing_time.message_unreadable" }),
 			expect.stringMatching(/default/),
 		);
+	});
+});
+
+describe("savedClosingTimeMessage", () => {
+	let dir: string;
+	afterEach(() => {
+		if (dir) rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("returns the saved text, and nothing when missing, empty, or unreadable", () => {
+		dir = mkdtempSync(join(tmpdir(), "pixel-closing-saved-"));
+		const path = join(dir, "closing-time.md");
+		expect(savedClosingTimeMessage(path)).toBeUndefined();
+		writeFileSync(path, "  Please tidy up.\n");
+		expect(savedClosingTimeMessage(path)).toBe("Please tidy up.");
+		writeFileSync(path, "  \n");
+		expect(savedClosingTimeMessage(path)).toBeUndefined();
+		expect(savedClosingTimeMessage(dir)).toBeUndefined();
 	});
 });
 

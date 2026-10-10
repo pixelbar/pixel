@@ -99,7 +99,12 @@ export function createCommandHandler({
 			}
 			const fallback = [interaction.commandName, subgroup, subcommand].filter(Boolean).join(" ");
 			await interaction.showModal(
-				formModal(forms.hold(request, fields), prepared.title ?? `/${fallback}`, fields),
+				formModal(
+					forms.hold(request, fields),
+					prepared.title ?? `/${fallback}`,
+					fields,
+					prepared.values,
+				),
 			);
 			return;
 		}

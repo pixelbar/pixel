@@ -62,7 +62,7 @@ Pixel also says when **it** comes online and goes offline, in the announcements 
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
-**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin set closing-time` (a modal), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. Mentions stay disabled. After a deploy that adds the command, run `just register`.
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. Mentions stay disabled. After a deploy that adds the command, run `just register`.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 

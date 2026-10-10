@@ -132,21 +132,21 @@ describe("buildCore", () => {
 		expect(published).toEqual([{ kind: "closing.time" }]);
 	});
 
-	it("/admin set closing-time writes the persist file, and members may not run it", async () => {
+	it("/admin closing-time set writes the persist file, and members may not run it", async () => {
 		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
 		const denied = await dispatcher.dispatch({
 			actor: actor({ userId: IDS.member }),
 			command: "admin",
-			subgroup: "set",
-			subcommand: "closing-time",
+			subgroup: "closing-time",
+			subcommand: "set",
 			args: { message: "nope" },
 		});
 		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
 		const saved = await dispatcher.dispatch({
 			actor: actor({ userId: IDS.admin }),
 			command: "admin",
-			subgroup: "set",
-			subcommand: "closing-time",
+			subgroup: "closing-time",
+			subcommand: "set",
 			args: { message: "Please tidy up.\nLast out locks the door." },
 		});
 		expect(saved.reply.text).toBe("Saved the closing-time message.");
@@ -154,6 +154,17 @@ describe("buildCore", () => {
 		expect(readFileSync(config.closingTimeFile, "utf8")).toBe(
 			"Please tidy up.\nLast out locks the door.\n",
 		);
+		const form = await dispatcher.prepareForm({
+			actor: actor({ userId: IDS.admin }),
+			command: "admin",
+			subgroup: "closing-time",
+			subcommand: "set",
+			args: {},
+		});
+		expect(form).toEqual({
+			ready: true,
+			values: { message: "Please tidy up.\nLast out locks the door." },
+		});
 	});
 
 	it("/whoami resolves tiers from the access files", async () => {

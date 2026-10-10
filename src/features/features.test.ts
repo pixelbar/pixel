@@ -115,7 +115,7 @@ describe("buildFeatures", () => {
 			["sync", "admin"],
 			["capabilities", "admin"],
 			["doors", "admin"],
-			["set", "admin"],
+			["closing-time", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");

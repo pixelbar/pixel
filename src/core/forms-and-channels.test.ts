@@ -258,6 +258,23 @@ describe("prepareForm", () => {
 		).toEqual({ ready: true, title: "Wed 14 Oct 2026, 19:00" });
 	});
 
+	it("passes field values from beforeForm so an edit can open with the saved text", async () => {
+		const dispatcher = build([
+			command({
+				name: "post",
+				options: [text],
+				beforeForm: async () => ({ values: { text: "Please tidy the kitchen." } }),
+			}),
+		]);
+		expect(
+			await dispatcher.prepareForm({
+				actor: actor(),
+				command: "post",
+				args: {},
+			}),
+		).toEqual({ ready: true, values: { text: "Please tidy the kitchen." } });
+	});
+
 	it("does not require form fields yet, so a long body isn't asked for against a bad option", async () => {
 		const dispatcher = build([
 			command({

@@ -97,19 +97,8 @@ export function createClosingTimeFeature(deps: ClosingTimeDeps): ClosingTimeFeat
 export function closingTimeMessage(file: string, logger: Logger): () => string {
 	return () => {
 		try {
-			const text = readFileSync(file, "utf8")
-				.replace(/^\uFEFF/, "")
-				.trim();
-			return text || DEFAULT_CLOSING_TIME_MESSAGE;
+			return readSavedMessage(file) ?? DEFAULT_CLOSING_TIME_MESSAGE;
 		} catch (error) {
-			if (
-				error !== null &&
-				typeof error === "object" &&
-				"code" in error &&
-				error.code === "ENOENT"
-			) {
-				return DEFAULT_CLOSING_TIME_MESSAGE;
-			}
 			logger.warn(
 				{ event: "closing_time.message_unreadable", err: error },
 				"couldn't read the closing-time message; using the default",
@@ -117,6 +106,32 @@ export function closingTimeMessage(file: string, logger: Logger): () => string {
 			return DEFAULT_CLOSING_TIME_MESSAGE;
 		}
 	};
+}
+
+/**
+ * The saved operator text, if any. Missing, empty or unreadable → undefined,
+ * so a form can stay blank (placeholder only) instead of showing the default.
+ */
+export function savedClosingTimeMessage(file: string): string | undefined {
+	try {
+		return readSavedMessage(file);
+	} catch {
+		return undefined;
+	}
+}
+
+function readSavedMessage(file: string): string | undefined {
+	try {
+		const text = readFileSync(file, "utf8")
+			.replace(/^\uFEFF/, "")
+			.trim();
+		return text || undefined;
+	} catch (error) {
+		if (error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+			return undefined;
+		}
+		throw error;
+	}
 }
 
 /**
