@@ -560,13 +560,9 @@ describe("/ha set: end to end with a fake Home Assistant", () => {
 		const { dispatch } = setup({ control });
 		const result = await dispatch("doors", "open", { door: "front-door" });
 		expect(result.reply.embeds?.[0]?.title).toBe("✅ Done");
-		expect(callService).toHaveBeenCalledTimes(1);
-		expect(callService).toHaveBeenCalledWith({
-			domain: "lock",
-			service: "unlock",
-			entityId: "lock.front_door",
-		});
-		expect(callService.mock.calls.some((call) => call[0]?.service === "open")).toBe(false);
+		expect(callService.mock.calls).toEqual([
+			[{ domain: "lock", service: "unlock", entityId: "lock.front_door" }],
+		]);
 	});
 
 	it("switches a light on, calling exactly light.turn_on on its entity, and reports it", async () => {
