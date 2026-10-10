@@ -56,8 +56,22 @@ export type BotStatusAnnouncement = {
 	text: string;
 };
 
+/** Closing-time reminder, posted when the space closes or via `/closing-time`. */
+export type ClosingTimeAnnouncement = {
+	kind: "closing.time";
+	/** Short plain text for platforms without rich formatting (escaped). */
+	text: string;
+	/** Operator-authored body, as written. Discord posts this with mentions disabled. */
+	body: string;
+	/** When this was posted. */
+	at: Date;
+};
+
 /** Every kind of announcement. Add new kinds here. */
-export type Announcement = SpaceStatusAnnouncement | BotStatusAnnouncement;
+export type Announcement =
+	| SpaceStatusAnnouncement
+	| BotStatusAnnouncement
+	| ClosingTimeAnnouncement;
 
 /** The space's state right now, as seen at startup. */
 export type SpaceSnapshot = {

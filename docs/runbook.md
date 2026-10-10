@@ -21,6 +21,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Home Assistant](#home-assistant)
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
+- [Closing-time](#closing-time)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [Changelog and versions](#changelog-and-versions)
@@ -58,7 +59,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
 | Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
 | Check the config files without starting Pixel | `just validate-config` |
-| Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
+| Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands, including `/closing-time`) |
+| Turn closing-time posts on or off, or change the text | [Closing-time](#closing-time) |
 | Look up a person | `/admin level get user:` (admins only) |
 | See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
 | Cut a package version from Unreleased notes | `just bump` (or wait for the Release workflow on `main`) |
@@ -209,6 +211,21 @@ After a deploy that adds `/schedule`, run **`just register`** so Discord lists t
 - **Stop one now:** `/schedule pause` or `/schedule delete`. To stop someone's schedules, revoke their capability: each of theirs pauses the next time it's due.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+
+## Closing-time
+
+Members can post a closing-time reminder with `/closing-time`, and Pixel posts the same message automatically after a confirmed space-closed announcement. Both paths no-op if posting is off.
+
+**After a deploy that adds `/closing-time`, run `just register`** so Discord lists the command.
+
+| I want to… | Do this |
+| --- | --- |
+| Turn it on | Set `DISCORD_CLOSING_TIME_CHANNEL_ID` to the Discord channel ID (local `.env`, or the Container App env). The bot needs View Channel, Send Messages and Embed Links there |
+| Turn it off | Unset the variable, or set it to `off` or `none`. `/closing-time` then says so privately; the automatic path logs `closing_time.disabled` and does not fail space-close |
+| Change the text | Edit `data/closing-time.md` (or `PIXEL_CLOSING_TIME_FILE`). Multi-line markdown is fine. A missing or empty file uses a built-in default. No restart needed: Pixel reads the file each time it posts. **Never put door codes, wifi passwords or personal data in it** — it is not a secret store, and this repository is public |
+| See that it posted | The configured channel: a "Closing time" embed, mentions disabled |
+
+The destination is a channel ID on purpose: do not hard-code a Discord channel in the code.
 
 ## Secrets
 

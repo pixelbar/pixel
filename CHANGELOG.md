@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/closing-time` posts a configurable closing reminder (members). The same message is posted automatically after a confirmed space-closed announcement. Off when no channel is set.
+
 ## [0.2.0] - 2026-10-10
 
 ### Added

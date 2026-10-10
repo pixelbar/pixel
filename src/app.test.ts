@@ -59,10 +59,12 @@ describe("buildCore", () => {
 					liveChannelId: undefined,
 					timelineChannelId: undefined,
 					botChannelId: undefined,
+					closingTimeChannelId: undefined,
 				},
 				roles: { member: undefined, friend: undefined },
 			},
 			homeAssistant: undefined,
+			closingTimeFile: join(dir, "data", "closing-time.md"),
 		};
 	});
 
@@ -83,6 +85,51 @@ describe("buildCore", () => {
 		if (allowed) expect(result.reply.embeds?.[0]?.title).toBe("Pixel status");
 		else expect(result.reply.text).toBe(MESSAGES.deniedTier);
 		expect(result.private).toBe(true);
+	});
+
+	it("/closing-time is a member command and says so when posting is off", async () => {
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
+		const guest = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.guest }),
+			command: "closing-time",
+			args: {},
+		});
+		expect(guest.reply.text).toBe(MESSAGES.deniedTier);
+		const member = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "closing-time",
+			args: {},
+		});
+		expect(member.reply.text).toBe("Closing-time posts are turned off.");
+		expect(member.private).toBe(true);
+	});
+
+	it("/closing-time posts through the announcer when a channel is configured", async () => {
+		const core = buildCore(
+			{
+				...config,
+				discord: {
+					...config.discord,
+					announce: { ...config.discord.announce, closingTimeChannelId: "100000000000000099" },
+				},
+			},
+			silentLogger,
+			nullErrorReporter,
+		);
+		const published: { kind: string }[] = [];
+		core.announcer.register({
+			id: "test:closing-time",
+			publish: async (a) => {
+				published.push({ kind: a.kind });
+			},
+		});
+		const result = await core.dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "closing-time",
+			args: {},
+		});
+		expect(result.reply.text).toBe("Posted the closing-time message.");
+		expect(published).toEqual([{ kind: "closing.time" }]);
 	});
 
 	it("/whoami resolves tiers from the access files", async () => {

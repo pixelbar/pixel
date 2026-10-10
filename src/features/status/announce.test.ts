@@ -14,7 +14,7 @@ const minutesBefore = (date: Date, minutes: number) => new Date(date.getTime() -
  */
 function setup(
 	initial: SpaceReading | Error = reading("closed"),
-	options: { holdChecks?: boolean; logger?: Logger } = {},
+	options: { holdChecks?: boolean; logger?: Logger; onSpaceClosed?: () => Promise<void> } = {},
 ) {
 	let current: SpaceReading | Error = initial;
 	let held = options.holdChecks ?? false;
@@ -40,6 +40,7 @@ function setup(
 		spaceStatus,
 		announcer,
 		logger: options.logger ?? silentLogger,
+		onSpaceClosed: options.onSpaceClosed,
 	});
 	return {
 		announcer,
@@ -138,6 +139,35 @@ describe("announcing changes", () => {
 			openedAt,
 			text: "🔴 Pixelbar is now closed after being open for 3h 20m",
 		});
+	});
+
+	it("runs the closing-time hook after a confirmed close, not after an open", async () => {
+		const onSpaceClosed = vi.fn(async () => {});
+		const { set, emit, advance } = setup(reading("closed"), { onSpaceClosed });
+		await advance(0);
+
+		set(reading("open", T0));
+		emit({ from: "closed", to: "open", at: T0 });
+		await advance(INTERVAL);
+		expect(onSpaceClosed).not.toHaveBeenCalled();
+
+		set(reading("closed", T0));
+		emit({ from: "open", to: "closed", at: T0 });
+		await advance(INTERVAL);
+		expect(onSpaceClosed).toHaveBeenCalledOnce();
+	});
+
+	it("still announces space-closed when the closing-time hook throws", async () => {
+		const onSpaceClosed = vi.fn(async () => {
+			throw new Error("closing-time bug");
+		});
+		const { announcer, set, emit, advance } = setup(reading("open"), { onSpaceClosed });
+		await advance(0);
+		set(reading("closed", T0));
+		emit({ from: "open", to: "closed", at: T0 });
+		await advance(INTERVAL);
+		expect(announcer.announce).toHaveBeenCalledWith(expect.objectContaining({ state: "closed" }));
+		expect(onSpaceClosed).toHaveBeenCalledOnce();
 	});
 
 	it("leaves the duration out when it isn't known", async () => {

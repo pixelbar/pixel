@@ -25,6 +25,7 @@ import type { DiscordOption } from "./args.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
+import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
 import {
@@ -47,6 +48,8 @@ export type DiscordAdapterDeps = {
 		timelineChannelId: string | undefined;
 		/** Where Pixel says it's online or offline. */
 		botChannelId: string | undefined;
+		/** Closing-time reminder. Undefined means off. */
+		closingTimeChannelId: string | undefined;
 	};
 	/** Where the live style remembers which post is open (`announcements.state`). */
 	announceStateFile: string;
@@ -147,6 +150,12 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 							"# Pixel's record of its online status post. Safe to delete or edit.\n",
 						),
 					),
+			},
+			{
+				id: CLOSING_TIME_PUBLISHER_ID,
+				channelId: deps.announce.closingTimeChannelId,
+				required: TIMELINE_PERMISSIONS,
+				create: (channel) => createClosingTimePublisher(channel),
 			},
 		];
 

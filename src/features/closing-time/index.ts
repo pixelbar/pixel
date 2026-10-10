@@ -1,0 +1,123 @@
+import { readFileSync } from "node:fs";
+import type { Announcement } from "../../core/announcement.ts";
+import type { Feature } from "../../core/feature.ts";
+import { escapeMarkdown } from "../../core/format.ts";
+import type { Logger } from "../../core/logger.ts";
+import type { Reply } from "../../core/reply.ts";
+
+/** Used when the operator file is missing or empty. Pixel-written, English. */
+export const DEFAULT_CLOSING_TIME_MESSAGE =
+	"The space is closing. Please tidy up, take your belongings, and make sure the last person out locks the door.";
+
+/** Discord embed description limit. */
+const MAX_BODY = 4096;
+
+export type ClosingTimeDeps = {
+	announcer: { announce(announcement: Announcement): Promise<void> };
+	/** False when no destination channel is configured (off / none / unset). */
+	enabled: boolean;
+	/** Read fresh each send so an operator can edit the file without a restart. */
+	message: () => string;
+	logger: Logger;
+	now?: () => Date;
+};
+
+export type ClosingTimeFeature = Feature & {
+	/**
+	 * Same send path as `/closing-time`. The space-closed hook calls this.
+	 * Never throws: a failure is logged and space-close is unaffected.
+	 */
+	onSpaceClosed: () => Promise<void>;
+};
+
+/**
+ * `/closing-time`: post the closing-time reminder. The same send path runs
+ * automatically after a confirmed space-closed announcement.
+ *
+ * Destination is the configured Discord channel (env). Unset, `off` or `none`
+ * disables both paths. The body lives in a file under `data/` (not env) because
+ * it is typically a multi-line checklist — awkward in Azure / `.env` — and is
+ * not a secret. Never put door codes or passwords in it.
+ */
+export function createClosingTimeFeature(deps: ClosingTimeDeps): ClosingTimeFeature {
+	const now = deps.now ?? (() => new Date());
+	const log = deps.logger.child({ component: "closing-time" });
+
+	const post = async (source: "command" | "auto"): Promise<"sent" | "disabled"> => {
+		if (!deps.enabled) {
+			log.info({ event: "closing_time.disabled", source }, "closing-time posts are off");
+			return "disabled";
+		}
+		const body = clip(deps.message());
+		await deps.announcer.announce({
+			kind: "closing.time",
+			text: escapeMarkdown(body),
+			body,
+			at: now(),
+		});
+		log.info({ event: "closing_time.posted", source }, "posted the closing-time message");
+		return "sent";
+	};
+
+	const onSpaceClosed = async (): Promise<void> => {
+		try {
+			await post("auto");
+		} catch (error) {
+			log.error(
+				{ event: "closing_time.failed", source: "auto", err: error },
+				"couldn't post the closing-time message",
+			);
+		}
+	};
+
+	return {
+		name: "closing-time",
+		onSpaceClosed,
+		commands: [
+			{
+				name: "closing-time",
+				description: "Post the closing-time reminder",
+				access: { minTier: "member" },
+				private: true,
+				handler: async (): Promise<Reply> => {
+					const result = await post("command");
+					if (result === "disabled") {
+						return { text: "Closing-time posts are turned off.", private: true };
+					}
+					return { text: "Posted the closing-time message.", private: true };
+				},
+			},
+		],
+	};
+}
+
+/** Reads the operator file. Missing or empty → the built-in default. Other errors are logged. */
+export function closingTimeMessage(file: string, logger: Logger): () => string {
+	return () => {
+		try {
+			const text = readFileSync(file, "utf8")
+				.replace(/^\uFEFF/, "")
+				.trim();
+			return text || DEFAULT_CLOSING_TIME_MESSAGE;
+		} catch (error) {
+			if (
+				error !== null &&
+				typeof error === "object" &&
+				"code" in error &&
+				error.code === "ENOENT"
+			) {
+				return DEFAULT_CLOSING_TIME_MESSAGE;
+			}
+			logger.warn(
+				{ event: "closing_time.message_unreadable", err: error },
+				"couldn't read the closing-time message; using the default",
+			);
+			return DEFAULT_CLOSING_TIME_MESSAGE;
+		}
+	};
+}
+
+function clip(body: string): string {
+	if (body.length <= MAX_BODY) return body;
+	return `${body.slice(0, MAX_BODY - 1)}…`;
+}

@@ -58,6 +58,12 @@ const envSchema = z
 		DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_BOT_CHANNEL_ID: optional(snowflake),
+		// Unset, empty, "off" or "none" turns closing-time posts off.
+		DISCORD_CLOSING_TIME_CHANNEL_ID: z.preprocess((v) => {
+			if (typeof v === "string" && /^(off|none)$/i.test(v.trim())) return undefined;
+			return v;
+		}, optional(snowflake)),
+		PIXEL_CLOSING_TIME_FILE: optional(z.string().trim().min(1)),
 		// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
 		DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
 		DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
@@ -121,6 +127,8 @@ export type Config = {
 			 * announcements channel. Undefined means off.
 			 */
 			botChannelId: string | undefined;
+			/** Closing-time reminder. Undefined means off. */
+			closingTimeChannelId: string | undefined;
 		};
 		/**
 		 * The Discord role each tier is mirrored to, by name or ID. Pixel pushes tiers
@@ -134,6 +142,11 @@ export type Config = {
 	 * limit a token. The token is a secret. Undefined means Home Assistant is off.
 	 */
 	homeAssistant: { url: string; token: string } | undefined;
+	/**
+	 * Operator-authored closing-time body. Default `{dataDir}/closing-time.md`.
+	 * Missing or empty file → the built-in default. Not a secret.
+	 */
+	closingTimeFile: string;
 };
 
 export class ConfigError extends Error {
@@ -178,6 +191,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
 				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,
 				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
+				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 		},
@@ -185,6 +199,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			e.HOME_ASSISTANT_URL !== undefined && e.HOME_ASSISTANT_TOKEN !== undefined
 				? { url: e.HOME_ASSISTANT_URL, token: e.HOME_ASSISTANT_TOKEN }
 				: undefined,
+		closingTimeFile: e.PIXEL_CLOSING_TIME_FILE ?? `${e.PIXEL_DATA_DIR}/closing-time.md`,
 	};
 }
 

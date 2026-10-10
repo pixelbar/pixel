@@ -17,6 +17,8 @@ export type SpaceAnnouncementsDeps = {
 		reconcile(snapshot: SpaceSnapshot): Promise<void>;
 	};
 	logger: Logger;
+	/** Same send path as `/closing-time`. Called after a confirmed close. Must not throw. */
+	onSpaceClosed?: () => Promise<void>;
 };
 
 /**
@@ -36,6 +38,7 @@ export function startSpaceAnnouncements({
 	spaceStatus,
 	announcer,
 	logger: parent,
+	onSpaceClosed,
 }: SpaceAnnouncementsDeps): Stop {
 	const logger = parent.child({ job: "space-announcements" });
 	const intervalMs = spaceStatus.pollIntervalMs;
@@ -106,6 +109,16 @@ export function startSpaceAnnouncements({
 			openedAt,
 			text: describe(state, at, openedAt),
 		});
+		if (state === "closed" && onSpaceClosed) {
+			try {
+				await onSpaceClosed();
+			} catch (error) {
+				logger.error(
+					{ event: "closing_time.failed", err: error },
+					"closing-time after space-close failed",
+				);
+			}
+		}
 	};
 
 	const unsubscribe = spaceStatus.onChange((change) => {

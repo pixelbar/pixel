@@ -68,6 +68,7 @@ const deps = () => ({
 	],
 	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
+	closingTime: { enabled: false, message: () => "The space is closing." },
 });
 
 function onlyCommand(feature: Feature) {
@@ -85,6 +86,7 @@ describe("buildFeatures", () => {
 				.sort(),
 		).toEqual([
 			"admin",
+			"closing-time",
 			"events",
 			"feedback",
 			"ha",
@@ -113,6 +115,7 @@ describe("buildFeatures", () => {
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
+		expect(registry.get("closing-time")?.definition.access.minTier).toBe("member");
 	});
 });
 
