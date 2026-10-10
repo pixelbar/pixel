@@ -29,6 +29,8 @@ just check            # lint + typecheck + tests with coverage thresholds; must 
 just test             # tests only
 just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
+just check-changelog  # fail if this branch does not change CHANGELOG.md vs origin/main
+just bump             # cut [Unreleased] into a dated version and bump package.json
 just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
 just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)
 just tf-apply dev     # apply the dev stack — only when a maintainer says so
@@ -55,8 +57,9 @@ src/
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml (the scheduled posts)
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
-scripts/                # register-commands, validate-config
-docs/                   # architecture, identity, infra overview, ADRs
+scripts/                # register-commands, validate-config, changelog check/bump
+docs/                   # architecture, identity, infra overview, ADRs, runbook
+CHANGELOG.md            # Keep a Changelog 1.1.0; most PRs add an Unreleased entry
 infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/dev are #9 (do not apply until asked)
 ```
 
@@ -99,6 +102,7 @@ infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/de
 - **Coverage:** `vitest.config.ts` sets an 80% overall floor, with strict floors (about 98%) for `core/`, `services/`, the Discord handlers and the observability helpers. Keep platform client code thin: put decisions in plain functions (see `adapters/discord/handlers.ts`) so they can be tested. Never lower a threshold to make a change pass. Add tests instead, or explain why in the PR.
 - **Style:** Biome. Don't hand-format.
 - **Runbook:** [`docs/runbook.md`](docs/runbook.md) is how volunteers run Pixel. A change to how Pixel is built, configured, deployed, monitored or recovered (an environment variable, a file it reads or writes, a command to run after a deploy, infrastructure) must update the matching section of the runbook in the same PR. The `ðŸš§ Azure` markers are filled in as the infrastructure lands.
+- **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/). Every user-facing or infra change (commands, behaviour, config, deploy, monitoring, operator docs that change how volunteers run Pixel) must add a short entry under `## [Unreleased]` in the matching category (`Added`, `Changed`, `Fixed`, …). Do not invent a version date; `just bump` (and the Release workflow on `main`) writes those when Unreleased is cut. Pure chores (typos, CI-only, no user or operator impact) may apply or request the `skip-changelog` label instead of an entry. Until 1.0, bumps are minor (`Added`) or patch (`Fixed`/`Changed`/other types) only — never major.
 - **Dependencies:** keep them minimal. Explain why in the PR when you add one.
 
 ## Things to avoid

@@ -23,6 +23,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
+- [Changelog and versions](#changelog-and-versions)
 - [Incidents](#incidents)
 - [Sentry](#sentry)
 - [Privacy requests](#privacy-requests)
@@ -59,8 +60,10 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Check the config files without starting Pixel | `just validate-config` |
 | Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
 | Look up a person | `/admin level get user:` (admins only) |
+| See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
+| Cut a package version from Unreleased notes | `just bump` (or wait for the Release workflow on `main`) |
 
-Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just register`, `just sentry-release`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`. Run `just` to list them all.
+Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just check-changelog`, `just bump`, `just register`, `just sentry-release`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`. Run `just` to list them all.
 
 ## Running Pixel today
 
@@ -259,6 +262,25 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
 - **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. The CD job **fails closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
 
+## Changelog and versions
+
+User-facing and operator-facing changes are recorded in [`CHANGELOG.md`](../CHANGELOG.md), in [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format. The version people see in `/ping` and the online post is `package.json` (plus the git SHA the image was built from).
+
+**On every pull request** that users or operators would notice (commands, behaviour, config, deploy, monitoring, this runbook): add a short bullet under `## [Unreleased]` in the right category (`Added`, `Changed`, `Fixed`, …). CI fails the PR if `CHANGELOG.md` is untouched. Pure chores (typos, CI-only, no user or operator impact) may use the `skip-changelog` label instead; adding or removing that label re-runs the check. Create the label on the repo once if it does not exist yet.
+
+**To cut a version** (move Unreleased into a dated section and bump `package.json`):
+
+```sh
+just bump            # writes the files; you commit
+just bump --commit   # also commits and tags vX.Y.Z
+```
+
+`Added` is a minor bump (`0.1.0` → `0.2.0`). `Fixed`, `Changed` and the other Keep a Changelog types are a patch (`0.1.0` → `0.1.1`). Until 1.0 the major version is never bumped this way. Do not invent the version date; the recipe uses today's UTC date.
+
+The **Release** workflow (`.github/workflows/release.yml`) runs the same `just bump --commit` on each push to `main` when Unreleased has notes, then pushes the commit and tag (`vX.Y.Z`). If the previous version was never tagged, it also tags that parent commit so the changelog compare links work. That commit is created with `GITHUB_TOKEN`, so it does **not** start another CD run. The new `package.json` version is what the next publish (`just deploy-dev`, or the next merge that CD builds) will show. `PIXEL_VERSION` in the image remains the git SHA.
+
+Do not run `just bump` on a feature branch unless you are deliberately cutting a release there.
+
 ## Incidents
 
 **The bot is offline or doesn't answer**
@@ -360,7 +382,7 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 
 ## Keeping this up to date
 
-- **Change infrastructure, change this file.** A pull request that changes how Pixel is built, configured, deployed or monitored must update the matching section here (and `architecture.md`). This is noted in `AGENTS.md`.
+- **Change infrastructure, change this file.** A pull request that changes how Pixel is built, configured, deployed or monitored must update the matching section here (and `architecture.md`). This is noted in `AGENTS.md`. The same change also needs a `CHANGELOG.md` Unreleased entry unless it is a pure chore (`skip-changelog`).
 - **When Terraform lands:** search for `🚧` and replace each one with real steps, keeping the "Today" steps only where they still apply. Add the real environment names, links and the on-call contact to "Who and what".
 - **Every procedure should be followed once by someone other than its author, in dev,** before it's trusted. Fix whatever they trip over, and note the date here if you like.
 - **After an incident,** add what you learned: a missing step, a better check, a new entry under [Incidents](#incidents).
