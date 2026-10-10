@@ -69,7 +69,18 @@ function openStore(ops = nodeFileOps) {
 }
 
 function setup(registry = REGISTRY, ops = nodeFileOps) {
-	const store = openStore(ops);
+	const notified: { userId: string; before: readonly string[]; after: readonly string[] }[] = [];
+	const store = FileAccessStore.open({
+		paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+		logger: logger(),
+		reporter,
+		ops,
+		notify: {
+			notify: async (userId, before, after) => {
+				notified.push({ userId, before, after });
+			},
+		},
+	});
 	const commands = new CommandRegistry();
 	commands.register(
 		createAdminFeature({
@@ -95,7 +106,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 		logger: logger(),
 		reporter,
 	});
-	return { store, dispatcher, commands };
+	return { store, dispatcher, commands, notified };
 }
 
 const human = (id: string, displayName = "Someone"): ResolvedUser => ({
@@ -170,7 +181,7 @@ describe("who may run them", () => {
 
 describe("grant", () => {
 	it("gives a member a capability, persists it, and audits it", async () => {
-		const { dispatcher, store } = setup();
+		const { dispatcher, store, notified } = setup();
 		const result = await run(
 			dispatcher,
 			"grant",
@@ -196,6 +207,7 @@ describe("grant", () => {
 			after: { tier: "member", capabilities: ["front-door"] },
 			reason: "key holder",
 		});
+		expect(notified).toEqual([{ userId: IDS.member, before: [], after: ["front-door"] }]);
 	});
 
 	it("adds to what someone already has", async () => {
@@ -220,13 +232,14 @@ describe("grant", () => {
 	});
 
 	it("says so and writes nothing when they already have it", async () => {
-		const { dispatcher } = setup();
+		const { dispatcher, notified } = setup();
 		const before = BEFORE();
 		const result = await run(dispatcher, "grant", { capability: "workshop" }, human(IDS.friend));
 		expect(result.reply.text).toContain("already has workshop. Nothing changed.");
 		expect(read()).toBe(before);
 		expect(existsSync(`${membersFile}.bak`)).toBe(false);
 		expect(events("access.changed")).toHaveLength(0);
+		expect(notified).toEqual([]);
 	});
 
 	it.each([
@@ -323,7 +336,7 @@ describe("grant", () => {
 
 describe("revoke", () => {
 	it("takes a capability away, persists it, and audits it", async () => {
-		const { dispatcher, store } = setup();
+		const { dispatcher, store, notified } = setup();
 		const result = await run(
 			dispatcher,
 			"revoke",
@@ -339,6 +352,7 @@ describe("revoke", () => {
 			after: { tier: "friend", capabilities: [] },
 			reason: "left",
 		});
+		expect(notified).toEqual([{ userId: IDS.friend, before: ["workshop"], after: [] }]);
 	});
 
 	it("keeps their other capabilities", async () => {
@@ -358,11 +372,12 @@ describe("revoke", () => {
 		["someone who doesn't have it", IDS.member],
 		["someone who isn't listed", UNLISTED],
 	])("says so and writes nothing for %s", async (_label, id) => {
-		const { dispatcher } = setup();
+		const { dispatcher, notified } = setup();
 		const before = BEFORE();
 		const result = await run(dispatcher, "revoke", { capability: "workshop" }, human(id));
 		expect(result.reply.text).toContain("doesn't have workshop. Nothing changed.");
 		expect(read()).toBe(before);
+		expect(notified).toEqual([]);
 	});
 });
 
