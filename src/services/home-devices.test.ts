@@ -137,6 +137,11 @@ describe("loadHomeDevices", () => {
 				/devices\[0\]\.actions\[0\]/,
 			],
 			[
+				"open/unlatch on a door",
+				"devices:\n  - name: door\n    entity: lock.front\n    kind: door\n    actions: [open]\n",
+				/devices\[0\]\.actions\[0\]: isn't an action this kind offers/,
+			],
+			[
 				"actions on a read-only kind",
 				"devices:\n  - name: temp\n    entity: sensor.temp\n    kind: sensor\n    actions: [on]\n",
 				/devices\[0\]\.actions\[0\]/,

@@ -15,7 +15,7 @@ import { CommandRegistry } from "../../core/registry.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { type ControlResult, DeviceControl } from "./control.ts";
-import { createHomeFeature, openingAction } from "./index.ts";
+import { createHomeFeature } from "./index.ts";
 
 const DEVICES = `devices:
   - name: lamp
@@ -216,6 +216,8 @@ describe("/ha set: who may", () => {
 		["an empty device", "haAdmin", "", "on", "unknown-device"],
 		["a service name instead of an action", "haAdmin", "lamp", "light.turn_on", "action"],
 		["a smuggled-in extra", "haAdmin", "lamp", "on; lock.unlock", "action"],
+		["open/unlatch on a door", "doors", "front-door", "open", "action"],
+		["lock.open as a typed service", "doors", "front-door", "lock.open", "action"],
 	])(
 		"refuses %s, without sending anything, with the generic answer",
 		async (_label, who, device, state, reason) => {
@@ -553,6 +555,20 @@ describe("/ha set: end to end with a fake Home Assistant", () => {
 		return { control, callService, getStates };
 	}
 
+	it("unlocks a door with lock.unlock, never lock.open", async () => {
+		const { control, callService } = live("locked", "unlocked");
+		const { dispatch } = setup({ control });
+		const result = await dispatch("doors", "open", { door: "front-door" });
+		expect(result.reply.embeds?.[0]?.title).toBe("✅ Done");
+		expect(callService).toHaveBeenCalledTimes(1);
+		expect(callService).toHaveBeenCalledWith({
+			domain: "lock",
+			service: "unlock",
+			entityId: "lock.front_door",
+		});
+		expect(callService.mock.calls.some((call) => call[0]?.service === "open")).toBe(false);
+	});
+
 	it("switches a light on, calling exactly light.turn_on on its entity, and reports it", async () => {
 		const { control, callService } = live("off", "on");
 		const { set } = setup({ control });
@@ -636,6 +652,8 @@ describe("autocomplete for /ha set", () => {
 			"toggle",
 			"unlock",
 		]);
+		expect(names(await suggest("haAdmin", "state"))).not.toContain("open");
+		expect(names(await suggest("doors", "state", "o", { device: "front-door" }))).toEqual([]);
 		expect(await suggest("plainMember", "state")).toEqual([]);
 		expect(await suggest("guestWithEverything", "state")).toEqual([]);
 	});
@@ -716,27 +734,15 @@ describe("autocomplete for /ha set", () => {
 });
 
 describe("/ha open", () => {
-	const OPENABLE = DEVICES.replace("actions: [lock, unlock]", "actions: [lock, unlock, open]");
 	const open = (ctx: ReturnType<typeof setup>, who: Who, door: string) =>
 		ctx.dispatch(who, "open", { door });
 
-	it("unlocks when it can, and only unlatches if unlock isn't allowed", async () => {
-		const plain = setup();
-		await open(plain, "doors", "front-door");
-		expect((plain.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
-		const both = setup({ yaml: OPENABLE });
-		await open(both, "doors", "front-door");
-		expect((both.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
-		const unlatchOnly = setup({
-			yaml: DEVICES.replace("actions: [lock, unlock]", "actions: [open]"),
-		});
-		await open(unlatchOnly, "doors", "front-door");
-		expect((unlatchOnly.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("open");
-		expect(openingAction({ actions: [{ name: "unlock" }, { name: "open" }] as never })).toBe(
-			"unlock",
-		);
-		expect(openingAction({ actions: [{ name: "open" }] as never })).toBe("open");
-		expect(openingAction({ actions: [] })).toBe("open");
+	it("always unlocks, and never unlatches", async () => {
+		const ctx = setup();
+		await open(ctx, "doors", "front-door");
+		expect((ctx.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
+		expect((await ctx.set("doors", "front-door", "open")).reply.text).toBe(HOME_DENIED);
+		expect(ctx.run).toHaveBeenCalledTimes(1);
 	});
 
 	it("needs member tier and ha-doors or ha-admin, like /ha set", async () => {
@@ -772,7 +778,7 @@ describe("/ha open", () => {
 		expect(ctx.run).not.toHaveBeenCalled();
 	});
 
-	it("needs a door that allows unlocking or opening", async () => {
+	it("needs a door that allows unlocking", async () => {
 		const ctx = setup({ yaml: DEVICES.replace("actions: [lock, unlock]", "actions: [lock]") });
 		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(HOME_DENIED);
 		expect(ctx.run).not.toHaveBeenCalled();
