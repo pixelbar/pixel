@@ -424,6 +424,8 @@ Every task goes through the [`justfile`](../justfile). Run `just` to list the re
 
 ## Deployment
 
+How the hosted pieces fit together (diagrams of Azure, GitHub, Discord, Home Assistant, Sentry): [`infra.md`](infra.md). Terraform layout: [`infra/`](../infra/).
+
 There is **no database**. Access, schedules and (planned) account linking are files. Do not add Postgres because an old issue said so (#15, #18).
 
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. Max replicas = 1 (not a variable). Deploys **stop the old instance before starting the new one** (#11). This stack only pins min=max=1 and `revision_mode = Single`. A database lock is not a plan; there is no database.

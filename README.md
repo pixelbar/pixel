@@ -136,6 +136,8 @@ Run `just` to list every recipe.
 | `just build` / `just start` | Compile to `dist/` and run the build     |
 | `just fmt`             | Auto-format                                   |
 | `just validate-config` | Validate the access list files                |
+| `just check-changelog` | Fail if this branch does not change `CHANGELOG.md` vs `origin/main` |
+| `just bump`            | Cut `[Unreleased]` into a dated version and bump `package.json` |
 | `just register`        | Register slash commands with Discord          |
 | `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docker-build`    | Build the container image                     |
@@ -147,11 +149,11 @@ Run `just` to list every recipe.
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, then plans `dev` (fails closed without Environment `dev` `ARM_*`). [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps (fails closed without org/token). It does **not** deploy prod. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. Pull requests also run a [changelog](.github/workflows/changelog.yml) job that fails unless `CHANGELOG.md` changed, or the PR has the `skip-changelog` label. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, then plans `dev` (fails closed without Environment `dev` `ARM_*`). [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps (fails closed without org/token). It does **not** deploy prod. A [Release](.github/workflows/release.yml) job on `main` cuts `CHANGELOG.md` Unreleased into a dated version and bumps `package.json` when there are notes. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See the [infra overview](docs/infra.md) (diagrams), [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
 
 ## Running and operating Pixel
 
@@ -163,7 +165,7 @@ Pixel decides who gets member-level access, so its security matters. If you find
 
 ## Contributing
 
-Pixel is a Pixelbar community project. If you use an AI coding agent, point it at [`AGENTS.md`](AGENTS.md).
+Pixel is a Pixelbar community project. If you use an AI coding agent, point it at [`AGENTS.md`](AGENTS.md). User-facing and operator-facing changes belong in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
