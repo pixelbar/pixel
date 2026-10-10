@@ -111,7 +111,13 @@ variable "discord_role_friend" {
 variable "home_assistant_url" {
   type        = string
   default     = null
-  description = "Optional Nabu Casa or Tailscale/LAN URL. The token is an ephemeral input / Key Vault secret. Set both or neither."
+  description = "Optional off-mesh HOME_ASSISTANT_URL (Nabu Casa). Unset when tailscale_enabled. The token is an ephemeral input / Key Vault secret."
+}
+
+variable "home_assistant_mesh_host" {
+  type        = string
+  default     = null
+  description = "HA MagicDNS hostname for ha-proxy when tailscale_enabled. No scheme or port."
 }
 
 variable "write_secrets" {
@@ -153,7 +159,7 @@ variable "home_assistant_token" {
   ephemeral   = true
   sensitive   = true
   default     = null
-  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and Home Assistant is on (home_assistant_url or tailscale_enabled)."
 }
 
 variable "sentry_dsn" {
@@ -169,7 +175,7 @@ variable "tailscale_auth_key" {
   ephemeral   = true
   sensitive   = true
   default     = null
-  description = "Tailscale auth key. Required when write_secrets is true and tailscale_enabled is true."
+  description = "Tailscale OAuth client secret or tagged ephemeral auth key. Required when write_secrets is true and tailscale_enabled is true."
 }
 
 variable "sentry_enabled" {
@@ -181,10 +187,15 @@ variable "sentry_enabled" {
 variable "tailscale_enabled" {
   type        = bool
   default     = false
-  description = "Preferred HA path. Off until Thomas has a Tailscale auth key. Nabu Casa still works."
+  description = "Preferred HA path. Leave false here and in terraform.example.tfvars. Enable only in gitignored terraform.tfvars after Key Vault tailscale-auth-key exists."
 }
 
 variable "tailscale_image" {
   type    = string
   default = "ghcr.io/tailscale/tailscale:v1.86.5"
+}
+
+variable "ha_proxy_image" {
+  type    = string
+  default = "alpine/socat:1.8.0.0"
 }

@@ -157,6 +157,9 @@ resource "azurerm_container_app" "this" {
       }
     }
 
+    # Userspace Tailscale: no TUN on Container Apps. SOCKS5 on localhost is the
+    # only way Pixel's netns reaches the mesh. Do not probe this container —
+    # an unhealthy sidecar restarts the whole replica and drops Discord.
     dynamic "container" {
       for_each = var.tailscale_enabled ? [1] : []
       content {
@@ -175,24 +178,65 @@ resource "azurerm_container_app" "this" {
           value = local.name_prefix
         }
 
-        # Container Apps has no /dev/net/tun. Userspace networking shares the
-        # replica netns (localhost). Pixel still talks to HA via HOME_ASSISTANT_URL
-        # (Nabu Casa works without Tailscale). LAN MagicDNS through this sidecar
-        # is #43.
         env {
           name  = "TS_USERSPACE"
           value = "true"
         }
 
         env {
+          name  = "TS_SOCKS5_SERVER"
+          value = "127.0.0.1:1055"
+        }
+
+        env {
           name  = "TS_ACCEPT_DNS"
-          value = "true"
+          value = "false"
         }
 
         env {
           name  = "TS_EXTRA_ARGS"
-          value = "--accept-routes"
+          value = local.tailscale_advertise_tags
         }
+
+        env {
+          name  = "TS_ENABLE_HEALTH_CHECK"
+          value = "true"
+        }
+
+        env {
+          name  = "TS_LOCAL_ADDR_PORT"
+          value = "127.0.0.1:9002"
+        }
+
+        # containerboot treats ACA as Kubernetes (injected KUBERNETES_SERVICE_HOST)
+        # and dies looking for a service account. Empty these. #74 / tailscale#18558.
+        env {
+          name  = "KUBERNETES_SERVICE_HOST"
+          value = ""
+        }
+
+        env {
+          name  = "TS_KUBE_SECRET"
+          value = ""
+        }
+      }
+    }
+
+    # Pixel cannot connect() to 100.x / MagicDNS in userspace. socat listens on
+    # 127.0.0.1:8123 and SOCKS5s to HA. HOME_ASSISTANT_URL is that localhost.
+    # ACA consumption floor is 0.25 vCPU / 0.5Gi.
+    dynamic "container" {
+      for_each = var.tailscale_enabled ? [1] : []
+      content {
+        name   = "ha-proxy"
+        image  = var.ha_proxy_image
+        cpu    = 0.25
+        memory = "0.5Gi"
+        command = [
+          "socat",
+          "TCP-LISTEN:8123,bind=127.0.0.1,reuseaddr,fork",
+          "SOCKS5:127.0.0.1:${var.home_assistant_mesh_host}:8123,socksport=1055",
+        ]
       }
     }
   }
@@ -203,6 +247,18 @@ resource "azurerm_container_app" "this" {
     precondition {
       condition     = var.container_registry_server == null || (var.container_registry_username != null && var.container_registry_username != "")
       error_message = "container_registry_username is required when container_registry_server is set."
+    }
+    precondition {
+      condition     = !var.tailscale_enabled || (var.home_assistant_mesh_host != null && var.home_assistant_mesh_host != "")
+      error_message = "tailscale_enabled requires home_assistant_mesh_host (HA MagicDNS name, no scheme)."
+    }
+    precondition {
+      condition     = var.tailscale_enabled || var.home_assistant_mesh_host == null
+      error_message = "home_assistant_mesh_host is only used when tailscale_enabled is true."
+    }
+    precondition {
+      condition     = !var.tailscale_enabled || var.home_assistant_url == null
+      error_message = "When tailscale_enabled, do not set home_assistant_url. Pixel uses http://127.0.0.1:8123; set home_assistant_mesh_host. No Nabu Casa fallback."
     }
   }
 

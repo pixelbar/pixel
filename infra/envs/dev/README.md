@@ -20,7 +20,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | Azure Files account + share `pixel` | `pixeldevdata` |
 | Daily file-share backup, 14-day keep | `pixel-dev-rsv` |
 
-Optional Tailscale sidecar (off by default): same replica, userspace networking. Nabu Casa (`HOME_ASSISTANT_URL`) still works when it is off. The app sets `PIXEL_RUNTIME=cloud` so `/admin status` and the online post show **Where: cloud**.
+Optional Tailscale sidecar + `ha-proxy` (off by default): same replica, userspace SOCKS5, Pixel `HOME_ASSISTANT_URL=http://127.0.0.1:8123`. Enable only in gitignored `terraform.tfvars` after Key Vault `tailscale-auth-key` exists. Nabu Casa still works when Tailscale is off. The app sets `PIXEL_RUNTIME=cloud` so `/admin status` and the online post show **Where: cloud**.
 
 There is **no database**.
 
@@ -117,10 +117,12 @@ If that fails, the Azure Files uid map did not take. Check `mount_options` on th
 
 ## Home Assistant
 
-- **Preferred:** `tailscale_enabled = true` plus Key Vault `tailscale-auth-key` (tagged, reusable or ephemeral). Sidecar is userspace (no TUN). Pixel still uses `HOME_ASSISTANT_URL` + `HOME_ASSISTANT_TOKEN` (both or neither). LAN MagicDNS through the sidecar is remaining work for #43.
-- **Works today:** a Nabu Casa URL in `home_assistant_url` and the token in Key Vault, with Tailscale off.
+- **Preferred (#74):** in **gitignored** `terraform.tfvars` set `tailscale_enabled = true`, `home_assistant_mesh_host` (HA MagicDNS name), and Key Vault `tailscale-auth-key` (tagged OAuth client, or reusable tagged ephemeral preauthorized key) plus `home-assistant-token`. Unset `home_assistant_url`. Pixel’s URL becomes `http://127.0.0.1:8123` → `ha-proxy` (socat) → Tailscale SOCKS5 `127.0.0.1:1055` → HA `:8123`. Userspace (no TUN). Do not persist Tailscale state on the Files share. Do not ACA-probe the sidecar (`/readyz` stays Discord-only). No `--accept-routes`, no Funnel, no Nabu Casa fallback while the mesh is on.
+- **Off-mesh:** a Nabu Casa URL in `home_assistant_url` and the token in Key Vault, with `tailscale_enabled = false`.
 
-Dev must not control the real doors. Use a test HA, or leave HA off.
+Leave `tailscale_enabled = false` in `terraform.example.tfvars`. Dev must not control the real doors. Use a test HA (or no `tag:pixel-dev` → prod `tag:ha` grant), or leave HA off.
+
+Debug the sidecar (not a probe): `az containerapp exec -g pixel-dev -n pixel-dev --container tailscale --command /bin/sh` then `wget -qO- http://127.0.0.1:9002/healthz`.
 
 ## After apply, Discord still will not answer until
 
@@ -142,7 +144,7 @@ Key Vault soft-delete is 7 days; this env purges on destroy. The resource group 
 
 ## Cost (rough, West Europe, always-on)
 
-About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analytics, Key Vault, 5 Gi Azure Files and backup. Tailscale adds about **€15** (extra 0.25 vCPU / 0.5 Gi). Actual bills depend on log volume. Not a quote.
+About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analytics, Key Vault, 5 Gi Azure Files and backup. Tailscale + `ha-proxy` add about **€15 each** (ACA floor is 0.25 vCPU / 0.5 Gi per container). Actual bills depend on log volume. Not a quote.
 
 ## What this is not
 

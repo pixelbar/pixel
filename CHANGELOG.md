@@ -12,6 +12,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Added
 
 - Keep a Changelog, automatic `package.json` version bumps from Unreleased notes, and a CI gate that requires a changelog entry unless the pull request is labeled `skip-changelog`.
+- Optional Tailscale userspace sidecar and localhost HA proxy so Azure Pixel can reach Home Assistant on the mesh without a public HA URL (#74, #76).
+
+### Changed
+
+- When Tailscale is on, Azure Pixel uses `HOME_ASSISTANT_URL=http://127.0.0.1:8123` (no Nabu Casa fallback). Discord probes stay Discord-only. Enable only in gitignored tfvars after Key Vault `tailscale-auth-key`.
 
 ## [0.1.0] - 2026-10-09
 

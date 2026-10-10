@@ -161,7 +161,7 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **If Home Assistant is unreachable:** see [Incidents](#incidents).
 
-**How Pixel reaches HA:** locally, `HOME_ASSISTANT_URL` is usually the Nabu Casa cloud URL. On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN (#9, #43). A Nabu Casa URL still works if the sidecar is not there yet.
+**How Pixel reaches HA:** locally, `HOME_ASSISTANT_URL` is usually the Nabu Casa cloud URL. On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the mesh (#74): Pixel uses `http://127.0.0.1:8123`. A Nabu Casa URL still works if the sidecar is off.
 
 ## Terraform bootstrap
 
@@ -193,9 +193,9 @@ az containerapp revision restart -g pixel-dev -n pixel-dev
 
 **See that there is exactly one replica:** `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. If a command is answered twice, stop the extra instance (a laptop, or an old revision). Never raise `max_replicas`. Overlap during a deploy is #11.
 
-**Home Assistant:** Tailscale sidecar is preferred (`tailscale_enabled = true` plus Key Vault `tailscale-auth-key`). A Nabu Casa URL in `home_assistant_url` plus `home-assistant-token` still works when Tailscale is off. Set both URL and token, or neither. Dev must not point at the real doors.
+**Home Assistant:** Tailscale sidecar is preferred (`tailscale_enabled = true` in gitignored tfvars, plus Key Vault `tailscale-auth-key` and `home_assistant_mesh_host`). Pixel then uses `HOME_ASSISTANT_URL=http://127.0.0.1:8123`. A Nabu Casa URL in `home_assistant_url` plus `home-assistant-token` still works when Tailscale is off. Do not set both. `/readyz` stays Discord-only; HA down must not bounce the replica. Dev must not point at the real doors.
 
-**Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 with the sidecar. West Europe. Not a quote.
+**Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 per extra sidecar container (Tailscale and `ha-proxy`). West Europe. Not a quote.
 
 🚧 **Prod** is #12. `just deploy-dev` already publishes GHCR, rolls `pixel-dev`, registers commands, and creates a Sentry release when org/token are set. `main` publishes GHCR (and source maps) only. No Terraform apply on merge.
 
@@ -234,6 +234,8 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. In HA, as the **non-admin** Pixel user: Profile → Security → Long-lived access tokens → create a new token, then delete the old one.
 2. Put the new one in the secret store as `HOME_ASSISTANT_TOKEN`, and restart Pixel.
 3. `/admin status` should say Connected with no warning about an admin token. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
+
+**Rotate the Tailscale auth key:** Tailscale admin → revoke the old OAuth client or tagged key, mint a new one (tagged `tag:pixel-dev` / `tag:pixel-prod`, ephemeral). Put it in Key Vault `tailscale-auth-key` and restart the Container App. HA commands fail closed until the sidecar rejoins; Discord stays up (`/readyz` is not Tailscale).
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 

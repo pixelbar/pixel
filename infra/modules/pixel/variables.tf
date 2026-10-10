@@ -149,11 +149,22 @@ variable "discord_role_friend" {
 variable "home_assistant_url" {
   type        = string
   default     = null
-  description = "Optional. HOME_ASSISTANT_URL (Nabu Casa or a Tailscale/LAN address). Not a secret. The token is a Key Vault secret. Set both or neither."
+  description = "Optional. Off-mesh HOME_ASSISTANT_URL (Nabu Casa). Unset when tailscale_enabled — Pixel then uses http://127.0.0.1:8123. Not a secret. The token is a Key Vault secret. Set URL and token, or neither (Tailscale on counts as URL set)."
 
   validation {
     condition     = var.home_assistant_url == null || can(regex("^https?://", var.home_assistant_url))
     error_message = "home_assistant_url must be an http(s) URL or unset."
+  }
+}
+
+variable "home_assistant_mesh_host" {
+  type        = string
+  default     = null
+  description = "MagicDNS hostname of Home Assistant (no scheme, no port), e.g. homeassistant or homeassistant.tailxxxxx.ts.net. Required when tailscale_enabled. Pixel never sees this; ha-proxy does."
+
+  validation {
+    condition     = var.home_assistant_mesh_host == null || can(regex("^[A-Za-z0-9]([A-Za-z0-9._-]{0,253}[A-Za-z0-9])?$", var.home_assistant_mesh_host))
+    error_message = "home_assistant_mesh_host must be a hostname with no scheme or port."
   }
 }
 
@@ -207,7 +218,7 @@ variable "home_assistant_token" {
   ephemeral   = true
   sensitive   = true
   default     = null
-  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and Home Assistant is on (home_assistant_url or tailscale_enabled)."
 }
 
 variable "sentry_dsn" {
@@ -223,19 +234,25 @@ variable "tailscale_auth_key" {
   ephemeral   = true
   sensitive   = true
   default     = null
-  description = "Tailscale auth key. Required when write_secrets is true and tailscale_enabled is true."
+  description = "Tailscale OAuth client secret or tagged ephemeral auth key. Required when write_secrets is true and tailscale_enabled is true. Never stored in state."
 }
 
 variable "tailscale_enabled" {
   type        = bool
   default     = false
-  description = "Preferred path to Home Assistant: a userspace Tailscale sidecar on the replica. Off until an auth key exists. Nabu Casa still works when this is false."
+  description = "Preferred HA path: userspace Tailscale sidecar + ha-proxy on the replica. Off until an auth key exists. Leave false in example tfvars; enable only in gitignored terraform.tfvars. When true, Pixel's HOME_ASSISTANT_URL is http://127.0.0.1:8123 (no Nabu Casa fallback)."
 }
 
 variable "tailscale_image" {
   type        = string
   default     = "ghcr.io/tailscale/tailscale:v1.86.5"
   description = "Tailscale sidecar image. Pin a version; do not use latest."
+}
+
+variable "ha_proxy_image" {
+  type        = string
+  default     = "alpine/socat:1.8.0.0"
+  description = "Localhost HA forwarder (socat → Tailscale SOCKS5). Pin a version. ACA consumption floor is 0.25 vCPU / 0.5Gi."
 }
 
 variable "timezone" {
