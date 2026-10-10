@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-10
+
 ### Added
 
 - Keep a Changelog, automatic `package.json` version bumps from Unreleased notes, and a CI gate that requires a changelog entry unless the pull request is labeled `skip-changelog`.
@@ -43,5 +45,6 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/pixelbar/pixel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pixelbar/pixel/releases/tag/v0.1.0
