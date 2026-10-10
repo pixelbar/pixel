@@ -1,0 +1,60 @@
+name: Release
+
+# On each push to main (and when someone runs this by hand), cut a version
+# from CHANGELOG [Unreleased] and bump package.json. Added → minor;
+# Fixed/Changed → patch. Never major before 1.0. No-ops when Unreleased is empty.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+jobs:
+  bump:
+    name: Version bump
+    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'Release v') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cut Unreleased into a version
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          before="$(git rev-parse HEAD)"
+          just bump --commit
+          after="$(git rev-parse HEAD)"
+          if [ "${before}" = "${after}" ]; then
+            echo "No version bump."
+            exit 0
+          fi
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin --tags

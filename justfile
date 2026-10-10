@@ -45,6 +45,17 @@ typecheck:
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds
 check: lint typecheck coverage
 
+# Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
+# CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.
+check-changelog *args:
+    pnpm exec tsx scripts/check-changelog.ts {{args}}
+
+# Cut [Unreleased] into a dated version and bump package.json.
+# Added → minor; Fixed/Changed → patch. Never major before 1.0.
+# `--commit` also creates the release commit and tag (used by CI).
+bump *args:
+    pnpm exec tsx scripts/bump-version.ts {{args}}
+
 # Format-check and validate bootstrap + envs/dev (needs Terraform 1.11+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
