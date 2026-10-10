@@ -1,6 +1,6 @@
 {
 	"name": "pixel",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"private": true,
 	"description": "Pixel — the helpful assistant bot for the Pixelbar hackerspace",
 	"type": "module",

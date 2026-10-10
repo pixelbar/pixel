@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-10
+
 ### Added
 
 - `/closing-time` posts a configurable closing reminder (members). The same message is posted automatically after a confirmed space-closed announcement. Off when no channel is set. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message); it is written to `data/closing-time.md` on the persist share.
@@ -53,6 +55,7 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pixelbar/pixel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pixelbar/pixel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pixelbar/pixel/releases/tag/v0.1.0
