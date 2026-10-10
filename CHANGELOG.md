@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `/closing-time` posts a configurable closing reminder (members). The same message is posted automatically after a confirmed space-closed announcement. Off when no channel is set. Admins set the text with `/admin set closing-time` (a modal); it is written to `data/closing-time.md` on the persist share.
 
+### Fixed
+
+- Discord “already acknowledged” / “unknown interaction” replies are treated as a second instance on the same token, not as a crash.
+
 ## [0.2.0] - 2026-10-10
 
 ### Added

@@ -224,6 +224,7 @@ Members can post a closing-time reminder with `/closing-time`, and Pixel posts t
 | Turn it off | Unset the variable, or set it to `off` or `none`. `/closing-time` then says so privately; the automatic path logs `closing_time.disabled` and does not fail space-close |
 | Change the text | `/admin set closing-time` (opens a modal). Pixel writes `data/closing-time.md` on the persist volume (Azure Files share on cloud — that write *is* the sync; there is no extra copy). You can still edit the file by hand. A missing or empty file uses a built-in default. No restart needed. **Never put door codes, wifi passwords or personal data in it** |
 | See that it posted | The configured channel: a "Closing time" embed, mentions disabled |
+| Discord lists `/closing-time` but Pixel says it doesn't know it, or shows an error and then the reminder still posts | Another instance is on this bot token. Stop the extra one (see [Incidents](#incidents)), then retry |
 
 The destination is a channel ID on purpose: do not hard-code a Discord channel in the code.
 
@@ -310,9 +311,11 @@ Do not run `just bump` on a feature branch unless you are deliberately cutting a
 
 **Azure (`dev`):** Portal → Container App `pixel-dev` → Log stream / Console, or `az containerapp logs show -g pixel-dev -n pixel-dev --follow`. Restart: `az containerapp revision restart -g pixel-dev -n pixel-dev`. 🚧 Where alerts arrive is still not decided.
 
-**Duplicate replies (every command answered twice)**
+**Duplicate replies, "I don't know that command" for a command Discord lists, or Discord shows an error and then the action still happens**
 
-Two instances are connected with the same token. Find and stop the extra one: `docker ps` locally, and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1.
+Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060 / 10062). Logs on either side show `discord.duplicate_handler`.
+
+Find and stop the extra one: `docker ps` locally (leftover `just dev` or a worktree container), and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1. Retry the command after only one instance is left.
 
 **SpaceAPI is down** (`/status` says "Couldn't check")
 
