@@ -14,6 +14,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Keep a Changelog, automatic `package.json` version bumps from Unreleased notes, and a CI gate that requires a changelog entry unless the pull request is labeled `skip-changelog`.
 - Discord DM when a capability is granted or revoked.
 
+### Changed
+
+- Doors only lock and unlock. `/ha open` always unlocks; Pixel never unlatches (`lock.open`).
+
 ## [0.1.0] - 2026-10-09
 
 Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit dates from git.

@@ -258,7 +258,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 					},
 					{
 						name: "open",
-						description: "Open a door (unlock it, or unlatch it if it can't be unlocked)",
+						description: "Unlock a door",
 						access: { minTier: "member" },
 						private: true,
 						placeholder: { text: "Working on it…", private: true },
@@ -271,9 +271,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 								suggest: async ({ typed, principal }) => {
 									if (!deps.homeDevices.configured || isOff("door")) return [];
 									const doors = deps.homeDevices.view.devices.filter(
-										(d) =>
-											d.kind.name === "door" &&
-											canActOnDevice(d, openingAction(d), principal).allowed,
+										(d) => d.kind.name === "door" && canActOnDevice(d, "unlock", principal).allowed,
 									);
 									return suggestDevices(doors, typed);
 								},
@@ -291,7 +289,8 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 								);
 								return { text: HOME_DENIED, private: true };
 							}
-							return act(door, door ? openingAction(door) : "unlock", context);
+							// Convenience only: always unlock. Pixel never unlatches (`lock.open`).
+							return act(door, "unlock", context);
 						},
 					},
 				],
@@ -558,9 +557,4 @@ function suggestActions(actions: readonly KindAction[], typed: string): Suggesti
 			name: `${action.name} · ${action.description}`.slice(0, 100),
 			value: action.name,
 		}));
-}
-
-/** What `/ha open` runs on a door: `unlock` when the devices file allows it, otherwise `open` (unlatch). */
-export function openingAction(door: Pick<HomeDevice, "actions">): string {
-	return door.actions.some((a) => a.name === "unlock") ? "unlock" : "open";
 }

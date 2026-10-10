@@ -175,6 +175,16 @@ describe("acting on a device: every combination", () => {
 		);
 	});
 
+	it("does not treat open/unlatch as an allowed door action", () => {
+		const doors = person("member", ["ha-doors"]);
+		const front = device("door", {}, ["lock", "unlock"]);
+		expect(canActOnDevice(front, "unlock", doors).allowed).toBe(true);
+		expect(canActOnDevice(front, "lock", doors).allowed).toBe(true);
+		expect(canActOnDevice(front, "open", doors)).toEqual({ allowed: false, reason: "action" });
+		expect(actionableDevices([{ name: "front-door", ...front }], doors, "open")).toEqual([]);
+		expect(HOME_KINDS.get("door")?.actions.some((a) => a.name === "open")).toBe(false);
+	});
+
 	it("keeps a read-only kind read-only: a sensor has no capability, and ha-admin alone doesn't help", () => {
 		const sensor = device("sensor", {}, []);
 		expect(sensor.kind.capability).toBeUndefined();
@@ -251,7 +261,7 @@ describe("listing devices for autocomplete and /ha list", () => {
 			person("admin", [HA_ADMIN]),
 		];
 		for (const who of people) {
-			for (const action of ["on", "off", "lock", "unlock"]) {
+			for (const action of ["on", "off", "lock", "unlock", "open"]) {
 				const offered = new Set(actionableDevices(all, who, action).map((d) => d.name));
 				for (const d of all) {
 					expect(offered.has(d.name)).toBe(canActOnDevice(d, action, who).allowed);

@@ -9,7 +9,7 @@
 # kind:        light | switch | door | sensor. The kind decides which actions exist.
 # actions:     the actions people may run, from what the kind offers. Leave it out for read-only.
 #                light, switch: on, off, toggle
-#                door:          lock, unlock, open
+#                door:          lock, unlock
 #                sensor:        none (read-only)
 # description: optional, shown to people (up to 100 characters).
 # minTier:     friend | member | admin. Defaults to member. To act, people also need the capability
@@ -29,8 +29,7 @@ devices:
     minTier: member
 
   # Doors are member-only (minTier friend is refused) and need ha-doors or ha-admin.
-  # `/ha open` unlocks. Add `open` only for locks that can unlatch (`/ha set open`);
-  # `/ha open` unlatches only when `unlock` isn't listed.
+  # Pixel only offers lock and unlock. `/ha open` is a shortcut for unlock; it never unlatches.
   # Admins can stop all door control at once with /admin doors off.
   - name: front-door
     entity: lock.front_door

@@ -153,7 +153,7 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **Take a device away from people quickly:** remove its `actions` (or the whole entry) from `devices.yaml` and `/admin reload`. Changing it back is the same in reverse.
 
-**Doors:** members with `ha-doors` (or `ha-admin`) can open a door with `/ha open door:` or use `/ha set`. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
+**Doors:** members with `ha-doors` (or `ha-admin`) can lock or unlock a door with `/ha set`, or unlock with `/ha open door:`. Pixel never unlatches (`open` / `lock.open`); drop `open` from `devices.yaml` if it's still listed, or `just validate-config` refuses the file. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
 
 **Stop all door control at once:** `/admin doors off` (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin doors on`. It survives restarts. Check it in `/admin status`. If you think an account with door access was taken over: `/admin doors off` first, then revoke their capabilities (see [Moderation](#moderation)), then look at what it did by searching the logs for `"kind":"door"` and their ID. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin doors on` fixes it.
 

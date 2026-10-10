@@ -26,7 +26,7 @@ describe("the built-in kinds", () => {
 	it.each([
 		["light", ["light"], ["on", "off", "toggle"], "ha-lights"],
 		["switch", ["switch"], ["on", "off", "toggle"], "ha-switches"],
-		["door", ["lock"], ["lock", "unlock", "open"], "ha-doors"],
+		["door", ["lock"], ["lock", "unlock"], "ha-doors"],
 	])("%s offers its actions and names its capability", (name, domains, actions, capability) => {
 		const found = HOME_KINDS.get(name);
 		expect(found?.domains).toEqual(domains);
@@ -51,7 +51,8 @@ describe("the built-in kinds", () => {
 			done: ["unlocked"],
 			working: ["unlocking"],
 		});
-		expect(by("open")).toMatchObject({ service: "open", done: ["open"], working: ["opening"] });
+		expect(by("open")).toBeUndefined();
+		expect(door?.actions.some((a) => a.service === "open")).toBe(false);
 	});
 
 	it("lets a toggle end in either state", () => {

@@ -14,7 +14,7 @@ export const door: HomeKind = {
 	warnStates: ["jammed"],
 	capability: {
 		name: "ha-doors",
-		description: "Lock, unlock and open the doors on the Home Assistant list",
+		description: "Lock and unlock the doors on the Home Assistant list",
 	},
 	actions: [
 		{
@@ -30,13 +30,6 @@ export const door: HomeKind = {
 			service: "unlock",
 			done: ["unlocked"],
 			working: ["unlocking"],
-		},
-		{
-			name: "open",
-			description: "Unlatch the door so it can be pushed open",
-			service: "open",
-			done: ["open"],
-			working: ["opening"],
 		},
 	],
 };
