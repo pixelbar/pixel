@@ -182,6 +182,7 @@ export function buildCore(
 		logger,
 		closingTime: {
 			enabled: config.discord.announce.closingTimeChannelId !== undefined,
+			file: config.closingTimeFile,
 			message: closingTimeMessage(config.closingTimeFile, logger),
 		},
 	});

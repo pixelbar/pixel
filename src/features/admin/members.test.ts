@@ -82,6 +82,7 @@ function setup(ops = nodeFileOps) {
 			homeInventory: HomeInventory.off(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
+			closingTimeFile: "data/closing-time.md",
 		}),
 	);
 	const dispatcher = new Dispatcher({

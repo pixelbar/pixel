@@ -132,6 +132,30 @@ describe("buildCore", () => {
 		expect(published).toEqual([{ kind: "closing.time" }]);
 	});
 
+	it("/admin set closing-time writes the persist file, and members may not run it", async () => {
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
+		const denied = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "admin",
+			subgroup: "set",
+			subcommand: "closing-time",
+			args: { message: "nope" },
+		});
+		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+		const saved = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.admin }),
+			command: "admin",
+			subgroup: "set",
+			subcommand: "closing-time",
+			args: { message: "Please tidy up.\nLast out locks the door." },
+		});
+		expect(saved.reply.text).toBe("Saved the closing-time message.");
+		expect(saved.private).toBe(true);
+		expect(readFileSync(config.closingTimeFile, "utf8")).toBe(
+			"Please tidy up.\nLast out locks the door.\n",
+		);
+	});
+
 	it("/whoami resolves tiers from the access files", async () => {
 		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
 		const result = await dispatcher.dispatch({

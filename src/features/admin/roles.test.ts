@@ -106,6 +106,7 @@ function setup(backend?: Fake, homeBackend?: HomeBackend, runtime: "local" | "cl
 			homeInventory: HomeInventory.off(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
+			closingTimeFile: "data/closing-time.md",
 		}),
 	);
 	const dispatcher = new Dispatcher({

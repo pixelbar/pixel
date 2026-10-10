@@ -54,8 +54,8 @@ export type FeatureDeps = {
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
 	logger: Logger;
-	/** Closing-time posts: destination on/off, and the message body (file or default). */
-	closingTime: { enabled: boolean; message: () => string };
+	/** Closing-time posts: destination on/off, the persist file, and the message body. */
+	closingTime: { enabled: boolean; file: string; message: () => string };
 };
 
 /** Every feature Pixel runs. Add new features here. */
@@ -107,6 +107,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			homeInventory: deps.homeInventory,
 			switches: deps.switches,
 			reporter: deps.reporter,
+			closingTimeFile: deps.closingTime.file,
 		}),
 	];
 }

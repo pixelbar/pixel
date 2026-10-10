@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Announcement } from "../../core/announcement.ts";
+import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
@@ -9,8 +11,8 @@ import type { Reply } from "../../core/reply.ts";
 export const DEFAULT_CLOSING_TIME_MESSAGE =
 	"The space is closing. Please tidy up, take your belongings, and make sure the last person out locks the door.";
 
-/** Discord embed description limit. */
-const MAX_BODY = 4096;
+/** Discord modal / stored-message limit. Embeds allow 4096; the form is 4000. */
+export const MAX_CLOSING_TIME_MESSAGE = 4000;
 
 export type ClosingTimeDeps = {
 	announcer: { announce(announcement: Announcement): Promise<void> };
@@ -48,7 +50,7 @@ export function createClosingTimeFeature(deps: ClosingTimeDeps): ClosingTimeFeat
 			log.info({ event: "closing_time.disabled", source }, "closing-time posts are off");
 			return "disabled";
 		}
-		const body = clip(deps.message());
+		const body = clip(deps.message(), MAX_CLOSING_TIME_MESSAGE);
 		await deps.announcer.announce({
 			kind: "closing.time",
 			text: escapeMarkdown(body),
@@ -117,7 +119,30 @@ export function closingTimeMessage(file: string, logger: Logger): () => string {
 	};
 }
 
-function clip(body: string): string {
-	if (body.length <= MAX_BODY) return body;
-	return `${body.slice(0, MAX_BODY - 1)}…`;
+/**
+ * Writes the operator file atomically (temp + rename) so Azure Files / the
+ * persist share keeps a complete message. The file *is* the persist: on Azure,
+ * `PIXEL_DATA_DIR` is the file share. Never put secrets in it.
+ */
+export function writeClosingTimeMessage(file: string, body: string): string {
+	const text = body
+		.replace(/^\uFEFF/, "")
+		.replace(/\r\n/g, "\n")
+		.trim();
+	if (text === "") throw new UserFacingError("The closing-time message can't be empty.");
+	if (text.length > MAX_CLOSING_TIME_MESSAGE) {
+		throw new UserFacingError(
+			`The closing-time message can be at most ${MAX_CLOSING_TIME_MESSAGE} characters.`,
+		);
+	}
+	mkdirSync(dirname(file), { recursive: true });
+	const temp = `${file}.tmp`;
+	writeFileSync(temp, `${text}\n`);
+	renameSync(temp, file);
+	return text;
+}
+
+function clip(body: string, max: number): string {
+	if (body.length <= max) return body;
+	return `${body.slice(0, max - 1)}…`;
 }

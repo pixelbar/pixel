@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Announcement } from "../../core/announcement.ts";
+import { UserFacingError } from "../../core/errors.ts";
 import type { Logger } from "../../core/logger.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { context, plain } from "../../testing/fixtures.ts";
@@ -10,6 +11,8 @@ import {
 	closingTimeMessage,
 	createClosingTimeFeature,
 	DEFAULT_CLOSING_TIME_MESSAGE,
+	MAX_CLOSING_TIME_MESSAGE,
+	writeClosingTimeMessage,
 } from "./index.ts";
 
 const AT = new Date("2026-10-10T21:00:00Z");
@@ -72,11 +75,11 @@ describe("/closing-time", () => {
 		expect(announce).not.toHaveBeenCalled();
 	});
 
-	it("clips an over-long body to Discord's embed limit", async () => {
-		const { command, announced } = setup({ message: "x".repeat(4100) });
+	it("clips an over-long body to the stored-message limit", async () => {
+		const { command, announced } = setup({ message: "x".repeat(MAX_CLOSING_TIME_MESSAGE + 50) });
 		await command.handler(context());
 		const body = announced[0] && announced[0].kind === "closing.time" ? announced[0].body : "";
-		expect(body.length).toBe(4096);
+		expect(body.length).toBe(MAX_CLOSING_TIME_MESSAGE);
 		expect(body.endsWith("…")).toBe(true);
 	});
 
@@ -151,6 +154,41 @@ describe("closingTimeMessage", () => {
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ event: "closing_time.message_unreadable" }),
 			expect.stringMatching(/default/),
+		);
+	});
+});
+
+describe("writeClosingTimeMessage", () => {
+	let dir: string;
+	afterEach(() => {
+		if (dir) rmSync(dir, { recursive: true, force: true });
+	});
+
+	const file = () => {
+		dir = mkdtempSync(join(tmpdir(), "pixel-closing-write-"));
+		return join(dir, "data", "closing-time.md");
+	};
+
+	it("writes the trimmed message atomically and creates the directory", () => {
+		const path = file();
+		expect(writeClosingTimeMessage(path, "  Take out the trash.\nLast out locks up.  ")).toBe(
+			"Take out the trash.\nLast out locks up.",
+		);
+		expect(readFileSync(path, "utf8")).toBe("Take out the trash.\nLast out locks up.\n");
+		expect(closingTimeMessage(path, silentLogger)()).toBe(
+			"Take out the trash.\nLast out locks up.",
+		);
+	});
+
+	it("refuses an empty message", () => {
+		const path = file();
+		expect(() => writeClosingTimeMessage(path, "   \n")).toThrow(UserFacingError);
+		expect(() => writeClosingTimeMessage(path, "   \n")).toThrow(/empty/);
+	});
+
+	it("refuses a message over the form limit", () => {
+		expect(() => writeClosingTimeMessage(file(), "x".repeat(MAX_CLOSING_TIME_MESSAGE + 1))).toThrow(
+			/at most 4000/,
 		);
 	});
 });

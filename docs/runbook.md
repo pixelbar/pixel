@@ -222,7 +222,7 @@ Members can post a closing-time reminder with `/closing-time`, and Pixel posts t
 | --- | --- |
 | Turn it on | Set `DISCORD_CLOSING_TIME_CHANNEL_ID` to the Discord channel ID (local `.env`, or the Container App env). The bot needs View Channel, Send Messages and Embed Links there |
 | Turn it off | Unset the variable, or set it to `off` or `none`. `/closing-time` then says so privately; the automatic path logs `closing_time.disabled` and does not fail space-close |
-| Change the text | Edit `data/closing-time.md` (or `PIXEL_CLOSING_TIME_FILE`). Multi-line markdown is fine. A missing or empty file uses a built-in default. No restart needed: Pixel reads the file each time it posts. **Never put door codes, wifi passwords or personal data in it** — it is not a secret store, and this repository is public |
+| Change the text | `/admin set closing-time` (opens a modal). Pixel writes `data/closing-time.md` on the persist volume (Azure Files share on cloud — that write *is* the sync; there is no extra copy). You can still edit the file by hand. A missing or empty file uses a built-in default. No restart needed. **Never put door codes, wifi passwords or personal data in it** |
 | See that it posted | The configured channel: a "Closing time" embed, mentions disabled |
 
 The destination is a channel ID on purpose: do not hard-code a Discord channel in the code.
