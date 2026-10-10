@@ -13,6 +13,7 @@ import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
 import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
 import { CAPABILITY_NAME } from "../core/capabilities.ts";
+import type { CapabilityNotifier } from "../core/capability-notify.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import type {
@@ -50,6 +51,7 @@ import {
  * Steps 1 to 6 contain no `await`, so Node can't run another change in the
  * middle of one: changes can't interleave or lose each other's updates, and no
  * lock is needed. (The bot is single-instance; two processes would not be safe.)
+ * A capability-change DM is sent after that, and never fails the change.
  *
  * Error messages never include personal data.
  */
@@ -101,6 +103,8 @@ export type FileAccessStoreDeps = {
 	logger: Logger;
 	reporter: ErrorReporter;
 	ops?: FileOps;
+	/** DMs the person when capabilities actually change. Optional so tests can omit it. */
+	notify?: Pick<CapabilityNotifier, "notify">;
 };
 
 export class FileAccessStore implements AccessStore {
@@ -108,6 +112,7 @@ export class FileAccessStore implements AccessStore {
 	readonly #logger: Logger;
 	readonly #reporter: ErrorReporter;
 	readonly #ops: FileOps;
+	readonly #notify: Pick<CapabilityNotifier, "notify"> | undefined;
 	#view: AccessView;
 	#admins: string[][];
 
@@ -116,6 +121,7 @@ export class FileAccessStore implements AccessStore {
 		this.#logger = deps.logger;
 		this.#reporter = deps.reporter;
 		this.#ops = deps.ops ?? nodeFileOps;
+		this.#notify = deps.notify;
 		this.#admins = loaded.admins;
 		this.#view = loaded.view;
 	}
@@ -130,7 +136,28 @@ export class FileAccessStore implements AccessStore {
 	}
 
 	async apply(change: AccessChange, by: PlatformActor): Promise<AccessChangeResult> {
-		return this.#apply(change, by);
+		const result = this.#apply(change, by);
+		if (change.kind === "set-capabilities" && result.before !== result.after) {
+			try {
+				await this.#notify?.notify(
+					change.id,
+					result.before?.capabilities ?? [],
+					result.after.capabilities,
+					by,
+				);
+			} catch (error) {
+				this.#logger.warn(
+					{
+						event: "capability.dm_failed",
+						...actorLogFields(by),
+						target: `discord:${change.id}`,
+						err: error,
+					},
+					"couldn't notify about a capability change",
+				);
+			}
+		}
+		return result;
 	}
 
 	async reload(by: PlatformActor): Promise<ReloadResult> {
@@ -190,6 +217,13 @@ export class FileAccessStore implements AccessStore {
 			change.kind === "set-tier" &&
 			before.tier === change.tier &&
 			(change.note === undefined || change.note === before.note)
+		) {
+			return { before, after: before };
+		}
+		if (
+			before &&
+			change.kind === "set-capabilities" &&
+			sameCapabilities(before.capabilities, change.capabilities)
 		) {
 			return { before, after: before };
 		}
@@ -298,6 +332,10 @@ export class FileAccessStore implements AccessStore {
 /** Tier and capabilities only. Notes are free text about a person and stay out of logs. */
 function summarise(record: MemberRecord | null) {
 	return record ? { tier: record.tier, capabilities: record.capabilities } : null;
+}
+
+function sameCapabilities(left: readonly string[], right: readonly string[]): boolean {
+	return left.length === right.length && left.every((name) => right.includes(name));
 }
 
 function validateChange(change: AccessChange): void {

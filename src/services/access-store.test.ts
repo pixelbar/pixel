@@ -232,6 +232,74 @@ describe("changing capabilities", () => {
 		expect(read()).toContain("note: paid yearly # keep this");
 	});
 
+	it("does nothing, and doesn't write, when the capabilities already match", async () => {
+		const store = open();
+		const result = await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] },
+			by,
+		);
+		expect(result.before).toEqual(result.after);
+		expect(existsSync(`${membersFile}.bak`)).toBe(false);
+		expect(entries("access.changed")).toHaveLength(0);
+	});
+
+	it("notifies on a real grant or revoke, not on a no-op or a tier change", async () => {
+		const calls: {
+			userId: string;
+			before: readonly string[];
+			after: readonly string[];
+		}[] = [];
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: {
+				notify: async (userId, before, after) => {
+					calls.push({ userId, before, after });
+				},
+			},
+		});
+
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.friend, capabilities: ["front-door"] },
+			by,
+		);
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] },
+			by,
+		);
+		await store.apply({ kind: "set-tier", id: IDS.member, tier: "friend" }, by);
+		await store.apply({ kind: "set-capabilities", id: IDS.friend, capabilities: [] }, by);
+
+		expect(calls).toEqual([
+			{ userId: IDS.friend, before: [], after: ["front-door"] },
+			{ userId: IDS.friend, before: ["front-door"], after: [] },
+		]);
+	});
+
+	it("still applies the change when notify throws", async () => {
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: {
+				notify: async () => {
+					throw new Error("they have DMs from server members closed");
+				},
+			},
+		});
+		const result = await store.apply(
+			{ kind: "set-capabilities", id: IDS.friend, capabilities: ["front-door"] },
+			by,
+		);
+		expect(result.after.capabilities).toEqual(["front-door"]);
+		expect(open().view.records.get(IDS.friend)?.capabilities).toEqual(["front-door"]);
+		expect(entries("capability.dm_failed")[0]?.obj).toMatchObject({
+			user: `discord:${IDS.admin}`,
+			target: `discord:${IDS.friend}`,
+		});
+	});
+
 	it("needs an existing entry: a person must have a tier first", async () => {
 		await expect(
 			open().apply({ kind: "set-capabilities", id: NEW_ID, capabilities: ["front-door"] }, by),

@@ -34,6 +34,7 @@ async function main(): Promise<void> {
 		calendar,
 		channelPosts,
 		roles,
+		capabilityNotify,
 		home,
 		homeDevices,
 		homeInventory,
@@ -72,6 +73,7 @@ async function main(): Promise<void> {
 		calendar,
 		channelPosts,
 		roles,
+		capabilityNotify,
 		roleMapping: config.discord.roles,
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {

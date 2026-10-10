@@ -308,6 +308,57 @@ describe("buildCore", () => {
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
 		});
 
+		it("DMs the person on grant and revoke, and not when nothing changes", async () => {
+			const sent: { userId: string; text: string }[] = [];
+			const core = buildCore(config, silentLogger, nullErrorReporter);
+			core.capabilityNotify.attach({
+				send: async (userId, text) => {
+					sent.push({ userId, text });
+				},
+			});
+			const grant = {
+				actor: actor({ userId: IDS.admin }),
+				command: "admin" as const,
+				subgroup: "capabilities",
+				subcommand: "grant" as const,
+				args: { user: IDS.member, capability: "ha-lights" },
+				users: { user: person },
+			};
+			await core.dispatcher.dispatch(grant);
+			await core.dispatcher.dispatch(grant);
+			await core.dispatcher.dispatch({
+				...grant,
+				subcommand: "revoke",
+			});
+
+			expect(sent).toHaveLength(2);
+			expect(sent[0]).toMatchObject({ userId: IDS.member });
+			expect(sent[0]?.text).toContain("**ha-lights**");
+			expect(sent[0]?.text).toMatch(/granted/i);
+			expect(sent[1]?.text).toMatch(/revoked/i);
+			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual([]);
+		});
+
+		it("still grants when the DM cannot be sent", async () => {
+			const core = buildCore(config, silentLogger, nullErrorReporter);
+			core.capabilityNotify.attach({
+				send: async () => {
+					throw new Error("they have DMs from server members closed");
+				},
+			});
+			const result = await core.dispatcher.dispatch({
+				actor: actor({ userId: IDS.admin }),
+				command: "admin",
+				subgroup: "capabilities",
+				subcommand: "grant",
+				args: { user: IDS.member, capability: "ha-lights" },
+				users: { user: person },
+			});
+			expect(result.reply.embeds?.[0]?.title).toBe("Capability granted");
+			expect(result.reply.text ?? "").not.toMatch(/DM|closed/i);
+			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
+		});
+
 		it("lets an admin grant one, which then shows in the member's principal and the file", async () => {
 			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
 			const grant = await core.dispatcher.dispatch({
