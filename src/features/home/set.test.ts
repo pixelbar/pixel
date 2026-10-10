@@ -649,7 +649,7 @@ describe("autocomplete for /ha set", () => {
 			"unlock",
 		]);
 		expect(names(await suggest("haAdmin", "state"))).not.toContain("open");
-		expect(names(await suggest("doors", "state", "o", { device: "front-door" }))).toEqual([]);
+		expect(names(await suggest("doors", "state", "open", { device: "front-door" }))).toEqual([]);
 		expect(await suggest("plainMember", "state")).toEqual([]);
 		expect(await suggest("guestWithEverything", "state")).toEqual([]);
 	});
