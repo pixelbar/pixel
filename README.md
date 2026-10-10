@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`), plus open/closed announcements in Discord, `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar) `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability) and `/ha` (`list`, `status`, `set`: the Home Assistant devices you may see, and switching lights and switches on and off if you hold the capability). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar) `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability) and `/ha` (`list`, `status`, `set`: the Home Assistant devices you may see, and switching lights and switches on and off if you hold the capability). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
 ## Stack
 
@@ -62,6 +62,8 @@ Pixel also says when **it** comes online and goes offline, in the announcements 
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. Mentions stay disabled. After a deploy that adds the command, run `just register`.
+
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
 ### Editing the `/info` topics
@@ -108,12 +110,14 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` | Optional. Channel for the **live** style: one post per opening, edited to "closed" when the space closes |
 | `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | Optional. Post Pixel's own online/offline status here instead of the announcements channel |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
+| `DISCORD_CLOSING_TIME_CHANNEL_ID` | Optional. Channel for the closing-time reminder. Unset, `off` or `none` disables it |
+| `PIXEL_CLOSING_TIME_FILE` | Optional. Closing-time message body. Defaults to `data/closing-time.md`. Missing or empty → built-in default |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
 | `PIXEL_HOME_SYNC_MINUTES`     | Optional. How often (minutes) Pixel refreshes `inventory.yaml`, a list of everything Home Assistant has so you can copy devices into `devices.yaml`. It is not an allow-list. Defaults to 60, 0 for only at startup and on `/admin reload` |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`. Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |

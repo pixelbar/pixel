@@ -23,6 +23,7 @@ import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { RoleMirror } from "./core/role-mirror.ts";
 import { CAPABILITIES } from "./features/capabilities.ts";
+import { closingTimeMessage } from "./features/closing-time/index.ts";
 import { buildFeatures } from "./features/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
@@ -179,6 +180,11 @@ export function buildCore(
 		infoTopics,
 		timezone: config.timezone,
 		logger,
+		closingTime: {
+			enabled: config.discord.announce.closingTimeChannelId !== undefined,
+			file: config.closingTimeFile,
+			message: closingTimeMessage(config.closingTimeFile, logger),
+		},
 	});
 	for (const feature of features) registry.register(feature);
 

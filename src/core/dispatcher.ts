@@ -161,7 +161,7 @@ export class Dispatcher {
 				principal,
 				logger: log,
 			});
-			return { ready: true, title: extra?.title };
+			return { ready: true, ...extra };
 		} catch (error) {
 			if (error instanceof UserFacingError) {
 				log.info({ event: "command.form_refused" }, "form not opened");
@@ -501,10 +501,12 @@ export type ValidInput = {
 export type FormOption = Extract<CommandOption, { type: "string" }> & { form: FormField };
 
 /**
- * Whether an adapter should open a form. `title` is the optional form heading
- * from `beforeForm` (the time Pixel understood, say).
+ * Whether an adapter should open a form. `title` and `values` come from
+ * `beforeForm` (the time Pixel understood, or text already saved, say).
  */
-export type FormPrep = { ready: false; refuse: DispatchResult } | { ready: true; title?: string };
+export type FormPrep =
+	| { ready: false; refuse: DispatchResult }
+	| { ready: true; title?: string; values?: Readonly<Record<string, string>> };
 
 export type ValidateArgsFlags = {
 	/**

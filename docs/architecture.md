@@ -117,13 +117,19 @@ type Reply = {
 };
 
 // core/announcement.ts: what features announce and publishers receive
-type Announcement = SpaceStatusAnnouncement;   // a union that grows with each new kind
+type Announcement = SpaceStatusAnnouncement | BotStatusAnnouncement | ClosingTimeAnnouncement;
 type SpaceStatusAnnouncement = {
   kind: "space.status";
   state: "open" | "closed";
   at: Date;                      // when Pixel saw the change
   openedAt: Date | null;         // for "closed": when this stretch of being open began, if known
   text: string;                  // short plain text for platforms without rich formatting
+};
+type ClosingTimeAnnouncement = {
+  kind: "closing.time";
+  text: string;                  // escaped plain text for platforms without rich formatting
+  body: string;                  // operator-authored markdown; Discord posts this with mentions off
+  at: Date;
 };
 type Publisher = {
   id: string;                    // "discord:live", "discord:timeline", …
@@ -176,6 +182,7 @@ type Feature = {
   - **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited, so a status-only channel reads as a log of exactly when the space opened and closed. "🟢 Pixelbar opened" and "🔴 Pixelbar closed", with how long it was open if known.
   - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a new "🟢 Pixelbar is open" post; closing **edits that same post** to "🔴 Pixelbar is closed: was open from … to …". Opening again makes another new post. A closed post is never turned back into an open one, so nobody is confused by a message that flips back.
   - **Finding the open post to edit.** Pixel uses the message ID it remembered in `announcements.state` (so it works even if the post is buried in a busy channel), and also looks through its own recent messages in the channel (so it still works if the remembered ID was lost, for example after a deploy, and a deleted post simply isn't found). Only posts carrying the live footer count, so a `/status` reply can't be mistaken for one. Pixel keeps the invariant that at most one post, the newest, says "open".
+  - **Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): a new "Closing time" embed with the configured body (or a built-in default). Mentions stay disabled. Unset, `off` or `none` turns it off. The same post is used for `/closing-time` and for the automatic hook after a space-closed announcement.
   - **Startup checks.** For each channel, Pixel checks it exists, is a text channel in the Pixelbar server, and that the bot has the permissions it needs: View Channel, Send Messages and Embed Links, plus Read Message History for the live style. If not, that publisher stays off with a clear log and a Sentry report, and everything else keeps working. No new Discord intents are needed.
 - **Bot status** (`features/bot-status`, `adapters/discord/bot-status.ts`): Pixel says when it comes online and goes offline, in the announcements channel (`DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, or `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` to post elsewhere; neither set means off).
   - **Online is a new post each time** ("🟢 Pixel is online"), so every start, deploy and restart is visible and the channel reads as a history of runs. It shows the version (`package.json`), the git commit, the branch when it isn't `main`, the environment when it isn't `prod`, **Where** (`local` or `cloud`, from `PIXEL_RUNTIME`), and a short public status: Discord connected, Home Assistant (when set up: connected, not connected yet or off, never the reason) and whether SpaceAPI answered. It's posted once Discord is ready and Home Assistant has connected, or after 10 seconds, whichever comes first.
@@ -257,6 +264,8 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `admin`   | `/admin capabilities list [user:]` | admin | ✅ | Private. The registered capabilities with holder counts, or one person's |
 | `status`  | `/status`                    | guest  | ✅    | Public. A "Checking…" box, then a live answer: open (green) or closed (red), and how long (if Pixel saw the change) |
 | `status`  | background: announce changes | n/a    | ✅    | Posts to the live and/or timeline channels (see below) |
+| `closing-time` | `/closing-time`         | member | ✅    | Private. Posts the closing-time reminder. Off when no channel is configured |
+| `closing-time` | after space-closed      | n/a    | ✅    | Same send path as the command, after a confirmed close |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
 | `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
 | `home`    | `/ha list`                   | friend | ✅    | Private. The devices you may use (by each device's tier floor), grouped by kind, with their live state. Unavailable and unknown show as themselves. Says so when nothing is available to you, or when Home Assistant isn't set up |
@@ -264,6 +273,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `home`    | `/ha set device: state:`     | friend | ✅    | Private. Changes a device, such as `on` or `off` for a light or `lock` / `unlock` for a door. Needs the device's tier floor and `ha-admin` or the kind's capability, and an action the devices file allows. Both options autocomplete: `state` offers what that device allows, and what you may run. Reports what really happened. Never offers unlatch. Refused for a door while `/admin doors` is off |
 | `home`    | `/ha open door:`             | member | ✅    | Private. Unlocks a door (never unlatches). Needs `ha-doors` or `ha-admin`. `door` autocompletes with only the doors you may unlock. Refused while `/admin doors` is off |
 | `admin`   | `/admin doors off\|on`        | admin  | ✅    | Private. The emergency switch for door control from Pixel, for everyone, at once. Remembered across restarts. Shown in `/admin status` |
+| `admin`   | `/admin closing-time set`    | admin  | ✅    | Private. Opens a modal for the closing-time reminder (prefilled when one is already saved) and writes `PIXEL_DATA_DIR/closing-time.md` (the Azure Files persist share on cloud) |
 | `schedules` | `/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the text, then schedules a message in a channel. See "Scheduled posts" |
 | `schedules` | `/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the question and answers, then schedules a native Discord poll |
 | `schedules` | `/schedule list`, `preview`, `pause`, `resume`, `delete` | member + `schedule-posts` | ✅ | Private. Manage scheduled posts; `schedule` autocompletes by name or ID |
@@ -306,7 +316,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 - **Who:** members (and admins) holding the `schedule-posts` capability, granted with `/admin capabilities grant`. A schedule only keeps posting while whoever made it still has that access: when it's due, Pixel checks again and pauses it otherwise.
 - **Where:** a text or announcement channel picked with the command (a new core `channel` option type). People can only schedule into channels where **they** can post, polls only where they can create polls, and `mentions` only where they can ping everyone (from the permissions Discord reports for the person in that channel). Pixel also checks its own permissions there before saving, and again when posting.
 - **What:** a plain **message** (up to 2000 characters of markdown; pings are off unless `mentions` is on), or a native **Discord poll** (a question, 2–10 answers of up to 55 characters, open for 1 hour to 2 weeks, single or multiple choice). Discord counts the votes, shows them live and announces the result when it closes, so Pixel stores nothing about votes.
-- **Forms:** the text, and the poll's question and answers (one per line), are typed in a **modal**, because slash options are one line. Commands declare these as `form` fields on string options. Discord can answer a slash command with a modal **or** a message, not both, so Pixel parses `when` (and the other slash options) **before** opening the modal (`Dispatcher.prepareForm` / `beforeForm`). A bad time is a private error and the modal never opens, so the body isn't typed against a timestamp that would be thrown away. The modal title is the interpreted time. The adapter keeps the typed options under a random token for 15 minutes for that one person, and runs the command when the form is submitted. The dispatcher checks everything again.
+- **Forms:** the text, and the poll's question and answers (one per line), are typed in a **modal**, because slash options are one line. Commands declare these as `form` fields on string options. Discord can answer a slash command with a modal **or** a message, not both, so Pixel parses `when` (and the other slash options) **before** opening the modal (`Dispatcher.prepareForm` / `beforeForm`). A bad time is a private error and the modal never opens, so the body isn't typed against a timestamp that would be thrown away. The modal title is the interpreted time. `beforeForm` can also prefill fields (`values`) so an edit opens with the text already saved. The adapter keeps the typed options under a random token for 15 minutes for that one person, and runs the command when the form is submitted. The dispatcher checks everything again.
 - **When:** Discord has no date picker for bots (no slash option type, no modal component, no Components v2 picker). Autocomplete would force picking from a short list of dates, so `when` is **free-form text**. Pixel parses it (`core/when.ts`: `wed 19:00`, `wed 1900`, `19u30`, `14 oct 19:00`, `tomorrow 9am`, and similar) into one future wall-clock moment in `PIXEL_TIMEZONE` and **confirms that time** in the private reply. Compact 24h (`1900`) and Dutch `19u` are times, not guessed by a date library. A day without a time is 19:00; a time without a day is the next clock hit. `repeat` is once, weekly, fortnightly (on one or more `days`, such as `wed sat` — autocomplete there is only a weekday vocabulary, not dates), monthly or every 2 months (on the start's day of the month, or the month's last day). Times stay on the wall clock through the summer/winter clock change (`core/recurrence.ts`).
 - **Running:** the feature checks every 30 seconds (`features/schedules/runner.ts`). A due post goes out once; if Pixel was down, it still posts up to an hour late, skips anything later, and only the latest of several missed occurrences can go out. Every occurrence is recorded as handled whether it posted, was skipped or failed, and remembered in memory too, so nothing ever posts twice. Failures are logged and reported, never retried. A one-off is removed once it's handled.
 - **Storage:** `data/schedules.yaml` (`services/schedules.ts`), written atomically, at most 50 schedules. Unlike the rest of `data/`, it's **not safe to delete**. If it's invalid, nothing is posted or changed (and it's never overwritten) until it's fixed; Pixel logs and reports why.
@@ -355,6 +365,10 @@ When the space opens or closes, the `status` feature announces it through the an
 - **At most once.** A change is never announced twice, even if every publisher failed.
 - **At startup, stale posts are corrected, not re-announced.** Each publisher gets the current state (`Publisher.reconcile`) once SpaceAPI answers. The live style uses it to turn a leftover "open" post into "closed" (without a closing time, since Pixel didn't see it) when the space closed while Pixel was down. It never posts anything new.
 
+After a confirmed **close**, the status feature also runs the closing-time send path (`features/closing-time`). That is the same function `/closing-time` uses: it announces `closing.time` through the announcer, or no-ops if posting is off (logged, never fails the space-close). Nothing is posted on reconcile or on open. `/closing-time` is **member** (it posts to a configured channel, often members-only) and does not need a capability.
+
+The message **body** is a file (`PIXEL_CLOSING_TIME_FILE`, default `data/closing-time.md`), not an env var: it is typically a multi-line checklist, which is awkward in `.env` and Azure settings, and it is not a secret. Admins set it with `/admin closing-time set` (a modal that prefills the saved message). The write is atomic (temp file + rename) into `PIXEL_DATA_DIR`, which on Azure is the Files share at `/app/persist/data` — that is the persist, not a later sync. A missing or empty file uses a built-in English default. Do not put door codes, wifi passwords or personal data in it. Discord posts the body as written (operator markdown, like `/schedule`); the portable `text` field is escaped. Mentions stay disabled.
+
 `/schedule` is member-only and also needs the `schedule-posts` capability. Home Assistant already uses the same pattern (`/ha open` is member-only plus a capability).
 
 ## Observability
@@ -389,7 +403,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`. Pixel writes to it (and to `<file>.bak` and a temp file in the same folder), so the folder must be writable |
-| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state: `schedules.yaml` (must persist), `home-switches.state`, `space.state`, `announcements.state`. Gitignored |
+| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state: `schedules.yaml` (must persist), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Gitignored |
 | `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in |
 | `PIXEL_CONTENT_DIR`           |        | Default `content`. The reviewed content Pixel reads (`info/*.md` for `/info`). Read-only |
 | `DISCORD_TOKEN`               | yes    |                                                |
@@ -400,6 +414,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | | Optional. Where Pixel says it's online or offline. Defaults to `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` |
 | `PIXEL_GIT_SHA`, `PIXEL_GIT_BRANCH` | | Set by CI and the image build. The commit and branch shown in the online post. From a checkout, Pixel asks git instead |
 | `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
+| `DISCORD_CLOSING_TIME_CHANNEL_ID` | | Optional. Where the closing-time reminder is posted. Unset, empty, `off` or `none` disables both `/closing-time` and the automatic post after space-close |
+| `PIXEL_CLOSING_TIME_FILE`     |        | Optional. Operator-authored closing-time body. Default `{PIXEL_DATA_DIR}/closing-time.md`. Missing or empty → built-in default. Not a secret |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. Where Pixel reaches Home Assistant (http or https). On Azure prefer the Tailscale sidecar address; a Nabu Casa URL still works |

@@ -25,6 +25,7 @@ import type { DiscordOption } from "./args.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
+import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
 import {
@@ -34,6 +35,7 @@ import {
 	createModalHandler,
 	discordActor,
 } from "./handlers.ts";
+import { isConsumedInteractionError } from "./interaction-errors.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
@@ -47,6 +49,8 @@ export type DiscordAdapterDeps = {
 		timelineChannelId: string | undefined;
 		/** Where Pixel says it's online or offline. */
 		botChannelId: string | undefined;
+		/** Closing-time reminder. Undefined means off. */
+		closingTimeChannelId: string | undefined;
 	};
 	/** Where the live style remembers which post is open (`announcements.state`). */
 	announceStateFile: string;
@@ -148,6 +152,12 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 						),
 					),
 			},
+			{
+				id: CLOSING_TIME_PUBLISHER_ID,
+				channelId: deps.announce.closingTimeChannelId,
+				required: TIMELINE_PERMISSIONS,
+				create: (channel) => createClosingTimePublisher(channel),
+			},
 		];
 
 		for (const { id, channelId, required, create } of wanted) {
@@ -216,11 +226,16 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		}
 		if (interaction.isModalSubmit()) {
 			handleModal(interaction).catch((error: unknown) => {
-				logger.error(
-					{ err: error, ...actorLogFields(discordActor(interaction.user)) },
-					"failed to handle a form",
-				);
-				reportError(error, discordActor(interaction.user));
+				const actor = discordActor(interaction.user);
+				if (isConsumedInteractionError(error)) {
+					logger.warn(
+						{ err: error, event: "discord.duplicate_handler", ...actorLogFields(actor) },
+						"another Pixel already answered this form; is a second instance on this token?",
+					);
+					return;
+				}
+				logger.error({ err: error, ...actorLogFields(actor) }, "failed to handle a form");
+				reportError(error, actor);
 			});
 			return;
 		}
@@ -250,16 +265,25 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			},
 		});
 		handleCommand(incoming, displayName).catch((error: unknown) => {
+			const actor = discordActor(interaction.user, displayName);
+			if (isConsumedInteractionError(error)) {
+				logger.warn(
+					{
+						err: error,
+						event: "discord.duplicate_handler",
+						command: interaction.commandName,
+						...actorLogFields(actor),
+					},
+					"another Pixel already answered this interaction; is a second instance on this token?",
+				);
+				return;
+			}
 			logger.error(
-				{
-					err: error,
-					command: interaction.commandName,
-					...actorLogFields(discordActor(interaction.user, displayName)),
-				},
+				{ err: error, command: interaction.commandName, ...actorLogFields(actor) },
 				"failed to handle interaction",
 			);
 			// Name who it happened to, by ID, so the report can be traced.
-			reportError(error, discordActor(interaction.user, displayName));
+			reportError(error, actor);
 		});
 	});
 

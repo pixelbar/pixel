@@ -131,8 +131,15 @@ export type BeforeFormContext = {
 	logger: Logger;
 };
 
-/** Optional title shown on the form, e.g. the time Pixel understood. */
-export type BeforeFormResult = { title?: string };
+/**
+ * Extra form chrome from `beforeForm`. `title` is the heading (the time Pixel
+ * understood, say). `values` prefills fields by option name, so an edit can
+ * open with the text that's already saved.
+ */
+export type BeforeFormResult = {
+	title?: string;
+	values?: Readonly<Record<string, string>>;
+};
 
 type Runnable = {
 	options?: readonly CommandOption[];
@@ -147,7 +154,7 @@ type Runnable = {
 	 * Extra checks after access, before a form is shown. Form fields are still
 	 * empty. Throw `UserFacingError` to refuse without opening the form, so a
 	 * long body isn't typed against a bad option (a time Pixel can't parse, say).
-	 * The returned title, if any, is shown on the form.
+	 * The returned title, if any, is shown on the form; `values` prefills fields.
 	 */
 	beforeForm?: (ctx: BeforeFormContext) => Promise<BeforeFormResult | undefined>;
 	handler: (ctx: CommandContext) => Promise<Reply>;

@@ -16,6 +16,7 @@ import type { KindSwitch } from "../services/kind-switch.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
+import { createClosingTimeFeature } from "./closing-time/index.ts";
 import { createEventsFeature } from "./events/index.ts";
 import { createFeedbackFeature } from "./feedback/index.ts";
 import { createHelpFeature } from "./help/index.ts";
@@ -53,10 +54,18 @@ export type FeatureDeps = {
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
 	logger: Logger;
+	/** Closing-time posts: destination on/off, the persist file, and the message body. */
+	closingTime: { enabled: boolean; file: string; message: () => string };
 };
 
 /** Every feature Pixel runs. Add new features here. */
 export function buildFeatures(deps: FeatureDeps): Feature[] {
+	const closingTime = createClosingTimeFeature({
+		announcer: deps.announcer,
+		enabled: deps.closingTime.enabled,
+		message: deps.closingTime.message,
+		logger: deps.logger,
+	});
 	return [
 		createHelpFeature(),
 		createPingFeature({ version: deps.version }),
@@ -64,7 +73,9 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			spaceStatus: deps.spaceStatus,
 			announcer: deps.announcer,
 			logger: deps.logger,
+			onSpaceClosed: closingTime.onSpaceClosed,
 		}),
+		closingTime,
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
@@ -96,6 +107,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			homeInventory: deps.homeInventory,
 			switches: deps.switches,
 			reporter: deps.reporter,
+			closingTimeFile: deps.closingTime.file,
 		}),
 	];
 }

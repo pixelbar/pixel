@@ -21,6 +21,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Home Assistant](#home-assistant)
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
+- [Closing-time](#closing-time)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [Changelog and versions](#changelog-and-versions)
@@ -58,7 +59,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
 | Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
 | Check the config files without starting Pixel | `just validate-config` |
-| Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands) |
+| Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands, including `/closing-time`) |
+| Turn closing-time posts on or off, or change the text | [Closing-time](#closing-time) |
 | Look up a person | `/admin level get user:` (admins only) |
 | See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
 | Cut a package version from Unreleased notes | `just bump` (or wait for the Release workflow on `main`) |
@@ -210,6 +212,22 @@ After a deploy that adds `/schedule`, run **`just register`** so Discord lists t
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 
+## Closing-time
+
+Members can post a closing-time reminder with `/closing-time`, and Pixel posts the same message automatically after a confirmed space-closed announcement. Both paths no-op if posting is off.
+
+**After a deploy that adds `/closing-time`, run `just register`** so Discord lists the command.
+
+| I want to… | Do this |
+| --- | --- |
+| Turn it on | Set `DISCORD_CLOSING_TIME_CHANNEL_ID` to the Discord channel ID (local `.env`, or the Container App env). The bot needs View Channel, Send Messages and Embed Links there |
+| Turn it off | Unset the variable, or set it to `off` or `none`. `/closing-time` then says so privately; the automatic path logs `closing_time.disabled` and does not fail space-close |
+| Change the text | `/admin closing-time set` (opens a modal, prefilled when a message is already saved). Pixel writes `data/closing-time.md` on the persist volume (Azure Files share on cloud — that write *is* the sync; there is no extra copy). You can still edit the file by hand. A missing or empty file uses a built-in default. No restart needed. **Never put door codes, wifi passwords or personal data in it** |
+| See that it posted | The configured channel: a "Closing time" embed, mentions disabled |
+| Discord lists `/closing-time` but Pixel says it doesn't know it, or shows an error and then the reminder still posts | Another instance is on this bot token. Stop the extra one (see [Incidents](#incidents)), then retry |
+
+The destination is a channel ID on purpose: do not hard-code a Discord channel in the code.
+
 ## Secrets
 
 Every secret lives in the secret store for its environment (a local `.env` for development, Key Vault `pixel-dev-kv` in Azure `dev`) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
@@ -293,9 +311,11 @@ Do not run `just bump` on a feature branch unless you are deliberately cutting a
 
 **Azure (`dev`):** Portal → Container App `pixel-dev` → Log stream / Console, or `az containerapp logs show -g pixel-dev -n pixel-dev --follow`. Restart: `az containerapp revision restart -g pixel-dev -n pixel-dev`. 🚧 Where alerts arrive is still not decided.
 
-**Duplicate replies (every command answered twice)**
+**Duplicate replies, "I don't know that command" for a command Discord lists, or Discord shows an error and then the action still happens**
 
-Two instances are connected with the same token. Find and stop the extra one: `docker ps` locally, and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1.
+Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060 / 10062). Logs on either side show `discord.duplicate_handler`.
+
+Find and stop the extra one: `docker ps` locally (leftover `just dev` or a worktree container), and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1. Retry the command after only one instance is left.
 
 **SpaceAPI is down** (`/status` says "Couldn't check")
 

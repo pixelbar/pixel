@@ -90,6 +90,7 @@ describe("loadConfig", () => {
 			liveChannelId: undefined,
 			timelineChannelId: undefined,
 			botChannelId: undefined,
+			closingTimeChannelId: undefined,
 		});
 		expect(
 			loadConfig({
@@ -97,7 +98,12 @@ describe("loadConfig", () => {
 				DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "",
 				DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "",
 			}).discord.announce,
-		).toEqual({ liveChannelId: undefined, timelineChannelId: undefined, botChannelId: undefined });
+		).toEqual({
+			liveChannelId: undefined,
+			timelineChannelId: undefined,
+			botChannelId: undefined,
+			closingTimeChannelId: undefined,
+		});
 	});
 
 	it("reads one channel for each announcement style, which may be the same channel", () => {
@@ -110,6 +116,7 @@ describe("loadConfig", () => {
 			liveChannelId: "100000000000000031",
 			timelineChannelId: "100000000000000032",
 			botChannelId: undefined,
+			closingTimeChannelId: undefined,
 		});
 		const same = loadConfig({
 			...VALID,
@@ -125,6 +132,36 @@ describe("loadConfig", () => {
 		);
 		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "123" })).toThrow(
 			/DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID/,
+		);
+	});
+
+	it("treats closing-time channel off, none, or empty as disabled, and accepts a Discord ID", () => {
+		expect(loadConfig(VALID).discord.announce.closingTimeChannelId).toBeUndefined();
+		for (const value of ["", "off", "OFF", "none", "None"]) {
+			expect(
+				loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: value }).discord.announce
+					.closingTimeChannelId,
+			).toBeUndefined();
+		}
+		expect(
+			loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: "100000000000000099" }).discord
+				.announce.closingTimeChannelId,
+		).toBe("100000000000000099");
+		expect(() => loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: "#members" })).toThrow(
+			/DISCORD_CLOSING_TIME_CHANNEL_ID/,
+		);
+	});
+
+	it("defaults the closing-time file to data/closing-time.md, or a custom path", () => {
+		expect(loadConfig(VALID).closingTimeFile).toBe("data/closing-time.md");
+		expect(loadConfig({ ...VALID, PIXEL_DATA_DIR: "/var/lib/pixel" }).closingTimeFile).toBe(
+			"/var/lib/pixel/closing-time.md",
+		);
+		expect(
+			loadConfig({ ...VALID, PIXEL_CLOSING_TIME_FILE: " /etc/pixel/closing.md " }).closingTimeFile,
+		).toBe("/etc/pixel/closing.md");
+		expect(loadConfig({ ...VALID, PIXEL_CLOSING_TIME_FILE: "" }).closingTimeFile).toBe(
+			"data/closing-time.md",
 		);
 	});
 

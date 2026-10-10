@@ -69,23 +69,34 @@ export class PendingForms {
 }
 
 /** The modal Discord shows for a command's form fields (the API's JSON shape). */
-export function formModal(customId: string, title: string, fields: readonly FormOption[]) {
+export function formModal(
+	customId: string,
+	title: string,
+	fields: readonly FormOption[],
+	values: Readonly<Record<string, string>> = {},
+) {
 	return {
 		custom_id: customId,
 		title: title.slice(0, 45),
-		components: fields.map((field) => ({
-			type: 1,
-			components: [
-				{
-					type: 4,
-					custom_id: field.name,
-					label: field.description.slice(0, 45),
-					style: field.form.style === "paragraph" ? 2 : 1,
-					required: field.required ?? false,
-					max_length: field.form.maxLength,
-					...(field.form.placeholder ? { placeholder: field.form.placeholder.slice(0, 100) } : {}),
-				},
-			],
-		})),
+		components: fields.map((field) => {
+			const prefill = values[field.name]?.slice(0, field.form.maxLength);
+			return {
+				type: 1,
+				components: [
+					{
+						type: 4,
+						custom_id: field.name,
+						label: field.description.slice(0, 45),
+						style: field.form.style === "paragraph" ? 2 : 1,
+						required: field.required ?? false,
+						max_length: field.form.maxLength,
+						...(field.form.placeholder
+							? { placeholder: field.form.placeholder.slice(0, 100) }
+							: {}),
+						...(prefill ? { value: prefill } : {}),
+					},
+				],
+			};
+		}),
 	};
 }

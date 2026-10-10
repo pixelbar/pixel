@@ -9,6 +9,7 @@ import type { HomeDeviceStore } from "../../services/home-devices.ts";
 import type { HomeInventory } from "../../services/home-inventory.ts";
 import type { KindSwitch } from "../../services/kind-switch.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
+import { createClosingTimeSubgroup } from "./closing-time.ts";
 import { createDoorsSubgroup, describeDoors } from "./doors.ts";
 import { describeHome, homeLines, inventoryLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
@@ -28,6 +29,8 @@ export type AdminDeps = {
 	switches: Pick<KindSwitch, "set" | "isOn">;
 	reporter: ErrorReporter;
 	now?: () => Date;
+	/** Persist path for the closing-time body (`PIXEL_DATA_DIR` / Azure Files). */
+	closingTimeFile: string;
 };
 
 function describeCounts(counts: AccessStore["view"]["counts"]): string {
@@ -123,6 +126,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 					...createRoleSubcommands(deps.access, deps.roles),
 					createCapabilitySubgroup({ access: deps.access, capabilities: deps.capabilities }),
 					createDoorsSubgroup({ switches: deps.switches, reporter: deps.reporter }),
+					createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile }),
 				],
 			},
 		],

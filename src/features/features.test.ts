@@ -68,6 +68,11 @@ const deps = () => ({
 	],
 	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
+	closingTime: {
+		enabled: false,
+		file: "data/closing-time.md",
+		message: () => "The space is closing.",
+	},
 });
 
 function onlyCommand(feature: Feature) {
@@ -85,6 +90,7 @@ describe("buildFeatures", () => {
 				.sort(),
 		).toEqual([
 			"admin",
+			"closing-time",
 			"events",
 			"feedback",
 			"ha",
@@ -109,10 +115,12 @@ describe("buildFeatures", () => {
 			["sync", "admin"],
 			["capabilities", "admin"],
 			["doors", "admin"],
+			["closing-time", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
+		expect(registry.get("closing-time")?.definition.access.minTier).toBe("member");
 	});
 });
 
@@ -165,6 +173,7 @@ function adminSubcommand(
 		switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
+		closingTimeFile: "data/closing-time.md",
 	}).commands?.[0];
 	const sub = admin?.subcommands?.find(
 		(s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name,
@@ -222,6 +231,7 @@ describe("admin", () => {
 			homeInventory: HomeInventory.off(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter: { ...nullErrorReporter, captureBackground },
+			closingTimeFile: "data/closing-time.md",
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");
 		if (!reload || isSubgroup(reload)) throw new Error("no /admin reload");
