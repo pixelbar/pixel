@@ -408,10 +408,9 @@ describe("buildCore", () => {
 			};
 			await core.dispatcher.dispatch(grant);
 			await core.dispatcher.dispatch(grant);
-			await core.dispatcher.dispatch({
-				...grant,
-				subcommand: "revoke",
-			});
+			const revoke = { ...grant, subcommand: "revoke" as const };
+			await core.dispatcher.dispatch(revoke);
+			await core.dispatcher.dispatch(revoke);
 
 			expect(sent).toHaveLength(2);
 			expect(sent[0]).toMatchObject({ userId: IDS.member });

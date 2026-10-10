@@ -243,6 +243,33 @@ describe("changing capabilities", () => {
 		expect(entries("access.changed")).toHaveLength(0);
 	});
 
+	it("does not notify when granting a capability they already have", async () => {
+		const notify = vi.fn();
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: { notify },
+		});
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"] },
+			by,
+		);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
+	it("does not notify when revoking a capability they do not hold", async () => {
+		const notify = vi.fn();
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: { notify },
+		});
+		await store.apply({ kind: "set-capabilities", id: IDS.friend, capabilities: [] }, by);
+		expect(notify).not.toHaveBeenCalled();
+	});
+
 	it("notifies on a real grant or revoke, not on a no-op or a tier change", async () => {
 		const calls: {
 			userId: string;
