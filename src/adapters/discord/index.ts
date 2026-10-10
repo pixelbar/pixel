@@ -3,6 +3,7 @@ import { actorLogFields, type PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
 import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
+import type { CapabilityNotifier } from "../../core/capability-notify.ts";
 import type { ChannelPosts } from "../../core/channel-posts.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
@@ -32,6 +33,7 @@ import {
 	createModalHandler,
 	discordActor,
 } from "./handlers.ts";
+import { DiscordDirectMessenger } from "./direct-message.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
@@ -58,6 +60,8 @@ export type DiscordAdapterDeps = {
 	channelPosts: Pick<ChannelPosts, "use">;
 	/** Where this adapter plugs in the role mirror once it's ready. */
 	roles: Pick<RoleMirror, "attach" | "check">;
+	/** Where this adapter plugs in DMs for capability grant/revoke once it's ready. */
+	capabilityNotify: Pick<CapabilityNotifier, "attach">;
 	/** Which Discord role each tier is mirrored to. Unset tiers aren't mirrored. */
 	roleMapping: RoleMapping;
 	/** Reports errors that escape the dispatcher (e.g. Discord API failures). */
@@ -183,6 +187,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			}),
 		);
 		await deps.roles.check();
+		deps.capabilityNotify.attach(new DiscordDirectMessenger(ready.rest));
 		try {
 			await registerPublishers(ready);
 		} catch (error) {

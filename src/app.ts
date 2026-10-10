@@ -3,6 +3,7 @@ import type { Config } from "./config.ts";
 import { checkAccess, splitRef } from "./core/access.ts";
 import { Announcer } from "./core/announcer.ts";
 import { Calendar } from "./core/calendar.ts";
+import { CapabilityNotifier } from "./core/capability-notify.ts";
 import {
 	type CapabilityDefinition,
 	CapabilityRegistry,
@@ -37,6 +38,8 @@ import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 export type Core = {
 	access: AccessStore;
 	capabilities: CapabilityRegistry;
+	/** DMs someone when a capability is granted or revoked, once Discord has plugged in. */
+	capabilityNotify: CapabilityNotifier;
 	/** Mirrors tiers to Discord roles once the Discord adapter has plugged its backend in. */
 	roles: RoleMirror;
 	/** Reads and controls Home Assistant once its adapter has plugged a backend in. */
@@ -81,13 +84,19 @@ export function buildCore(
 	reporter: ErrorReporter,
 	options: BuildCoreOptions = {},
 ): Core {
+	// Capabilities are declared in code. Names in the file that aren't are ignored, but reported.
+	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
+	const capabilityNotify = new CapabilityNotifier({ logger, capabilities });
 	// Missing or invalid files throw here, so Pixel never starts with "everyone is a guest".
-	const access = FileAccessStore.open({ paths: config.access, logger, reporter });
+	const access = FileAccessStore.open({
+		paths: config.access,
+		logger,
+		reporter,
+		notify: capabilityNotify,
+	});
 	for (const warning of access.view.warnings) {
 		logger.warn({ event: "access_config.warning" }, warning);
 	}
-	// Capabilities are declared in code. Names in the file that aren't are ignored, but reported.
-	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
 	reportUnknownCapabilities(access.view.records.values(), capabilities, { logger, reporter });
 
 	const roles = new RoleMirror({ logger, reporter });
@@ -184,6 +193,7 @@ export function buildCore(
 	return {
 		access,
 		capabilities,
+		capabilityNotify,
 		roles,
 		home,
 		homeDevices,
