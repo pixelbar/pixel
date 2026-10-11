@@ -4,6 +4,7 @@ import type { Announcement } from "../../core/announcement.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown } from "../../core/format.ts";
+import type { Interpolate } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { Reply } from "../../core/reply.ts";
 
@@ -20,6 +21,8 @@ export type ClosingTimeDeps = {
 	enabled: boolean;
 	/** Read fresh each send so an operator can edit the file without a restart. */
 	message: () => string;
+	/** Fills `{{tokens}}` at post time. */
+	interpolator: Interpolate;
 	logger: Logger;
 	now?: () => Date;
 };
@@ -50,12 +53,13 @@ export function createClosingTimeFeature(deps: ClosingTimeDeps): ClosingTimeFeat
 			log.info({ event: "closing_time.disabled", source }, "closing-time posts are off");
 			return "disabled";
 		}
-		const body = clip(deps.message(), MAX_CLOSING_TIME_MESSAGE);
+		const at = now();
+		const body = clip(deps.interpolator.interpolate(deps.message(), at), MAX_CLOSING_TIME_MESSAGE);
 		await deps.announcer.announce({
 			kind: "closing.time",
 			text: escapeMarkdown(body),
 			body,
-			at: now(),
+			at,
 		});
 		log.info({ event: "closing_time.posted", source }, "posted the closing-time message");
 		return "sent";
