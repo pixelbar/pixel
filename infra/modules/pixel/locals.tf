@@ -2,9 +2,6 @@ locals {
   name_prefix = "${var.prefix}-${var.environment}"
   location    = data.azurerm_resource_group.this.location
 
-  # One of these is created. Dev ignores the Pixel image (#73); prod does not.
-  container_app = one(concat(azurerm_container_app.this, azurerm_container_app.managed))
-
   tags = {
     project = "pixel"
     env     = var.environment
