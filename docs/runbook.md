@@ -183,10 +183,20 @@ Terraform: `infra/modules/pixel` + `infra/envs/dev` (#9). **Do not apply until a
 ```sh
 just tf-validate
 just tf-plan dev
-just tf-apply dev    # only when told
+just tf-apply dev    # only when told; does not roll the running image
 ```
 
+The first apply after #73 **moves** the Container App address (`azurerm_container_app.this` → `this[0]`). That is not a replace and does not change the running image. Plan should say "has moved", not destroy/create.
+
 After apply, Discord still will not answer until Key Vault secrets exist (`write_secrets` or `az`), `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
+
+**On `dev`, the image is owned by `just deploy-dev`, not by apply** ([#73](https://github.com/pixelbar/pixel/issues/73), [ADR 0010](adr/0010-ghcr-cd.md)). First create uses `container_image` (default `:main`). After that, Terraform **ignores** the Pixel container image on the **dev** app only. A later `just tf-apply dev` still updates vault, volume, env and the replica pin; it does **not** roll the bot back to a stale SHA in gitignored `terraform.tfvars`. Do not apply Terraform from CD to "fix" that drift. Do not bump `container_image` expecting a **dev** apply to change what is running.
+
+**Prod** (#12) is the other resource (`azurerm_container_app.managed`): apply **will** set `container_image`. Do not copy the dev ignore onto prod. Never apply prod until #12.
+
+- **Change the running `dev` image:** `just deploy-dev`, or `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<sha> --min-replicas 1 --max-replicas 1`.
+- **See what is running:** `az containerapp show -g pixel-dev -n pixel-dev --query "properties.template.containers[0].image" -o tsv`
+- Keep min=max replicas = 1.
 
 **Restart the app** (after rotating a secret or changing `admins.yaml`):
 
@@ -303,7 +313,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 - **`prod`:** **off** until #12. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the SHA and moving tag `main`, and upload Sentry source maps when org/token are set. The workflow does **not** log in to Azure and has no path to `pixel-prod`. Discord will not answer on prod. Never copy `pixel-dev-kv` or the Mini local Discord token into prod.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
 - Prod Azure login would be GitHub Environment OIDC (`ARM_*` variables) once prod CD is re-enabled. `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` `ARM_*` and fails closed if they are missing.
-- Neither path applies Terraform.
+- Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply will set `container_image` when that env exists. Dev rollback is `az`, not a tfvars bump.
 - Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register` so Discord matches.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
 - **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. The CD job **fails closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.

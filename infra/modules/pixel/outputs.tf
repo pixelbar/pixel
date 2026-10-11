@@ -3,8 +3,8 @@ output "resource_group_name" {
 }
 
 output "container_app_name" {
-  value       = azurerm_container_app.this.name
-  description = "Container App name. One replica, no public ingress."
+  value       = local.name_prefix
+  description = "Container App name (local.name_prefix). One replica, no public ingress. Not taken from the app resource object — that object is sensitive because of secret blocks."
 }
 
 output "container_app_environment_name" {

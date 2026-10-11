@@ -18,7 +18,7 @@ A first pass had pull requests deploy to Azure `dev`. That fights local testing:
 - **Merges to `main`:** [`.github/workflows/cd.yml`](../../.github/workflows/cd.yml) pushes the SHA and moving tag `main`, then creates a Sentry release with source maps when org/token are set. **Prod CD is off** until #12: the workflow does not use GitHub Environment `prod`, does not Azure-login, and has no path to `pixel-prod`. Fail closed — do not copy `pixel-dev-kv` or the Mini local/Pixel Dev Discord token into prod.
 - **GHCR auth (CI):** `docker/login-action` with `GITHUB_TOKEN`. Only the publish job has `packages: write`. **Local:** `just docker-login-ghcr` uses `gh auth token` (needs `write:packages`). The package is **public** so Container Apps can pull without a PAT in Terraform. The running app pins an explicit SHA (or dirty tag), not `latest`.
 - **Azure auth:** local `az` for `dev`. Prod OIDC (`ARM_*` on GitHub Environment `prod`) stays unused until prod CD is turned back on with #12.
-- **No Terraform apply** from CD or `just deploy-dev`. First create of `pixel-dev` stays #9. Stop-then-start overlap is still #11.
+- **No Terraform apply** from CD or `just deploy-dev`. First create of `pixel-dev` stays #9. After that, Terraform ignores the **dev** Pixel container image so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned (#73). `container_image` is the first-create value on **dev** only. Prod (#12) apply will set `container_image` (no `ignore_changes` on that resource). Stop-then-start overlap is still #11.
 - **Sentry:** release name is `PIXEL_VERSION` (the image SHA). Source maps upload from `dist/` with URL prefix `/app/dist`. The CD job **fails closed** if `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, or `SENTRY_PROJECT` is missing.
 - **`just register`:** part of `just deploy-dev` only (Pixel Dev `.env`). Not from `main` CD (that would need the prod Discord token, which must not be the Mini/dev token).
 
@@ -29,4 +29,5 @@ This **overrides** `main` → `dev` and the short-lived `main` → prod deploy u
 - You can put a local (even dirty) tree on `dev` without waiting for another CI head. Do not also run `just dev` on the same Pixel Dev token while `pixel-dev` is up.
 - Merging to `main` publishes an image and does **not** start Discord on prod. Prod stays dark until #12.
 - Two replicas still answer every command twice. Both paths pin min=max=1.
-- Revert path: point `main` at `dev` again, or restore prod deploy behind Environment `prod` approval once #12 exists.
+- `just tf-apply dev` after a local roll leaves the running SHA alone. Bumping `container_image` in gitignored tfvars does not change the live **dev** app.
+- Revert path: point `main` at `dev` again, or restore prod deploy behind Environment `prod` approval once #12 exists. Prod Terraform/CD should set `container_image`; do not copy the dev `ignore_changes` onto that app.

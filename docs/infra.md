@@ -114,7 +114,7 @@ flowchart TB
 1. **Bootstrap** (hand-applied) created the three resource groups, state storage, and per-env GitHub identities. Env stacks deploy *into* those groups; they do not recreate them.
 2. **`infra/modules/pixel`** + **`infra/envs/dev`** created the vault, files share, CAE, app, backup, logs, and `pixel-dev-app`. Remote state is container `dev`.
 3. **Secrets** are Key Vault names (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `sentry-dsn`). The Container App references **URIs + UAMI**. Terraform may write values as ephemeral `write_secrets` inputs, or they are set with `az` / the portal. Discord / HA / Sentry values do **not** belong in state. The Azure Files **account key** does (Container Apps can only mount SMB with the key).
-4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy-dev` updates the running image with `az containerapp update` and does **not** apply Terraform. Pin an explicit SHA (or `dev-dirty-*`), never `latest` alone.
+4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy-dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod (#12) apply will set `container_image`. Pin an explicit SHA (or `dev-dirty-*`), never `latest` alone.
 5. **Discord:** outbound gateway + REST. No FQDN. `/healthz` is process up; `/readyz` is Discord connected. Home Assistant is **not** on the probes (HA down must not restart the replica).
 6. **Home Assistant:** both URL and token, or neither. Live `dev` uses a Nabu Casa URL. The allow-list is `devices.yaml` on the share. A Tailscale sidecar is the preferred path ([#43](https://github.com/pixelbar/pixel/issues/43), [#74](https://github.com/pixelbar/pixel/issues/74)); the Terraform stub is **off** and is not enough to flip on as-is. Dev must not control the real doors.
 7. **Sentry:** the app reads `SENTRY_DSN` from Key Vault. Heartbeat monitor `pixel-<env>`. Source maps on `main` use `SENTRY_AUTH_TOKEN` plus org/project variables.
@@ -175,10 +175,10 @@ Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu C
 ```sh
 just tf-validate          # fmt + validate bootstrap + envs/dev
 just tf-plan dev          # needs az login; does not apply
-just tf-apply dev         # maintainer; first create / vault / volume
+just tf-apply dev         # maintainer; first create / vault / volume (not the running dev image)
 # seed Files: members.yaml + home-assistant/*.yaml  (not the example IDs)
 # seed KV if write_secrets was false
 just deploy-dev           # this tree → GHCR SHA → pixel-dev, then register
 ```
 
-Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod.
+Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply will set `container_image`.

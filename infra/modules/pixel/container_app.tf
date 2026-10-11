@@ -25,7 +25,16 @@ resource "azurerm_container_app_environment_storage" "persist" {
   access_mode                  = "ReadWrite"
 }
 
+# Live pixel-dev is this resource. count is required so prod (#12) can use
+# azurerm_container_app.managed (Terraform owns that image) without ignore.
+moved {
+  from = azurerm_container_app.this
+  to   = azurerm_container_app.this[0]
+}
+
 resource "azurerm_container_app" "this" {
+  count = var.environment == "dev" ? 1 : 0
+
   name                         = local.name_prefix
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = data.azurerm_resource_group.this.name
@@ -179,6 +188,195 @@ resource "azurerm_container_app" "this" {
         # replica netns (localhost). Pixel still talks to HA via HOME_ASSISTANT_URL
         # (Nabu Casa works without Tailscale). LAN MagicDNS through this sidecar
         # is #43.
+        env {
+          name  = "TS_USERSPACE"
+          value = "true"
+        }
+
+        env {
+          name  = "TS_ACCEPT_DNS"
+          value = "true"
+        }
+
+        env {
+          name  = "TS_EXTRA_ARGS"
+          value = "--accept-routes"
+        }
+      }
+    }
+  }
+
+  tags = local.tags
+
+  lifecycle {
+    # Dev only. just deploy-dev / az owns the running pin (ADR 0010 / #73).
+    # Terraform cannot condition ignore_changes, so prod is a second resource.
+    ignore_changes = [
+      template[0].container[0].image,
+    ]
+
+    precondition {
+      condition     = var.container_registry_server == null || (var.container_registry_username != null && var.container_registry_username != "")
+      error_message = "container_registry_username is required when container_registry_server is set."
+    }
+  }
+
+  depends_on = [
+    azurerm_role_assignment.kv_secrets_app,
+    azurerm_container_app_environment_storage.persist,
+    azurerm_key_vault_secret.managed,
+  ]
+}
+
+# Prod (#12): same app, but apply sets container_image. Keep in sync with
+# azurerm_container_app.this except count and lifecycle.ignore_changes.
+resource "azurerm_container_app" "managed" {
+  count = var.environment == "prod" ? 1 : 0
+
+  name                         = local.name_prefix
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  resource_group_name          = data.azurerm_resource_group.this.name
+  revision_mode                = "Single"
+  max_inactive_revisions       = 3
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.app.id]
+  }
+
+  dynamic "secret" {
+    for_each = local.key_vault_secret_ids
+    content {
+      name                = secret.key
+      key_vault_secret_id = secret.value
+      identity            = azurerm_user_assigned_identity.app.id
+    }
+  }
+
+  dynamic "registry" {
+    for_each = var.container_registry_server != null ? [1] : []
+    content {
+      server               = var.container_registry_server
+      username             = var.container_registry_username
+      password_secret_name = "ghcr-pull-token"
+    }
+  }
+
+  template {
+    min_replicas                     = 1
+    max_replicas                     = 1
+    termination_grace_period_seconds = 30
+
+    volume {
+      name          = "persist"
+      storage_name  = azurerm_container_app_environment_storage.persist.name
+      storage_type  = "AzureFile"
+      mount_options = local.azure_file_mount_options
+    }
+
+    volume {
+      name         = "secrets"
+      storage_type = "Secret"
+    }
+
+    init_container {
+      name   = "prepare-volume"
+      image  = "busybox:1.37.0"
+      cpu    = 0.25
+      memory = "0.5Gi"
+      command = [
+        "/bin/sh",
+        "-c",
+        "mkdir -p ${local.persist_mount}/data/logs ${local.persist_mount}/home-assistant && chmod -R a+rwX ${local.persist_mount}",
+      ]
+
+      volume_mounts {
+        name = "persist"
+        path = local.persist_mount
+      }
+    }
+
+    container {
+      name   = "pixel"
+      image  = var.container_image
+      cpu    = 0.5
+      memory = "1Gi"
+
+      liveness_probe {
+        transport               = "HTTP"
+        port                    = 8080
+        path                    = "/healthz"
+        initial_delay           = 10
+        interval_seconds        = 30
+        timeout                 = 5
+        failure_count_threshold = 3
+      }
+
+      readiness_probe {
+        transport               = "HTTP"
+        port                    = 8080
+        path                    = "/readyz"
+        initial_delay           = 15
+        interval_seconds        = 10
+        timeout                 = 5
+        failure_count_threshold = 12
+        success_count_threshold = 1
+      }
+
+      startup_probe {
+        transport               = "HTTP"
+        port                    = 8080
+        path                    = "/healthz"
+        interval_seconds        = 5
+        timeout                 = 3
+        failure_count_threshold = 24
+      }
+
+      dynamic "env" {
+        for_each = local.pixel_plain_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.pixel_secret_env
+        content {
+          name        = env.key
+          secret_name = env.value
+        }
+      }
+
+      volume_mounts {
+        name = "persist"
+        path = local.persist_mount
+      }
+
+      volume_mounts {
+        name = "secrets"
+        path = local.secrets_mount
+      }
+    }
+
+    dynamic "container" {
+      for_each = var.tailscale_enabled ? [1] : []
+      content {
+        name   = "tailscale"
+        image  = var.tailscale_image
+        cpu    = 0.25
+        memory = "0.5Gi"
+
+        env {
+          name        = "TS_AUTHKEY"
+          secret_name = "tailscale-auth-key"
+        }
+
+        env {
+          name  = "TS_HOSTNAME"
+          value = local.name_prefix
+        }
+
         env {
           name  = "TS_USERSPACE"
           value = "true"
