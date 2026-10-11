@@ -269,6 +269,18 @@ describe("/schedule message", () => {
 		);
 	});
 
+	it("shows the message filled as of the first post, and keeps tokens in the store", async () => {
+		const { message, store } = setup();
+		const result = await message({
+			name: "Pizza",
+			text: "Pizza on {{day}} {{date}} ({{unknown}})",
+		});
+		expect(result.reply.text).toBe("Pizza on Wednesday 14 October 2026 ({{unknown}})");
+		expect(store.all()[0]?.post).toMatchObject({
+			text: "Pizza on {{day}} {{date}} ({{unknown}})",
+		});
+	});
+
 	it("names it after the first line of the text when no name is given", async () => {
 		const { message, store } = setup();
 		await message({ text: "Line one\nline two" });
@@ -367,6 +379,21 @@ describe("/schedule poll", () => {
 		expect(text(result.reply.embeds?.[0])).toContain(
 			"A poll open for 3 days, several answers allowed",
 		);
+	});
+
+	it("shows the poll question and answers filled as of the first post", async () => {
+		const { poll, store } = setup();
+		const result = await poll({
+			name: "Vote",
+			question: "Who's coming {{day}}?",
+			answers: "Yes {{date}}\nNo {{month}}",
+		});
+		expect(result.reply.embeds?.[1]?.title).toBe("🗳 Who's coming Wednesday?");
+		expect(result.reply.embeds?.[1]?.description).toBe("• Yes 14 October 2026\n• No October");
+		expect(store.all()[0]?.post).toMatchObject({
+			question: "Who's coming {{day}}?",
+			answers: ["Yes {{date}}", "No {{month}}"],
+		});
 	});
 
 	it("is open for a day, single choice, by default", async () => {
@@ -565,6 +592,7 @@ describe("/schedule edit", () => {
 			text: "Updated pizza note",
 			mentions: false,
 		});
+		expect(result.reply.text).toBe("Updated pizza note");
 		expect(store.get(mine.id)?.createdBy.ref).toBe(`discord:${IDS.member}`);
 		expect(info).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -583,15 +611,17 @@ describe("/schedule edit", () => {
 		const ctx = setup();
 		await ctx.poll({ name: "Vote" });
 		const id = ctx.store.all()[0]?.id as string;
-		await ctx.run("edit", {
+		const result = await ctx.run("edit", {
 			schedule: id,
-			question: "Still coming?",
-			answers: "Yes\nNo",
+			question: "Who's coming {{day}}?",
+			answers: "Yes {{date}}\nNo",
 		});
+		expect(result.reply.embeds?.[1]?.title).toBe("🗳 Who's coming Wednesday?");
+		expect(result.reply.embeds?.[1]?.description).toBe("• Yes 14 October 2026\n• No");
 		expect(ctx.store.get(id)?.post).toEqual({
 			kind: "poll",
-			question: "Still coming?",
-			answers: ["Yes", "No"],
+			question: "Who's coming {{day}}?",
+			answers: ["Yes {{date}}", "No"],
 			durationHours: 24,
 			multiple: false,
 		});

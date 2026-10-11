@@ -214,7 +214,20 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			"scheduled a post",
 		);
 		deps.reporter.breadcrumb("schedule", `created ${schedule.id}`, { id: schedule.id });
-		return { embeds: [describeSchedule(schedule, zone, now(), "✅ Scheduled")], private: true };
+		return confirm(schedule, "✅ Scheduled");
+	}
+
+	/** Summary plus the post filled as of the next occurrence — same clock as preview. */
+	function confirm(schedule: Schedule, title: string): Reply {
+		const filled = filledPost(schedule, deps.interpolator, zone, now());
+		const summary = describeSchedule(schedule, zone, now(), title);
+		if (filled.kind === "message") {
+			return { text: filled.text.slice(0, 2000), embeds: [summary], private: true };
+		}
+		return {
+			embeds: [summary, pollPreviewEmbed(filled)],
+			private: true,
+		};
 	}
 
 	/** Parse `when` (and days) and the channel before the body form opens. */
@@ -365,7 +378,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			"edited a schedule",
 		);
 		deps.reporter.breadcrumb("schedule", `edited ${updated.id}`, { id: updated.id });
-		return { embeds: [describeSchedule(updated, zone, now(), "✅ Updated")], private: true };
+		return confirm(updated, "✅ Updated");
 	}
 
 	const manage = (
@@ -786,36 +799,46 @@ function describeList(schedules: readonly Schedule[], zone: string, now: Date): 
 	};
 }
 
+/** The stored post with tokens filled as of the next occurrence (or `now`). */
+function filledPost(
+	schedule: Schedule,
+	interpolator: Interpolate,
+	zone: string,
+	now: Date,
+): ChannelPost {
+	const at = nextRun(schedule, zone, now) ?? now;
+	return interpolateChannelPost(schedule.post, (text) => interpolator.interpolate(text, at));
+}
+
+function pollPreviewEmbed(post: Extract<ChannelPost, { kind: "poll" }>) {
+	return {
+		title: `🗳 ${escapeMarkdown(post.question)}`,
+		description: post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n"),
+		fields: [
+			{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
+			{
+				name: "Answers",
+				value: post.multiple ? "Several allowed" : "One",
+				inline: true,
+			},
+		],
+		accent: "brand" as const,
+	};
+}
+
 function preview(schedule: Schedule, zone: string, now: Date, interpolator: Interpolate): Reply {
 	const next = nextRun(schedule, zone, now);
 	const shownNext = schedule.paused ? undefined : next;
-	// Same clock the runner will use: the next occurrence, or now if there isn't one.
-	const at = next ?? now;
-	const post = interpolateChannelPost(schedule.post, (text) => interpolator.interpolate(text, at));
+	const post = filledPost(schedule, interpolator, zone, now);
 	const header = `Preview of ${label(schedule)} in #${escapeMarkdown(schedule.channelName)}${
 		shownNext ? `, next on ${describeWhen(toLocal(shownNext, zone))}` : ""
 	}. Pings don't fire in a preview. Tokens are filled as of that post.`;
 	if (post.kind === "message") {
 		return { text: `${header}\n\n${post.text}`.slice(0, 2000), private: true };
 	}
-	const answers = post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n");
 	return {
 		text: header,
-		embeds: [
-			{
-				title: `🗳 ${escapeMarkdown(post.question)}`,
-				description: answers,
-				fields: [
-					{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
-					{
-						name: "Answers",
-						value: post.multiple ? "Several allowed" : "One",
-						inline: true,
-					},
-				],
-				accent: "brand",
-			},
-		],
+		embeds: [pollPreviewEmbed(post)],
 		private: true,
 	};
 }
