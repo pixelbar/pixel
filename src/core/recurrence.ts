@@ -164,19 +164,23 @@ export function nextOccurrence(
 	return undefined;
 }
 
-/** "every Wednesday and Saturday at 19:00", "every other month on the 14th at 19:00", "once". */
+/** "occurs once at 19:00", "occurs once at 19:00, then repeats every Wednesday and Saturday", etc. */
 export function describeRecurrence(start: LocalDateTime, recurrence: Recurrence): string {
 	const time = `${pad(start.hour)}:${pad(start.minute)}`;
 	switch (recurrence.kind) {
 		case "once":
-			return `once, at ${time}`;
+			return `occurs once at ${time}`;
 		case "weekly": {
 			const days = listDays(recurrence.days);
-			return `${recurrence.everyWeeks === 2 ? "every other week on" : "every"} ${days} at ${time}`;
+			const repeatPattern =
+				recurrence.everyWeeks === 2 ? `every other week on ${days}` : `every ${days}`;
+			return `occurs once at ${time}, then repeats ${repeatPattern}`;
 		}
 		case "monthly": {
 			const day = `the ${ordinal(start.day)}`;
-			return `${recurrence.everyMonths === 2 ? "every other month" : "every month"} on ${day} at ${time}`;
+			const repeatPattern =
+				recurrence.everyMonths === 2 ? `every other month on ${day}` : `every month on ${day}`;
+			return `occurs once at ${time}, then repeats ${repeatPattern}`;
 		}
 	}
 }

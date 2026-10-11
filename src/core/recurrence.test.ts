@@ -206,18 +206,18 @@ describe("nextOccurrence", () => {
 describe("describing a repeat", () => {
 	it("says it in plain words", () => {
 		const start = local("2026-10-14T19:00");
-		expect(describeRecurrence(start, { kind: "once" })).toBe("once, at 19:00");
+		expect(describeRecurrence(start, { kind: "once" })).toBe("occurs once at 19:00");
 		expect(describeRecurrence(start, { kind: "weekly", everyWeeks: 1, days: ["sat", "wed"] })).toBe(
-			"every Wednesday and Saturday at 19:00",
+			"occurs once at 19:00, then repeats every Wednesday and Saturday",
 		);
 		expect(
 			describeRecurrence(start, { kind: "weekly", everyWeeks: 2, days: ["mon", "wed", "fri"] }),
-		).toBe("every other week on Monday, Wednesday and Friday at 19:00");
+		).toBe("occurs once at 19:00, then repeats every other week on Monday, Wednesday and Friday");
 		expect(describeRecurrence(start, { kind: "monthly", everyMonths: 1 })).toBe(
-			"every month on the 14th at 19:00",
+			"occurs once at 19:00, then repeats every month on the 14th",
 		);
 		expect(describeRecurrence(local("2026-10-01T08:05"), { kind: "monthly", everyMonths: 2 })).toBe(
-			"every other month on the 1st at 08:05",
+			"occurs once at 08:05, then repeats every other month on the 1st",
 		);
 		expect(
 			describeRecurrence(local("2026-10-22T08:05"), { kind: "monthly", everyMonths: 1 }),
