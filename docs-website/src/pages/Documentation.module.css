@@ -1,0 +1,631 @@
+.container {
+  flex: 1;
+  padding: 4rem 2rem;
+  background: linear-gradient(180deg, #000000 0%, #0a0a0a 50%, #000000 100%);
+}
+
+.content {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.pageTitle {
+  font-size: 3.5rem;
+  font-weight: 900;
+  margin-bottom: 1rem;
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.2;
+}
+
+.lead {
+  font-size: 1.375rem;
+  color: #d1d5db;
+  margin-bottom: 3rem;
+  line-height: 1.7;
+}
+
+.section {
+  margin-bottom: 4rem;
+}
+
+.sectionHeading {
+  font-size: 2.25rem;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  color: #f9fafb;
+}
+
+.subheading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2rem 0 1rem;
+  color: #f9fafb;
+}
+
+.card {
+  padding: 2rem;
+  background: rgba(17, 17, 17, 0.8);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 1rem;
+  margin-bottom: 2rem;
+}
+
+.list {
+  list-style: none;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.list li {
+  padding-left: 1.5rem;
+  position: relative;
+  color: #d1d5db;
+  line-height: 1.7;
+}
+
+.list li::before {
+  content: '▸';
+  position: absolute;
+  left: 0;
+  color: #a855f7;
+  font-weight: bold;
+}
+
+.numberedList {
+  list-style: none;
+  counter-reset: item;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.numberedList li {
+  padding-left: 2rem;
+  position: relative;
+  color: #d1d5db;
+  line-height: 1.7;
+  counter-increment: item;
+}
+
+.numberedList li::before {
+  content: counter(item) '.';
+  position: absolute;
+  left: 0;
+  color: #a855f7;
+  font-weight: 700;
+}
+
+.codeBlock {
+  padding: 1.5rem;
+  background: #000;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.codeBlock code {
+  color: #10b981;
+  font-size: 0.95rem;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.step {
+  margin-bottom: 2.5rem;
+}
+
+.stepTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #f9fafb;
+}
+
+.stepDescription {
+  color: #9ca3af;
+  margin-top: 0.75rem;
+  line-height: 1.6;
+}
+
+.note {
+  padding: 1rem 1.5rem;
+  background: rgba(0, 128, 255, 0.1);
+  border-left: 4px solid #0080ff;
+  border-radius: 0.5rem;
+  margin: 1.5rem 0;
+  color: #d1d5db;
+}
+
+.warning {
+  padding: 1rem 1.5rem;
+  background: rgba(236, 72, 153, 0.1);
+  border-left: 4px solid #ec4899;
+  border-radius: 0.5rem;
+  margin: 1.5rem 0;
+  color: #d1d5db;
+}
+
+.link {
+  color: #a855f7;
+  text-decoration: underline;
+  transition: color 0.3s ease;
+}
+
+.link:hover {
+  color: #c084fc;
+}
+
+code {
+  padding: 0.2rem 0.4rem;
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+  color: #c084fc;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Command Grid */
+.commandGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.commandCard {
+  padding: 1.5rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.commandCard:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  transform: translateY(-3px);
+}
+
+.command {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #10b981;
+}
+
+.commandDesc {
+  color: #9ca3af;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* Command List */
+.commandList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.commandItem {
+  padding: 1.5rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.commandItem:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.commandHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.commandName {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.tier,
+.tierFriend,
+.tierMember,
+.tierAdmin {
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tier {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+.tierFriend {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.tierMember {
+  background: rgba(0, 128, 255, 0.2);
+  color: #0080ff;
+  border: 1px solid rgba(0, 128, 255, 0.3);
+}
+
+.tierAdmin {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.capability {
+  padding: 0.25rem 0.75rem;
+  background: rgba(236, 72, 153, 0.2);
+  color: #ec4899;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.commandDescription {
+  color: #d1d5db;
+  line-height: 1.7;
+}
+
+/* Tables */
+.configTable {
+  margin: 2rem 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+}
+
+.table thead {
+  background: rgba(168, 85, 247, 0.1);
+  border-bottom: 2px solid rgba(168, 85, 247, 0.3);
+}
+
+.table th {
+  padding: 1rem;
+  text-align: left;
+  font-weight: 700;
+  color: #f9fafb;
+}
+
+.table td {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+  color: #d1d5db;
+}
+
+.table tbody tr:hover {
+  background: rgba(168, 85, 247, 0.05);
+}
+
+/* Tier Cards */
+.tierCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.tierCard {
+  padding: 2rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.tierCard:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  transform: translateY(-5px);
+}
+
+.tierIcon {
+  width: 70px;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1rem;
+  border-radius: 0.75rem;
+  font-size: 2rem;
+  box-shadow: 0 0 20px rgba(0, 128, 255, 0.3);
+}
+
+.tierCard h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.tierCard p {
+  color: #9ca3af;
+  font-size: 0.95rem;
+}
+
+/* Capability Grid */
+.capabilityGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.capabilityCard {
+  padding: 1.25rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.capabilityCard:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+.capabilityCard code {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #ec4899;
+}
+
+.capabilityCard p {
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+/* Access Cards */
+.accessGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 2rem;
+  margin: 2rem 0;
+}
+
+.accessCard {
+  padding: 2rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 1rem;
+  transition: all 0.3s ease;
+}
+
+.accessCard:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  transform: translateY(-5px);
+}
+
+.accessIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.accessCard h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.accessDescription {
+  color: #9ca3af;
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
+}
+
+.accessSubheading {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #a855f7;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.accessList {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.accessList li {
+  color: #d1d5db;
+  padding-left: 1.25rem;
+  position: relative;
+  font-size: 0.95rem;
+}
+
+.accessList li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #10b981;
+  font-weight: bold;
+}
+
+/* Info Box */
+.infoBox {
+  padding: 1.5rem;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.infoBox p {
+  margin-bottom: 0.75rem;
+  color: #d1d5db;
+}
+
+.infoBox p:last-child {
+  margin-bottom: 0;
+}
+
+/* Feature List */
+.featureList {
+  display: grid;
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.featureItem {
+  padding: 1.5rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+}
+
+.featureItemTitle {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.featureItem p {
+  color: #9ca3af;
+  line-height: 1.6;
+}
+
+/* Help Grid */
+.helpGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.helpCard {
+  padding: 2rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.helpCard:hover {
+  border-color: rgba(168, 85, 247, 0.5);
+  transform: translateY(-5px);
+}
+
+.helpCard h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.helpCard p {
+  color: #9ca3af;
+  line-height: 1.6;
+}
+
+/* FAQ */
+.faq {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin: 2rem 0;
+}
+
+.faqItem {
+  padding: 1.5rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 0.75rem;
+}
+
+.faqQuestion {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #f9fafb;
+}
+
+.faqAnswer {
+  color: #d1d5db;
+  line-height: 1.7;
+}
+
+/* Navigation */
+.navigation {
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(75, 85, 99, 0.5);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nextButton {
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 100%);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(0, 128, 255, 0.3);
+}
+
+.nextButton:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 30px rgba(168, 85, 247, 0.5);
+}
+
+@media (max-width: 768px) {
+  .pageTitle {
+    font-size: 2.5rem;
+  }
+
+  .lead {
+    font-size: 1.125rem;
+  }
+
+  .sectionHeading {
+    font-size: 1.75rem;
+  }
+
+  .table {
+    font-size: 0.875rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .accessGrid,
+  .tierCards,
+  .commandGrid,
+  .capabilityGrid,
+  .helpGrid {
+    grid-template-columns: 1fr;
+  }
+}

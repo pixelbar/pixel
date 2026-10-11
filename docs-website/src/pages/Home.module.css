@@ -1,0 +1,351 @@
+.container {
+  flex: 1;
+}
+
+/* Hero Section */
+.hero {
+  position: relative;
+  padding: 6rem 2rem;
+  background: radial-gradient(circle at top right, rgba(0, 128, 255, 0.1), transparent 50%),
+              radial-gradient(circle at bottom left, rgba(168, 85, 247, 0.1), transparent 50%),
+              #000000;
+  overflow: hidden;
+}
+
+.heroContent {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.pixelGrid {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  animation: fadeIn 0.8s ease;
+}
+
+.pixel {
+  width: 40px;
+  height: 40px;
+  image-rendering: pixelated;
+  animation: pulse 2s ease infinite;
+  box-shadow: 0 0 20px currentColor;
+}
+
+.pixel:nth-child(1) { animation-delay: 0s; }
+.pixel:nth-child(2) { animation-delay: 0.1s; }
+.pixel:nth-child(3) { animation-delay: 0.2s; }
+.pixel:nth-child(4) { animation-delay: 0.3s; }
+.pixel:nth-child(5) { animation-delay: 0.4s; }
+.pixel:nth-child(6) { animation-delay: 0.5s; }
+
+.title {
+  font-size: 4rem;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+  animation: fadeIn 1s ease 0.2s both;
+}
+
+.highlight {
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 25%, #ec4899 50%, #f97316 75%, #fbbf24 100%);
+  background-size: 200% 200%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: rainbow 3s ease infinite;
+}
+
+.subtitle {
+  font-size: 1.5rem;
+  color: #d1d5db;
+  margin-bottom: 3rem;
+  animation: fadeIn 1s ease 0.4s both;
+}
+
+.ctaButtons {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  animation: fadeIn 1s ease 0.6s both;
+}
+
+.primaryButton {
+  padding: 1rem 2.5rem;
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 100%);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.125rem;
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 30px rgba(0, 128, 255, 0.4);
+}
+
+.primaryButton:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 40px rgba(168, 85, 247, 0.6);
+}
+
+.secondaryButton {
+  padding: 1rem 2.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.125rem;
+  border-radius: 0.75rem;
+  border: 2px solid rgba(168, 85, 247, 0.5);
+  transition: all 0.3s ease;
+}
+
+.secondaryButton:hover {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: #a855f7;
+  transform: translateY(-3px);
+}
+
+/* Features Section */
+.features {
+  padding: 6rem 2rem;
+  background: #0a0a0a;
+}
+
+.sectionTitle {
+  font-size: 3rem;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 4rem;
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.featureGrid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+}
+
+.featureCard {
+  padding: 2.5rem;
+  background: rgba(17, 17, 17, 0.8);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 1rem;
+  transition: all 0.3s ease;
+}
+
+.featureCard:hover {
+  transform: translateY(-5px);
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: 0 10px 30px rgba(168, 85, 247, 0.2);
+}
+
+.featureIcon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.5rem;
+  border-radius: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 0 20px rgba(0, 128, 255, 0.3);
+}
+
+.featureTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.featureDescription {
+  color: #9ca3af;
+  line-height: 1.7;
+}
+
+/* Tech Stack Section */
+.techStack {
+  padding: 6rem 2rem;
+  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.05), transparent 70%),
+              #000000;
+}
+
+.techGrid {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2rem;
+}
+
+.techCard {
+  padding: 2rem;
+  background: rgba(17, 17, 17, 0.6);
+  border: 1px solid rgba(168, 85, 247, 0.1);
+  border-radius: 0.75rem;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.techCard:hover {
+  border-color: rgba(168, 85, 247, 0.4);
+  transform: scale(1.05);
+}
+
+.techIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.techCard h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.techCard p {
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+/* Quick Start Section */
+.quickStart {
+  padding: 6rem 2rem;
+  background: #0a0a0a;
+}
+
+.steps {
+  max-width: 900px;
+  margin: 0 auto 3rem;
+  display: grid;
+  gap: 2rem;
+}
+
+.step {
+  padding: 2.5rem;
+  background: rgba(17, 17, 17, 0.8);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stepNumber {
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0080ff 0%, #a855f7 100%);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 800;
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(0, 128, 255, 0.5);
+}
+
+.stepTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.codeBlock {
+  padding: 1.5rem;
+  background: #000;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.codeBlock code {
+  color: #10b981;
+  font-size: 0.95rem;
+}
+
+.learnMoreButton {
+  display: block;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
+  color: #fff;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+}
+
+.learnMoreButton:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 30px rgba(236, 72, 153, 0.6);
+}
+
+@media (max-width: 768px) {
+  .title {
+    font-size: 2.5rem;
+  }
+
+  .subtitle {
+    font-size: 1.125rem;
+  }
+
+  .sectionTitle {
+    font-size: 2rem;
+  }
+
+  .featureGrid,
+  .techGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pixelGrid {
+    gap: 0.5rem;
+  }
+
+  .pixel {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
+}
+
+@keyframes rainbow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
