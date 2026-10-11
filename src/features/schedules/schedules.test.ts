@@ -458,6 +458,30 @@ describe("managing schedules", () => {
 		expect(poll.reply.embeds?.[0]?.description).toBe("• Yes\n• No\n• Maybe");
 	});
 
+	it("fills tokens in a preview as of the next post, including a poll's question and answers", async () => {
+		const ctx = setup();
+		await ctx.message({ name: "Pizza", text: "Pizza on {{day}} {{date}} ({{unknown}})" });
+		const messageId = ctx.store.all()[0]?.id as string;
+		const message = await ctx.run("preview", { schedule: messageId });
+		const body = message.reply.text?.split("\n\n").at(-1);
+		expect(body).toBe("Pizza on Wednesday 14 October 2026 ({{unknown}})");
+		expect(JSON.stringify(ctx.info.mock.calls)).not.toContain("Pizza on");
+
+		await ctx.poll({
+			name: "Vote",
+			question: "Who's coming {{day}}?",
+			answers: "Yes {{date}}\nNo {{month}}",
+		});
+		const pollId = ctx.store.all()[1]?.id as string;
+		const poll = await ctx.run("preview", { schedule: pollId });
+		expect(poll.reply.embeds?.[0]?.title).toBe("🗳 Who's coming Wednesday?");
+		expect(poll.reply.embeds?.[0]?.description).toBe("• Yes 14 October 2026\n• No October");
+		expect(ctx.store.get(pollId)?.post).toMatchObject({
+			question: "Who's coming {{day}}?",
+			answers: ["Yes {{date}}", "No {{month}}"],
+		});
+	});
+
 	it("says a one-off that's already gone has no more posts when resumed", async () => {
 		const ctx = setup();
 		await ctx.message({});

@@ -12,6 +12,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Added
 
 - `/schedule edit` lets the Discord user who scheduled a post or poll change it before it goes out (content, and optionally `when` / repeat / name). Autocomplete and the list show only their still-upcoming items. Already-posted or other people's schedules get a generic refusal.
+- `/schedule preview` fills `{{date}}` and the rest of the date family as of the next occurrence (the same clock as the post), including a poll's question and answers. The stored body is unchanged.
 
 ## [0.4.0] - 2026-10-11
 

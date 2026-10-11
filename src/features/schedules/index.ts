@@ -11,7 +11,7 @@ import type {
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
-import type { Interpolate } from "../../core/interpolate.ts";
+import { type Interpolate, interpolateChannelPost } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import {
@@ -571,7 +571,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 						handler: (ctx) => edit(ctx),
 					},
 					manage("preview", "See exactly what a scheduled post will look like", (schedule) =>
-						preview(schedule, zone, now()),
+						preview(schedule, zone, now(), deps.interpolator),
 					),
 					manage("pause", "Stop a schedule from posting until it's resumed", (schedule, ctx) => {
 						deps.store.update(schedule.id, { paused: true });
@@ -786,26 +786,30 @@ function describeList(schedules: readonly Schedule[], zone: string, now: Date): 
 	};
 }
 
-function preview(schedule: Schedule, zone: string, now: Date): Reply {
-	const next = schedule.paused ? undefined : nextRun(schedule, zone, now);
+function preview(schedule: Schedule, zone: string, now: Date, interpolator: Interpolate): Reply {
+	const next = nextRun(schedule, zone, now);
+	const shownNext = schedule.paused ? undefined : next;
+	// Same clock the runner will use: the next occurrence, or now if there isn't one.
+	const at = next ?? now;
+	const post = interpolateChannelPost(schedule.post, (text) => interpolator.interpolate(text, at));
 	const header = `Preview of ${label(schedule)} in #${escapeMarkdown(schedule.channelName)}${
-		next ? `, next on ${describeWhen(toLocal(next, zone))}` : ""
-	}. Pings don't fire in a preview.`;
-	if (schedule.post.kind === "message") {
-		return { text: `${header}\n\n${schedule.post.text}`.slice(0, 2000), private: true };
+		shownNext ? `, next on ${describeWhen(toLocal(shownNext, zone))}` : ""
+	}. Pings don't fire in a preview. Tokens are filled as of that post.`;
+	if (post.kind === "message") {
+		return { text: `${header}\n\n${post.text}`.slice(0, 2000), private: true };
 	}
-	const answers = schedule.post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n");
+	const answers = post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n");
 	return {
 		text: header,
 		embeds: [
 			{
-				title: `🗳 ${escapeMarkdown(schedule.post.question)}`,
+				title: `🗳 ${escapeMarkdown(post.question)}`,
 				description: answers,
 				fields: [
-					{ name: "Open for", value: durationLabel(schedule.post.durationHours), inline: true },
+					{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
 					{
 						name: "Answers",
-						value: schedule.post.multiple ? "Several allowed" : "One",
+						value: post.multiple ? "Several allowed" : "One",
 						inline: true,
 					},
 				],
