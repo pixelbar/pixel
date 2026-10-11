@@ -3,7 +3,7 @@ output "resource_group_name" {
 }
 
 output "container_app_name" {
-  value       = azurerm_container_app.this.name
+  value       = local.container_app.name
   description = "Container App name. One replica, no public ingress."
 }
 

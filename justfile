@@ -70,8 +70,9 @@ tf-plan env:
     terraform -chdir=infra/envs/{{env}} plan
 
 # Apply an env stack. Do not run until a maintainer says so. Never start a
-# second Pixel on the same Discord token. After first create this does not
-# change the Pixel container image (just deploy-dev / az owns that pin).
+# second Pixel on the same Discord token. On dev, after first create this
+# does not change the Pixel container image (just deploy-dev / az owns that
+# pin). Prod (#12) apply still sets container_image.
 tf-apply env:
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} apply

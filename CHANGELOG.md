@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Fixed
 
-- Terraform apply no longer replaces the Container App image that `just deploy-dev` pinned (`lifecycle.ignore_changes` on the Pixel container image).
+- Terraform apply no longer replaces the **dev** Container App image that `just deploy-dev` pinned (`lifecycle.ignore_changes` on `azurerm_container_app.this` only). Prod (#12) still lets apply set `container_image`.
 
 ## [0.7.0] - 2026-10-11
 

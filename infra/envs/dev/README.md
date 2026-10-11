@@ -51,7 +51,7 @@ just tf-apply dev
 
 The Container App references Key Vault secrets by URI. Values are either **ephemeral apply inputs** (`write_secrets = true`, not stored in state) or set later with `az` / the portal. `terraform.example.tfvars` leaves `write_secrets` off so CI plan cannot clobber a real vault.
 
-`container_image` is the **first-create** pin only. After that, Terraform ignores the Pixel container image so a later apply cannot roll `just deploy-dev` backward (#73). Change the running image with `just deploy-dev` or `az containerapp update`, not a tfvars bump. Do not apply Terraform from CD to "fix" that drift.
+`container_image` is the **first-create** pin for this **dev** stack only. After that, Terraform ignores the Pixel container image so a later apply cannot roll `just deploy-dev` backward (#73). Change the running image with `just deploy-dev` or `az containerapp update`, not a tfvars bump. Do not apply Terraform from CD to "fix" that drift. Prod (#12) apply will set `container_image` (no ignore on that resource).
 
 Do not run Pixel locally against the same Discord token while this app is up.
 
@@ -148,7 +148,7 @@ About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analy
 
 ## What this is not
 
-- Not GHCR publish or prod CD (#10 / #12). `just deploy-dev` rolls this app's image; apply leaves that pin alone after first create (#73).
+- Not GHCR publish or prod CD (#10 / #12). `just deploy-dev` rolls this app's image; **dev** apply leaves that pin alone after first create (#73). Prod apply will set `container_image`.
 - Not stop-then-start during deploys (#11). This stack only pins min=max replicas to 1 and `revision_mode = Single`.
 - Not `prod` (#12).
 - Not Postgres.

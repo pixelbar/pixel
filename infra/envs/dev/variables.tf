@@ -44,7 +44,7 @@ variable "data_storage_account_name" {
 
 variable "container_image" {
   type        = string
-  description = "First-create image only. After that, just deploy-dev / az owns the pin; apply ignores this field (#73)."
+  description = "First-create image for this dev stack only. After that, just deploy-dev / az owns the pin; apply ignores this field (#73). Prod (#12) will keep container_image under Terraform."
   default     = "ghcr.io/pixelbar/pixel:main"
 }
 
