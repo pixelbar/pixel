@@ -16,6 +16,7 @@ import {
 	discordActor,
 	type IncomingAutocomplete,
 	type IncomingCommand,
+	pickFormFields,
 	WRONG_GUILD_MESSAGE,
 } from "./handlers.ts";
 
@@ -46,6 +47,35 @@ function fakeInteraction(overrides: Partial<IncomingCommand> = {}) {
 		...overrides,
 	} satisfies IncomingCommand;
 }
+
+describe("pickFormFields", () => {
+	const text: FormOption = {
+		name: "text",
+		description: "Message",
+		type: "string",
+		form: { style: "paragraph", maxLength: 2000 },
+	};
+	const question: FormOption = {
+		name: "question",
+		description: "Question",
+		type: "string",
+		form: { style: "short", maxLength: 300 },
+	};
+
+	it("keeps every declared field when names are omitted", () => {
+		expect(pickFormFields([text, question], undefined)).toEqual([text, question]);
+	});
+
+	it("returns nothing when the list is empty, so the form is skipped", () => {
+		expect(pickFormFields([text, question], [])).toEqual([]);
+	});
+
+	it("picks named fields and makes them required, dropping unknown names", () => {
+		expect(pickFormFields([text, question], ["question", "nope"])).toEqual([
+			{ ...question, required: true },
+		]);
+	});
+});
 
 describe("createCommandHandler", () => {
 	it.each([

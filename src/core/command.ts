@@ -134,11 +134,15 @@ export type BeforeFormContext = {
 /**
  * Extra form chrome from `beforeForm`. `title` is the heading (the time Pixel
  * understood, say). `values` prefills fields by option name, so an edit can
- * open with the text that's already saved.
+ * open with the text that's already saved. `fields` names the declared form
+ * fields to show (a message's text, or a poll's question and answers). An empty
+ * list skips the form so the handler can reply instead (a list of the caller's
+ * schedules, say). Omitted `fields` means every declared form field.
  */
 export type BeforeFormResult = {
 	title?: string;
 	values?: Readonly<Record<string, string>>;
+	fields?: readonly string[];
 };
 
 type Runnable = {

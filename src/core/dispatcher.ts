@@ -501,12 +501,18 @@ export type ValidInput = {
 export type FormOption = Extract<CommandOption, { type: "string" }> & { form: FormField };
 
 /**
- * Whether an adapter should open a form. `title` and `values` come from
- * `beforeForm` (the time Pixel understood, or text already saved, say).
+ * Whether an adapter should open a form. `title`, `values` and `fields` come
+ * from `beforeForm` (the time Pixel understood, text already saved, or which
+ * fields to show). An empty `fields` list means skip the form and dispatch.
  */
 export type FormPrep =
 	| { ready: false; refuse: DispatchResult }
-	| { ready: true; title?: string; values?: Readonly<Record<string, string>> };
+	| {
+			ready: true;
+			title?: string;
+			values?: Readonly<Record<string, string>>;
+			fields?: readonly string[];
+	  };
 
 export type ValidateArgsFlags = {
 	/**

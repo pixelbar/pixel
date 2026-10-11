@@ -22,8 +22,10 @@ const AMS = "Europe/Amsterdam";
 // Monday 12 October 2026, 10:00 in Amsterdam.
 const NOW = new Date("2026-10-12T08:00:00Z");
 const CHANNEL = "100000000000000050";
+const OTHER_MEMBER = "100000000000000012";
 const PEOPLE: Record<string, { tier: Tier; holds: string[] }> = {
 	[IDS.member]: { tier: "member", holds: [SCHEDULE_CAPABILITY.name] },
+	[OTHER_MEMBER]: { tier: "member", holds: [SCHEDULE_CAPABILITY.name] },
 	[IDS.admin]: { tier: "admin", holds: [] },
 	[IDS.friend]: { tier: "friend", holds: [SCHEDULE_CAPABILITY.name] },
 };
@@ -106,16 +108,41 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 		option: string,
 		typed: string,
 		args: Record<string, string> = {},
+		userId = IDS.member,
 	) =>
 		dispatcher.suggest({
-			actor: actor({ userId: IDS.member }),
+			actor: actor({ userId }),
 			command: "schedule",
 			subcommand,
 			option,
 			typed,
 			args,
 		});
-	return { store, posts, poster, posted, feature, run, message, poll, suggest, dispatcher, info };
+	const form = (
+		subcommand: string,
+		args: Record<string, string | boolean> = {},
+		userId = IDS.member,
+	) =>
+		dispatcher.prepareForm({
+			actor: actor({ userId, displayName: "Ada" }),
+			command: "schedule",
+			subcommand,
+			args,
+		});
+	return {
+		store,
+		posts,
+		poster,
+		posted,
+		feature,
+		run,
+		message,
+		poll,
+		suggest,
+		form,
+		dispatcher,
+		info,
+	};
 }
 
 const text = (
@@ -463,6 +490,172 @@ describe("when is free-form text", () => {
 	it("confirms the interpreted time in the space's zone", async () => {
 		const shown = text((await setup().message({ when: "tomorrow 9am" })).reply.embeds?.[0]);
 		expect(shown).toContain("Understood as **Tue 13 Oct 2026, 09:00** (Europe/Amsterdam).");
+	});
+});
+
+describe("/schedule edit", () => {
+	async function withTwoOwners() {
+		const ctx = setup();
+		await ctx.message({ name: "Mine", text: "Pizza night tonight!" });
+		await ctx.run(
+			"message",
+			{ channel: CHANNEL, when: "wed 19:00", text: "Someone else's post", name: "Theirs" },
+			{ userId: OTHER_MEMBER, channel: channel() },
+		);
+		const mine = ctx.store.all().find((s) => s.createdBy.ref === `discord:${IDS.member}`);
+		const theirs = ctx.store.all().find((s) => s.createdBy.ref === `discord:${OTHER_MEMBER}`);
+		return {
+			...ctx,
+			mine: mine as NonNullable<typeof mine>,
+			theirs: theirs as NonNullable<typeof theirs>,
+		};
+	}
+
+	it("lists only this user's still-upcoming posts, privately", async () => {
+		const { run, mine } = await withTwoOwners();
+		const result = await run("edit", {});
+		expect(result.private).toBe(true);
+		const shown = text(result.reply.embeds?.[0]);
+		expect(shown).toContain("Your scheduled posts");
+		expect(shown).toContain("Mine");
+		expect(shown).toContain(mine.id);
+		expect(shown).not.toContain("Theirs");
+		expect(shown).not.toContain("Someone else's post");
+	});
+
+	it("says so privately when this user has nothing left to edit", async () => {
+		const result = await setup().run("edit", {});
+		expect(result.private).toBe(true);
+		expect(text(result.reply.embeds?.[0])).toContain("no scheduled posts left to edit");
+	});
+
+	it("edits this user's message text and keeps it in the same store", async () => {
+		const { run, store, mine, info } = await withTwoOwners();
+		const result = await run("edit", { schedule: mine.id, text: "Updated pizza note" });
+		expect(result.private).toBe(true);
+		expect(text(result.reply.embeds?.[0])).toContain("✅ Updated: Mine");
+		expect(store.get(mine.id)?.post).toEqual({
+			kind: "message",
+			text: "Updated pizza note",
+			mentions: false,
+		});
+		expect(store.get(mine.id)?.createdBy.ref).toBe(`discord:${IDS.member}`);
+		expect(info).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: "schedule.edited",
+				id: mine.id,
+				kind: "message",
+				user: `discord:${IDS.member}`,
+			}),
+			expect.any(String),
+		);
+		expect(JSON.stringify(info.mock.calls)).not.toContain("Updated pizza note");
+		expect(JSON.stringify(info.mock.calls)).not.toContain("Pizza night tonight!");
+	});
+
+	it("edits a poll's question and answers", async () => {
+		const ctx = setup();
+		await ctx.poll({ name: "Vote" });
+		const id = ctx.store.all()[0]?.id as string;
+		await ctx.run("edit", {
+			schedule: id,
+			question: "Still coming?",
+			answers: "Yes\nNo",
+		});
+		expect(ctx.store.get(id)?.post).toEqual({
+			kind: "poll",
+			question: "Still coming?",
+			answers: ["Yes", "No"],
+			durationHours: 24,
+			multiple: false,
+		});
+	});
+
+	it("edits when and repeat when they are already stored", async () => {
+		const { run, store, mine } = await withTwoOwners();
+		const result = await run("edit", {
+			schedule: mine.id,
+			when: "thu 20:00",
+			repeat: "weekly",
+			days: "thu",
+			name: "Thursday pizza",
+		});
+		expect(store.get(mine.id)).toMatchObject({
+			name: "Thursday pizza",
+			start: "2026-10-15T20:00",
+			recurrence: { kind: "weekly", everyWeeks: 1, days: ["thu"] },
+			post: { kind: "message", text: "Pizza night tonight!" },
+		});
+		expect(text(result.reply.embeds?.[0])).toContain("every Thursday at 20:00");
+	});
+
+	it("refuses someone else's schedule, an unknown id, and a one-off that already posted, without leaking", async () => {
+		const { run, store, mine, theirs } = await withTwoOwners();
+		store.update(mine.id, { lastRunAt: "2026-10-14T17:00:00.000Z" });
+		for (const schedule of [theirs.id, "zzzzzz", mine.id, "Theirs"]) {
+			const result = await run("edit", { schedule });
+			expect(result.reply.text).toBe("I can't edit that schedule.");
+			expect(result.private).toBe(true);
+		}
+		expect(store.get(theirs.id)?.post).toMatchObject({ text: "Someone else's post" });
+		expect(store.get(mine.id)?.post).toMatchObject({ text: "Pizza night tonight!" });
+	});
+
+	it("needs the same access as /schedule", async () => {
+		const admin = await setup().run("edit", {}, { userId: IDS.admin });
+		expect(admin.reply.text).toBe(MESSAGES.deniedTier);
+		const friend = await setup().run("edit", {}, { userId: IDS.friend });
+		expect(friend.reply.text).toBe(MESSAGES.deniedTier);
+		const guest = await setup().run("edit", {}, { userId: IDS.guest });
+		expect(guest.reply.text).toBe(MESSAGES.deniedTier);
+	});
+
+	it("opens the form with this user's current text, and skips it when listing", async () => {
+		const { form, mine, theirs } = await withTwoOwners();
+		expect(await form("edit", {})).toEqual({ ready: true, fields: [] });
+		expect(await form("edit", { schedule: mine.id })).toEqual({
+			ready: true,
+			title: "Edit · Wed 14 Oct 2026, 19:00",
+			values: { text: "Pizza night tonight!" },
+			fields: ["text"],
+		});
+		const refused = await form("edit", { schedule: theirs.id });
+		expect(refused).toEqual({
+			ready: false,
+			refuse: { reply: { text: "I can't edit that schedule." }, private: true },
+		});
+	});
+
+	it("prefills a poll's question and answers on the form", async () => {
+		const ctx = setup();
+		await ctx.poll({ name: "Vote" });
+		const id = ctx.store.all()[0]?.id as string;
+		expect(await ctx.form("edit", { schedule: id })).toEqual({
+			ready: true,
+			title: "Edit · Wed 14 Oct 2026, 19:00",
+			values: { question: "Who's coming?", answers: "Yes\nNo\nMaybe" },
+			fields: ["question", "answers"],
+		});
+	});
+
+	it("refuses a bad when without opening the form, and does not save", async () => {
+		const { form, store, mine } = await withTwoOwners();
+		const bad = await form("edit", { schedule: mine.id, when: "someday" });
+		expect(bad.ready).toBe(false);
+		if (!bad.ready) expect(bad.refuse.reply.text).toMatch(/couldn't understand that time/);
+		expect(store.get(mine.id)?.start).toBe("2026-10-14T19:00");
+	});
+
+	it("suggests only this user's still-upcoming schedules", async () => {
+		const { suggest, store, mine, theirs } = await withTwoOwners();
+		expect(await suggest("edit", "schedule", "")).toEqual([
+			{ name: `Mine (${mine.id})`, value: mine.id },
+		]);
+		expect(await suggest("edit", "schedule", "Thei")).toEqual([]);
+		expect(await suggest("edit", "schedule", theirs.id)).toEqual([]);
+		store.update(mine.id, { lastRunAt: "2026-10-14T17:00:00.000Z" });
+		expect(await suggest("edit", "schedule", "")).toEqual([]);
+		expect(await suggest("delete", "schedule", "")).toHaveLength(2);
 	});
 });
 

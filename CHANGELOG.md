@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/schedule edit` lets the Discord user who scheduled a post or poll change it before it goes out (content, and optionally `when` / repeat / name). Autocomplete and the list show only their still-upcoming items. Already-posted or other people's schedules get a generic refusal.
+
 ## [0.3.0] - 2026-10-10
 
 ### Added
