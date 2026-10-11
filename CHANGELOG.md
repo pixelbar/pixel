@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Home Assistant operator docs: setup on a test instance, threat model, [ADR 0011](docs/adr/0011-home-assistant.md), and a runbook step for a door action that looks wrong.
+
 ## [0.7.1] - 2026-10-11
 
 ### Fixed

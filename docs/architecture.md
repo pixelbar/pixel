@@ -1,6 +1,6 @@
 # Pixel architecture
 
-> Status: **living draft**. The bot is built; Azure bootstrap is applied; Container App `pixel-dev` is live. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md).
+> Status: **living draft**. The bot is built; Azure bootstrap is applied; Container App `pixel-dev` is live. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md). Home Assistant setup and threat model: [`home-assistant.md`](home-assistant.md) ([ADR 0011](adr/0011-home-assistant.md)).
 
 ## Goals
 
@@ -207,7 +207,7 @@ Mastodon is **outbound only**: Pixel toots announcements and never reads mention
 
 ## Home Assistant (a client, not an adapter)
 
-Pixel can read and control a Home Assistant (HA) instance: lights, switches, doors. Unlike Discord this is not a place where commands come from. Pixel is the client, and features reach HA only through the core `Home` (`core/home.ts`), the same way they use the calendar. The adapter in `adapters/home-assistant/` is the **only** place that imports the official `home-assistant-js-websocket` library, and it plugs a backend into `Home` at startup.
+Pixel can read and control a Home Assistant (HA) instance: lights, switches, doors. Unlike Discord this is not a place where commands come from. Pixel is the client, and features reach HA only through the core `Home` (`core/home.ts`), the same way they use the calendar. The adapter in `adapters/home-assistant/` is the **only** place that imports the official `home-assistant-js-websocket` library (WebSocket API, not REST), and it plugs a backend into `Home` at startup. Setup on a test instance and the threat model: [`home-assistant.md`](home-assistant.md). Why WebSocket, a non-admin token, no inbound webhooks, and an allow-list: [ADR 0011](adr/0011-home-assistant.md).
 
 - **Connection:** `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN`, a long-lived token. Both unset means off, and only one set stops startup. It connects in the background and reconnects forever, so a slow or absent HA never holds up the bot, and it doesn't count towards `/healthz`: HA being down shouldn't restart Pixel. On Azure, prefer a **Tailscale sidecar** so the container reaches HA on the LAN (#9, #43). A **Nabu Casa** URL still works and is what local/dev use today.
 - **A non-admin token:** HA can't scope a token, so a long-lived token can do whatever its user can. Use a **non-admin** HA user: that blocks the admin-only commands. Pixel asks HA whose token it is (`auth/current_user`) and warns, in the logs and Sentry, if it belongs to an admin. `/admin status` shows the warning too. The real fence is Pixel's own allow-list of devices (below).
@@ -501,3 +501,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
 | 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
 | 0009 | Container Apps module + `dev`: one replica, required Azure Files volume, Key Vault, optional Tailscale sidecar | accepted |
 | 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` publishes GHCR only (prod CD off until #12) | accepted |
+| 0011 | Home Assistant: official WebSocket client, non-admin token, no inbound webhooks, allow-list is the fence | accepted |

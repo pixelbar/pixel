@@ -18,7 +18,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Running Pixel today](#running-pixel-today)
 - [Access lists](#access-lists)
 - [Moderation](#moderation)
-- [Home Assistant](#home-assistant)
+- [Home Assistant](#home-assistant) (setup and threat model: [`home-assistant.md`](home-assistant.md))
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
@@ -58,6 +58,8 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, **Where** `local` or `cloud`, Node, uptime, access list counts, Discord roles, Home Assistant) |
 | Check readiness from outside | `GET /healthz` (process is up) and `GET /readyz` (200 only while the Discord gateway is connected, otherwise 503), on `HEALTH_PORT` (default 8080) |
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
+| Set up Home Assistant on a test instance | [`home-assistant.md`](home-assistant.md) |
+| A door action looks wrong | [If a door action looks wrong](#if-a-door-action-looks-wrong) |
 | Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
 | Check the config files without starting Pixel | `just validate-config` |
 | Make Discord pick up new or changed commands | `just register` (after a deploy that changes commands, including `/closing-time`) |
@@ -150,6 +152,8 @@ If you suspect someone's **account was taken over** (for example it is unlocking
 
 ## Home Assistant
 
+First-time setup (dedicated non-admin user, token, URL, devices file) and the threat model: [`home-assistant.md`](home-assistant.md). Why those choices: [ADR 0011](adr/0011-home-assistant.md).
+
 Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** HA user, and can only touch the devices in `config/home-assistant/devices.yaml` (read [`architecture.md`](architecture.md), "Home Assistant"). `/admin status` shows whether it's connected, how many devices are allowed and how many it knows of.
 
 **Add a device:** open `config/home-assistant/inventory.yaml` (Pixel rewrites it from HA; it lists what exists and allows nothing). Copy the entry you want into `devices.yaml`, then set who may use it (`minTier`) and which `actions` are allowed (none means read-only). Run `just validate-config`, then `/admin reload`: the reply says how many devices there are and warns about entities HA doesn't know. Nothing in the inventory is usable until it's in `devices.yaml`.
@@ -158,9 +162,21 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 **Doors:** members with `ha-doors` (or `ha-admin`) can lock or unlock a door with `/ha set`, or unlock with `/ha open door:`. Pixel never unlatches (`open` / `lock.open`); drop `open` from `devices.yaml` if it's still listed, or `just validate-config` refuses the file. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
 
-**Stop all door control at once:** `/admin doors off` (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin doors on`. It survives restarts. Check it in `/admin status`. If you think an account with door access was taken over: `/admin doors off` first, then revoke their capabilities (see [Moderation](#moderation)), then look at what it did by searching the logs for `"kind":"door"` and their ID. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin doors on` fixes it.
+**Stop all door control at once:** `/admin doors off` (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin doors on`. It survives restarts. Check it in `/admin status`. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin doors on` fixes it.
 
 **Emergency stop for everything:** revoke Pixel's token **in Home Assistant** (profile of the Pixel user → Security → Long-lived access tokens → delete). Pixel's next call is refused and the connection turns off. It takes effect at once and doesn't depend on Pixel being healthy. To bring it back, make a new token and put it in `HOME_ASSISTANT_TOKEN` (see [Secrets](#secrets)).
+
+### If a door action looks wrong
+
+Someone unlocked (or locked) a door who shouldn't have, a door moved when nobody asked, or `/ha` reported a result that doesn't match the physical door.
+
+1. **Stop Pixel's door control now:** `/admin doors off`. That is enough if the problem is only Pixel. It does not lock the physical door.
+2. **If anything still moves,** or you don't trust the Home Assistant user: delete Pixel's long-lived token in HA (emergency stop above). That stops every Pixel action, not only doors.
+3. **Check the physical door** and, if you can, Home Assistant's own logbook for that lock.
+4. **Find who Pixel thinks did it.** Search the logs for `"kind":"door"` and `home.action` / `home.action_denied` (see [Moderation](#moderation)). Act on the Discord ID, never the name. A matching nickname is not evidence.
+5. **If that Discord account looks taken over:** Discord ban or timeout, `/admin level set` to guest, revoke `ha-doors` and `ha-admin` (see [Moderation](#moderation)). Keep doors off until you know they can't do it again.
+6. **If the token or the HA admin looks leaked:** rotate the Home Assistant token (and the HA admin password) as in [Secrets](#secrets). Treat a leaked HA admin as a building incident, not only a Pixel one.
+7. Tell the board what you stopped, which ID you found, and whether the physical door was open.
 
 **If Home Assistant is unreachable:** see [Incidents](#incidents).
 
