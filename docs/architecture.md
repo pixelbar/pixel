@@ -200,7 +200,7 @@ Mastodon is **outbound only**: Pixel toots announcements and never reads mention
 - **Account agnostic.** `MASTODON_INSTANCE` (the instance origin) and `MASTODON_ACCESS_TOKEN` (a secret, scope `write:statuses`) come from config. `MASTODON_ACCOUNT` is an optional public handle for logs; the token decides which account posts. No instance or account is hard-coded.
 - **Both unset means off.** Discord keeps working. Setting only the instance or only the token is a mistake and stops startup, like Home Assistant. `off` / `none` in `MASTODON_ANNOUNCE_KINDS` leaves the publisher unregistered even with credentials.
 - **Kinds.** Default `space.status` (open/closed). Operators can add `closing.time` or `bot.status` via `MASTODON_ANNOUNCE_KINDS`. Each toot uses the portable `text` field, never Discord embeds or markdown.
-- **Mentions and length.** `@` in the text is broken so it cannot ping anyone. Statuses are clipped to 500 characters (Mastodon's default). Visibility is `public` or `unlisted` (`MASTODON_VISIBILITY`); never `private` or `direct`.
+- **Mentions and length.** `@` in the text is broken so it cannot ping anyone. Statuses are clipped to 500 characters (Mastodon's default). Visibility is `unlisted` by default, or `public` (`MASTODON_VISIBILITY`); never `private` or `direct`. Unlisted reaches followers without putting every open/close on the instance's local timeline.
 - **Outage.** A rejected or unreachable instance throws from the publisher; the announcer reports it (`announcer:mastodon`) and the other publishers still run. Redirects are refused so the bearer token is never sent to another host. Reconcile is a no-op: Mastodon is a log of toots, not a live card.
 - **Flood.** Open/closed toggles are already confirmed by the status feature (two polls) before anything is announced. Mastodon does not drop a confirmed change.
 - **Tests** map kinds to toot text with plain objects and mock `fetch` at the client boundary, never a live instance.
@@ -438,7 +438,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `MASTODON_INSTANCE`           |        | Optional, with the token. Origin of the Mastodon instance (http or https). A path is stripped so only the origin is used. Never hard-coded |
 | `MASTODON_ACCESS_TOKEN`       | yes    | Optional, with the instance. An access token with **`write:statuses`** only. A secret. Both unset means the publisher is off |
 | `MASTODON_ACCOUNT`            |        | Optional. Public handle for logs only (`user@instance`). The token decides which account posts |
-| `MASTODON_VISIBILITY`         |        | Optional. `public` (default) or `unlisted`. Never `private` or `direct` |
+| `MASTODON_VISIBILITY`         |        | Optional. `unlisted` (default) or `public`. Never `private` or `direct` |
 | `MASTODON_ANNOUNCE_KINDS`     |        | Optional. Comma-separated kinds to toot. Default `space.status`. `off` / `none` turns toots off |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |

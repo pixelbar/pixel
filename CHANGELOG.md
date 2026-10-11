@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- Mastodon publisher: when `MASTODON_INSTANCE` and `MASTODON_ACCESS_TOKEN` are set, space open/closed announcements are tooted on the configured account. Other kinds stay off unless `MASTODON_ANNOUNCE_KINDS` lists them. Unset means off; a Mastodon outage is reported and does not affect Discord.
+- Mastodon publisher: when `MASTODON_INSTANCE` and `MASTODON_ACCESS_TOKEN` are set, space open/closed announcements are tooted on the configured account (visibility defaults to `unlisted`). Other kinds stay off unless `MASTODON_ANNOUNCE_KINDS` lists them. Unset means off; a Mastodon outage is reported and does not affect Discord.
 
 ## [0.6.0] - 2026-10-11
 

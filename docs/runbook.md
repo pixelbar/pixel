@@ -240,7 +240,7 @@ Pixel can toot announcements to a configured Mastodon account. It is **outbound 
 1. On the instance, create an application (Preferences → Development → New application). Name it something like `Pixel`. Scopes: **`write:statuses` only**. Do not enable read, follow or admin scopes.
 2. Mark the account as a bot and follow that instance's rules for automated accounts.
 3. Set `MASTODON_INSTANCE` to the instance origin (`https://mastodon.example`) and `MASTODON_ACCESS_TOKEN` to the access token. Set both or neither.
-4. Optional: `MASTODON_ACCOUNT` (public handle, logs only), `MASTODON_VISIBILITY` (`public` default, or `unlisted` to stay off the local timeline), `MASTODON_ANNOUNCE_KINDS` (default `space.status`; add `closing.time` or `bot.status` if you want those too; `off` / `none` turns toots off).
+4. Optional: `MASTODON_ACCOUNT` (public handle, logs only), `MASTODON_VISIBILITY` (`unlisted` default, or `public` for the local timeline), `MASTODON_ANNOUNCE_KINDS` (default `space.status`; add `closing.time` or `bot.status` if you want those too; `off` / `none` turns toots off).
 5. Restart Pixel. A line `publisher ready` with `publisher: mastodon` means it registered. The first confirmed space open or close should appear on the account.
 
 **Turn it off:** unset `MASTODON_INSTANCE` and `MASTODON_ACCESS_TOKEN` (or set `MASTODON_ANNOUNCE_KINDS` to `off`). Discord is unchanged.

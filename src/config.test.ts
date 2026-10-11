@@ -407,7 +407,7 @@ describe("Mastodon settings", () => {
 			instanceUrl: INSTANCE,
 			token: TOKEN,
 			account: "pixel@mastodon.example",
-			visibility: "public",
+			visibility: "unlisted",
 			kinds: ["space.status"],
 		});
 	});
@@ -418,11 +418,11 @@ describe("Mastodon settings", () => {
 				...VALID,
 				MASTODON_INSTANCE: INSTANCE,
 				MASTODON_ACCESS_TOKEN: TOKEN,
-				MASTODON_VISIBILITY: "unlisted",
+				MASTODON_VISIBILITY: "public",
 				MASTODON_ANNOUNCE_KINDS: "space.status, closing.time",
 			}).mastodon,
 		).toMatchObject({
-			visibility: "unlisted",
+			visibility: "public",
 			kinds: ["space.status", "closing.time"],
 		});
 	});

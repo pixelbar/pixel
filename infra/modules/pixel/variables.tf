@@ -157,6 +157,17 @@ variable "home_assistant_url" {
   }
 }
 
+variable "mastodon_instance" {
+  type        = string
+  default     = null
+  description = "Optional. MASTODON_INSTANCE origin (http or https). Not a secret. The access token is a Key Vault secret. Set both or neither."
+
+  validation {
+    condition     = var.mastodon_instance == null || can(regex("^https?://", var.mastodon_instance))
+    error_message = "mastodon_instance must be an http(s) URL or unset."
+  }
+}
+
 variable "sentry_enabled" {
   type        = bool
   default     = false
@@ -208,6 +219,14 @@ variable "home_assistant_token" {
   sensitive   = true
   default     = null
   description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+}
+
+variable "mastodon_access_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "MASTODON_ACCESS_TOKEN. Required when write_secrets is true and mastodon_instance is set."
 }
 
 variable "sentry_dsn" {

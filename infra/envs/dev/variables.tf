@@ -114,6 +114,12 @@ variable "home_assistant_url" {
   description = "Optional Nabu Casa or Tailscale/LAN URL. The token is an ephemeral input / Key Vault secret. Set both or neither."
 }
 
+variable "mastodon_instance" {
+  type        = string
+  default     = null
+  description = "Optional Mastodon instance origin. The access token is an ephemeral input / Key Vault secret. Set both or neither."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false
@@ -154,6 +160,14 @@ variable "home_assistant_token" {
   sensitive   = true
   default     = null
   description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
+}
+
+variable "mastodon_access_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "MASTODON_ACCESS_TOKEN. Required when write_secrets is true and mastodon_instance is set."
 }
 
 variable "sentry_dsn" {

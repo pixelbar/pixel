@@ -27,6 +27,10 @@ discord_guild_id = "100000000000000002"
 # home-assistant-token as well, or leave both unset (HA off).
 # home_assistant_url = "https://example.ui.nabu.casa"
 
+# Mastodon publisher (outbound). Set the matching Key Vault secret
+# mastodon-access-token as well, or leave both unset (off).
+# mastodon_instance = "https://mastodon.example"
+
 sentry_enabled    = false
 tailscale_enabled = false
 
@@ -36,6 +40,7 @@ tailscale_enabled = false
 # discord_token   = "..."
 # admins_yaml_file = "../../../config/admins.yaml"
 # home_assistant_token = "..."
+# mastodon_access_token = "..."
 # sentry_dsn           = "..."
 # tailscale_auth_key   = "..."
 # container_registry_password = "..."

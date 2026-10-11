@@ -19,6 +19,7 @@ module "pixel" {
   discord_role_member                  = var.discord_role_member
   discord_role_friend                  = var.discord_role_friend
   home_assistant_url                   = var.home_assistant_url
+  mastodon_instance                    = var.mastodon_instance
   sentry_enabled                       = var.sentry_enabled
   tailscale_enabled                    = var.tailscale_enabled
   tailscale_image                      = var.tailscale_image
@@ -29,6 +30,7 @@ module "pixel" {
   admins_yaml                          = var.admins_yaml
   admins_yaml_file                     = var.admins_yaml_file
   home_assistant_token                 = var.home_assistant_token
+  mastodon_access_token                = var.mastodon_access_token
   sentry_dsn                           = var.sentry_dsn
   tailscale_auth_key                   = var.tailscale_auth_key
 }

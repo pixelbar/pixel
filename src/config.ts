@@ -241,7 +241,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 						instanceUrl: new URL(e.MASTODON_INSTANCE).origin,
 						token: e.MASTODON_ACCESS_TOKEN,
 						account: e.MASTODON_ACCOUNT,
-						visibility: e.MASTODON_VISIBILITY ?? "public",
+						visibility: e.MASTODON_VISIBILITY ?? "unlisted",
 						kinds: e.MASTODON_ANNOUNCE_KINDS ?? ["space.status"],
 					}
 				: undefined,
