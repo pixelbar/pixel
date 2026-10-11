@@ -88,14 +88,14 @@ describe("/closing-time", () => {
 
 	it("fills tokens at post time, then escapes the portable field once", async () => {
 		const { command, announced } = setup({
-			message: "Lock up **now** — {{day}} {{date}}. See {{unknown}}.",
+			message: "Lock up **now** — {{day}} {{date}}, back {{day+2}}. See {{unknown}}.",
 		});
 		await command.handler(context());
 		expect(announced).toEqual([
 			{
 				kind: "closing.time",
-				body: "Lock up **now** — Saturday 10 October 2026. See {{unknown}}.",
-				text: "Lock up \\*\\*now\\*\\* — Saturday 10 October 2026. See {{unknown}}.",
+				body: "Lock up **now** — Saturday 10 October 2026, back Monday. See {{unknown}}.",
+				text: "Lock up \\*\\*now\\*\\* — Saturday 10 October 2026, back Monday. See {{unknown}}.",
 				at: AT,
 			},
 		]);

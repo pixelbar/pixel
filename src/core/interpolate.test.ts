@@ -68,8 +68,32 @@ describe("interpolate", () => {
 		expect(fill.interpolate("see {{unknown}} and {{spaceState}}")).toBe(
 			"see {{unknown}} and {{spaceState}}",
 		);
-		expect(fill.interpolate("{{}} {{ date + 1 }} {{constructor}} {{DATE}}")).toBe(
-			"{{}} {{ date + 1 }} {{constructor}} {{DATE}}",
+		expect(
+			fill.interpolate("{{}} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}"),
+		).toBe("{{}} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}");
+	});
+
+	it("shifts a known date token by whole calendar days", () => {
+		const fill = interpolator(SUNDAY);
+		expect(fill.interpolate("{{date+2}} {{day+2}}")).toBe("13 October 2026 Tuesday");
+		expect(fill.interpolate("Open {{ day + 2 }} ({{ date + 2 }})")).toBe(
+			"Open Tuesday (13 October 2026)",
+		);
+		expect(fill.interpolate("{{date-1}} {{day-1}}")).toBe("10 October 2026 Saturday");
+		expect(fill.interpolate("{{dateWithTime+2}}")).toBe("13 October 2026, 06:54 CEST");
+	});
+
+	it("rolls the month and year, and keeps the wall-clock time", () => {
+		// 31 December 2026, 23:00 in Amsterdam (CET) is 22:00 UTC.
+		const nye = new Date("2026-12-31T22:00:00.000Z");
+		expect(interpolator(nye).interpolate("{{date+1}} {{day+1}} {{month+1}} {{year+1}}")).toBe(
+			"1 January 2027 Friday January 2027",
+		);
+	});
+
+	it("leaves a day offset larger than a year as written", () => {
+		expect(interpolator().interpolate("{{date+367}} {{date-367}}")).toBe(
+			"{{date+367}} {{date-367}}",
 		);
 	});
 

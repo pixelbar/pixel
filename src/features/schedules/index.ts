@@ -267,7 +267,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								form: {
 									style: "paragraph",
 									maxLength: MAX_MESSAGE_LENGTH,
-									placeholder: "What to post. Markdown works. {{date}} fills in when posted.",
+									placeholder:
+										"What to post. Markdown works. {{date}} and {{date+2}} fill when posted.",
 								},
 							},
 							repeatOption,
@@ -311,7 +312,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								form: {
 									style: "short",
 									maxLength: MAX_POLL_QUESTION,
-									placeholder: "Question. {{date}} fills in when posted.",
+									placeholder: "Question. {{date}} / {{date+2}} fill when posted.",
 								},
 							},
 							{
