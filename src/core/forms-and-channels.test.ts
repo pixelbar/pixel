@@ -275,6 +275,30 @@ describe("prepareForm", () => {
 		).toEqual({ ready: true, values: { text: "Please tidy the kitchen." } });
 	});
 
+	it("passes which form fields to show, including an empty list that skips the form", async () => {
+		const dispatcher = build([
+			command({
+				name: "edit",
+				options: [text, { name: "schedule", description: "Which", type: "string" }],
+				beforeForm: async ({ args }) =>
+					args.schedule === undefined
+						? { fields: [] }
+						: { fields: ["text"], values: { text: "saved" } },
+			}),
+		]);
+		expect(await dispatcher.prepareForm({ actor: actor(), command: "edit", args: {} })).toEqual({
+			ready: true,
+			fields: [],
+		});
+		expect(
+			await dispatcher.prepareForm({
+				actor: actor(),
+				command: "edit",
+				args: { schedule: "ab2c3d" },
+			}),
+		).toEqual({ ready: true, fields: ["text"], values: { text: "saved" } });
+	});
+
 	it("does not require form fields yet, so a long body isn't asked for against a bad option", async () => {
 		const dispatcher = build([
 			command({

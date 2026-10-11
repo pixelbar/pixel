@@ -384,6 +384,35 @@ describe("commands with a form", () => {
 		});
 	});
 
+	it("shows only the fields prepareForm named, so a poll edit does not ask for message text", async () => {
+		const dispatcher = fakeDispatcher([TEXT, QUESTION], {
+			ready: true,
+			fields: ["question"],
+			values: { question: "Who's coming?" },
+		});
+		const command = incoming();
+		await createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 })(command);
+		const [shown] = vi.mocked(command.showModal).mock.calls[0] as [ReturnType<typeof formModal>];
+		expect(shown.components).toHaveLength(1);
+		expect(shown.components[0]?.components[0]).toMatchObject({
+			custom_id: "question",
+			value: "Who's coming?",
+			required: true,
+		});
+		expect(dispatcher.dispatch).not.toHaveBeenCalled();
+	});
+
+	it("skips the form and runs the command when prepareForm asks for no fields", async () => {
+		const dispatcher = fakeDispatcher([TEXT], { ready: true, fields: [] });
+		const command = incoming();
+		await createCommandHandler({ guildId: GUILD, dispatcher, deferAfterMs: 1500 })(command);
+		expect(command.showModal).not.toHaveBeenCalled();
+		expect(dispatcher.dispatch).toHaveBeenCalledWith(
+			expect.objectContaining({ command: "schedule", subcommand: "message" }),
+			expect.any(Object),
+		);
+	});
+
 	it("refuse a form that expired, was already used, or isn't theirs", async () => {
 		const forms = new PendingForms();
 		const dispatcher = fakeDispatcher([TEXT]);

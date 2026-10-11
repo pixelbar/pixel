@@ -1,5 +1,5 @@
 import type { PlatformActor } from "../../core/access.ts";
-import type { Dispatcher, DispatchRequest } from "../../core/dispatcher.ts";
+import type { Dispatcher, DispatchRequest, FormOption } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import { type DiscordOption, parseAutocomplete, parseOptions } from "./args.ts";
 import { formModal, PendingForms } from "./forms.ts";
@@ -97,16 +97,19 @@ export function createCommandHandler({
 				await interaction.reply(renderReply(prepared.refuse.reply, true));
 				return;
 			}
-			const fallback = [interaction.commandName, subgroup, subcommand].filter(Boolean).join(" ");
-			await interaction.showModal(
-				formModal(
-					forms.hold(request, fields),
-					prepared.title ?? `/${fallback}`,
-					fields,
-					prepared.values,
-				),
-			);
-			return;
+			const shown = pickFormFields(fields, prepared.fields);
+			if (shown.length > 0) {
+				const fallback = [interaction.commandName, subgroup, subcommand].filter(Boolean).join(" ");
+				await interaction.showModal(
+					formModal(
+						forms.hold(request, shown),
+						prepared.title ?? `/${fallback}`,
+						shown,
+						prepared.values,
+					),
+				);
+				return;
+			}
 		}
 		await run(interaction, request, dispatcher, deferAfterMs);
 	};
@@ -144,6 +147,23 @@ export function createModalHandler({
 			deferAfterMs,
 		);
 	};
+}
+
+/**
+ * Which form fields to show after `prepareForm`. Omitted `names` keeps every
+ * declared field. An empty list skips the form. Named fields are required on
+ * the modal so an edit can't submit a blank body.
+ */
+export function pickFormFields(
+	declared: FormOption[],
+	names: readonly string[] | undefined,
+): FormOption[] {
+	if (names === undefined) return declared;
+	const byName = new Map(declared.map((field) => [field.name, field]));
+	return names.flatMap((name) => {
+		const field = byName.get(name);
+		return field === undefined ? [] : [{ ...field, required: true }];
+	});
 }
 
 function run(

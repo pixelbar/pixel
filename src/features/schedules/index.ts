@@ -1,6 +1,8 @@
-import { type Access, actorRef } from "../../core/access.ts";
+import { type Access, actorLogFields, actorRef } from "../../core/access.ts";
 import type { ChannelPost, ChannelPosts } from "../../core/channel-posts.ts";
 import type {
+	BeforeFormContext,
+	BeforeFormResult,
 	CommandContext,
 	CommandOption,
 	SubcommandDefinition,
@@ -222,6 +224,147 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		return { title: describeWhen(start) };
 	}
 
+	const CANT_EDIT = "I can't edit that schedule.";
+
+	function ownEditable(principal: { platform: "discord"; userId: string }): Schedule[] {
+		const ref = actorRef(principal);
+		return deps.store
+			.all()
+			.filter((schedule) => schedule.createdBy.ref === ref && nextRun(schedule, zone, now()));
+	}
+
+	function findOwnEditable(
+		principal: { platform: "discord"; userId: string },
+		typed: string,
+	): Schedule | undefined {
+		return findSchedule(ownEditable(principal), typed);
+	}
+
+	function refuseEdit(ctx: {
+		logger: CommandContext["logger"];
+		principal: CommandContext["principal"];
+	}): never {
+		ctx.logger.info(
+			{ event: "schedule.edit_refused", ...actorLogFields(ctx.principal) },
+			"refused a schedule edit",
+		);
+		throw new UserFacingError(CANT_EDIT);
+	}
+
+	/** Apply optional `when` / `repeat` / `days` on top of what's already stored. */
+	function editTiming(
+		schedule: Schedule,
+		args: CommandContext["args"],
+	): {
+		start: LocalDateTime;
+		recurrence: Recurrence;
+	} {
+		const hasWhen = typeof args.when === "string" && args.when !== "";
+		const hasRepeat = typeof args.repeat === "string";
+		const hasDays = typeof args.days === "string";
+		const start = hasWhen ? parseWhen(String(args.when), now(), zone) : parseLocal(schedule.start);
+		if (!start) {
+			throw new UserFacingError(
+				`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
+			);
+		}
+		const repeat = (hasRepeat ? args.repeat : repeatOf(schedule.recurrence)) as Repeat;
+		const daysText = hasDays ? String(args.days) : undefined;
+		if (daysText !== undefined && repeat !== "weekly" && repeat !== "fortnightly") {
+			throw new UserFacingError("`days` only works with a weekly or fortnightly repeat.");
+		}
+		if (!hasWhen && !hasRepeat && !hasDays) {
+			return { start, recurrence: schedule.recurrence };
+		}
+		switch (repeat) {
+			case "weekly":
+			case "fortnightly": {
+				const days =
+					daysText === undefined
+						? schedule.recurrence.kind === "weekly"
+							? schedule.recurrence.days
+							: [weekdayOf(start)]
+						: parseDays(daysText);
+				if (!days || days.length === 0)
+					throw new UserFacingError(
+						"I couldn't understand those days. Try something like `wed sat`.",
+					);
+				return {
+					start,
+					recurrence: { kind: "weekly", everyWeeks: repeat === "weekly" ? 1 : 2, days },
+				};
+			}
+			case "monthly":
+				return { start, recurrence: { kind: "monthly", everyMonths: 1 } };
+			case "every-2-months":
+				return { start, recurrence: { kind: "monthly", everyMonths: 2 } };
+			default:
+				return { start, recurrence: { kind: "once" } };
+		}
+	}
+
+	async function prepareEditForm(ctx: BeforeFormContext): Promise<BeforeFormResult> {
+		const typed = typeof ctx.args.schedule === "string" ? ctx.args.schedule : "";
+		if (typed === "") return { fields: [] };
+		const schedule = findOwnEditable(ctx.principal, typed);
+		if (!schedule) refuseEdit(ctx);
+		if (
+			typeof ctx.args.when === "string" ||
+			typeof ctx.args.repeat === "string" ||
+			typeof ctx.args.days === "string"
+		) {
+			editTiming(schedule, ctx.args);
+		}
+		const next = nextRun(schedule, zone, now());
+		const title = next ? `Edit · ${describeWhen(toLocal(next, zone))}` : "Edit schedule";
+		if (schedule.post.kind === "message") {
+			return { title, values: { text: schedule.post.text }, fields: ["text"] };
+		}
+		return {
+			title,
+			values: {
+				question: schedule.post.question,
+				answers: schedule.post.answers.join("\n"),
+			},
+			fields: ["question", "answers"],
+		};
+	}
+
+	async function edit(ctx: CommandContext): Promise<Reply> {
+		const typed = typeof ctx.args.schedule === "string" ? ctx.args.schedule : "";
+		if (typed === "") {
+			return { embeds: [describeOwnList(ownEditable(ctx.principal), zone, now())], private: true };
+		}
+		const schedule = findOwnEditable(ctx.principal, typed);
+		if (!schedule) refuseEdit(ctx);
+		const timingChange =
+			typeof ctx.args.when === "string" ||
+			typeof ctx.args.repeat === "string" ||
+			typeof ctx.args.days === "string"
+				? editTiming(schedule, ctx.args)
+				: { start: parseLocal(schedule.start) as LocalDateTime, recurrence: schedule.recurrence };
+		const post = editedPost(schedule.post, ctx.args);
+		const name = typeof ctx.args.name === "string" ? cleanName(ctx.args.name) : schedule.name;
+		const updated = deps.store.update(schedule.id, {
+			post,
+			start: formatLocal(timingChange.start),
+			recurrence: timingChange.recurrence,
+			name,
+		});
+		if (!updated) refuseEdit(ctx);
+		ctx.logger.info(
+			{
+				event: "schedule.edited",
+				id: updated.id,
+				kind: post.kind,
+				...actorLogFields(ctx.principal),
+			},
+			"edited a schedule",
+		);
+		deps.reporter.breadcrumb("schedule", `edited ${updated.id}`, { id: updated.id });
+		return { embeds: [describeSchedule(updated, zone, now(), "✅ Updated")], private: true };
+	}
+
 	const manage = (
 		name: string,
 		description: string,
@@ -369,6 +512,57 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							private: true,
 						}),
 					},
+					{
+						name: "edit",
+						description: "Edit one of your scheduled posts before it goes out",
+						access: ACCESS,
+						private: true,
+						options: [
+							{
+								name: "schedule",
+								description: "Which of your schedules",
+								type: "string",
+								suggest: async ({ typed, principal }) =>
+									suggestSchedules(ownEditable(principal), typed),
+							},
+							{ ...whenOption, required: false },
+							repeatOption,
+							daysOption,
+							nameOption,
+							{
+								name: "text",
+								description: "Message",
+								type: "string",
+								form: {
+									style: "paragraph",
+									maxLength: MAX_MESSAGE_LENGTH,
+									placeholder: "What to post. Markdown works.",
+								},
+							},
+							{
+								name: "question",
+								description: "Question",
+								type: "string",
+								form: {
+									style: "short",
+									maxLength: MAX_POLL_QUESTION,
+									placeholder: "Question.",
+								},
+							},
+							{
+								name: "answers",
+								description: "Answers, one per line (2 to 10)",
+								type: "string",
+								form: {
+									style: "paragraph",
+									maxLength: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
+									placeholder: "Yes\nNo\nMaybe",
+								},
+							},
+						],
+						beforeForm: (ctx) => prepareEditForm(ctx),
+						handler: (ctx) => edit(ctx),
+					},
 					manage("preview", "See exactly what a scheduled post will look like", (schedule) =>
 						preview(schedule, zone, now()),
 					),
@@ -426,6 +620,30 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			return () => clearInterval(timer);
 		},
 	};
+}
+
+/** The stored body after an edit: only the fields that were sent change. */
+function editedPost(post: ChannelPost, args: CommandContext["args"]): ChannelPost {
+	if (post.kind === "message") {
+		const text = typeof args.text === "string" ? args.text.trim() : post.text;
+		if (text === "") throw new UserFacingError("The message can't be empty.");
+		return { ...post, text };
+	}
+	const question = typeof args.question === "string" ? args.question.trim() : post.question;
+	if (question === "") throw new UserFacingError("The question can't be empty.");
+	const answers = typeof args.answers === "string" ? parseAnswers(args.answers) : [...post.answers];
+	return { ...post, question, answers };
+}
+
+function repeatOf(recurrence: Recurrence): Repeat {
+	switch (recurrence.kind) {
+		case "weekly":
+			return recurrence.everyWeeks === 2 ? "fortnightly" : "weekly";
+		case "monthly":
+			return recurrence.everyMonths === 2 ? "every-2-months" : "monthly";
+		default:
+			return "once";
+	}
 }
 
 /** Answers from the form: one per line, trimmed, no blanks or repeats. */
@@ -520,6 +738,19 @@ function describeSchedule(schedule: Schedule, zone: string, now: Date, title: st
 
 function durationLabel(hours: number): string {
 	return Object.entries(DURATIONS).find(([, h]) => h === hours)?.[0] ?? `${hours} hours`;
+}
+
+function describeOwnList(schedules: readonly Schedule[], zone: string, now: Date): Embed {
+	if (schedules.length === 0) {
+		return {
+			title: "Your scheduled posts",
+			description:
+				"You have no scheduled posts left to edit. `/schedule message` and `/schedule poll` create them.",
+			accent: "neutral",
+		};
+	}
+	const listed = describeList(schedules, zone, now);
+	return { ...listed, title: `Your scheduled posts (${zone})` };
 }
 
 function describeList(schedules: readonly Schedule[], zone: string, now: Date): Embed {
