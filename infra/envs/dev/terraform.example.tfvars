@@ -9,7 +9,10 @@ subscription_id           = "d150e252-e2f0-47fb-8a4a-c3f29e9aebd4"
 prefix                    = "pixel"
 key_vault_name            = "pixel-dev-kv"
 data_storage_account_name = "pixeldevdata"
-container_image           = "ghcr.io/pixelbar/pixel:main"
+# First create only. Apply ignores the running Pixel image after that (#73);
+# just deploy-dev / az containerapp update owns the pin. Bumping this in
+# gitignored terraform.tfvars will not roll pixel-dev.
+container_image = "ghcr.io/pixelbar/pixel:main"
 
 # Until a maintainer makes ghcr.io/pixelbar/pixel public in the GitHub UI,
 # Azure cannot pull it (401). Set these and Key Vault secret ghcr-pull-token.

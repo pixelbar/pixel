@@ -200,6 +200,14 @@ resource "azurerm_container_app" "this" {
   tags = local.tags
 
   lifecycle {
+    # After first create, just deploy-dev / az containerapp update owns the
+    # running pin (ADR 0010). Apply still manages vault, volume, env and the
+    # replica pin. Without this, a stale container_image in gitignored tfvars
+    # would roll the bot backward (#73). Do not apply from CD to "fix" drift.
+    ignore_changes = [
+      template[0].container[0].image,
+    ]
+
     precondition {
       condition     = var.container_registry_server == null || (var.container_registry_username != null && var.container_registry_username != "")
       error_message = "container_registry_username is required when container_registry_server is set."

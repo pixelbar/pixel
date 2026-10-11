@@ -46,7 +46,7 @@ variable "data_storage_account_name" {
 
 variable "container_image" {
   type        = string
-  description = "Container image. #10 publishes ghcr.io/pixelbar/pixel:<sha>. A public GHCR tag is fine for a first apply; the image must not contain secrets or access files."
+  description = "First-create image only. After that, just deploy-dev / az owns the pin; the Container App ignores this field on apply (#73). A public GHCR tag is fine for a first apply; the image must not contain secrets or access files."
   default     = "ghcr.io/pixelbar/pixel:main"
 }
 
