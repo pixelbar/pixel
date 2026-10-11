@@ -4,12 +4,13 @@
 
 locals {
   managed_secret_values = {
-    "discord-token"        = var.discord_token
-    "admins-yaml"          = var.admins_yaml
-    "home-assistant-token" = var.home_assistant_token
-    "sentry-dsn"           = var.sentry_dsn
-    "tailscale-auth-key"   = var.tailscale_auth_key
-    "ghcr-pull-token"      = var.container_registry_password
+    "discord-token"         = var.discord_token
+    "admins-yaml"           = var.admins_yaml
+    "home-assistant-token"  = var.home_assistant_token
+    "mastodon-access-token" = var.mastodon_access_token
+    "sentry-dsn"            = var.sentry_dsn
+    "tailscale-auth-key"    = var.tailscale_auth_key
+    "ghcr-pull-token"       = var.container_registry_password
   }
 }
 

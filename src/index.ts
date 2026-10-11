@@ -2,6 +2,7 @@ import { join } from "node:path";
 import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
+import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -108,6 +109,9 @@ async function main(): Promise<void> {
 	} else {
 		logger.info({ event: "home.unconfigured" }, "Home Assistant isn't configured");
 	}
+	// Outbound only. Missing config leaves it off; a later outage is reported and never
+	// blocks Discord. Registered before Discord connects so it exists when features start.
+	startMastodonPublisher({ mastodon: config.mastodon, announcer, logger });
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
 	// hang, the host going down). Only with Sentry set up.

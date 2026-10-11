@@ -22,6 +22,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
+- [Mastodon](#mastodon)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [Changelog and versions](#changelog-and-versions)
@@ -230,6 +231,24 @@ Members can post a closing-time reminder with `/closing-time`, and Pixel posts t
 
 The destination is a channel ID on purpose: do not hard-code a Discord channel in the code.
 
+## Mastodon
+
+Pixel can toot announcements to a configured Mastodon account. It is **outbound only**: it never reads mentions, replies or DMs. Features do not change — they still hand a typed announcement to the announcer. No instance or account is hard-coded.
+
+**Turn it on** (local `.env`, or the Container App env plus Key Vault for the token):
+
+1. On the instance, create an application (Preferences → Development → New application). Name it something like `Pixel`. Scopes: **`write:statuses` only**. Do not enable read, follow or admin scopes.
+2. Mark the account as a bot and follow that instance's rules for automated accounts.
+3. Set `MASTODON_INSTANCE` to the instance origin (`https://mastodon.example`) and `MASTODON_ACCESS_TOKEN` to the access token. Set both or neither.
+4. Optional: `MASTODON_ACCOUNT` (public handle, logs only), `MASTODON_VISIBILITY` (`unlisted` default, or `public` for the local timeline), `MASTODON_ANNOUNCE_KINDS` (default `space.status`; add `closing.time` or `bot.status` if you want those too; `off` / `none` turns toots off).
+5. Restart Pixel. A line `publisher ready` with `publisher: mastodon` means it registered. The first confirmed space open or close should appear on the account.
+
+**Turn it off:** unset `MASTODON_INSTANCE` and `MASTODON_ACCESS_TOKEN` (or set `MASTODON_ANNOUNCE_KINDS` to `off`). Discord is unchanged.
+
+**Emergency stop:** revoke the application token on the instance. The next toot is refused, reported to Sentry (`announcer:mastodon`), and Discord still works.
+
+The token is a secret. Never put an instance URL or handle in the code; never put the token in a chat, an issue or a log.
+
 ## Secrets
 
 Every secret lives in the secret store for its environment (a local `.env` for development, Key Vault `pixel-dev-kv` in Azure `dev`) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
@@ -238,6 +257,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | --- | --- | --- |
 | `DISCORD_TOKEN` | Discord Developer Portal; Key Vault `discord-token` | It may have leaked, someone with access leaves, or on a schedule |
 | `HOME_ASSISTANT_TOKEN` | A long-lived token in HA; Key Vault `home-assistant-token` | It may have leaked, or the Pixel user changes |
+| `MASTODON_ACCESS_TOKEN` | Instance Development app (`write:statuses`); Key Vault `mastodon-access-token` when hosted | It may have leaked, the app is rotated, or you move instance |
 | `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
@@ -254,6 +274,12 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. In HA, as the **non-admin** Pixel user: Profile → Security → Long-lived access tokens → create a new token, then delete the old one.
 2. Put the new one in the secret store as `HOME_ASSISTANT_TOKEN`, and restart Pixel.
 3. `/admin status` should say Connected with no warning about an admin token. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
+
+**Rotate the Mastodon token:**
+
+1. On the instance: Preferences → Development → the Pixel application → regenerate or create a new application with **`write:statuses` only**. Copy the access token once.
+2. Put it in the secret store as `MASTODON_ACCESS_TOKEN`, and restart Pixel.
+3. The next space open or close should appear on the configured account. If Sentry shows `announcer:mastodon` with HTTP 401, the token is wrong or revoked.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 
@@ -322,6 +348,10 @@ Find and stop the extra one: `docker ps` locally (leftover `just dev` or a workt
 **SpaceAPI is down** (`/status` says "Couldn't check")
 
 Pixel can't tell whether the space is open, so it says so rather than guess. Check `https://spaceapi.pixelbar.nl/` yourself. When it's back, `/status` works again by itself and changes are announced as normal. Nothing to restart. Pixel never announces a change it didn't see itself, so a restart or an outage never produces a stale announcement. If it stays down, that is a problem with the space's own server, not with Pixel.
+
+**Mastodon is down or rejecting toots** (Sentry `announcer:mastodon`)
+
+Discord and the rest of Pixel keep working. Check the instance is up, the token is still valid (`write:statuses`), and `MASTODON_INSTANCE` is the origin (not a profile URL with a typo). Nothing to restart unless you changed config. Pixel does not retry a failed toot (that could double-post).
 
 **Home Assistant is unreachable** (`/admin status` shows not connected or off; `/ha` says it can't reach it)
 

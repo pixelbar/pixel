@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ANNOUNCEMENT_KINDS, type AnnouncementKind } from "./core/announcement.ts";
 import { isValidTimeZone } from "./core/format.ts";
 
 /**
@@ -71,10 +72,32 @@ const envSchema = z
 		// Both unset means Home Assistant is off. Setting only one is a mistake, so it stops startup.
 		HOME_ASSISTANT_URL: optional(z.url({ protocol: /^https?$/ })),
 		HOME_ASSISTANT_TOKEN: optional(z.string().trim().min(1)),
+
+		// Both unset means Mastodon is off. Setting only one is a mistake, so it stops startup.
+		MASTODON_INSTANCE: optional(z.url({ protocol: /^https?$/ })),
+		MASTODON_ACCESS_TOKEN: optional(z.string().trim().min(1)),
+		// Public handle for logs only. Never used to post; the token decides the account.
+		MASTODON_ACCOUNT: optional(z.string().trim().min(1).max(100)),
+		MASTODON_VISIBILITY: optional(z.enum(["public", "unlisted"])),
+		// Unset → space.status. off / none / empty list turns toots off even with credentials.
+		MASTODON_ANNOUNCE_KINDS: z.preprocess((v) => {
+			if (typeof v !== "string") return v;
+			const trimmed = v.trim();
+			if (trimmed === "") return undefined;
+			if (/^(off|none)$/i.test(trimmed)) return [];
+			return trimmed
+				.split(",")
+				.map((part) => part.trim())
+				.filter((part) => part.length > 0);
+		}, z.array(z.enum(ANNOUNCEMENT_KINDS)).optional()),
 	})
 	.refine((e) => (e.HOME_ASSISTANT_URL === undefined) === (e.HOME_ASSISTANT_TOKEN === undefined), {
 		path: ["HOME_ASSISTANT_URL"],
 		error: "set both HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN, or neither",
+	})
+	.refine((e) => (e.MASTODON_INSTANCE === undefined) === (e.MASTODON_ACCESS_TOKEN === undefined), {
+		path: ["MASTODON_INSTANCE"],
+		error: "set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither",
 	});
 
 export type Config = {
@@ -143,6 +166,19 @@ export type Config = {
 	 */
 	homeAssistant: { url: string; token: string } | undefined;
 	/**
+	 * Outbound Mastodon publisher. Instance origin + access token (a secret).
+	 * The account handle is for logs only. Undefined means Mastodon is off.
+	 */
+	mastodon:
+		| {
+				instanceUrl: string;
+				token: string;
+				account: string | undefined;
+				visibility: "public" | "unlisted";
+				kinds: readonly AnnouncementKind[];
+		  }
+		| undefined;
+	/**
 	 * Operator-authored closing-time body. Default `{dataDir}/closing-time.md`.
 	 * Missing or empty file → the built-in default. Not a secret.
 	 */
@@ -198,6 +234,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		homeAssistant:
 			e.HOME_ASSISTANT_URL !== undefined && e.HOME_ASSISTANT_TOKEN !== undefined
 				? { url: e.HOME_ASSISTANT_URL, token: e.HOME_ASSISTANT_TOKEN }
+				: undefined,
+		mastodon:
+			e.MASTODON_INSTANCE !== undefined && e.MASTODON_ACCESS_TOKEN !== undefined
+				? {
+						instanceUrl: new URL(e.MASTODON_INSTANCE).origin,
+						token: e.MASTODON_ACCESS_TOKEN,
+						account: e.MASTODON_ACCOUNT,
+						visibility: e.MASTODON_VISIBILITY ?? "unlisted",
+						kinds: e.MASTODON_ANNOUNCE_KINDS ?? ["space.status"],
+					}
 				: undefined,
 		closingTimeFile: e.PIXEL_CLOSING_TIME_FILE ?? `${e.PIXEL_DATA_DIR}/closing-time.md`,
 	};

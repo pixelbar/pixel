@@ -64,6 +64,7 @@ describe("buildCore", () => {
 				roles: { member: undefined, friend: undefined },
 			},
 			homeAssistant: undefined,
+			mastodon: undefined,
 			closingTimeFile: join(dir, "data", "closing-time.md"),
 		};
 	});

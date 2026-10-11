@@ -1,6 +1,6 @@
 /**
- * What features announce, and what publishers (Discord channels, later
- * Mastodon, Telegram, …) receive. This is the platform-neutral contract between
+ * What features announce, and what publishers (Discord channels, Mastodon,
+ * later Telegram, …) receive. This is the platform-neutral contract between
  * the two, like `Reply`: features never see a platform, publishers decide how
  * to present each kind.
  */
@@ -72,6 +72,14 @@ export type Announcement =
 	| SpaceStatusAnnouncement
 	| BotStatusAnnouncement
 	| ClosingTimeAnnouncement;
+
+/** Kind names, for config (which kinds a publisher posts). */
+export const ANNOUNCEMENT_KINDS = [
+	"space.status",
+	"bot.status",
+	"closing.time",
+] as const satisfies readonly Announcement["kind"][];
+export type AnnouncementKind = Announcement["kind"];
 
 /** The space's state right now, as seen at startup. */
 export type SpaceSnapshot = {

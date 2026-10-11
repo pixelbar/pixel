@@ -384,6 +384,115 @@ describe("the log directory", () => {
 	});
 });
 
+describe("Mastodon settings", () => {
+	const INSTANCE = "https://mastodon.example";
+	const TOKEN = "mastodon-test-token";
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).mastodon).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, MASTODON_INSTANCE: "", MASTODON_ACCESS_TOKEN: "" }).mastodon,
+		).toBeUndefined();
+	});
+
+	it("reads the instance, token, optional account and defaults", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: `${INSTANCE}/@someone`,
+				MASTODON_ACCESS_TOKEN: ` ${TOKEN} `,
+				MASTODON_ACCOUNT: " pixel@mastodon.example ",
+			}).mastodon,
+		).toEqual({
+			instanceUrl: INSTANCE,
+			token: TOKEN,
+			account: "pixel@mastodon.example",
+			visibility: "unlisted",
+			kinds: ["space.status"],
+		});
+	});
+
+	it("keeps visibility and routed kinds from the environment", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_VISIBILITY: "public",
+				MASTODON_ANNOUNCE_KINDS: "space.status, closing.time",
+			}).mastodon,
+		).toMatchObject({
+			visibility: "public",
+			kinds: ["space.status", "closing.time"],
+		});
+	});
+
+	it("treats announce kinds off, none, or empty as no kinds", () => {
+		for (const value of ["off", "OFF", "none", "None"]) {
+			expect(
+				loadConfig({
+					...VALID,
+					MASTODON_INSTANCE: INSTANCE,
+					MASTODON_ACCESS_TOKEN: TOKEN,
+					MASTODON_ANNOUNCE_KINDS: value,
+				}).mastodon?.kinds,
+			).toEqual([]);
+		}
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_ANNOUNCE_KINDS: "",
+			}).mastodon?.kinds,
+		).toEqual(["space.status"]);
+	});
+
+	it.each([
+		["only the instance", { MASTODON_INSTANCE: INSTANCE }],
+		["only the token", { MASTODON_ACCESS_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing either value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither/);
+		expect(message).not.toContain(TOKEN);
+		expect(message).not.toContain(INSTANCE);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the instance %j", (url) => {
+		expect(() =>
+			loadConfig({ ...VALID, MASTODON_INSTANCE: url, MASTODON_ACCESS_TOKEN: TOKEN }),
+		).toThrow(/MASTODON_INSTANCE/);
+	});
+
+	it("rejects a blank token, a bad visibility, or an unknown kind", () => {
+		expect(() =>
+			loadConfig({ ...VALID, MASTODON_INSTANCE: INSTANCE, MASTODON_ACCESS_TOKEN: "   " }),
+		).toThrow(/MASTODON_ACCESS_TOKEN/);
+		expect(() =>
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_VISIBILITY: "direct",
+			}),
+		).toThrow(/MASTODON_VISIBILITY/);
+		expect(() =>
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_ANNOUNCE_KINDS: "space.status,direct-message",
+			}),
+		).toThrow(/MASTODON_ANNOUNCE_KINDS/);
+	});
+});
+
 describe("the heartbeat interval", () => {
 	it("defaults to five minutes", () => {
 		expect(loadConfig(VALID).heartbeatMinutes).toBe(5);
