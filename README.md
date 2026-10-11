@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform. Mastodon is an optional outbound publisher (toots when the space opens or closes). Interactive platforms such as Telegram can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar) `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability) and `/ha` (`list`, `status`, `set`: the Home Assistant devices you may see, and switching lights and switches on and off if you hold the capability). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`, `doors`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar), `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability) and `/ha` (`list`, `status`, `set`, `open`: the Home Assistant devices you may see; lights and switches if you hold the capability; doors for members with `ha-doors`). See [`docs/architecture.md`](docs/architecture.md), [`docs/identity-and-access.md`](docs/identity-and-access.md) and [`docs/home-assistant.md`](docs/home-assistant.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
 ## Stack
 
@@ -97,6 +97,14 @@ Everyone else is a `guest`.
 
 Discord IDs **must be quoted strings**, because unquoted numbers lose precision. Pixel won't start if a file is missing or invalid. Run `just validate-config` to check the files.
 
+### Home Assistant
+
+Optional. Pixel can list and change lights, switches and doors on a Home Assistant instance. Set `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` (both or neither) and keep an allow-list in `config/home-assistant/devices.yaml`. Use a **non-admin** Home Assistant user; the token can do anything that user can, so the devices file is the fence.
+
+Commands: `/ha list`, `/ha status`, `/ha set` (needs `ha-lights`, `ha-switches`, `ha-doors` or `ha-admin`), `/ha open` (members with `ha-doors` or `ha-admin`; unlocks only). `/admin doors off` stops every door action at once.
+
+First-time setup, the threat model and how to revoke the token: [`docs/home-assistant.md`](docs/home-assistant.md). Day-to-day: the [runbook](docs/runbook.md#home-assistant). Do not commit real URLs, tokens or the space's device names.
+
 ### Environment variables
 
 These are validated at startup. See `.env.example` and the [full list](docs/architecture.md#configuration).
@@ -161,7 +169,7 @@ Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and Git
 
 ## Running and operating Pixel
 
-The [operations runbook](docs/runbook.md) covers day-to-day tasks and incidents: access lists, moderation, Home Assistant, rotating secrets, deploys and rollbacks, what to do when the bot is down or answering twice, Sentry, privacy requests and disaster recovery. Anyone who runs Pixel should read it first.
+The [operations runbook](docs/runbook.md) covers day-to-day tasks and incidents: access lists, moderation, Home Assistant, rotating secrets, deploys and rollbacks, what to do when the bot is down or answering twice, Sentry, privacy requests and disaster recovery. Anyone who runs Pixel should read it first. Setting up Home Assistant on a test instance, and the threat model: [`docs/home-assistant.md`](docs/home-assistant.md).
 
 ## Security
 
