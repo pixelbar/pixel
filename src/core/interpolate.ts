@@ -1,4 +1,5 @@
 import type { ChannelPost } from "./channel-posts.ts";
+import { toInstant, toLocal } from "./recurrence.ts";
 
 /**
  * Fills `{{tokens}}` in user-set posts at **post time**. Features call
@@ -6,7 +7,8 @@ import type { ChannelPost } from "./channel-posts.ts";
  * placeholders (`services/info-content.ts`): those fail startup on an unknown
  * name. Here an unknown `{{name}}` is left as written.
  *
- * No expressions, no JS eval, no secrets, no user-defined functions. Add a
+ * No expressions, no JS eval, no secrets, no user-defined functions. A known
+ * date token may take a whole-day offset (`{{date+2}}`, `{{day-1}}`). Add a
  * later token (space state, a Home Assistant device, …) by `register`ing a
  * provider — do not grow an if/else in each feature.
  */
@@ -14,6 +16,8 @@ import type { ChannelPost } from "./channel-posts.ts";
 export type TokenContext = {
 	now: Date;
 	timezone: string;
+	/** Whole calendar days to shift `now` in `timezone`. 0 when omitted. */
+	offsetDays: number;
 };
 
 export type TokenProvider = {
@@ -31,8 +35,14 @@ export class InterpolateError extends Error {
 /** A well-formed `{{name}}`, with optional spaces around the name. */
 const TOKEN = /\{\{([^{}]*)\}\}/g;
 
-/** Token names are simple identifiers so `{{date + 1}}` can never run. */
+/** Token names are simple identifiers so `{{date * 2}}` can never run. */
 const TOKEN_NAME = /^[A-Za-z][A-Za-z0-9]*$/;
+
+/** `date`, or `date+2` / `date - 1`. Anything else is left as written. */
+const TOKEN_REF = /^([A-Za-z][A-Za-z0-9]*)(?:\s*([+-])\s*(\d+))?$/;
+
+/** Offsets outside a year are left as written, not evaluated. */
+const MAX_DAY_OFFSET = 366;
 
 /**
  * Registry of named token providers plus the fill-in step. Built with
@@ -72,19 +82,54 @@ export class Interpolator {
 	}
 
 	/**
-	 * Replaces each known `{{name}}` with that token's value at `at` (or `now`).
-	 * Unknown tokens, empty `{{}}`, and anything that isn't a registered name
-	 * stay as written. Never logs the template or the result.
+	 * Replaces each known `{{name}}` (or `{{name+2}}`) with that token's value
+	 * at `at` (or `now`). For `/schedule`, pass the scheduled occurrence, not
+	 * the clock when Pixel actually sends. Unknown tokens, empty `{{}}`, a
+	 * bad offset, and anything that isn't a registered name stay as written.
+	 * Never logs the template or the result.
 	 */
 	interpolate(template: string, at?: Date): string {
-		const ctx: TokenContext = { now: at ?? this.#now(), timezone: this.#timezone };
+		const now = at ?? this.#now();
 		return template.replace(TOKEN, (whole, inner: string) => {
-			const name = inner.trim();
-			const provider = this.#tokens.get(name);
+			const ref = parseTokenRef(inner);
+			if (!ref) return whole;
+			const provider = this.#tokens.get(ref.name);
 			if (!provider) return whole;
-			return provider.resolve(ctx);
+			return provider.resolve({ now, timezone: this.#timezone, offsetDays: ref.offsetDays });
 		});
 	}
+}
+
+function parseTokenRef(inner: string): { name: string; offsetDays: number } | undefined {
+	const match = TOKEN_REF.exec(inner.trim());
+	if (!match) return undefined;
+	const name = match[1];
+	if (!name) return undefined;
+	if (match[2] === undefined) return { name, offsetDays: 0 };
+	const n = Number(match[3]);
+	if (!Number.isInteger(n) || n > MAX_DAY_OFFSET) return undefined;
+	return { name, offsetDays: match[2] === "-" ? -n : n };
+}
+
+/** Shift a wall-clock moment by whole calendar days in `timezone`. */
+export function addLocalDays(instant: Date, timezone: string, days: number): Date {
+	if (days === 0) return instant;
+	const local = toLocal(instant, timezone);
+	const shifted = new Date(Date.UTC(local.year, local.month - 1, local.day) + days * 86_400_000);
+	return toInstant(
+		{
+			year: shifted.getUTCFullYear(),
+			month: shifted.getUTCMonth() + 1,
+			day: shifted.getUTCDate(),
+			hour: local.hour,
+			minute: local.minute,
+		},
+		timezone,
+	);
+}
+
+function partsAt(ctx: TokenContext) {
+	return dateParts(addLocalDays(ctx.now, ctx.timezone, ctx.offsetDays), ctx.timezone);
 }
 
 /** Pieces of a wall-clock moment in `timezone`, in English. */
@@ -114,7 +159,8 @@ function dateParts(now: Date, timezone: string) {
 }
 
 /**
- * The built-in date family. Evaluated at post time in `PIXEL_TIMEZONE`.
+ * The built-in date family. For `/schedule`, `now` is the scheduled
+ * occurrence (not a late send). Offsets are whole calendar days.
  *
  * | Token | Example (Sunday 11 October 2026, 06:54 CEST) |
  * |---|---|
@@ -123,32 +169,33 @@ function dateParts(now: Date, timezone: string) {
  * | `{{month}}` | October |
  * | `{{year}}` | 2026 |
  * | `{{dateWithTime}}` | 11 October 2026, 06:54 CEST |
+ * | `{{date+2}}` / `{{day+2}}` | 13 October 2026 / Tuesday |
  */
 export function dateTokens(): TokenProvider[] {
 	return [
 		{
 			name: "date",
 			resolve: (ctx) => {
-				const p = dateParts(ctx.now, ctx.timezone);
+				const p = partsAt(ctx);
 				return `${p.day} ${p.month} ${p.year}`;
 			},
 		},
 		{
 			name: "day",
-			resolve: (ctx) => dateParts(ctx.now, ctx.timezone).weekday,
+			resolve: (ctx) => partsAt(ctx).weekday,
 		},
 		{
 			name: "month",
-			resolve: (ctx) => dateParts(ctx.now, ctx.timezone).month,
+			resolve: (ctx) => partsAt(ctx).month,
 		},
 		{
 			name: "year",
-			resolve: (ctx) => dateParts(ctx.now, ctx.timezone).year,
+			resolve: (ctx) => partsAt(ctx).year,
 		},
 		{
 			name: "dateWithTime",
 			resolve: (ctx) => {
-				const p = dateParts(ctx.now, ctx.timezone);
+				const p = partsAt(ctx);
 				return `${p.day} ${p.month} ${p.year}, ${p.hour}:${p.minute} ${p.zone}`;
 			},
 		},

@@ -212,6 +212,32 @@ describe("runDue", () => {
 		});
 	});
 
+	it("offsets date tokens from the scheduled day, not a late send", async () => {
+		const { store, posted, run } = setup();
+		store.add(
+			sample({
+				start: "2026-10-14T23:30",
+				post: {
+					kind: "message",
+					text: "{{day}} {{date}} → {{day+2}} {{date+2}}",
+					mentions: false,
+				},
+			}),
+		);
+		// Scheduled Wed 23:30; sent Thu 00:20 (50 minutes late, still within the hour).
+		await run(new Date("2026-10-14T22:20:00Z"));
+		expect(posted).toEqual([
+			[
+				"100000000000000050",
+				{
+					kind: "message",
+					text: "Wednesday 14 October 2026 → Friday 16 October 2026",
+					mentions: false,
+				},
+			],
+		]);
+	});
+
 	it("fills tokens in a poll question and answers at post time", async () => {
 		const { store, posted, run } = setup();
 		store.add(

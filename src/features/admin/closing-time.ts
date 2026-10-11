@@ -27,8 +27,7 @@ export function createClosingTimeSubgroup(deps: { closingTimeFile: string }): Su
 				form: {
 					style: "paragraph",
 					maxLength: MAX_CLOSING_TIME_MESSAGE,
-					placeholder:
-						"Posted when the space closes. Markdown works. {{date}} fills in when posted. No secrets.",
+					placeholder: "Posted when the space closes. {{date}} / {{date+2}}. Markdown. No secrets.",
 				},
 			},
 		],
