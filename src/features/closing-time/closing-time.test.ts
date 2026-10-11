@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Announcement } from "../../core/announcement.ts";
 import { UserFacingError } from "../../core/errors.ts";
+import { createInterpolator } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { context, plain } from "../../testing/fixtures.ts";
@@ -30,6 +31,7 @@ function setup(
 		announcer: { announce },
 		enabled: overrides.enabled ?? true,
 		message: () => overrides.message ?? DEFAULT_CLOSING_TIME_MESSAGE,
+		interpolator: createInterpolator({ timezone: "Europe/Amsterdam", now: () => AT }),
 		logger: silentLogger,
 		now: () => AT,
 	});
@@ -82,6 +84,21 @@ describe("/closing-time", () => {
 		const body = announced[0] && announced[0].kind === "closing.time" ? announced[0].body : "";
 		expect(body.length).toBe(MAX_CLOSING_TIME_MESSAGE);
 		expect(body.endsWith("…")).toBe(true);
+	});
+
+	it("fills tokens at post time, then escapes the portable field once", async () => {
+		const { command, announced } = setup({
+			message: "Lock up **now** — {{day}} {{date}}. See {{unknown}}.",
+		});
+		await command.handler(context());
+		expect(announced).toEqual([
+			{
+				kind: "closing.time",
+				body: "Lock up **now** — Saturday 10 October 2026. See {{unknown}}.",
+				text: "Lock up \\*\\*now\\*\\* — Saturday 10 October 2026. See {{unknown}}.",
+				at: AT,
+			},
+		]);
 	});
 
 	it("escapes operator text in the portable field, including mention markers", async () => {

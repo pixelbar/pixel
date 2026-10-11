@@ -9,6 +9,7 @@ import type {
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
+import type { Interpolate } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import {
@@ -63,6 +64,8 @@ export type SchedulesDeps = {
 	posts: ChannelPosts;
 	timezone: string;
 	stillAllowed: (ref: string) => Promise<boolean>;
+	/** Fills `{{tokens}}` in the stored body at post time. */
+	interpolator: Interpolate;
 	logger: Logger;
 	reporter: Pick<ErrorReporter, "captureBackground" | "breadcrumb">;
 	now?: () => Date;
@@ -264,7 +267,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								form: {
 									style: "paragraph",
 									maxLength: MAX_MESSAGE_LENGTH,
-									placeholder: "What to post. Markdown works.",
+									placeholder: "What to post. Markdown works. {{date}} fills in when posted.",
 								},
 							},
 							repeatOption,
@@ -305,7 +308,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								description: "Question",
 								type: "string",
 								required: true,
-								form: { style: "short", maxLength: MAX_POLL_QUESTION },
+								form: {
+									style: "short",
+									maxLength: MAX_POLL_QUESTION,
+									placeholder: "Question. {{date}} fills in when posted.",
+								},
 							},
 							{
 								name: "answers",

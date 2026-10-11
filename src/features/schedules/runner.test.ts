@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ChannelPost } from "../../core/channel-posts.ts";
+import { createInterpolator } from "../../core/interpolate.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { type Schedule, ScheduleStore } from "../../services/schedules.ts";
 import { dueOccurrence, LATE_LIMIT_MS, runDue } from "./runner.ts";
@@ -41,7 +42,19 @@ function setup(options: { allowed?: boolean; fail?: boolean; ready?: boolean } =
 	const handled = new Set<string>();
 	const stillAllowed = vi.fn(async () => options.allowed ?? true);
 	const run = (now: Date) =>
-		runDue({ store, posts, timezone: AMS, stillAllowed, logger, reporter, handled }, now);
+		runDue(
+			{
+				store,
+				posts,
+				timezone: AMS,
+				interpolator: createInterpolator({ timezone: AMS }),
+				stillAllowed,
+				logger,
+				reporter,
+				handled,
+			},
+			now,
+		);
 	return { store, posts, posted, warn, error, reporter, run, stillAllowed, handled };
 }
 
@@ -174,6 +187,57 @@ describe("runDue", () => {
 		await run(plus(40_000));
 		expect(posts.post).toHaveBeenCalledTimes(1);
 		expect(reporter.captureBackground).toHaveBeenCalledWith(expect.any(Error), "schedules");
+	});
+
+	it("fills tokens in a message at post time, not compose time", async () => {
+		const { store, posted, run } = setup();
+		const s = store.add(
+			sample({
+				post: { kind: "message", text: "Open {{day}} {{date}} ({{unknown}})", mentions: false },
+			}),
+		);
+		await run(plus(10_000));
+		expect(posted).toEqual([
+			[
+				"100000000000000050",
+				{
+					kind: "message",
+					text: "Open Wednesday 14 October 2026 ({{unknown}})",
+					mentions: false,
+				},
+			],
+		]);
+		expect(store.get(s.id)?.post).toMatchObject({
+			text: "Open {{day}} {{date}} ({{unknown}})",
+		});
+	});
+
+	it("fills tokens in a poll question and answers at post time", async () => {
+		const { store, posted, run } = setup();
+		store.add(
+			sample({
+				post: {
+					kind: "poll",
+					question: "Open {{dateWithTime}}?",
+					answers: ["Yes {{day}}", "No {{month}}"],
+					durationHours: 24,
+					multiple: false,
+				},
+			}),
+		);
+		await run(plus(10_000));
+		expect(posted).toEqual([
+			[
+				"100000000000000050",
+				{
+					kind: "poll",
+					question: "Open 14 October 2026, 19:00 CEST?",
+					answers: ["Yes Wednesday", "No October"],
+					durationHours: 24,
+					multiple: false,
+				},
+			],
+		]);
 	});
 
 	it("does nothing until Discord is ready, or while the file is broken", async () => {

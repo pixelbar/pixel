@@ -10,6 +10,7 @@ import {
 import { isGroup, isSubgroup, type ResolvedChannel } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
+import { createInterpolator } from "../../core/interpolate.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { nullErrorReporter } from "../../core/ports/error-reporter.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
@@ -53,6 +54,7 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 		posts,
 		timezone: AMS,
 		stillAllowed: async () => true,
+		interpolator: createInterpolator({ timezone: AMS, now: () => NOW }),
 		logger,
 		reporter: nullErrorReporter,
 		now: () => NOW,
@@ -509,6 +511,7 @@ describe("the background runner", () => {
 			posts,
 			timezone: AMS,
 			stillAllowed: async () => true,
+			interpolator: createInterpolator({ timezone: AMS, now: () => NOW }),
 			logger: silentLogger,
 			reporter: nullErrorReporter,
 		});

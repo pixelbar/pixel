@@ -4,6 +4,7 @@ import type { CapabilityRegistry } from "../core/capabilities.ts";
 import type { ChannelPosts } from "../core/channel-posts.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Home } from "../core/home.ts";
+import { createInterpolator } from "../core/interpolate.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
@@ -60,10 +61,14 @@ export type FeatureDeps = {
 
 /** Every feature Pixel runs. Add new features here. */
 export function buildFeatures(deps: FeatureDeps): Feature[] {
+	// One interpolator for every user-set post. Register later tokens here
+	// (space state, Home Assistant, …) — do not add an if/else in each feature.
+	const interpolator = createInterpolator({ timezone: deps.timezone });
 	const closingTime = createClosingTimeFeature({
 		announcer: deps.announcer,
 		enabled: deps.closingTime.enabled,
 		message: deps.closingTime.message,
+		interpolator,
 		logger: deps.logger,
 	});
 	return [
@@ -85,6 +90,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			posts: deps.channelPosts,
 			timezone: deps.timezone,
 			stillAllowed: deps.canSchedule,
+			interpolator,
 			logger: deps.logger,
 			reporter: deps.reporter,
 		}),
