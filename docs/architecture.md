@@ -14,8 +14,9 @@
 
 | In scope                                                    | Not yet                                             |
 | ----------------------------------------------------------- | --------------------------------------------------- |
-| Core: commands, access, dispatcher, registry, announcer     | Telegram, Mastodon, other adapters                  |
+| Core: commands, access, dispatcher, registry, announcer     | Telegram, other interactive adapters                |
 | Discord adapter (interactive + publisher + calendar)        | Account linking across platforms                    |
+| Mastodon publisher (outbound toots; no input)               | Bluesky and other outbound publishers               |
 | Tiers from `config/admins.yaml` and `config/members.yaml`   | Reading Discord roles (never: roles are only mirrored to) |
 | SpaceAPI status, Discord events, info, help, whoami         | A database (none: access, schedules and planned linking are files) |
 | Sentry, pino, `just`, CI, Terraform bootstrap + `dev` stack | Remaining CD (#10: Sentry org, `ARM_*`), prod (#12) |
@@ -27,19 +28,18 @@
 Pixel follows a **ports-and-adapters** design. Adapters translate between a platform and the core. Features only know about the core.
 
 ```
-                  Discord
-                     │  ▲
-                     ▼  │
-   ┌──────────────────────────────────────────┐        later:
-   │ adapters/discord                         │   ┌───────────────────┐
-   │  interactions → PlatformActor + command  │   │ adapters/telegram │ (interactive)
-   │  Reply → Discord messages                │   │ adapters/mastodon │ (publisher only)
-   │  Publishers (live + timeline channels)   │   └───────────────────┘
-   │  CalendarSource (guild scheduled events) │
-   └───────┬──────────────────────────▲───────┘
-           │                          │ Announcement
-           ▼                          │
-   ┌──────────────────────────────────┴───────┐
+                  Discord                    Mastodon
+                     │  ▲                       │
+                     ▼  │                       │
+   ┌─────────────────────┴────┐   ┌─────────────┴────────┐        later:
+   │ adapters/discord         │   │ adapters/mastodon    │   ┌───────────────────┐
+   │  interactions → actor    │   │  publisher only      │   │ adapters/telegram │
+   │  Reply → Discord         │   │  (toots; no input)   │   └───────────────────┘
+   │  Publishers + calendar   │   └──────────▲───────────┘
+   └───────┬──────────────────┘              │
+           │                    Announcement │
+           ▼                                 │
+   ┌─────────────────────────────────────────┴┐
    │ core                                     │
    │  identity (TierSources) → dispatcher     │
    │  (rate limit → authorize → handler)      │
@@ -132,7 +132,7 @@ type ClosingTimeAnnouncement = {
   at: Date;
 };
 type Publisher = {
-  id: string;                    // "discord:live", "discord:timeline", …
+  id: string;                    // "discord:live", "discord:timeline", "mastodon", …
   publish(a: Announcement): Promise<void>;
   reconcile?(s: SpaceSnapshot): Promise<void>;   // at startup: fix stale posts, never post new ones
 };
@@ -159,7 +159,7 @@ type Feature = {
   7. map errors to replies, reporting unexpected ones to Sentry with the command's tags
   8. log every executed command as an action (`command.executed`), recording who did it (ID, display name, handle), their tier, the outcome and the duration
 - **Interpolator** (`core/interpolate.ts`) fills `{{tokens}}` in **user-set** posts at post time. Features call it right before send. The date family is built in (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`, in `PIXEL_TIMEZONE`). A known date token may take a whole-day offset (`{{date+2}}`, `{{day-1}}`), from the scheduled occurrence for `/schedule` (so a Monday post can talk about Wednesday, even if Pixel sends a bit late). A later token (space state, a Home Assistant device, …) is a named provider registered on the same interpolator — not an if/else in each feature. Unknown tokens and bad offsets are left as written. No expressions, no eval. This is not the `/info` load-time placeholders, which fail startup on a typo. Never log the template or the filled body.
-- **Announcer** sends each announcement to every registered publisher. Adapters register their publishers once they're ready. One publisher failing never blocks the others and never throws: the failure is logged and reported to Sentry, tagged `announcer:<publisher id>`. Calls run one at a time, in order, so a startup `reconcile` can't interleave with an announcement. There's deliberately no routing table yet: with one platform it would be speculative, and routing becomes config once a second publisher exists.
+- **Announcer** sends each announcement to every registered publisher. Adapters register their publishers once they're ready. One publisher failing never blocks the others and never throws: the failure is logged and reported to Sentry, tagged `announcer:<publisher id>`. Calls run one at a time, in order, so a startup `reconcile` can't interleave with an announcement. Discord publishers ignore kinds they don't handle (channel IDs decide which are on). Mastodon posts only the kinds in `MASTODON_ANNOUNCE_KINDS` (default `space.status`).
 - **Background work:** a feature can declare `start()`. The bot calls every feature's `start()` once Discord is ready, so the publishers already exist, and calls the returned stop function on shutdown. There's deliberately no generic scheduler yet: the status service already polls on its own, and one will make sense when a second job appears (such as the nightly role check in #14).
 - **Rate limiter** keeps an in-memory token bucket for each user. That is enough because there is a single replica.
 - **Errors:** `UserFacingError` is shown to the user and not reported. Anything else is reported to Sentry, and the user gets a generic reply. Errors outside commands, from background work or platform clients, go through `ErrorReporter.captureBackground` and are tagged with their source.
@@ -192,6 +192,18 @@ type Feature = {
   - **Where the commit and branch come from:** `PIXEL_GIT_SHA` and `PIXEL_GIT_BRANCH`, passed in by CI and `just docker-build` as build arguments (an image has no `.git`). From a checkout without them, Pixel asks git; anything it can't find is left out.
   - It goes through the `Announcer` as a `bot.status` announcement; the space publishers ignore it, and it needs the same permissions as the live style (including Read Message History).
 - **Calendar source:** once connected, the adapter plugs the server's Discord scheduled events into the core `Calendar`. It reads them over REST on every call, needing no extra intents or permissions. (discord.js only skips the request when asked for one event by ID, which this never does.) Voice and stage channel names come from discord.js's channel cache, which Discord keeps current through gateway updates, so a renamed channel is right immediately. `calendar-map.ts` (pure, fully tested) maps each Discord event to a neutral `CalendarEvent`: external events use their location text, voice and stage events use the channel's name, finished and cancelled events are dropped, and recurrence rules become plain words ("weekly on Tuesday"). Discord returns a recurring event once, showing its next occurrence.
+
+## Mastodon adapter (publisher only)
+
+Mastodon is **outbound only**: Pixel toots announcements and never reads mentions, replies or DMs. Features still hand a typed announcement to the `Announcer` and never import Mastodon. The HTTP client lives only in `src/adapters/mastodon/`.
+
+- **Account agnostic.** `MASTODON_INSTANCE` (the instance origin) and `MASTODON_ACCESS_TOKEN` (a secret, scope `write:statuses`) come from config. `MASTODON_ACCOUNT` is an optional public handle for logs; the token decides which account posts. No instance or account is hard-coded.
+- **Both unset means off.** Discord keeps working. Setting only the instance or only the token is a mistake and stops startup, like Home Assistant. `off` / `none` in `MASTODON_ANNOUNCE_KINDS` leaves the publisher unregistered even with credentials.
+- **Kinds.** Default `space.status` (open/closed). Operators can add `closing.time` or `bot.status` via `MASTODON_ANNOUNCE_KINDS`. Each toot uses the portable `text` field, never Discord embeds or markdown.
+- **Mentions and length.** `@` in the text is broken so it cannot ping anyone. Statuses are clipped to 500 characters (Mastodon's default). Visibility is `public` or `unlisted` (`MASTODON_VISIBILITY`); never `private` or `direct`.
+- **Outage.** A rejected or unreachable instance throws from the publisher; the announcer reports it (`announcer:mastodon`) and the other publishers still run. Redirects are refused so the bearer token is never sent to another host. Reconcile is a no-op: Mastodon is a log of toots, not a live card.
+- **Flood.** Open/closed toggles are already confirmed by the status feature (two polls) before anything is announced. Mastodon does not drop a confirmed change.
+- **Tests** map kinds to toot text with plain objects and mock `fetch` at the client boundary, never a live instance.
 
 ## Home Assistant (a client, not an adapter)
 
@@ -366,7 +378,7 @@ When the space opens or closes, the `status` feature announces it through the an
 - **Only once it holds.** A change is announced once the new state has been seen on 2 polls in a row (`READINGS_TO_CONFIRM`), so about 30–60 s after it happens. If it flips back before that, nothing is posted, so flicking the switch doesn't flood the channel.
 - **If SpaceAPI is unreachable while confirming,** Pixel keeps trying each interval for up to about 5 minutes, then gives up rather than guessing.
 - **At most once.** A change is never announced twice, even if every publisher failed.
-- **At startup, stale posts are corrected, not re-announced.** Each publisher gets the current state (`Publisher.reconcile`) once SpaceAPI answers. The live style uses it to turn a leftover "open" post into "closed" (without a closing time, since Pixel didn't see it) when the space closed while Pixel was down. It never posts anything new.
+- **At startup, stale posts are corrected, not re-announced.** Each publisher gets the current state (`Publisher.reconcile`) once SpaceAPI answers. The live style uses it to turn a leftover "open" post into "closed" (without a closing time, since Pixel didn't see it) when the space closed while Pixel was down. It never posts anything new. Mastodon does not post on reconcile.
 
 After a confirmed **close**, the status feature also runs the closing-time send path (`features/closing-time`). That is the same function `/closing-time` uses: it announces `closing.time` through the announcer, or no-ops if posting is off (logged, never fails the space-close). Nothing is posted on reconcile or on open. `/closing-time` is **member** (it posts to a configured channel, often members-only) and does not need a capability.
 
@@ -379,7 +391,7 @@ The message **body** is a file (`PIXEL_CLOSING_TIME_FILE`, default `data/closing
 - **Sentry** (`@sentry/node`) is initialised in `src/instrument.ts`, which is loaded with `--import` before the app. If no DSN is set, it does nothing.
   - Each command scope carries the tags `command`, `feature`, `platform` and `tier`. The Sentry user is the stable platform ID (`discord:<id>`), so a user's issues can be traced over time, with their Discord handle as `username` and display name as `name` so people can recognise them.
   - **The Discord ID is on every error that can be traced to someone.** The dispatcher runs each command (and each autocomplete) inside `ErrorReporter.withContext`, which sets the user and tags on Sentry's isolation scope for the whole run, starts a `command` span, and counts a `pixel.command` metric. So an error reported anywhere beneath it, however deep (Home Assistant unreachable, the role mirror, a background report) carries who asked, as do breadcrumbs, traces and Sentry Logs from that moment. Two commands at once stay separate. A failure handling an interaction in the Discord adapter names the person too (`captureBackground(error, source, actor)`). Errors with no person behind them (SpaceAPI polling, startup, an uncaught exception outside a command) have no user. `dataCollection.userInfo: false` doesn't affect this: it only stops Sentry inferring IP addresses and the like. A test with a real Sentry client checks the ID is on the sent events.
-  - **Tracing** is on (`tracesSampleRate` from `SENTRY_TRACES_SAMPLE_RATE`, default `1`). Discord commands are not HTTP, so the command span is started in `withContext`. Outgoing HTTP (SpaceAPI, Home Assistant, Discord's API) is traced by the default HTTP and fetch integrations. Incoming `/healthz` and `/readyz` probes are ignored, and they are **not** counted as request sessions: Pixel's session is the process (`processSessionIntegration`, a default), so crash-free rate tracks the bot staying up, not Azure poking it.
+  - **Tracing** is on (`tracesSampleRate` from `SENTRY_TRACES_SAMPLE_RATE`, default `1`). Discord commands are not HTTP, so the command span is started in `withContext`. Outgoing HTTP (SpaceAPI, Home Assistant, Discord's API, Mastodon) is traced by the default HTTP and fetch integrations. Incoming `/healthz` and `/readyz` probes are ignored, and they are **not** counted as request sessions: Pixel's session is the process (`processSessionIntegration`, a default), so crash-free rate tracks the bot staying up, not Azure poking it.
   - **Runtime metrics** (`nodeRuntimeMetricsIntegration`) send CPU, memory, event-loop delay and uptime every 30 seconds.
   - **Profiling** (`@sentry/profiling-node`) attaches a CPU profile to sampled traces (`profileLifecycle: "trace"`). `profileSessionSampleRate` comes from `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default `1`). The native integration is left out when the rate is `0`.
   - Errors are not sampled (`sampleRate` is `1`).
@@ -423,6 +435,11 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. Where Pixel reaches Home Assistant (http or https). On Azure prefer the Tailscale sidecar address; a Nabu Casa URL still works |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
+| `MASTODON_INSTANCE`           |        | Optional, with the token. Origin of the Mastodon instance (http or https). A path is stripped so only the origin is used. Never hard-coded |
+| `MASTODON_ACCESS_TOKEN`       | yes    | Optional, with the instance. An access token with **`write:statuses`** only. A secret. Both unset means the publisher is off |
+| `MASTODON_ACCOUNT`            |        | Optional. Public handle for logs only (`user@instance`). The token decides which account posts |
+| `MASTODON_VISIBILITY`         |        | Optional. `public` (default) or `unlisted`. Never `private` or `direct` |
+| `MASTODON_ANNOUNCE_KINDS`     |        | Optional. Comma-separated kinds to toot. Default `space.status`. `off` / `none` turns toots off |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
 | `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
@@ -434,9 +451,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `HEALTH_PORT`                 |        | Default `8080`                                 |
 | `SPACEAPI_URL`                |        | Default `https://spaceapi.pixelbar.nl/`; http(s) only |
 
-If neither announcement channel is set, nothing is announced. Both can be the same channel.
-
-Per-platform settings for later adapters (Telegram tokens, the Mastodon instance and account) will come from configuration when those adapters are built. No account is hard-coded.
+If neither announcement channel is set, nothing is announced on Discord. Both can be the same channel. Mastodon is a separate publisher: unset `MASTODON_INSTANCE` and `MASTODON_ACCESS_TOKEN` leave it off. No account or instance is hard-coded.
 
 ## Local development
 
@@ -463,7 +478,7 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 ## Adding a platform (later)
 
 - **Interactive** (for example Telegram): create `src/adapters/telegram/`. It builds a `PlatformActor`, calls the dispatcher and renders `Reply`. Telegram users get tiers only after account linking, which writes a second id onto the existing `members.yaml` entry (see the identity doc). No database.
-- **Outbound only** (for example Mastodon): implement `Publisher`, configure the instance and account through environment variables, and register it with the announcer. Features do not change. When there are several publishers, add per-kind routing as config.
+- **Outbound only** (Mastodon is the first): implement `Publisher` in `src/adapters/<platform>/`, configure the instance and account through environment variables, and register it with the announcer. Features do not change. Each publisher decides which kinds it posts (Mastodon: `MASTODON_ANNOUNCE_KINDS`).
 
 ## Open questions
 

@@ -6,7 +6,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 - Get an announcement when the space opens or closes.
 - What you can do depends on your tier: guest, friend, member or admin.
 
-Pixel starts on Discord. Its core doesn't depend on any platform, so other platforms (interactive ones like Telegram, outbound-only ones like Mastodon) can be added later as separate adapters.
+Pixel starts on Discord. Its core doesn't depend on any platform. Mastodon is an optional outbound publisher (toots when the space opens or closes). Interactive platforms such as Telegram can be added later as separate adapters.
 
 > **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar) `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability) and `/ha` (`list`, `status`, `set`: the Home Assistant devices you may see, and switching lights and switches on and off if you hold the capability). See [`docs/architecture.md`](docs/architecture.md) and [`docs/identity-and-access.md`](docs/identity-and-access.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
