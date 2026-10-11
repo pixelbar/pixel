@@ -622,7 +622,7 @@ describe("/schedule edit", () => {
 		const refused = await form("edit", { schedule: theirs.id });
 		expect(refused).toEqual({
 			ready: false,
-			refuse: { reply: { text: "I can't edit that schedule." }, private: true },
+			refuse: { reply: { text: "I can't edit that schedule.", private: true }, private: true },
 		});
 	});
 
