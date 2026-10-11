@@ -4,6 +4,24 @@ How to set up Pixel's Home Assistant integration, what it can do, and what to do
 
 **Keep real URLs, tokens, Discord IDs and the space's device names out of the repository.** Use a test Home Assistant until you are ready for prod. `dev` must not control the real doors.
 
+## Environments
+
+Each Pixel environment has its **own** Home Assistant settings. They are not shared and `dev` cannot reach prod's vault or Files share.
+
+| | `local` (laptop) | Azure `dev` (`pixel-dev`) | Azure `prod` (#12, not built) |
+| --- | --- | --- | --- |
+| Discord | Your own test bot | Pixel Dev, test guild | Pixel, Pixelbar guild |
+| Home Assistant | A throwaway instance, or unset | A **test** instance, or unset | The space instance only |
+| Token | `.env` `HOME_ASSISTANT_TOKEN` | Key Vault `pixel-dev-kv` / `home-assistant-token` | A **different** vault and token |
+| URL | `.env` `HOME_ASSISTANT_URL` | Container App env (plain, not a secret) | A **different** URL |
+| `devices.yaml` | `config/home-assistant/` on the laptop | Azure Files share `pixel` / `home-assistant/` | A **different** share |
+
+Never copy `pixel-dev-kv`'s Home Assistant token or URL into prod, and never put the space URL and token on Pixel Dev. Infra does not stop a Nabu Casa URL from reaching the space: the fence is this table, the devices file, capabilities, and `/admin doors`.
+
+If `PIXEL_ENV=dev` and `devices.yaml` lists door `lock`/`unlock` actions, Pixel logs `home.dev_door_actions` at startup. That is a warning, not a lockout (a test lock on a test HA is fine). If that `dev` process talks to the space, drop those actions or point the URL at a test instance.
+
+The Tailscale sidecar that would reach HA on the LAN is [#74](https://github.com/pixelbar/pixel/issues/74), not this setup. Do not expose Home Assistant on the public internet so Azure can reach it.
+
 ## Limits
 
 Read this before you create a token.
@@ -50,7 +68,7 @@ The token lasts about ten years until you delete it. Deleting it in Home Assista
 | --- | --- | --- |
 | **Nabu Casa Remote UI** | Local laptop, or Azure `dev` until Tailscale is on. Home Assistant → **Settings → Home Assistant Cloud**. | The Remote UI origin, `https://….ui.nabu.casa` (no path, no trailing slash needed). |
 | **LAN** | Pixel runs on the same network as Home Assistant (a machine in the space). | `http://homeassistant.local:8123` or `http://<lan-ip>:8123`. Use `https` if the instance is served that way. |
-| **Tailscale** | Azure Container App talking to the space LAN. Preferred on hosted Pixel ([#43](https://github.com/pixelbar/pixel/issues/43)). | The address the sidecar can resolve (MagicDNS or Tailscale IP). Userspace sidecar; LAN MagicDNS through it is still remaining work. |
+| **Tailscale** | Azure Container App talking to the space LAN. Preferred on hosted Pixel ([#74](https://github.com/pixelbar/pixel/issues/74)). | The address the sidecar can resolve (MagicDNS or Tailscale IP). Userspace sidecar; not wired yet. |
 
 Do not commit the URL. No instance is hard-coded. Both URL and token, or neither: only one set stops startup.
 
@@ -66,6 +84,7 @@ In `.env` (see `.env.example`) or the Container App / Key Vault:
 | `HOME_ASSISTANT_TOKEN` | The long-lived token |
 | `PIXEL_HOME_ASSISTANT_DIR` | Optional. Defaults to `config/home-assistant`. On Azure this is on the persist share |
 | `PIXEL_HOME_SYNC_MINUTES` | Optional. Defaults to `60`. How often `inventory.yaml` is rewritten. `0` means only at startup and on `/admin reload` |
+| `PIXEL_HOME_OUTAGE_MINUTES` | Optional. Defaults to `15`. How long HA may stay unreachable before Sentry's `pixel-<env>-home-assistant` monitor pages. `0` turns it off |
 
 Copy the example allow-list, then empty it so Pixel does not warn about sample entities that your test instance does not have:
 
@@ -82,7 +101,11 @@ devices: []
 
 `devices.yaml` is gitignored (it describes the building). `just validate-config` must say OK. A missing file while the URL is set stops Pixel from starting.
 
-On Azure `dev`, put the token in Key Vault (`home-assistant-token`) and the URL in the Container App env. Upload `devices.yaml` to the Files share (`home-assistant/`). See the [runbook](runbook.md#azure-container-app-dev). Restart the app after changing secrets.
+On Azure `dev`, put the token in Key Vault (`home-assistant-token`) and the URL in the Container App env (`home_assistant_url` in gitignored tfvars, or `az containerapp update --set-env-vars`). Upload `devices.yaml` to the Files share (`home-assistant/`). See the [runbook](runbook.md#azure-container-app-dev). Restart the app after changing secrets.
+
+The token must never appear in a git commit, a Docker image layer, a log line, a Sentry event, or Terraform state. Terraform writes it only as an ephemeral `value_wo` when `write_secrets` is on; live `dev` set it with `az` / the portal. Pixel scrubs token-shaped strings from logs and Sentry, but do not rely on that. The image copies `src` and `content/` only; `.env` and access YAML are dockerignored.
+
+**Update `devices.yaml` on Azure** without a new image: upload the file to the share, then `/admin reload`. An invalid file keeps the old list. To take door control away on Pixel Dev, upload a file with no door actions (or `devices: []`) and reload.
 
 ### 5. Start Pixel and check the connection
 
@@ -142,7 +165,8 @@ Doors: `/ha set` lock/unlock, or `/ha open door:` (always unlocks). `/admin door
 | Stop **one device** | Remove its `actions` (or the whole entry) from `devices.yaml` and `/admin reload`. |
 | Stop **all doors** | `/admin doors off`. Survives restarts. |
 | Stop **one person** | Ban or time them out in Discord, `/admin level set` to guest, revoke their capabilities. See the [runbook](runbook.md#moderation). |
-| Replace a leaked token | Delete the old token in HA first, create a new one as the same non-admin user, put it in the secret store, restart Pixel (or `/admin reload` after a refused token). |
+| Replace a leaked token | Delete the old token in HA **first** (emergency stop), create a new one as the same non-admin user, put it in the secret store, restart Pixel. |
+| Rotate a token that has not leaked | Create the new token **before** deleting the old one, so Pixel is never left with a dead token. See the [runbook](runbook.md#secrets). |
 
 ## Threat model
 
@@ -156,7 +180,7 @@ Each row is a threat and what Pixel actually does about it. Identification of Di
 | **Compromised Discord account** of someone without HA capabilities | They can still run every command their tier allows (`/ha list` and `/ha status` on devices at or below their floor). They cannot change a device. | Same as any other takeover: Discord moderation, then `/admin level set` / revoke. `/ha` refusals say `HOME_DENIED` and do not confirm that a device exists. |
 | **Someone who can edit `devices.yaml` or `members.yaml`** | Widen the allow-list (add a door, add `unlock`) or grant `ha-doors` / `ha-admin`. | Files live on a protected volume (Azure Files + snapshots) or a laptop you control. `admins.yaml` is not writable from Discord. Capability grants are audited and the person is DMed. Inventory is never an allow-list. |
 | **Compromised Home Assistant admin account, or a wide-open remote-access route** (Nabu Casa, exposed port, leaked sidecar) | Full control of the building, bypassing Pixel. | Pixel cannot fix a broken HA. Use a strong unique password and MFA on HA admins; do not expose HA to the internet except via Nabu Casa or Tailscale; keep the Pixel user non-admin so a *Pixel* leak is not an *HA admin* leak. Rotate HA passwords and the Pixel token. |
-| **Home Assistant down or slow** | `/ha` says it cannot reach HA. Discord, SpaceAPI and the rest keep working. | Connect in the background, reconnect forever, fail at once, no queue, no retry, time limit on every call. HA is not on `/healthz`. After a refused token the connection stays off until `/admin reload`. A hung call cannot hold a command forever. |
+| **Home Assistant down or slow** | `/ha` says it cannot reach HA. Discord, SpaceAPI and the rest keep working. | Connect in the background, reconnect forever, fail at once, no queue, no retry, time limit on every call. HA is not on `/healthz`. After a refused token the connection stays off until `/admin reload`. A hung call cannot hold a command forever. After `PIXEL_HOME_OUTAGE_MINUTES` (default 15) Sentry's `pixel-<env>-home-assistant` monitor opens an issue; short drops do not. |
 | **Typo or hostile text from Home Assistant** (friendly names, states, attributes) | Could try to inject mentions or formatting into Discord. | Device names come from `devices.yaml`, not HA. States and attributes are shown as code spans, control characters stripped, length limited. HA's own error text is never shown. |
 | **Two Pixels, or `dev` pointed at prod HA** | A test command unlocks the real door. | Separate bots, tokens and (when hosted) vaults. `dev` uses a test HA or none. Never put the prod URL and token in the Pixel Dev app. |
 

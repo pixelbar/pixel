@@ -23,8 +23,11 @@ export function startHeartbeat(options: {
 	isHealthy: () => boolean;
 	checkIn: CheckIn;
 	logger: Logger;
+	/** Log component and event prefix. Default `heartbeat` (Discord). Home Assistant uses `home-outage`. */
+	name?: string;
 }): Heartbeat {
-	const log = options.logger.child({ component: "heartbeat" });
+	const name = options.name ?? "heartbeat";
+	const log = options.logger.child({ component: name });
 	let last: CheckInStatus | undefined;
 	const beat = () => {
 		const status: CheckInStatus = options.isHealthy() ? "ok" : "error";
@@ -32,12 +35,12 @@ export function startHeartbeat(options: {
 			options.checkIn(status);
 		} catch (error) {
 			// Never let monitoring break the bot, and nothing from a timer may escape.
-			log.warn({ event: "heartbeat.failed", err: error }, "couldn't check in");
+			log.warn({ event: `${name}.failed`, err: error }, "couldn't check in");
 			return;
 		}
 		// Log changes, not every beat.
 		if (status !== last) {
-			log.info({ event: "heartbeat.status", status }, `heartbeat: ${status}`);
+			log.info({ event: `${name}.status`, status }, `${name}: ${status}`);
 			last = status;
 		}
 	};

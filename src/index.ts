@@ -15,6 +15,7 @@ import {
 	sentryCheckIn,
 	startHeartbeat,
 } from "./observability/heartbeat.ts";
+import { homeIsConnected, homeMonitorSlug, withOutageGrace } from "./observability/home-outage.ts";
 import { createLogger } from "./observability/logger.ts";
 import { logProcessFailures } from "./observability/process-logging.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
@@ -62,6 +63,7 @@ async function main(): Promise<void> {
 	// so the announcement publishers exist before the first change is announced.
 	let stopFeatures: Stop = () => {};
 	let heartbeat: Heartbeat | undefined;
+	let homeOutage: Heartbeat | undefined;
 	const discord = createDiscordAdapter({
 		token: config.discord.token,
 		guildId: config.discord.guildId,
@@ -104,6 +106,8 @@ async function main(): Promise<void> {
 					);
 				}
 				await homeInventory.sync();
+				// First check-in so Sentry creates the monitor without waiting an interval.
+				homeOutage?.beat();
 			})
 			.catch((error: unknown) => reporter.captureBackground(error, "home-assistant"));
 	} else {
@@ -123,6 +127,21 @@ async function main(): Promise<void> {
 			logger,
 		});
 	}
+	// A long Home Assistant outage pages a different monitor than a dead bot.
+	// Short drops stay ok until PIXEL_HOME_OUTAGE_MINUTES have passed.
+	if (config.homeAssistant && config.sentryDsn && config.homeOutageMinutes > 0) {
+		const intervalMinutes = config.heartbeatMinutes > 0 ? config.heartbeatMinutes : 5;
+		homeOutage = startHeartbeat({
+			intervalMs: intervalMinutes * 60_000,
+			isHealthy: withOutageGrace(
+				() => homeIsConnected(home.status()),
+				config.homeOutageMinutes * 60_000,
+			),
+			checkIn: sentryCheckIn(homeMonitorSlug(config.env), intervalMinutes),
+			logger,
+			name: "home-outage",
+		});
+	}
 	spaceStatus.start();
 
 	let stopping = false;
@@ -134,6 +153,7 @@ async function main(): Promise<void> {
 		await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
 		stopFeatures();
 		heartbeat?.stop();
+		homeOutage?.stop();
 		spaceStatus.stop();
 		homeAssistant?.close();
 		await discord.stop();

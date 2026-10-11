@@ -99,7 +99,7 @@ Discord IDs **must be quoted strings**, because unquoted numbers lose precision.
 
 ### Home Assistant
 
-Optional. Pixel can list and change lights, switches and doors on a Home Assistant instance. Set `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` (both or neither) and keep an allow-list in `config/home-assistant/devices.yaml`. Use a **non-admin** Home Assistant user; the token can do anything that user can, so the devices file is the fence.
+Optional. Pixel can list and change lights, switches and doors on a Home Assistant instance. Set `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` (both or neither) and keep an allow-list in `config/home-assistant/devices.yaml`. Use a **non-admin** Home Assistant user; the token can do anything that user can, so the devices file is the fence. `dev` uses a test instance or none; only prod points at the space. Setup, rotation and the threat model: [`docs/home-assistant.md`](docs/home-assistant.md).
 
 Commands: `/ha list`, `/ha status`, `/ha set` (needs `ha-lights`, `ha-switches`, `ha-doors` or `ha-admin`), `/ha open` (members with `ha-doors` or `ha-admin`; unlocks only). `/admin doors off` stops every door action at once.
 

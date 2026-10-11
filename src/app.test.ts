@@ -43,6 +43,7 @@ describe("buildCore", () => {
 			homeAssistantDir: "config/home-assistant",
 			homeSyncMinutes: 60,
 			heartbeatMinutes: 0,
+			homeOutageMinutes: 0,
 			logDir: undefined,
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
@@ -600,6 +601,38 @@ describe("buildCore", () => {
 			const core = buildCore(haConfig(haDir), silentLogger, nullErrorReporter);
 			expect(core.homeDevices.configured).toBe(true);
 			expect(core.homeDevices.view.byName.get("lamp")?.entityId).toBe("light.lamp");
+		});
+
+		it("warns when PIXEL_ENV=dev has door actions, and not for local or a read-only door", () => {
+			const haDir = join(dir, "ha");
+			mkdirSync(haDir);
+			writeFileSync(
+				join(haDir, "devices.yaml"),
+				"devices:\n  - name: front-door\n    entity: lock.front_door\n    kind: door\n    actions: [lock, unlock]\n",
+			);
+			const warn = vi.fn();
+			const logger = { ...silentLogger, warn };
+			logger.child = () => logger;
+			buildCore({ ...haConfig(haDir), env: "dev" }, logger, nullErrorReporter);
+			expect(warn).toHaveBeenCalledWith(
+				{ event: "home.dev_door_actions", doors: 1 },
+				expect.stringMatching(/PIXEL_ENV=dev has door actions/),
+			);
+			warn.mockClear();
+			buildCore({ ...haConfig(haDir), env: "local" }, logger, nullErrorReporter);
+			expect(warn).not.toHaveBeenCalledWith(
+				expect.objectContaining({ event: "home.dev_door_actions" }),
+				expect.anything(),
+			);
+			writeFileSync(
+				join(haDir, "devices.yaml"),
+				"devices:\n  - name: front-door\n    entity: lock.front_door\n    kind: door\n",
+			);
+			buildCore({ ...haConfig(haDir), env: "dev" }, logger, nullErrorReporter);
+			expect(warn).not.toHaveBeenCalledWith(
+				expect.objectContaining({ event: "home.dev_door_actions" }),
+				expect.anything(),
+			);
 		});
 	});
 });

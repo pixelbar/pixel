@@ -180,7 +180,11 @@ Someone unlocked (or locked) a door who shouldn't have, a door moved when nobody
 
 **If Home Assistant is unreachable:** see [Incidents](#incidents).
 
-**How Pixel reaches HA:** locally, `HOME_ASSISTANT_URL` is usually the Nabu Casa cloud URL. On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN (#9, #43). A Nabu Casa URL still works if the sidecar is not there yet.
+**How Pixel reaches HA:** locally, `HOME_ASSISTANT_URL` is usually the Nabu Casa cloud URL. On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN ([#74](https://github.com/pixelbar/pixel/issues/74)). A Nabu Casa URL still works if the sidecar is not there yet. Do not expose HA on the public internet so Azure can reach it.
+
+**`dev` must not control the space doors.** Pixel Dev uses a test Home Assistant (or none). Only prod gets the space URL and token, in a different Key Vault and Files share (#12). Infra does not enforce that: if `pixel-dev` is pointed at the space, take `lock`/`unlock` off those doors in the share's `devices.yaml`, do not grant `ha-doors` on Pixel Dev, and `/admin doors off`. `PIXEL_ENV=dev` logs `home.dev_door_actions` when door actions are listed.
+
+**Update `devices.yaml` on Azure:** upload to share `pixel` path `home-assistant/devices.yaml`, then `/admin reload`. No image rebuild. An invalid file keeps the old list.
 
 ## Terraform bootstrap
 
@@ -222,7 +226,7 @@ az containerapp revision restart -g pixel-dev -n pixel-dev
 
 **See that there is exactly one replica:** `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. If a command is answered twice, stop the extra instance (a laptop, or an old revision). Never raise `max_replicas`. Overlap during a deploy is #11.
 
-**Home Assistant:** Tailscale sidecar is preferred (`tailscale_enabled = true` plus Key Vault `tailscale-auth-key`). A Nabu Casa URL in `home_assistant_url` plus `home-assistant-token` still works when Tailscale is off. Set both URL and token, or neither. Dev must not point at the real doors.
+**Home Assistant:** a Nabu Casa URL in `home_assistant_url` plus Key Vault `home-assistant-token` is what `pixel-dev` uses today. Tailscale (`tailscale_enabled`) is [#74](https://github.com/pixelbar/pixel/issues/74); leave it off. Set both URL and token, or neither. Dev must use a test HA (or none) and must not list space door actions. Prod settings stay in a different vault when #12 exists. The token is never in Terraform state, the image, or logs.
 
 **Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 with the sidecar. West Europe. Not a quote.
 
@@ -295,11 +299,21 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 3. Restart Pixel. Check `/ping`, and that `/readyz` is 200.
 4. You don't need `just register`: the application and its commands haven't changed.
 
-**Rotate the Home Assistant token:**
+**Rotate the Home Assistant token** (create the new one first so Pixel is never left with a dead token). Pixel reads the token at startup, so a revision restart is required after Key Vault changes. That is a short Pixel gap; Home Assistant itself stays up because both tokens work until you delete the old one.
 
-1. In HA, as the **non-admin** Pixel user: Profile → Security → Long-lived access tokens → create a new token, then delete the old one.
-2. Put the new one in the secret store as `HOME_ASSISTANT_TOKEN`, and restart Pixel.
-3. `/admin status` should say Connected with no warning about an admin token. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
+1. In HA, as the **non-admin** Pixel user: Profile → Security → Long-lived access tokens → **create a new token**. Leave the old one in place.
+2. Put the new one in the secret store. Azure `dev`:
+   ```sh
+   az keyvault secret set --vault-name pixel-dev-kv --name home-assistant-token --file -
+   az containerapp revision restart -g pixel-dev -n pixel-dev
+   ```
+   Local: update `.env` `HOME_ASSISTANT_TOKEN` and restart `just dev`. Do not use `terraform apply` just to write this secret; live values were set with `az` so they are not in state.
+3. `/admin status` should say Connected with no warning about an admin token. `/ha list` should still work. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
+4. **Then** delete the old token in HA. Pixel's next call would be refused if you deleted it before step 3.
+
+**Revoke at once** (leak, or stop every Pixel HA action): delete the token in HA first. Pixel fails closed on the next call. Then create a replacement and follow steps 2–3.
+
+Never paste the token into chat, an issue, a pull request, Terraform state, or a log. After a restart, search Sentry Logs and `data/logs` for the token string: there must be no hit (`[redacted-token]` is the scrubber working).
 
 **Rotate the Mastodon token:**
 
@@ -384,6 +398,7 @@ Discord and the rest of Pixel keep working. Check the instance is up, the token 
 1. `/admin status` shows why. "Off: the token was refused" means the token was revoked or replaced: make a new one (see [Secrets](#secrets)). Not connected means it can't reach the HA URL: check HA is up and the network or tunnel between them.
 2. Pixel keeps reconnecting by itself, never queues an action and never retries one, so nothing will fire late when it's back.
 3. After fixing it, `/admin reload` re-checks the connection.
+4. A **long** outage (default 15 minutes, `PIXEL_HOME_OUTAGE_MINUTES`) opens Sentry issue on cron monitor `pixel-<env>-home-assistant`. Short drops do not. Discord and `/healthz` stay up. When HA returns, the next ok check-in resolves the issue.
 
 **Someone has the wrong access**
 
@@ -397,6 +412,7 @@ Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` 
 
 - **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and write here who is notified and where (email, Discord channel).
 - **Pixel going quiet:** Pixel checks in with a Sentry cron monitor, `pixel-prod` or `pixel-dev` (Sentry → **Crons**), every 5 minutes while it's connected to Discord. If check-ins stop (a crash, a hang, the host down) or say it's disconnected, the monitor opens an issue within about ten minutes, and closes it by itself when Pixel is back. In the monitor's settings, set who is alerted. 🚧 Record here who that is.
+- **Home Assistant staying unreachable:** a second cron monitor, `pixel-<env>-home-assistant`, created from the first check-in when HA and Sentry are configured. Check-ins stay ok through short drops; after `PIXEL_HOME_OUTAGE_MINUTES` (default 15) they flip to error and Sentry opens an issue. One good check-in after HA is back closes it. Set who is alerted on **that** monitor (it is not the same as `pixel-dev`). 🚧 Record here who that is. `0` turns the monitor off. HA down does not fail `/healthz` and must not restart Pixel.
 - **Planned downtime:** a restart or deploy fits in the five-minute margin. For anything longer, mute the monitor in Sentry first (Crons → the monitor → Mute) and unmute it after, or you'll be alerted.
 - **Triage an error:**
   1. Open the issue and read the stack, the tags and the user. The user is their ID, so you can find what they did in the logs (see [Moderation](#moderation)).

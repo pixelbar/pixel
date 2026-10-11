@@ -38,6 +38,8 @@ const envSchema = z
 		PIXEL_HOME_SYNC_MINUTES: z.coerce.number().int().min(0).max(1440).default(60),
 		// How often Pixel checks in with its Sentry cron monitor. 0 turns the heartbeat off.
 		PIXEL_HEARTBEAT_MINUTES: z.coerce.number().int().min(0).max(60).default(5),
+		// How long Home Assistant may stay unreachable before the Sentry monitor pages. 0 turns it off.
+		PIXEL_HOME_OUTAGE_MINUTES: z.coerce.number().int().min(0).max(1440).default(15),
 		// Empty turns the log file off. Logs still go to the console and to Sentry.
 		PIXEL_LOG_DIR: z.string().trim().default("data/logs"),
 		PIXEL_TIMEZONE: z
@@ -120,6 +122,11 @@ export type Config = {
 	homeSyncMinutes: number;
 	/** How often Pixel checks in with its Sentry cron monitor, in minutes. 0 means off. */
 	heartbeatMinutes: number;
+	/**
+	 * How long Home Assistant may stay unreachable before the Sentry cron monitor
+	 * (`pixel-<env>-home-assistant`) pages. 0 turns that monitor off. Default 15.
+	 */
+	homeOutageMinutes: number;
 	/** Where the rotating log file goes. Undefined means no file (console and Sentry only). */
 	logDir: string | undefined;
 	/** The time zone times are shown in, and that `{{date}}` tokens use. E.g. "Europe/Amsterdam". */
@@ -211,6 +218,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		homeAssistantDir: e.PIXEL_HOME_ASSISTANT_DIR,
 		homeSyncMinutes: e.PIXEL_HOME_SYNC_MINUTES,
 		heartbeatMinutes: e.PIXEL_HEARTBEAT_MINUTES,
+		homeOutageMinutes: e.PIXEL_HOME_OUTAGE_MINUTES,
 		logDir: e.PIXEL_LOG_DIR === "" ? undefined : e.PIXEL_LOG_DIR,
 		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,

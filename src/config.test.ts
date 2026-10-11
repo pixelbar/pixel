@@ -510,6 +510,23 @@ describe("the heartbeat interval", () => {
 	});
 });
 
+describe("the Home Assistant outage grace", () => {
+	it("defaults to fifteen minutes", () => {
+		expect(loadConfig(VALID).homeOutageMinutes).toBe(15);
+	});
+
+	it("can be changed, or set to 0 to turn the monitor off", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HOME_OUTAGE_MINUTES: "30" }).homeOutageMinutes).toBe(30);
+		expect(loadConfig({ ...VALID, PIXEL_HOME_OUTAGE_MINUTES: "0" }).homeOutageMinutes).toBe(0);
+	});
+
+	it.each(["-1", "2.5", "1441", "soon"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_OUTAGE_MINUTES: value })).toThrow(
+			/PIXEL_HOME_OUTAGE_MINUTES/,
+		);
+	});
+});
+
 describe("the bot status channel and build info", () => {
 	it("posts Pixel's online status in the announcements channel unless told otherwise", () => {
 		expect(

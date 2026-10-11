@@ -31,6 +31,7 @@ devices:
   # Doors are member-only (minTier friend is refused) and need ha-doors or ha-admin.
   # Pixel only offers lock and unlock. `/ha open` is a shortcut for unlock; it never unlatches.
   # Admins can stop all door control at once with /admin doors off.
+  # PIXEL_ENV=dev must not list lock/unlock on the space doors. Use a test HA, or omit these actions.
   - name: front-door
     entity: lock.front_door
     kind: door

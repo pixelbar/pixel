@@ -246,6 +246,17 @@ export class HomeDeviceStore {
 }
 
 /**
+ * Doors in the allow-list that people can lock or unlock. Used to warn when
+ * `PIXEL_ENV=dev` would be able to move a door — that must be a test instance,
+ * or these actions must be removed.
+ */
+export function controllableDoors(view: HomeDevicesView): readonly string[] {
+	return view.devices
+		.filter((device) => device.kind.name === "door" && device.actions.length > 0)
+		.map((device) => device.name);
+}
+
+/**
  * Names of devices whose entity Home Assistant doesn't know, so a typo in the
  * file shows up as a warning. Undefined when it couldn't be checked (Home
  * Assistant is unreachable), which is not a problem with the file.

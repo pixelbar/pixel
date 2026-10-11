@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EntityState } from "../core/home.ts";
 import { HOME_KINDS } from "../core/home-kinds/index.ts";
 import {
+	controllableDoors,
 	DEVICES_FILE,
 	findMissingDevices,
 	HomeDeviceStore,
@@ -69,6 +70,21 @@ describe("loadHomeDevices", () => {
 			["lock", "lock"],
 			["unlock", "unlock"],
 		]);
+	});
+
+	it("names doors that have lock or unlock, and ignores read-only doors and other kinds", () => {
+		write(VALID);
+		expect(controllableDoors(load())).toEqual(["front-door"]);
+		write(`devices:
+  - name: workshop-light
+    entity: light.workshop
+    kind: light
+    actions: [on]
+  - name: inner-door
+    entity: lock.inner
+    kind: door
+`);
+		expect(controllableDoors(load())).toEqual([]);
 	});
 
 	it("allows only what's listed: leaving actions out means read-only, even for a light", () => {

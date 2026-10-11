@@ -119,10 +119,12 @@ If that fails, the Azure Files uid map did not take. Check `mount_options` on th
 
 ## Home Assistant
 
-- **Preferred:** `tailscale_enabled = true` plus Key Vault `tailscale-auth-key` (tagged, reusable or ephemeral). Sidecar is userspace (no TUN). Pixel still uses `HOME_ASSISTANT_URL` + `HOME_ASSISTANT_TOKEN` (both or neither). LAN MagicDNS through the sidecar is remaining work for #43.
-- **Works today:** a Nabu Casa URL in `home_assistant_url` and the token in Key Vault, with Tailscale off.
+- **Preferred later:** Tailscale sidecar (`tailscale_enabled`) is [#74](https://github.com/pixelbar/pixel/issues/74). Leave it off until that lands. Do not expose Home Assistant on the public internet so Azure can reach it.
+- **Works today:** a Nabu Casa URL in `home_assistant_url` (plain env) and the token in Key Vault `home-assistant-token`, with Tailscale off. `devices.yaml` on the Files share.
 
-Dev must not control the real doors. Use a test HA, or leave HA off.
+Dev must not control the real doors. Use a **test** Home Assistant, or leave HA unset. Never put the space URL or token in `pixel-dev-kv` or this app's env. Prod (#12) gets a different vault, URL, token and share. If this app must talk to the space instance temporarily, `devices.yaml` on the share must not list `lock`/`unlock` on real doors, do not grant `ha-doors` on Pixel Dev, and `/admin doors off`. `PIXEL_ENV=dev` logs `home.dev_door_actions` when door actions are present.
+
+The token is never in Terraform state (ephemeral `value_wo`, or set with `az` / the portal). It must never appear in a log, image layer, issue or pull request. Rotate it as in the [runbook](../../../docs/runbook.md#secrets).
 
 ## After apply, Discord still will not answer until
 

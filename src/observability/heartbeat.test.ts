@@ -81,6 +81,26 @@ describe("startHeartbeat", () => {
 		heartbeat.stop();
 		expect(vi.getTimerCount()).toBe(0);
 	});
+
+	it("can use another name so Home Assistant logs are not heartbeat events", async () => {
+		const checkIn = vi.fn();
+		const info = vi.fn();
+		const logger = { ...silentLogger, info };
+		logger.child = () => logger;
+		const heartbeat = startHeartbeat({
+			intervalMs: 60_000,
+			isHealthy: () => true,
+			checkIn,
+			logger,
+			name: "home-outage",
+		});
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(info).toHaveBeenCalledWith(
+			{ event: "home-outage.status", status: "ok" },
+			"home-outage: ok",
+		);
+		heartbeat.stop();
+	});
 });
 
 describe("monitorSlug", () => {

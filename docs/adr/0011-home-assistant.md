@@ -30,7 +30,7 @@ A slow or missing Home Assistant never holds up Discord. The adapter connects in
 
 `HOME_ASSISTANT_URL` is wherever *this* Pixel process can open that WebSocket: a Nabu Casa Remote UI URL, a LAN address, or a Tailscale address. Both the URL and `HOME_ASSISTANT_TOKEN` or neither; only one set stops startup. No instance is hard-coded.
 
-On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN (#9, #43). A Nabu Casa URL still works and is what local and `dev` use today. `dev` must not control the real doors.
+On Azure the preferred path is a Tailscale sidecar so the container talks to HA on the LAN (#74). A Nabu Casa URL still works and is what local and `dev` use today. `dev` must not control the real doors.
 
 ### No webhooks for doors
 

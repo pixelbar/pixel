@@ -9,6 +9,15 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Sentry cron monitor `pixel-<env>-home-assistant` alerts when Home Assistant stays unreachable for `PIXEL_HOME_OUTAGE_MINUTES` (default 15). Short drops stay quiet. Off when HA or Sentry is unset, or the setting is `0`.
+- Operator docs for Home Assistant secrets, token rotation without a gap, and keeping `dev` off the space doors ([#43](https://github.com/pixelbar/pixel/issues/43)).
+
+### Changed
+
+- `PIXEL_ENV=dev` logs a warning when `devices.yaml` lists door lock/unlock actions, so Pixel Dev cannot silently control the space.
+
 ## [0.8.0] - 2026-10-11
 
 ### Added

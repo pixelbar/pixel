@@ -28,7 +28,7 @@ import { buildFeatures } from "./features/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
-import { HomeDeviceStore } from "./services/home-devices.ts";
+import { controllableDoors, HomeDeviceStore } from "./services/home-devices.ts";
 import { HomeInventory, INVENTORY_FILE } from "./services/home-inventory.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
@@ -106,6 +106,15 @@ export function buildCore(
 	const homeDevices = config.homeAssistant
 		? HomeDeviceStore.open({ dir: config.homeAssistantDir, kinds: HOME_KINDS })
 		: HomeDeviceStore.empty();
+	if (config.env === "dev") {
+		const doors = controllableDoors(homeDevices.view);
+		if (doors.length > 0) {
+			logger.warn(
+				{ event: "home.dev_door_actions", doors: doors.length },
+				"PIXEL_ENV=dev has door actions in devices.yaml. Dev must not control the space doors: use a test Home Assistant, or drop lock/unlock from those devices.",
+			);
+		}
+	}
 	const homeInventory = config.homeAssistant
 		? new HomeInventory({
 				home,
