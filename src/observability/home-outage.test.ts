@@ -39,7 +39,6 @@ describe("withOutageGrace", () => {
 
 		expect(healthy()).toBe(true);
 		up = false;
-		now = 5 * 60_000;
 		expect(healthy()).toBe(true);
 		now = 14 * 60_000 + 999;
 		expect(healthy()).toBe(true);
@@ -70,7 +69,9 @@ describe("withOutageGrace", () => {
 		up = false;
 		now = 12 * 60_000;
 		expect(healthy()).toBe(true);
-		now = 26 * 60_000;
+		now = 26 * 60_000 + 999;
+		expect(healthy()).toBe(true);
+		now = 27 * 60_000;
 		expect(healthy()).toBe(false);
 	});
 });
