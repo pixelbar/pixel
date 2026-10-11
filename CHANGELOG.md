@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Date tokens in user-set posts accept a whole-day offset (`{{date+2}}`, `{{day+2}}`) from the scheduled occurrence, so a Monday post can talk about Wednesday.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added
