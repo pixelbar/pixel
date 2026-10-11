@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-11
+
 ### Added
 
 - User-set posts (`/schedule` messages and polls, the closing-time file) fill `{{date}}`, `{{day}}`, `{{month}}`, `{{year}}` and `{{dateWithTime}}` when they are posted, in `PIXEL_TIMEZONE` (Europe/Amsterdam). Unknown tokens are left as written.
@@ -59,7 +61,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/pixelbar/pixel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pixelbar/pixel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pixelbar/pixel/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pixelbar/pixel/releases/tag/v0.1.0
