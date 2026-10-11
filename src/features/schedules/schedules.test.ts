@@ -258,7 +258,7 @@ describe("/schedule message", () => {
 		const shown = text(result.reply.embeds?.[0]);
 		expect(shown).toContain("✅ Scheduled: Pizza");
 		expect(shown).toContain("Understood as **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam).");
-		expect(shown).toContain("every Wednesday and Saturday at 19:00");
+		expect(shown).toContain("occurs once at 19:00, then repeats every Wednesday and Saturday");
 		expect(shown).toContain("Wed 14 Oct 2026, 19:00");
 		expect(shown).toContain("Sat 17 Oct 2026, 19:00");
 		expect(shown).toContain("Wed 21 Oct 2026, 19:00");
@@ -413,7 +413,7 @@ describe("managing schedules", () => {
 		expect(shown).toContain("Pizza");
 		expect(shown).toContain(id);
 		expect(shown).toContain("#general");
-		expect(shown).toContain("every Wednesday at 19:00");
+		expect(shown).toContain("occurs once at 19:00, then repeats every Wednesday");
 		expect(shown).toContain("next Wed 14 Oct 2026, 19:00");
 	});
 
@@ -612,7 +612,9 @@ describe("/schedule edit", () => {
 			recurrence: { kind: "weekly", everyWeeks: 1, days: ["thu"] },
 			post: { kind: "message", text: "Pizza night tonight!" },
 		});
-		expect(text(result.reply.embeds?.[0])).toContain("every Thursday at 20:00");
+		expect(text(result.reply.embeds?.[0])).toContain(
+			"occurs once at 20:00, then repeats every Thursday",
+		);
 	});
 
 	it("refuses someone else's schedule, an unknown id, and a one-off that already posted, without leaking", async () => {
