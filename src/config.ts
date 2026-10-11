@@ -99,7 +99,7 @@ export type Config = {
 	heartbeatMinutes: number;
 	/** Where the rotating log file goes. Undefined means no file (console and Sentry only). */
 	logDir: string | undefined;
-	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
+	/** The time zone times are shown in, and that `{{date}}` tokens use. E.g. "Europe/Amsterdam". */
 	timezone: string;
 	healthPort: number;
 	sentryDsn: string | undefined;

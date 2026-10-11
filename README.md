@@ -62,7 +62,7 @@ Pixel also says when **it** comes online and goes offline, in the announcements 
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
-**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. Mentions stay disabled. After a deploy that adds the command, run `just register`.
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register`.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
@@ -118,7 +118,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `PIXEL_HOME_SYNC_MINUTES`     | Optional. How often (minutes) Pixel refreshes `inventory.yaml`, a list of everything Home Assistant has so you can copy devices into `devices.yaml`. It is not an allow-list. Defaults to 60, 0 for only at startup and on `/admin reload` |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
 | `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Defaults to `data/` |
-| `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in. Defaults to `Europe/Amsterdam` |
+| `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in, and that `{{date}}` tokens use when a user-set post goes out. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
 | `PIXEL_RUNTIME`               | Optional. `local` (default) or `cloud`. Azure sets `cloud`. `/admin status` and the online post show it as Where |

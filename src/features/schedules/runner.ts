@@ -1,4 +1,5 @@
 import type { ChannelPosts } from "../../core/channel-posts.ts";
+import { type Interpolate, interpolateChannelPost } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import { nextOccurrence, parseLocal, toInstant } from "../../core/recurrence.ts";
@@ -11,6 +12,8 @@ export type RunnerDeps = {
 	store: Pick<ScheduleStore, "all" | "update" | "remove" | "problem">;
 	posts: Pick<ChannelPosts, "post" | "ready">;
 	timezone: string;
+	/** Fills `{{tokens}}` in the stored body at post time. */
+	interpolator: Interpolate;
 	/** Whether the person who made a schedule may still schedule posts. */
 	stillAllowed: (ref: string) => Promise<boolean>;
 	logger: Logger;
@@ -83,7 +86,12 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 				);
 				continue;
 			} else {
-				await deps.posts.post(schedule.channelId, schedule.post);
+				await deps.posts.post(
+					schedule.channelId,
+					interpolateChannelPost(schedule.post, (text) =>
+						deps.interpolator.interpolate(text, now),
+					),
+				);
 				log.info(
 					{ event: "schedule.posted", ...fields, due: due.at.toISOString() },
 					"posted a scheduled post",
