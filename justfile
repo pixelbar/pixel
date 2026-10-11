@@ -12,6 +12,14 @@ install:
 dev:
     pnpm exec tsx watch --include 'config/*.yaml' --env-file=.env --import ./src/instrument.ts src/index.ts
 
+# Run the docs website dev server with hot reload (accessible via Tailscale on port 5173)
+docs-dev:
+    cd docs-website && pnpm run dev
+
+# Build the docs website for production
+docs-build:
+    cd docs-website && pnpm run build
+
 # Compile TypeScript to dist/
 build:
     rm -rf dist
