@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Privacy notice ([`docs/privacy.md`](docs/privacy.md)) linked from `/help`, with log and Sentry retention and the access/deletion process in the runbook ([#7](https://github.com/pixelbar/pixel/issues/7)).
+
 ## [0.8.0] - 2026-10-11
 
 ### Added

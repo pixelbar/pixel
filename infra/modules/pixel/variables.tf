@@ -266,7 +266,7 @@ variable "timezone" {
 variable "log_retention_days" {
   type        = number
   default     = 30
-  description = "Log Analytics retention in days. Provisional until #7 decides the privacy notice period."
+  description = "Log Analytics retention in days. Documented as 30 days in docs/privacy.md (Azure's floor). Changing this needs a matching notice and runbook update."
 
   validation {
     condition     = var.log_retention_days >= 30 && var.log_retention_days <= 730
