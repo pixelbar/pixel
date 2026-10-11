@@ -1,14 +1,26 @@
-# Pixel Documentation Website
+# Pixel Landing Page
 
-Beautiful, modern documentation website for Pixel - the Discord bot assistant for the Pixelbar hackerspace.
+A striking landing page for Pixel - the Discord bot assistant for the Pixelbar hackerspace.
 
 ## ✨ Features
 
-- **Vibrant Design**: Pixelated rainbow theme with blues, purples, pinks, oranges, yellows, and greens on black
-- **Fully Responsive**: Optimized for desktop, tablet, and mobile devices
-- **Modern Tech Stack**: Built with Vite, React, and TypeScript
-- **Fast & Lightweight**: Optimized build with code splitting
-- **Accessible**: WCAG-compliant with proper semantic HTML
+- **Animated Logo**: Canvas-based particle animation with gravity physics
+- **Pixelated Rainbow Swirl**: Vibrant particles orbiting a central bright star
+- **Physics Simulation**: Realistic gravity and orbital mechanics
+- **Responsive Design**: Adapts to all screen sizes
+- **Performant**: Smooth 60fps animation using requestAnimationFrame
+
+## 🎨 Design
+
+- **Background**: Pure black (#000000)
+- **Central Star**: Bright white core with golden glow
+- **Particle Colors**: Vibrant rainbow spectrum
+  - Deep pink, hot pink
+  - Medium orchid, medium purple
+  - Royal blue, dodger blue
+  - Dark turquoise, medium spring green
+  - Green yellow, gold
+  - Orange, tomato
 
 ## 🚀 Quick Start
 
@@ -33,31 +45,17 @@ pnpm build
 pnpm preview
 ```
 
-The development server will start at `http://localhost:3000`.
+The development server will start at `http://localhost:5173`.
 
 ## 📁 Project Structure
 
 ```
 docs-website/
 ├── public/           # Static assets
-│   └── favicon.svg   # Pixelated rainbow favicon
 ├── src/
-│   ├── components/   # Reusable components
-│   │   ├── Navigation.tsx
-│   │   ├── Navigation.module.css
-│   │   ├── Footer.tsx
-│   │   └── Footer.module.css
-│   ├── pages/        # Page components
-│   │   ├── Home.tsx
-│   │   ├── Home.module.css
-│   │   ├── Installation.tsx
-│   │   ├── Setup.tsx
-│   │   ├── Usage.tsx
-│   │   ├── Interact.tsx
-│   │   └── Documentation.module.css
-│   ├── styles/       # Global styles & theme
-│   │   ├── global.css
-│   │   └── theme.ts
+│   ├── components/   # React components
+│   │   └── AnimatedLogo.tsx  # Canvas particle animation
+│   ├── styles/       # Global styles
 │   ├── App.tsx       # Main app component
 │   └── main.tsx      # Entry point
 ├── index.html
@@ -66,43 +64,23 @@ docs-website/
 └── package.json
 ```
 
-## 🎨 Design System
+## 🔧 Animation Details
 
-### Colors
+The animated logo uses:
+- **HTML5 Canvas** for rendering
+- **Particle System** with 320 particles in 8 spiral arms
+- **Physics Engine**: Gravity toward center + orbital velocity
+- **Color System**: 12-color rainbow gradient
+- **Glow Effects**: Radial gradients for star and particles
+- **Responsive**: Adapts to window resize
 
-The design uses a vibrant pixelated rainbow theme:
+### Physics Parameters
 
-- **Blue**: `#0080ff` - Primary actions, links
-- **Purple**: `#a855f7` - Secondary accents, highlights
-- **Pink**: `#ec4899` - Attention, warnings
-- **Orange**: `#f97316` - Energy, calls-to-action
-- **Yellow**: `#fbbf24` - Warmth, success states
-- **Green**: `#10b981` - Success, code blocks
-- **Black**: `#000000` - Background
-- **Grays**: Various shades for text and UI elements
-
-### Typography
-
-- **Headings**: Inter (weights: 700-900)
-- **Body**: Inter (weights: 400-600)
-- **Code**: JetBrains Mono
-
-### Components
-
-- Responsive navigation with mobile menu
-- Feature cards with hover effects
-- Command documentation with tier badges
-- Code blocks with syntax highlighting
-- Glowing buttons and accents
-- Accessibility-focused design
-
-## 🌐 Pages
-
-1. **Home** (`/`) - Hero, features, tech stack, quick start
-2. **Installation** (`/installation`) - Prerequisites, setup steps, troubleshooting
-3. **Setup** (`/setup`) - Configuration, environment variables, access control
-4. **Usage** (`/usage`) - Command reference, scheduled posts, Home Assistant
-5. **Interact** (`/interact`) - Best practices, access levels, privacy
+- Gravity: 0.3 force toward center
+- Rotation Speed: 0.001 radians per frame
+- Damping: 0.92 (velocity decay)
+- Orbit Strength: 0.05 tangential force
+- Restore Force: 0.01 (keeps particles in orbit)
 
 ## 🚢 Deployment
 
@@ -116,72 +94,22 @@ The production build will be in the `dist/` directory.
 
 ### Serve
 
-You can serve the production build with any static file server:
-
 ```bash
 # Using Vite's preview server
 pnpm preview
 
-# Using a simple HTTP server
+# Using any static file server
 npx serve dist
-
-# Using nginx, Apache, or any other web server
-# Point the document root to the dist/ directory
 ```
 
-### Deploy to Common Platforms
+### Deploy to Platforms
 
-#### Vercel
-```bash
-vercel --prod
-```
-
-#### Netlify
-```bash
-netlify deploy --prod --dir=dist
-```
-
-#### GitHub Pages
-```bash
-# Build the site
-pnpm build
-
-# Push dist/ to gh-pages branch
-# (or use gh-pages package)
-```
-
-#### Azure Static Web Apps
-```bash
-# Configure azure-static-web-apps.yml
-# Push to repository
-```
-
-## 🔧 Development
-
-### Hot Reload
-
-The dev server supports hot module replacement (HMR) - changes appear instantly without full page reload.
-
-### TypeScript
-
-The project uses strict TypeScript for type safety. Run type checking with:
-
-```bash
-pnpm exec tsc --noEmit
-```
-
-### Code Style
-
-CSS Modules are used for component styling to avoid naming conflicts and enable local scoping.
-
-## 📝 Content Updates
-
-To update documentation content:
-
-1. Edit the relevant page component in `src/pages/`
-2. Changes will hot-reload in development
-3. Commit and push changes
-4. Rebuild and redeploy
+Works with any static hosting:
+- Vercel
+- Netlify
+- GitHub Pages
+- Azure Static Web Apps
+- Cloudflare Pages
 
 ## 🤝 Contributing
 
@@ -193,8 +121,8 @@ To update documentation content:
 
 ## 📄 License
 
-Same license as the Pixel bot (TBD).
+Same license as the Pixel bot.
 
 ## 🙏 Credits
 
-Built for the Pixelbar hackerspace community. Design inspired by Pixel's vibrant, pixelated aesthetic.
+Built for the Pixelbar hackerspace community.
