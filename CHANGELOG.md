@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-11
+
 ### Added
 
 - `/schedule edit` lets the Discord user who scheduled a post or poll change it before it goes out (content, and optionally `when` / repeat / name). Autocomplete and the list show only their still-upcoming items. Already-posted or other people's schedules get a generic refusal.
@@ -66,7 +68,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/pixelbar/pixel/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pixelbar/pixel/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pixelbar/pixel/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/pixelbar/pixel/compare/v0.1.0...v0.2.0
