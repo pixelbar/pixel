@@ -88,9 +88,7 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 			} else {
 				await deps.posts.post(
 					schedule.channelId,
-					interpolateChannelPost(schedule.post, (text) =>
-						deps.interpolator.interpolate(text, now),
-					),
+					interpolateChannelPost(schedule.post, (text) => deps.interpolator.interpolate(text, now)),
 				);
 				log.info(
 					{ event: "schedule.posted", ...fields, due: due.at.toISOString() },

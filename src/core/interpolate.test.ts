@@ -4,8 +4,8 @@ import {
 	createInterpolator,
 	dateTokens,
 	InterpolateError,
-	interpolateChannelPost,
 	Interpolator,
+	interpolateChannelPost,
 } from "./interpolate.ts";
 
 const AMS = "Europe/Amsterdam";
