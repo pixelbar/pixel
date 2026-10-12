@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-12
+
 ### Added
 
 - A website in `docs/`, built with VitePress and themed with the Pixel design system: a landing page, a guide, every command with its tier and reply, and the maintainer docs and ADRs under `/maintainers/`. `just docs-install`, `just docs-dev` and `just docs-build` run it. It has its own `package.json` and lockfile, so the bot's dependencies and image don't change. A [Docs site](.github/workflows/docs.yml) workflow builds it on pull requests that touch `docs/` and publishes it to GitHub Pages from `main`.
@@ -96,7 +98,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/pixelbar/pixel/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/pixelbar/pixel/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/pixelbar/pixel/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/pixelbar/pixel/compare/v0.6.0...v0.7.0
