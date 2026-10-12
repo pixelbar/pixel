@@ -212,3 +212,43 @@ deploy-dev: docker-login-ghcr
       exit 1
     fi
     echo "Do not run just dev against the Pixel Dev token while this app is up."
+
+# Install the website's dependencies (docs/ is its own project with its own lockfile)
+docs-install:
+    pnpm --dir docs install
+
+# Run the website locally with hot reload (http://localhost:5173)
+docs-dev:
+    pnpm --dir docs run dev
+
+# Build the website into docs/.vitepress/dist
+docs-build:
+    pnpm --dir docs run build
+
+# Serve the built website (after `just docs-build`)
+docs-preview:
+    pnpm --dir docs run preview
+
+# Build the website and share it on your tailnet with `tailscale serve` (never Funnel:
+# only devices on your tailnet can open it). Runs until Ctrl-C, which also stops sharing.
+docs-tailnet port="4173":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ts="$(command -v tailscale || true)"
+    if [ -z "$ts" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+      ts=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    fi
+    if [ -z "$ts" ]; then
+      echo "The tailscale CLI isn't installed or on PATH."
+      exit 1
+    fi
+    just docs-build
+    pnpm --dir docs exec vitepress preview --port {{port}} &
+    preview=$!
+    trap 'kill "$preview" 2>/dev/null || true' EXIT
+    for _ in $(seq 1 50); do
+      curl -fsS -o /dev/null "http://127.0.0.1:{{port}}/" && break
+      sleep 0.2
+    done
+    # Foreground serve: the share is removed when this exits.
+    "$ts" serve "http://127.0.0.1:{{port}}"

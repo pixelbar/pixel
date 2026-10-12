@@ -61,7 +61,8 @@ config/                 # *.example.yaml committed; real admins.yaml / members.y
 data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml (the scheduled posts)
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # register-commands, validate-config, changelog check/bump
-docs/                   # architecture, identity, infra, Home Assistant setup, ADRs, runbook
+docs/                   # architecture, identity, infra, Home Assistant setup, ADRs, runbook;
+                        #   also the VitePress website: see docs/AGENTS.md before changing it
 CHANGELOG.md            # Keep a Changelog 1.1.0; most PRs add an Unreleased entry
 infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/dev are #9 (do not apply until asked)
 ```
