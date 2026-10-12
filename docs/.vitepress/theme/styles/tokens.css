@@ -35,10 +35,11 @@
 	--on-spectrum: #ffffff;
 
 	/*
-	 * The mark in light: the logo printed in ink. The spectrum at graphic
-	 * strength (3:1 on white, not the 5:1 text values) so the art stays bright.
+	 * The mark in light: the logo printed on paper, with a white-hot star. The
+	 * spectrum at graphic strength (3:1 on white, not the 5:1 text values) so
+	 * the art stays bright.
 	 */
-	--mark-core: var(--core);
+	--mark-core: #ffffff;
 	--mark-shine: #ffffff;
 	--mark-cyan: #00a4b6;
 	--mark-blue: #3d6dff;
