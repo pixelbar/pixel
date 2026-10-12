@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- Merges to `main` no longer roll `pixel-prod` or publish the docs site. A maintainer runs the **Release** workflow on `main` to cut the version from Unreleased, tag `vX.Y.Z`, create a GitHub Release, publish that image, roll `pixel-prod` after Environment `prod` approval, and publish the VitePress site to GitHub Pages.
+
 ## [0.10.1] - 2026-10-12
 
 ### Changed

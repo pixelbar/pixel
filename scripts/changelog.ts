@@ -166,6 +166,7 @@ export type ReleaseResult =
 			previousVersion: string;
 			version: string;
 			changelog: string;
+			notes: string;
 	  }
 	| { bump: null; version: string; changelog: string };
 
@@ -192,7 +193,39 @@ export function applyRelease(
 	const rest = doc.rest.trimStart();
 	const rebuilt = `${doc.preamble}${UNRELEASED_HEADING}\n\n${nextSection}\n${rest}`;
 	const withLinks = updateCompareLinks(rebuilt, doc.links, currentVersion, version, repoUrl);
-	return { bump: kind, previousVersion: currentVersion, version, changelog: withLinks };
+	return {
+		bump: kind,
+		previousVersion: currentVersion,
+		version,
+		changelog: withLinks,
+		notes: releasedBody,
+	};
+}
+
+const VERSION_HEADING = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}\s*$/;
+
+/** Body of `## [version] - date` (the GitHub Release notes), or undefined if missing. */
+export function versionNotes(changelog: string, version: string): string | undefined {
+	const lines = changelog.split("\n");
+	let start = -1;
+	for (let i = 0; i < lines.length; i += 1) {
+		const heading = VERSION_HEADING.exec(lines[i] ?? "");
+		if (heading?.[1] === version) {
+			start = i + 1;
+			break;
+		}
+	}
+	if (start === -1) return undefined;
+	let end = lines.length;
+	for (let i = start; i < lines.length; i += 1) {
+		const line = lines[i] ?? "";
+		if (line.startsWith("## [") || /^\[unreleased\]:/i.test(line)) {
+			end = i;
+			break;
+		}
+	}
+	const body = lines.slice(start, end).join("\n").trim();
+	return body === "" ? undefined : body;
 }
 
 type ParsedChangelog = {
