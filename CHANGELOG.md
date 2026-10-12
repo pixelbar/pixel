@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/ha list` now pluralises its groups when there is more than one device ("Lights · 2", not "Light · 2") (PIXEL-4).
+
 ## [0.10.0] - 2026-10-12
 
 ### Added

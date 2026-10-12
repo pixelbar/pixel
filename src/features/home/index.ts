@@ -329,7 +329,7 @@ function describeList(
 		byKind.set(device.kind.name, [...(byKind.get(device.kind.name) ?? []), device]);
 	}
 	const fields: EmbedField[] = [...byKind.entries()].map(([kind, members]) => ({
-		name: `${capitalize(kind)} · ${members.length}`,
+		name: `${capitalize(members.length === 1 ? kind : `${kind}s`)} · ${members.length}`,
 		value: joinWithinLimit(
 			members.map((device) => `**${device.name}** ${reading(device, states.get(device.entityId))}`),
 		),
