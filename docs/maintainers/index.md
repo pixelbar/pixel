@@ -27,6 +27,7 @@ Architecture decision records, newest last.
 | [0009](./adr/0009-container-apps-dev) | Container Apps module and the `dev` environment. |
 | [0010](./adr/0010-ghcr-cd) | Temporary GHCR CD: local `dev`, `main` publishes only. |
 | [0011](./adr/0011-home-assistant) | Home Assistant: official client, allow-list, no inbound webhooks. |
+| [0012](./adr/0012-prod-environment) | Prod environment and approved CD. |
 
 ## Working on the site
 

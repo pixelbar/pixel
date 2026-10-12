@@ -39,7 +39,7 @@ jobs:
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
-      - name: Format-check and validate bootstrap and envs/dev
+      - name: Format-check and validate bootstrap, envs/dev and envs/prod
         run: just tf-validate
 
   plan-dev:
@@ -93,6 +93,61 @@ jobs:
 
       - name: Plan infra/envs/dev
         working-directory: infra/envs/dev
+        run: |
+          terraform init -backend-config=backend.azurerm.example.hcl -input=false
+          terraform plan -input=false -var-file=terraform.example.tfvars
+
+  plan-prod:
+    name: Plan envs/prod
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - name: Require ARM_* on GitHub Environment prod
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          if [ -z "${ARM_CLIENT_ID}" ]; then
+            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod (variable, not secret)."
+            missing=1
+          fi
+          if [ -z "${ARM_TENANT_ID}" ]; then
+            echo "::error::ARM_TENANT_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
+            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Validate still ran. Not inventing credentials. This job does not apply."
+            exit 1
+          fi
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Plan infra/envs/prod
+        working-directory: infra/envs/prod
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
           terraform plan -input=false -var-file=terraform.example.tfvars

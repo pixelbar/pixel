@@ -127,6 +127,7 @@ export default defineConfig({
 						{ text: "0009 · Container Apps dev", link: "/maintainers/adr/0009-container-apps-dev" },
 						{ text: "0010 · Temporary GHCR CD", link: "/maintainers/adr/0010-ghcr-cd" },
 						{ text: "0011 · Home Assistant", link: "/maintainers/adr/0011-home-assistant" },
+						{ text: "0012 · Prod environment", link: "/maintainers/adr/0012-prod-environment" },
 					],
 				},
 			],

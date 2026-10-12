@@ -1,30 +1,30 @@
 # Pixel infrastructure
 
-How Pixel is hosted. Terraform lives in [`infra/`](../infra/). Day-to-day steps are in the [runbook](runbook.md). Design decisions: [ADR 0008](adr/0008-terraform-bootstrap.md) (bootstrap + OIDC), [ADR 0009](adr/0009-container-apps-dev.md) (Container Apps `dev`), [ADR 0010](adr/0010-ghcr-cd.md) (temporary CD routing).
+How Pixel is hosted. Terraform lives in [`infra/`](../infra/). Day-to-day steps are in the [runbook](runbook.md). Design decisions: [ADR 0008](adr/0008-terraform-bootstrap.md) (bootstrap + OIDC), [ADR 0009](adr/0009-container-apps-dev.md) (Container Apps `dev`), [ADR 0010](adr/0010-ghcr-cd.md) (temporary CD routing for `dev`), [ADR 0012](adr/0012-prod-environment.md) (prod + approved CD).
 
-There is **no database**. Discord users never connect to Azure: the replica has **no public ingress** and **exactly one replica**. `prod` is [#12](https://github.com/pixelbar/pixel/issues/12) (`pixel-prod` is an empty resource group; there is no `infra/envs/prod` yet).
+There is **no database**. Discord users never connect to Azure: the replica has **no public ingress** and **exactly one replica**. `prod` is [`infra/envs/prod`](../infra/envs/prod/) ([#12](https://github.com/pixelbar/pixel/issues/12)).
 
 ## How the pieces are set
 
-West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is the Pixel Dev bot (test guild).
+West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is the Pixel Dev bot (test guild). **`pixel-prod`** is the production bot (own Discord application and guild).
 
 | Piece | Name | Role |
 | --- | --- | --- |
 | Bootstrap RG | `pixel-bootstrap` | Terraform state + GitHub OIDC identities |
-| Dev RG | `pixel-dev` | The running bot |
-| Prod RG | `pixel-prod` | Empty until #12 |
+| Dev RG | `pixel-dev` | Pixel Dev bot |
+| Prod RG | `pixel-prod` | Production bot (`infra/envs/prod`) |
 | State | `pixelbartfstate` (GRS, shared keys **off**, Azure AD) | Containers `bootstrap`, `dev`, `prod` |
-| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** `dev`. CD does **not** apply Terraform and does not deploy Azure |
-| App identity | UAMI `pixel-dev-app` | Key Vault Secrets User |
-| Key Vault | `pixel-dev-kv` | Secret **values** are not in Terraform state. App references URIs |
-| Files | `pixeldevdata` share `pixel` | Writable persist: `members.yaml`, HA files, `data/` |
-| Backup | `pixel-dev-rsv` | Daily share backup, 14-day keep (plus 14-day share soft-delete) |
-| Logs | `pixel-dev-logs` | Container Apps diagnostics, 30 days |
-| CAE | `pixel-dev-cae` | Consumption, **no VNet** |
-| App | `pixel-dev` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
-| Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy-dev`, not CD |
+| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** each env. CD does **not** apply Terraform. Prod CD rolls the image after Environment `prod` approval |
+| App identity | UAMI `pixel-dev-app` / `pixel-prod-app` | Key Vault Secrets User |
+| Key Vault | `pixel-dev-kv` / `pixel-prod-kv` | Secret **values** are not in Terraform state. App references URIs. Never copy Dev into prod |
+| Files | `pixeldevdata` / `pixelproddata` share `pixel` | Writable persist: `members.yaml`, HA files, `data/` |
+| Backup | `pixel-dev-rsv` / `pixel-prod-rsv` | Daily share backup, 14-day keep (plus 14-day share soft-delete) |
+| Logs | `pixel-dev-logs` / `pixel-prod-logs` | Container Apps diagnostics, 30 days |
+| CAE | `pixel-dev-cae` / `pixel-prod-cae` | Consumption, **no VNet** |
+| App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
+| Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy-dev`; `prod` by CD on `main` after approval |
 
-**CD (temporary, ADR 0010):** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` with min=max=1, then `just register`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** log in to Azure or touch `pixel-prod`.
+**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps, then Environment `prod` approval rolls `pixel-prod` to **that same digest** (no rebuild, no Terraform apply).
 
 ## Diagrams
 
@@ -36,20 +36,23 @@ flowchart LR
     SRC[git + content/info]
     GHCR["GHCR public<br/>ghcr.io/pixelbar/pixel"]
     CI["CI: just check + image smoke"]
-    CD["CD on main: push image + Sentry maps<br/>no Azure login"]
-    TFW["terraform.yml: plan envs/dev"]
+    CD["CD on main: push image + Sentry maps<br/>then approved roll of pixel-prod"]
+    TFW["terraform.yml: plan envs/dev + prod"]
     ENVDEV["Environment dev<br/>ARM_* for OIDC plan"]
+    ENVPROD["Environment prod<br/>reviewers + ARM_*"]
     SRC --> CI
     SRC --> CD --> GHCR
     SRC --> TFW
     TFW --> ENVDEV
+    TFW --> ENVPROD
+    CD --> ENVPROD
   end
 
   subgraph azure["Azure West Europe"]
     subgraph boot["RG pixel-bootstrap"]
       STATE["Storage pixelbartfstate<br/>AD auth, keys off"]
       GID["UAMI pixel-github-dev"]
-      GIP["UAMI pixel-github-prod<br/>unused until #12"]
+      GIP["UAMI pixel-github-prod"]
     end
     subgraph dev["RG pixel-dev"]
       UAMI["UAMI pixel-dev-app"]
@@ -61,18 +64,28 @@ flowchart LR
       APP["Container App pixel-dev<br/>1 replica: pixel + init prepare-volume"]
     end
     subgraph prod["RG pixel-prod"]
-      EMPTY["empty — no envs/prod"]
+      UAMIP["UAMI pixel-prod-app"]
+      KVP["Key Vault pixel-prod-kv"]
+      FILESP["Azure Files pixelproddata / pixel"]
+      APPP["Container App pixel-prod<br/>1 replica"]
     end
     ENVDEV -.->|OIDC plan only| GID
+    ENVPROD -.->|OIDC plan + image roll| GIP
     GID --> STATE
+    GIP --> STATE
     GID -.->|Contributor; unused for CD| dev
+    GIP -.->|Contributor; CD image roll only| prod
     UAMI --> KV
     FILES --> RSV
     CAE --> LAW
     CAE --> APP
     APP --> FILES
     APP --> KV
+    UAMIP --> KVP
+    APPP --> FILESP
+    APPP --> KVP
     GHCR -->|just deploy-dev pulls SHA| APP
+    GHCR -->|CD after approval| APPP
   end
 
   subgraph outside["Not Azure"]
@@ -112,9 +125,9 @@ flowchart TB
 ## How they connect
 
 1. **Bootstrap** (hand-applied) created the three resource groups, state storage, and per-env GitHub identities. Env stacks deploy *into* those groups; they do not recreate them.
-2. **`infra/modules/pixel`** + **`infra/envs/dev`** created the vault, files share, CAE, app, backup, logs, and `pixel-dev-app`. Remote state is container `dev`.
+2. **`infra/modules/pixel`** + **`infra/envs/dev`** created the vault, files share, CAE, app, backup, logs, and `pixel-dev-app`. Remote state is container `dev`. **`infra/envs/prod`** is the same module in `pixel-prod` (state container `prod`).
 3. **Secrets** are Key Vault names (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `sentry-dsn`). The Container App references **URIs + UAMI**. Terraform may write values as ephemeral `write_secrets` inputs, or they are set with `az` / the portal. Discord / HA / Sentry values do **not** belong in state. The Azure Files **account key** does (Container Apps can only mount SMB with the key).
-4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy-dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod (#12) apply will set `container_image`. Pin an explicit SHA (or `dev-dirty-*`), never `latest` alone.
+4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy-dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod apply sets `container_image`; CD then rolls `pixel-prod` to the published `main` SHA (same digest, no rebuild). Pin an explicit SHA (or `dev-dirty-*` on **dev** only), never `latest` alone.
 5. **Discord:** outbound gateway + REST. No FQDN. `/healthz` is process up; `/readyz` is Discord connected. Home Assistant is **not** on the probes (HA down must not restart the replica).
 6. **Home Assistant:** both URL and token, or neither. Live `dev` uses a Nabu Casa URL. The allow-list is `devices.yaml` on the share. A Tailscale sidecar is the preferred path ([#43](https://github.com/pixelbar/pixel/issues/43), [#74](https://github.com/pixelbar/pixel/issues/74)); the Terraform stub is **off** and is not enough to flip on as-is. Dev must not control the real doors.
 7. **Sentry:** the app reads `SENTRY_DSN` from Key Vault. Heartbeat monitor `pixel-<env>`. Source maps on `main` use `SENTRY_AUTH_TOKEN` plus org/project variables.
@@ -152,7 +165,7 @@ How to seed the share and vault: [dev README](../infra/envs/dev/README.md).
 
 ## One replica, no public ingress
 
-Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy-dev` re-asserts that and refuses prod names / `PIXEL_ENV=prod`.
+Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy-dev` re-asserts that and refuses prod names / `PIXEL_ENV=prod`. Prod CD re-asserts the same on `pixel-prod`.
 
 Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
 
@@ -168,17 +181,18 @@ Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu C
 | Home Assistant | Space / Nabu Casa until the Tailscale sidecar exists |
 | Sentry org | Sentry SaaS; the app only needs the DSN |
 | Postgres | Deliberately absent ([architecture](architecture.md#deployment)) |
-| Prod bot | #12 |
+| Prod bot | `pixel-prod` + `pixel-prod-kv` (own Discord application; never the Pixel Dev token) |
 
 ## Operator loop (`dev`)
 
 ```sh
-just tf-validate          # fmt + validate bootstrap + envs/dev
+just tf-validate          # fmt + validate bootstrap + envs/dev + envs/prod
 just tf-plan dev          # needs az login; does not apply
 just tf-apply dev         # maintainer; first create / vault / volume (not the running dev image)
+# prod: PIXEL_APPLY_PROD=1 just tf-apply prod  (coding agents: do not)
 # seed Files: members.yaml + home-assistant/*.yaml  (not the example IDs)
 # seed KV if write_secrets was false
 just deploy-dev           # this tree → GHCR SHA → pixel-dev, then register
 ```
 
-Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply will set `container_image`.
+Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply sets `container_image`; CD then rolls the published SHA.
