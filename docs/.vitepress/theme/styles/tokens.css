@@ -1,0 +1,135 @@
+/*
+ * Pixel design system tokens (tokens.json v1), as CSS custom properties.
+ * Light prints, dark emits. VitePress puts `.dark` on <html> for the dark theme.
+ */
+
+:root {
+	/* Grounds */
+	--void: #000000;
+	--bg: #f6f6fa;
+	--surface: #ffffff;
+	--surface-raised: #ececf3;
+	--border: #d6d6e4;
+	--border-strong: #7a7a96;
+
+	/* Text */
+	--ink: #0a0a12;
+	--ink-muted: #4d4d66;
+	--ink-faint: #5c5c78;
+	--link: #1d4fd8;
+	--focus: #1d4fd8;
+
+	/* The star */
+	--core: #0a0a12;
+	--on-core: #ffffff;
+
+	/* Spectrum, in the order it goes round the logo */
+	--spectrum-cyan: #006b7d;
+	--spectrum-blue: #1d4fd8;
+	--spectrum-violet: #7c1fd6;
+	--spectrum-magenta: #b8128f;
+	--spectrum-red: #c8102e;
+	--spectrum-orange: #9c4c00;
+	--spectrum-yellow: #716000;
+	--spectrum-green: #0d722a;
+	--on-spectrum: #ffffff;
+
+	/*
+	 * The mark in light: the logo printed in ink. The spectrum at graphic
+	 * strength (3:1 on white, not the 5:1 text values) so the art stays bright.
+	 */
+	--mark-core: var(--core);
+	--mark-shine: #ffffff;
+	--mark-cyan: #00a4b6;
+	--mark-blue: #3d6dff;
+	--mark-violet: #9a45f5;
+	--mark-magenta: #e810b8;
+	--mark-red: #f01838;
+	--mark-orange: #f07000;
+	--mark-yellow: #e8a800;
+	--mark-green: #00ac2b;
+
+	/* Depth: hard 4px pixel offsets, no glow */
+	--shadow-card: 4px 4px 0 0 #0a0a12;
+	--shadow-lift: 8px 8px 0 0 #0a0a12;
+	--glow-core: 4px 4px 0 0 #b8128f;
+	--glow-cyan: none;
+	--glow-magenta: none;
+
+	/* Roles */
+	--tier-guest: var(--ink-muted);
+	--tier-friend: var(--spectrum-green);
+	--tier-member: var(--spectrum-cyan);
+	--tier-admin: var(--spectrum-magenta);
+	--status-info: var(--spectrum-cyan);
+	--status-success: var(--spectrum-green);
+	--status-warning: var(--spectrum-orange);
+	--status-danger: var(--spectrum-red);
+
+	/* Type */
+	--font-display: "Pixelify Sans", ui-monospace, monospace;
+	--font-sans: "IBM Plex Sans", system-ui, sans-serif;
+	--font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+
+	/* Space: everything sits on the 4px grid */
+	--pixel: 4px;
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 12px;
+	--space-4: 16px;
+	--space-6: 24px;
+	--space-8: 32px;
+	--space-12: 48px;
+	--space-16: 64px;
+
+	/* Radius: pixels are square */
+	--radius-0: 0px;
+	--radius-1: 2px;
+	--radius-full: 9999px;
+
+	/* Motion: short and stepped */
+	--step: 80ms steps(2);
+}
+
+.dark {
+	--bg: #06060b;
+	--surface: #0e0e18;
+	--surface-raised: #171726;
+	--border: #2c2c42;
+	--border-strong: #6a6a8e;
+
+	--ink: #f3f3fb;
+	--ink-muted: #a6a6c0;
+	--ink-faint: #8a8aac;
+	--link: #5ee9ff;
+	--focus: #00e5ff;
+
+	--core: #ffffff;
+	--on-core: #06060b;
+
+	--spectrum-cyan: #00e5ff;
+	--spectrum-blue: #4d7dff;
+	--spectrum-violet: #a855ff;
+	--spectrum-magenta: #ff3dd6;
+	--spectrum-red: #ff4058;
+	--spectrum-orange: #ff8a1f;
+	--spectrum-yellow: #ffe81a;
+	--spectrum-green: #33ff66;
+	--on-spectrum: #06060b;
+
+	/* The mark in dark: the logo's own neon */
+	--mark-cyan: var(--spectrum-cyan);
+	--mark-blue: var(--spectrum-blue);
+	--mark-violet: var(--spectrum-violet);
+	--mark-magenta: var(--spectrum-magenta);
+	--mark-red: var(--spectrum-red);
+	--mark-orange: var(--spectrum-orange);
+	--mark-yellow: var(--spectrum-yellow);
+	--mark-green: var(--spectrum-green);
+
+	--shadow-card: 0 0 0 1px #2c2c42;
+	--shadow-lift: 0 0 0 1px #6a6a8e, 0 0 24px 0 rgba(0, 229, 255, 0.18);
+	--glow-core: 0 0 16px 0 rgba(255, 255, 255, 0.45);
+	--glow-cyan: 0 0 12px 0 rgba(0, 229, 255, 0.55);
+	--glow-magenta: 0 0 12px 0 rgba(255, 61, 214, 0.55);
+}

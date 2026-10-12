@@ -39,3 +39,7 @@ tfplan
 # claude
 .claude/worktrees/
 .dev-data/
+
+# docs site (VitePress) build output and cache
+docs/.vitepress/cache/
+docs/.vitepress/dist/

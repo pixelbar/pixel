@@ -1,0 +1,4 @@
+# The website is its own small project, separate from the bot: its own lockfile and
+# dependencies, so nothing here reaches the bot image.
+allowBuilds:
+  esbuild: true

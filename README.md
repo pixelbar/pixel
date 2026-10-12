@@ -152,6 +152,7 @@ Run `just` to list every recipe.
 | `just bump`            | Cut `[Unreleased]` into a dated version and bump `package.json` |
 | `just register`        | Register slash commands with Discord          |
 | `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
+| `just docs-dev`        | Run the website (`docs/`, VitePress) locally; `just docs-install` first |
 | `just docker-build`    | Build the container image                     |
 | `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` |
 | `just tf-plan dev`     | Plan the `dev` Container App stack            |

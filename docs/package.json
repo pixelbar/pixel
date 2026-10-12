@@ -1,0 +1,25 @@
+{
+	"name": "pixel-docs",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The Pixel website: a landing page and the documentation, built with VitePress",
+	"type": "module",
+	"license": "UNLICENSED",
+	"engines": {
+		"node": ">=24"
+	},
+	"packageManager": "pnpm@12.8.1",
+	"scripts": {
+		"dev": "vitepress dev",
+		"build": "vitepress build",
+		"preview": "vitepress preview"
+	},
+	"devDependencies": {
+		"@fontsource/ibm-plex-mono": "5.3.0",
+		"@fontsource/ibm-plex-sans": "5.3.0",
+		"@fontsource/pixelify-sans": "5.3.0",
+		"mermaid": "11.17.2",
+		"vitepress": "1.6.4",
+		"vue": "3.5.43"
+	}
+}
