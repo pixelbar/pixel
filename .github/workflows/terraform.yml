@@ -97,6 +97,9 @@ jobs:
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
           terraform plan -input=false -var-file=terraform.example.tfvars
 
+  # Environment prod must have ARM_CLIENT_ID, ARM_TENANT_ID and
+  # ARM_SUBSCRIPTION_ID as variables (not secrets). Values: infra/bootstrap/README.md.
+  # Missing ARM_* fails closed before azure/login. This job does not apply.
   plan-prod:
     name: Plan envs/prod
     needs: validate
