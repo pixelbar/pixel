@@ -4,8 +4,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
-# local env & secrets
+# local env & secrets — never commit tokens
 .env
+.env.dev
+.env.prod
 .env.*
 !.env.example
 
