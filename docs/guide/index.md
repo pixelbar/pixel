@@ -4,12 +4,9 @@ Pixel is the assistant bot for the [Pixelbar](https://pixelbar.nl) hackerspace i
 
 ## Asking Pixel something
 
-Type <kbd>/</kbd> in any channel of the Pixelbar Discord, then pick one of Pixel's commands from the list. Discord shows the options each command takes, and fills some in for you as you type.
+Type <kbd>/</kbd> in any channel of the Pixelbar Discord, then pick one of Pixel's commands from the list. Keep typing to narrow it down. Discord shows the options each command takes, and fills some in for you as you type.
 
-```txt
-/status
-/info topic:membership
-```
+<PxCommandTray query="/" :selected="1" caption="Type a slash and Discord lists Pixel's commands. Pick one with the arrow keys or a click." />
 
 A few you'll use most:
 

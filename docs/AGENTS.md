@@ -81,7 +81,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 - **Custom containers** (`::: tip`, `::: info`, `::: warning`, `::: danger`) are styled as Pixel callouts. Use at most one per section.
 - **Mermaid** fences render through `<PxMermaid>` in the theme's colours. Mermaid only loads on pages that have a diagram.
 - **Links:** link between site pages with root paths (`/commands`, `/guide/tiers`). In the maintainer docs, relative links to files outside `docs/` become GitHub links at build time (`markdown/repo-links.ts`).
-- **`PxCommandTray`** is a pretend Discord message box with the slash-command picker, animated in steps (reduced motion shows it still). Its list of names and descriptions copies what Pixel registers in `src/features/`: when a command or its description changes there, change it here too. Keep admin commands out of it.
+- **`PxCommandTray`** is a pretend Discord message box with the slash-command picker, animated in steps (reduced motion shows it still). In the docs use it still: `<PxCommandTray query="/ha" :selected="2" caption="…" />` shows that query typed, the list filtered to it, one row selected and a caption under it. Its list of names and descriptions copies what Pixel registers in `src/features/`: when a command or its description changes there, change it here too. Keep admin commands out of it.
 - **`PxStatus`** reads `https://spaceapi.pixelbar.nl/` in the visitor's browser. If that fails, it says the status is unknown; it never guesses.
 
 ## Adding pages

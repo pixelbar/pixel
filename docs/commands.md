@@ -64,6 +64,8 @@ Posts the closing-time reminder in the closing-time channel. Pixel also posts it
 
 Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and Pixel checks again whatever autocomplete offered.
 
+<PxCommandTray query="/ha" :selected="2" caption="Typing /ha shows the four Home Assistant commands." />
+
 <PxCommand sig="/ha list" tier="friend" reply="private">
 
 The devices you may use, and their state.
@@ -91,6 +93,8 @@ Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlock
 ## Scheduled posts
 
 Messages and polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
+
+<PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
 
 <PxCommand sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00 or tomorrow 9am.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
 

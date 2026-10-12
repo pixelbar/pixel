@@ -5,6 +5,9 @@
  * steps the selection down it, then moves on to the next query. Everything moves
  * in whole steps. With reduced motion it shows one query, still.
  *
+ * Give it a `query` and it's a still picture instead: that query typed, the list
+ * filtered to it and one row selected. Use that in the docs, with a `caption`.
+ *
  * Names and descriptions are the ones Pixel registers with Discord
  * (src/features/). Admin commands are left out on purpose.
  */
@@ -19,8 +22,20 @@ const props = withDefaults(
 		queries?: string[];
 		/** Most rows the picker shows at once. */
 		rows?: number;
+		/** A still picture of this one query, with no animation. */
+		query?: string;
+		/** In a still picture, which row is selected (-1 for none). */
+		selected?: number;
+		/** Shown under a still picture; read out instead of the picture either way. */
+		caption?: string;
 	}>(),
-	{ queries: () => ["/status", "/ha", "/info", "/schedule", "/events"], rows: 5 },
+	{
+		queries: () => ["/status", "/ha", "/info", "/schedule", "/events"],
+		rows: 5,
+		query: undefined,
+		selected: 0,
+		caption: undefined,
+	},
 );
 
 const COMMANDS: readonly Command[] = [
@@ -47,8 +62,9 @@ const COMMANDS: readonly Command[] = [
 ];
 
 const root = ref<HTMLElement>();
-const typed = ref(props.queries[1] ?? props.queries[0] ?? "/");
-const selected = ref(0);
+const still = props.query !== undefined;
+const typed = ref(props.query ?? props.queries[1] ?? props.queries[0] ?? "/");
+const selected = ref(still ? props.selected : 0);
 
 /** Like Discord: any word of the command that starts with what's typed. */
 const matches = computed(() => {
@@ -118,7 +134,7 @@ function stop(): void {
 }
 
 onMounted(() => {
-	if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+	if (still || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 	// Only animate while it's on screen.
 	observer = new IntersectionObserver(([entry]) => {
 		if (entry?.isIntersecting) void play();
@@ -136,10 +152,13 @@ const avatar = withBase("/pixel-mark-96.png");
 </script>
 
 <template>
-	<figure ref="root" class="px-tray">
-		<figcaption class="px-tray__caption">
-			Typing a slash in Discord lists Pixel's commands, such as /status, /ha, /info and
-			/schedule, with a short description of each.
+	<figure ref="root" class="px-tray" :class="{ 'px-tray--still': still }">
+		<figcaption class="px-tray__caption" :class="{ 'px-tray__caption--shown': still && caption }">
+			<template v-if="caption">{{ caption }}</template>
+			<template v-else>
+				Typing a slash in Discord lists Pixel's commands, such as /status, /ha, /info and
+				/schedule, with a short description of each.
+			</template>
 		</figcaption>
 		<div class="px-tray__frame" aria-hidden="true">
 			<div class="px-tray__picker">
@@ -171,6 +190,14 @@ const avatar = withBase("/pixel-mark-96.png");
 <style scoped>
 .px-tray {
 	margin: 0;
+	display: flex;
+	flex-direction: column-reverse;
+}
+.px-tray--still {
+	margin: var(--space-6) 0;
+}
+.px-tray--still .px-tray__frame {
+	min-height: 0;
 }
 .px-tray__caption {
 	position: absolute;
@@ -179,6 +206,17 @@ const avatar = withBase("/pixel-mark-96.png");
 	overflow: hidden;
 	clip-path: inset(50%);
 	white-space: nowrap;
+}
+.px-tray__caption--shown {
+	position: static;
+	width: auto;
+	height: auto;
+	clip-path: none;
+	white-space: normal;
+	margin-top: var(--space-2);
+	color: var(--ink-muted);
+	font-size: 14px;
+	line-height: 20px;
 }
 
 /* Fixed height so the page never jumps: the picker grows up from the input. */
@@ -215,6 +253,7 @@ const avatar = withBase("/pixel-mark-96.png");
 	list-style: none;
 }
 .px-tray__row {
+	margin: 0;
 	display: grid;
 	grid-template-columns: 40px minmax(0, 1fr) auto;
 	gap: var(--space-3);
@@ -286,6 +325,9 @@ const avatar = withBase("/pixel-mark-96.png");
 	.px-tray__caret {
 		animation: px-tray-blink 1s steps(1, end) infinite;
 	}
+}
+.px-tray--still .px-tray__caret {
+	animation: none;
 }
 @keyframes px-tray-blink {
 	50% {
