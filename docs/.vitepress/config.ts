@@ -23,6 +23,16 @@ function pixelVersion(): string | undefined {
 const version = pixelVersion();
 
 /**
+ * Where the site is served from. GitHub Pages serves a project site under
+ * /<repo>/, so the Pages workflow sets DOCS_BASE; locally it's the root.
+ */
+const base = normaliseBase(process.env.DOCS_BASE);
+function normaliseBase(value: string | undefined): string {
+	const trimmed = (value ?? "").replace(/^\/+|\/+$/g, "");
+	return trimmed ? `/${trimmed}/` : "/";
+}
+
+/**
  * The maintainer docs stay where they are in `docs/` (AGENTS.md and the README link
  * to them there) and are served under /maintainers/ on the site.
  */
@@ -36,6 +46,7 @@ const MAINTAINER_DOCS = [
 ];
 
 export default defineConfig({
+	base,
 	lang: "en",
 	title: "Pixel",
 	titleTemplate: ":title · Pixel",
@@ -53,8 +64,8 @@ export default defineConfig({
 	},
 
 	head: [
-		["link", { rel: "icon", type: "image/png", href: "/favicon.png" }],
-		["link", { rel: "apple-touch-icon", href: "/apple-touch-icon.png" }],
+		["link", { rel: "icon", type: "image/png", href: `${base}favicon.png` }],
+		["link", { rel: "apple-touch-icon", href: `${base}apple-touch-icon.png` }],
 		["meta", { name: "theme-color", content: "#06060b" }],
 		["meta", { property: "og:type", content: "website" }],
 		["meta", { property: "og:title", content: "Pixel" }],
@@ -62,7 +73,7 @@ export default defineConfig({
 			"meta",
 			{ property: "og:description", content: "The assistant bot for the Pixelbar hackerspace." },
 		],
-		["meta", { property: "og:image", content: "/pixel-mark.png" }],
+		["meta", { property: "og:image", content: `${base}pixel-mark.png` }],
 	],
 
 	markdown: {

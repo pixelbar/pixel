@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- A website in `docs/`, built with VitePress and themed with the Pixel design system: a landing page, a guide, every command with its tier and reply, and the maintainer docs and ADRs under `/maintainers/`. `just docs-install`, `just docs-dev` and `just docs-build` run it. It has its own `package.json` and lockfile, so the bot's dependencies and image don't change.
+- A website in `docs/`, built with VitePress and themed with the Pixel design system: a landing page, a guide, every command with its tier and reply, and the maintainer docs and ADRs under `/maintainers/`. `just docs-install`, `just docs-dev` and `just docs-build` run it. It has its own `package.json` and lockfile, so the bot's dependencies and image don't change. A [Docs site](.github/workflows/docs.yml) workflow builds it on pull requests that touch `docs/` and publishes it to GitHub Pages from `main`.
 
 ## [0.8.0] - 2026-10-11
 
