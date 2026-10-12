@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-12
+
 ### Changed
 
 - `/info` with no topic now lists the topics in a private reply, so the menu no longer clutters the channel. Answers to a topic stay public (PIXEL-K).
@@ -112,7 +114,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/pixelbar/pixel/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/pixelbar/pixel/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/pixelbar/pixel/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/pixelbar/pixel/compare/v0.7.1...v0.8.0
