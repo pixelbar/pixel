@@ -50,6 +50,12 @@ describe("/feedback", () => {
 		expect(reply.text).not.toMatch(/reply|respond|answer/i);
 	});
 
+	it("shows the message back as it was sent, escaped so it can't act as formatting or a mention", async () => {
+		const { run } = setup();
+		const reply = await run("  *bold*   <@123>\n`code`  ");
+		expect(reply.text).toContain("This is what you sent:\n> \\*bold\\* \\<@123\\> \\`code\\`");
+	});
+
 	it("tidies whitespace and line breaks before sending", async () => {
 		const { run, send } = setup();
 		await run("  too   many\n\n spaces\t here  ");

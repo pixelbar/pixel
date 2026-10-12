@@ -1,6 +1,7 @@
 import { actorRef } from "../../core/access.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
+import { escapeMarkdown } from "../../core/format.ts";
 import type { FeedbackSink } from "../../core/ports/feedback.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 
@@ -61,8 +62,9 @@ export function createFeedbackFeature({ sink, limiter }: FeedbackDeps): Feature 
 					}
 					// Only the length: what people write is theirs, and doesn't belong in our logs.
 					logger.info({ event: "feedback.sent", length }, "feedback sent");
+					// Shown back (privately, escaped) so people can see exactly what they sent.
 					return {
-						text: "Thank you, your feedback was sent to Pixel's maintainers, with your Discord name and ID so they can follow up.",
+						text: `Thank you, your feedback was sent to Pixel's maintainers, with your Discord name and ID so they can follow up. This is what you sent:\n> ${escapeMarkdown(message)}`,
 					};
 				},
 			},

@@ -291,7 +291,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `schedules` | `/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the question and answers, then schedules a native Discord poll |
 | `schedules` | `/schedule list`, `preview`, `pause`, `resume`, `delete` | member + `schedule-posts` | ✅ | Private. Manage scheduled posts; `schedule` autocompletes by name or ID. `preview` fills tokens as of the next occurrence (message text; poll question and answers) |
 | `schedules` | `/schedule edit [schedule:] [when:] [repeat:] [days:] [name:]` | member + `schedule-posts` | ✅ | Private. Without `schedule`, lists only this user's still-upcoming posts. With one, opens the compose modal prefilled (message text, or poll question and answers) and writes the same `data/schedules.yaml`. Autocomplete goes through `Dispatcher.suggest` and never offers anyone else's items. Same generic refusal for an id that isn't theirs or has already posted |
-| `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
+| `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. The reply shows the message back, escaped. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The Home Assistant commands
 
