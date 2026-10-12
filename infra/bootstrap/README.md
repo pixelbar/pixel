@@ -66,9 +66,9 @@ In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). App
 | `ARM_TENANT_ID` | `2cd2bab0-0dd0-41ff-8f13-592500857ea6` | same |
 | `ARM_SUBSCRIPTION_ID` | `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4` | same |
 
-Create Environment `prod` if it is missing (reviewers, deploying branch `main`). Terraform plan on PRs uses Environment `dev` and **fails closed** without `ARM_*`. Do not store an Azure client secret.
+Create Environment `prod` if it is missing (reviewers, deploying branch `main`). Terraform plan on PRs uses Environment `dev` / `prod` and **fails closed** without `ARM_*`. Do not store an Azure client secret.
 
-Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12 — it does not Azure-login or update `pixel-prod`.
+Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR, then Environment `prod` approval rolls `pixel-prod` to that digest. CD does not apply Terraform.
 
 ## Recover
 
@@ -79,5 +79,5 @@ Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these vari
 ## What this is not
 
 - Not the Container App, volume, Key Vault, or Tailscale sidecar (`infra/envs/dev`, #9 / #43).
-- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only until #12).
+- Not the Container App image rollout (`just deploy-dev` for `dev`; [CD](../../.github/workflows/cd.yml) on `main` after Environment `prod` approval for `pixel-prod`).
 - Not Postgres. Pixel’s state is files on a volume.

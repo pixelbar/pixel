@@ -56,15 +56,17 @@ check-changelog *args:
 bump *args:
     pnpm exec tsx scripts/bump-version.ts {{args}}
 
-# Format-check and validate bootstrap + envs/dev (needs Terraform 1.11+; CI runs this when infra/ changes)
+# Format-check and validate bootstrap + envs/dev + envs/prod (needs Terraform 1.11+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false
     terraform -chdir=infra/bootstrap validate
     terraform -chdir=infra/envs/dev init -backend=false -input=false
     terraform -chdir=infra/envs/dev validate
+    terraform -chdir=infra/envs/prod init -backend=false -input=false
+    terraform -chdir=infra/envs/prod validate
 
-# Plan an env stack (dev). Needs Azure CLI signed in. Does not apply.
+# Plan an env stack (dev or prod). Needs Azure CLI signed in. Does not apply.
 tf-plan env:
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} plan
@@ -72,8 +74,16 @@ tf-plan env:
 # Apply an env stack. Do not run until a maintainer says so. Never start a
 # second Pixel on the same Discord token. On dev, after first create this
 # does not change the Pixel container image (just deploy-dev / az owns that
-# pin). Prod (#12) apply still sets container_image.
+# pin). Prod apply still sets container_image. Coding agents must not apply
+# prod: PIXEL_APPLY_PROD=1 is required.
 tf-apply env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" = "prod" ] && [ "${PIXEL_APPLY_PROD:-}" != "1" ]; then
+      echo "Refusing just tf-apply prod. Coding agents must not apply prod or write prod secrets."
+      echo "A maintainer runs: PIXEL_APPLY_PROD=1 just tf-apply prod"
+      exit 1
+    fi
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} apply
 

@@ -9,6 +9,14 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Production Azure environment (`infra/envs/prod`, #12): own Key Vault, Files share and Container App (`pixel-prod`). Merges to `main` still publish GHCR; after GitHub Environment `prod` approval they roll `pixel-prod` to that same image digest (no rebuild). `just deploy-dev` is unchanged. Coding agents cannot `just tf-apply prod` unless `PIXEL_APPLY_PROD=1`.
+
+### Fixed
+
+- `terraform.yml` plan-prod fails closed unless GitHub Environment `prod` has `ARM_CLIENT_ID` and `ARM_TENANT_ID` (OIDC variables, same table as bootstrap). Those were missing, so the first #12 PR check never reached `terraform plan`.
+
 ## [0.9.0] - 2026-10-12
 
 ### Added

@@ -1,6 +1,6 @@
 # 0010. Temporary GHCR CD: local `dev`, `main` publishes only
 
-* Status: accepted (temporary)
+* Status: accepted (temporary; prod-off clause superseded by [0012](0012-prod-environment.md))
 * Date: 2026-10-08
 * Issue: #10
 

@@ -2,7 +2,7 @@
 
 One Container App in the existing `pixel-dev` resource group. Pixel Dev bot, test guild. **Do not apply until a maintainer says so.** Applying this does not by itself make Discord answer: secrets and volume files still have to be filled in, and you must not start a second bot on the same token.
 
-Prod is #12. This root only calls `infra/modules/pixel` with `environment = "dev"`.
+Prod is [`infra/envs/prod`](../prod/) (#12). This root only calls `infra/modules/pixel` with `environment = "dev"`.
 
 Remote state: storage `pixelbartfstate`, container `dev` (created by bootstrap).
 
@@ -148,7 +148,7 @@ About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analy
 
 ## What this is not
 
-- Not GHCR publish or prod CD (#10 / #12). `just deploy-dev` rolls this app's image; **dev** apply leaves that pin alone after first create (#73). Prod apply will set `container_image`.
+- Not GHCR publish or prod CD. `just deploy-dev` rolls this app's image; **dev** apply leaves that pin alone after first create (#73). Prod apply sets `container_image`.
 - Not stop-then-start during deploys (#11). This stack only pins min=max replicas to 1 and `revision_mode = Single`.
-- Not `prod` (#12).
+- Not `prod` (see [`infra/envs/prod`](../prod/)).
 - Not Postgres.
