@@ -77,10 +77,11 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 ## Markdown and components
 
 - **Pages are Vue templates.** `{{` in prose and code spans is escaped for you (`markdown/escape-mustache.ts`). Inside raw HTML you write yourself, use `<code v-pre>`.
-- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
+- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxCommandTray`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
 - **Custom containers** (`::: tip`, `::: info`, `::: warning`, `::: danger`) are styled as Pixel callouts. Use at most one per section.
 - **Mermaid** fences render through `<PxMermaid>` in the theme's colours. Mermaid only loads on pages that have a diagram.
 - **Links:** link between site pages with root paths (`/commands`, `/guide/tiers`). In the maintainer docs, relative links to files outside `docs/` become GitHub links at build time (`markdown/repo-links.ts`).
+- **`PxCommandTray`** is a pretend Discord message box with the slash-command picker, animated in steps (reduced motion shows it still). Its list of names and descriptions copies what Pixel registers in `src/features/`: when a command or its description changes there, change it here too. Keep admin commands out of it.
 - **`PxStatus`** reads `https://spaceapi.pixelbar.nl/` in the visitor's browser. If that fails, it says the status is unknown; it never guesses.
 
 ## Adding pages

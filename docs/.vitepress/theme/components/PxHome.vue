@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** The landing page. Copy follows the design system's voice: plain, friendly, exact. */
 import { withBase } from "vitepress";
+import PxCommandTray from "./PxCommandTray.vue";
 import PxMark from "./PxMark.vue";
 import PxSpectrum from "./PxSpectrum.vue";
 import PxStatus from "./PxStatus.vue";
@@ -103,14 +104,7 @@ const tiers = [
 				</p>
 				<a class="px-link" :href="withBase('/guide/')">How to use Pixel</a>
 			</div>
-			<div class="px-code">
-				<div class="px-code__bar"><span>Discord</span><span>Slash commands</span></div>
-				<pre><span class="px-c-cmd">/status</span>                    <span class="px-c-cmt"># is Pixelbar open right now?</span>
-<span class="px-c-cmd">/events</span>                    <span class="px-c-cmt"># what's coming up</span>
-<span class="px-c-cmd">/info</span> <span class="px-c-opt">topic:</span><span class="px-c-val">membership</span>     <span class="px-c-cmt"># how to join</span>
-<span class="px-c-cmd">/whoami</span>                    <span class="px-c-cmt"># your tier and Discord ID</span>
-<span class="px-c-cmd">/help</span>                      <span class="px-c-cmt"># what you can use</span></pre>
-			</div>
+			<PxCommandTray />
 		</section>
 
 		<section class="section">

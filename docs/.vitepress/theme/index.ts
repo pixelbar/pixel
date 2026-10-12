@@ -6,6 +6,7 @@
 import type { Theme } from "vitepress";
 import DefaultTheme from "vitepress/theme-without-fonts";
 import PxCommand from "./components/PxCommand.vue";
+import PxCommandTray from "./components/PxCommandTray.vue";
 import PxHome from "./components/PxHome.vue";
 import PxMark from "./components/PxMark.vue";
 import PxMermaid from "./components/PxMermaid.vue";
@@ -28,6 +29,7 @@ export default {
 	extends: DefaultTheme,
 	enhanceApp({ app }) {
 		app.component("PxCommand", PxCommand);
+		app.component("PxCommandTray", PxCommandTray);
 		app.component("PxHome", PxHome);
 		app.component("PxMark", PxMark);
 		app.component("PxMermaid", PxMermaid);
