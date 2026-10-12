@@ -80,8 +80,6 @@ const tiers = [
 			</div>
 		</section>
 
-		<PxSpectrum stepped />
-
 		<section class="section">
 			<h2 class="heading">What Pixel does</h2>
 			<div class="cards">
