@@ -10,7 +10,7 @@ export type InfoDeps = {
 
 /**
  * `/info [topic]`: answers to common questions, from the markdown files in
- * content/info. With no topic it lists what's available.
+ * content/info. With no topic it lists what's available, privately.
  *
  * The topic text comes from our own reviewed repository, so it's shown as
  * written (unlike text written by other people, which must be escaped).
@@ -33,7 +33,8 @@ export function createInfoFeature({ topics }: InfoDeps): Feature {
 				],
 				handler: async ({ args }): Promise<Reply> => {
 					const id = args.topic;
-					if (id === undefined) return { embeds: [list(topics)] };
+					// The list is only a menu for the person asking, so it doesn't clutter the channel.
+					if (id === undefined) return { embeds: [list(topics)], private: true };
 
 					const topic = topics.find((candidate) => candidate.id === id);
 					if (!topic) {

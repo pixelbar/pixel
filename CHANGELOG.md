@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- `/info` with no topic now lists the topics in a private reply, so the menu no longer clutters the channel. Answers to a topic stay public (PIXEL-K).
+
 ## [0.10.0] - 2026-10-12
 
 ### Added
