@@ -36,6 +36,7 @@ import {
 	discordActor,
 } from "./handlers.ts";
 import { isConsumedInteractionError } from "./interaction-errors.ts";
+import { createPresencePublisher } from "./presence.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 
 export type DiscordAdapterDeps = {
@@ -174,6 +175,8 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				reportError(new Error(`Announcements to ${id} are off: ${opened.problem}`));
 			}
 		}
+		// Pixel's own status in the member list follows the space. It needs no channel.
+		deps.announcer.register(createPresencePublisher(ready.user));
 		if (!deps.announce.liveChannelId && !deps.announce.timelineChannelId) {
 			logger.info({ event: "discord.announce_unset" }, "no announcement channels configured");
 		}

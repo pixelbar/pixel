@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Pixel's status in the Discord member list now shows whether Pixelbar is open ("Watching Pixelbar: open", green; "closed", yellow). It follows the same confirmed changes as the announcements (PIXEL-N).
+
 ## [0.10.1] - 2026-10-12
 
 ### Changed
