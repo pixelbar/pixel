@@ -38,7 +38,7 @@ cp .env.example .env                                # fill in the values
 cp config/admins.example.yaml config/admins.yaml    # add yourself
 cp config/members.example.yaml config/members.yaml
 just validate-config
-just register                                       # register slash commands on your test guild
+just register dev                                   # register slash commands on your test guild
 just dev                                            # run Pixel with hot reload
 ```
 
@@ -62,7 +62,7 @@ Pixel also says when **it** comes online and goes offline, in the announcements 
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
-**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register`.
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register dev` or `just register prod`.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
@@ -84,7 +84,7 @@ The text of the answer, in markdown…
 - Keep answers **short** and link to the full page on the website, which stays the source of truth for prices, rules and opening times.
 - **This repository is public.** Never put passwords, door codes or personal details in these files.
 - A broken file fails the checks on your pull request, with a message saying what's wrong.
-- Changes go live on the next deploy. **Adding, removing or renaming a topic** also needs `just register`.
+- Changes go live on the next deploy. **Adding, removing or renaming a topic** also needs `just register dev` or `just register prod`.
 
 ### Access lists
 
@@ -150,8 +150,9 @@ Run `just` to list every recipe.
 | `just validate-config` | Validate the access list files                |
 | `just check-changelog` | Fail if this branch does not change `CHANGELOG.md` vs `origin/main` |
 | `just bump`            | Cut `[Unreleased]` into a dated version and bump `package.json` |
-| `just register`        | Register slash commands with Discord          |
-| `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
+| `just register dev`    | Register slash commands on Pixel Dev / a test guild |
+| `just register prod`   | Register slash commands on the production guild (`.env.prod`) |
+| `just command-access dev` / `prod` | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
 | `just docs-dev`        | Run the website (`docs/`, VitePress) locally; `just docs-install` first |
 | `just docker-build`    | Build the container image                     |
 | `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` + `envs/prod` |
@@ -159,7 +160,7 @@ Run `just` to list every recipe.
 | `just tf-apply dev`    | Apply `dev` — only when a maintainer says so  |
 | `just tf-plan prod`    | Plan the `prod` stack                         |
 | `PIXEL_APPLY_PROD=1 just tf-apply prod` | Apply `prod` — maintainer only; agents must not |
-| `just deploy-dev`      | Local GHCR push, roll onto Azure `pixel-dev`, Sentry release, `just register` (never prod) |
+| `just deploy-dev`      | Local GHCR push, roll onto Azure `pixel-dev`, Sentry release, `just register dev` (never prod) |
 | `just sentry-release`  | Upload source maps; skipped unless Sentry org/token are set |
 
 ## CI

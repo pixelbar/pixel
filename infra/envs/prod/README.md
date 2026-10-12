@@ -70,7 +70,7 @@ az storage file upload --auth-mode login --account-name "$account" --share-name 
 1. Key Vault secrets exist (`discord-token`, `admins-yaml`) for the **prod** bot.
 2. `members.yaml` is on the prod share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>` from `main`).
-4. Commands are registered against the **prod** guild (`just register` with a prod `.env`, never the Mini Pixel Dev `.env`).
+4. Commands are registered against the **prod** guild (`just register prod` with `.env.prod`, never `.env` or `.env.dev`).
 5. Nobody else is connected with that prod token.
 
 Then: `az containerapp replica list -g pixel-prod -n pixel-prod -o table` must show one replica. `/ping` in the production guild.

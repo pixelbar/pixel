@@ -129,7 +129,7 @@ Dev must not control the real doors. Use a test HA, or leave HA off.
 1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `write_secrets` or `az`.
 2. `members.yaml` (and HA files if used) are on the share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>`). If that GHCR package is still **private**, set `container_registry_server` / `container_registry_username` and create Key Vault `ghcr-pull-token` (a `read:packages` token; Azure otherwise gets 401).
-4. `just register` has been run against the Dev guild (or #10 does it).
+4. `just register dev` has been run against the Dev guild (or `just deploy-dev` does it).
 5. Nobody else is connected with that bot token.
 
 Then: `az containerapp revision list -g pixel-dev -n pixel-dev -o table` should show one replica. `/ping` in the test guild.

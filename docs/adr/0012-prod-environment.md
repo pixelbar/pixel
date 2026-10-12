@@ -19,7 +19,7 @@ Prod GitHub OIDC must use the immutable subject `repo:pixelbar@1690472/pixel@140
 - **Apply is maintainer-only.** `just tf-apply prod` refuses unless `PIXEL_APPLY_PROD=1`. Coding agents must not apply prod or write prod secrets. CD does **not** apply Terraform.
 - **Promotion:** CD on `main` publishes the image once, then the `prod-cd` job (GitHub Environment `prod`) rolls `pixel-prod` to **that same digest** with `az containerapp update`. It does not rebuild. Approvers should treat Environment `prod` as the gate; required reviewers and branch `main` belong on that Environment.
 - **`just deploy-dev`** still refuses prod names and `PIXEL_ENV=prod`. Dev stays local rolls onto `pixel-dev`.
-- **Register** stays a prod `.env` on a laptop (`just register`). CD does not read `pixel-prod-kv` Discord tokens (the GitHub identity is Contributor on the RG, not Key Vault Secrets User).
+- **Register** stays a laptop command (`just register prod` with `.env.prod`). CD does not read `pixel-prod-kv` Discord tokens (the GitHub identity is Contributor on the RG, not Key Vault Secrets User).
 
 ## Consequences
 

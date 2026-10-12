@@ -239,5 +239,5 @@ jobs:
             echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
             exit 1
           fi
-          echo "Rolled ${IMAGE}. Register slash commands with a prod .env (never the Mini Pixel Dev token): just register."
+          echo "Rolled ${IMAGE}. Register slash commands with .env.prod (never the Mini Pixel Dev token): just register prod."
           echo "Never copy pixel-dev-kv / Mini Discord tokens into prod."
