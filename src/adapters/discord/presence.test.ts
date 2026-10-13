@@ -14,14 +14,14 @@ describe("presenceFor", () => {
 	it("is online and says open while the space is open", () => {
 		expect(presenceFor("open")).toEqual({
 			status: "online",
-			activities: [{ type: ActivityType.Watching, name: "Pixelbar: open" }],
+			activities: [{ type: ActivityType.Watching, name: "Pixelbar is Open" }],
 		});
 	});
 
 	it("is idle and says closed while the space is closed", () => {
 		expect(presenceFor("closed")).toEqual({
 			status: "idle",
-			activities: [{ type: ActivityType.Watching, name: "Pixelbar: closed" }],
+			activities: [{ type: ActivityType.Watching, name: "Pixelbar is Closed" }],
 		});
 	});
 });

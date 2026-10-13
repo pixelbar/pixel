@@ -13,10 +13,15 @@ export type PresenceTarget = {
  * Pixelbar is open. Open is "online" (green), closed is "idle" (yellow), so the
  * dot says it at a glance and the line says it in words.
  */
+const PRESENCE_NAME = {
+	open: "Pixelbar is Open",
+	closed: "Pixelbar is Closed",
+} as const;
+
 export function presenceFor(state: "open" | "closed"): PresenceData {
 	return {
 		status: state === "open" ? "online" : "idle",
-		activities: [{ type: ActivityType.Watching, name: `Pixelbar: ${state}` }],
+		activities: [{ type: ActivityType.Watching, name: PRESENCE_NAME[state] }],
 	};
 }
 
