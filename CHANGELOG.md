@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-13
+
 ### Added
 
 - Pixel's status in the Discord member list now shows whether Pixelbar is open ("Watching Pixelbar is Open", green; "Watching Pixelbar is Closed", yellow). It follows the same confirmed changes as the announcements (PIXEL-N).
@@ -122,7 +124,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.3...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/pixelbar/pixel/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/pixelbar/pixel/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/pixelbar/pixel/compare/v0.10.0...v0.10.1
