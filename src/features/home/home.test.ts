@@ -216,6 +216,24 @@ describe("/ha list", () => {
 		expect(field?.value).toMatch(/…and \d+ more\.$/);
 	});
 
+	it("pluralises switch as switches, not switchs", async () => {
+		const { list } = setup([entity("switch.socket", "on"), entity("switch.bench", "off")], {
+			yaml: `devices:
+  - name: socket
+    entity: switch.socket
+    kind: switch
+    actions: [on, off]
+  - name: bench
+    entity: switch.bench
+    kind: switch
+    actions: [on, off]
+`,
+		});
+		expect(fields((await list(IDS.member)).reply.embeds?.[0])).toEqual({
+			"Switches · 2": "**socket** `on`\n**bench** `off`",
+		});
+	});
+
 	it("says so plainly when nothing is available to the caller", async () => {
 		const { list } = setup(ALL, {
 			yaml: "devices:\n  - name: door\n    entity: lock.d\n    kind: door\n    minTier: admin\n",

@@ -329,7 +329,7 @@ function describeList(
 		byKind.set(device.kind.name, [...(byKind.get(device.kind.name) ?? []), device]);
 	}
 	const fields: EmbedField[] = [...byKind.entries()].map(([kind, members]) => ({
-		name: `${capitalize(members.length === 1 ? kind : `${kind}s`)} · ${members.length}`,
+		name: kindHeading(kind, members.length),
 		value: joinWithinLimit(
 			members.map((device) => `**${device.name}** ${reading(device, states.get(device.entityId))}`),
 		),
@@ -448,6 +448,24 @@ function suggestDevices(devices: readonly HomeDevice[], typed: string): Suggesti
 
 function capitalize(text: string): string {
 	return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** "Light · 1", "Lights · 2", "Switches · 2" (not "Switchs"). */
+function kindHeading(kind: string, count: number): string {
+	return `${capitalize(count === 1 ? kind : pluralize(kind))} · ${count}`;
+}
+
+function pluralize(kind: string): string {
+	if (
+		kind.endsWith("s") ||
+		kind.endsWith("x") ||
+		kind.endsWith("z") ||
+		kind.endsWith("ch") ||
+		kind.endsWith("sh")
+	) {
+		return `${kind}es`;
+	}
+	return `${kind}s`;
 }
 
 const before = (result: ControlResult): string | undefined =>
