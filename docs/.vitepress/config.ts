@@ -121,6 +121,20 @@ export default defineConfig({
 					collapsed: false,
 					items: [
 						{
+							text: "0001 · Ports and adapters",
+							link: "/maintainers/adr/0001-ports-and-adapters",
+						},
+						{
+							text: "0002 · YAML access lists",
+							link: "/maintainers/adr/0002-yaml-access-lists",
+						},
+						{ text: "0003 · No database", link: "/maintainers/adr/0003-no-database" },
+						{
+							text: "0004 · Azure Container Apps",
+							link: "/maintainers/adr/0004-azure-container-apps",
+						},
+						{ text: "0005 · Sentry and pino", link: "/maintainers/adr/0005-sentry-and-pino" },
+						{
 							text: "0008 · Terraform bootstrap",
 							link: "/maintainers/adr/0008-terraform-bootstrap",
 						},
