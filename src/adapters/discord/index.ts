@@ -176,7 +176,11 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			}
 		}
 		// Pixel's own status in the member list follows the space. It needs no channel.
-		deps.announcer.register(createPresencePublisher(ready.user));
+		const presence = createPresencePublisher(ready.user);
+		deps.announcer.register(presence);
+		// Client options have no presence (the space isn't known at login), and
+		// setPresence is not sent on IDENTIFY. After an invalid session, put it back.
+		client.on(Events.ShardReady, () => presence.reapply());
 		if (!deps.announce.liveChannelId && !deps.announce.timelineChannelId) {
 			logger.info({ event: "discord.announce_unset" }, "no announcement channels configured");
 		}

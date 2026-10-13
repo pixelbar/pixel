@@ -49,6 +49,27 @@ describe("presence publisher", () => {
 		expect(setPresence).toHaveBeenCalledExactlyOnceWith(presenceFor(state));
 	});
 
+	it("re-sends the last presence after a new Discord session, and does nothing before one is set", async () => {
+		const { publisher, setPresence } = setup();
+		publisher.reapply();
+		expect(setPresence).not.toHaveBeenCalled();
+
+		await publisher.reconcile?.({ state: "open", since: null });
+		publisher.reapply();
+		expect(setPresence).toHaveBeenNthCalledWith(2, presenceFor("open"));
+
+		await publisher.publish({
+			kind: "space.status",
+			state: "closed",
+			at,
+			openedAt: null,
+			text: "closed",
+		});
+		publisher.reapply();
+		expect(setPresence).toHaveBeenLastCalledWith(presenceFor("closed"));
+		expect(setPresence).toHaveBeenCalledTimes(4);
+	});
+
 	it("ignores every other kind of announcement", async () => {
 		const { publisher, setPresence } = setup();
 		const others: Announcement[] = [

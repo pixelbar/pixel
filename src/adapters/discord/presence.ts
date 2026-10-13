@@ -20,6 +20,16 @@ export function presenceFor(state: "open" | "closed"): PresenceData {
 	};
 }
 
+export type PresencePublisher = Publisher & {
+	/**
+	 * Re-sends the last presence after Discord starts a new gateway session.
+	 * `setPresence` only updates the current session; a non-resumable reconnect
+	 * IDENTIFYs without it, so the member list goes blank until the next change.
+	 * Does nothing until a state has been set.
+	 */
+	reapply(): void;
+};
+
 /**
  * Keeps Pixel's presence in step with the space. It posts nothing: it is
  * told the state at startup (`reconcile`) and on each confirmed change
@@ -27,15 +37,23 @@ export function presenceFor(state: "open" | "closed"): PresenceData {
  * flicker of the switch never reaches it either. When Pixel goes offline, Discord
  * clears the presence by itself.
  */
-export function createPresencePublisher(target: PresenceTarget): Publisher {
+export function createPresencePublisher(target: PresenceTarget): PresencePublisher {
+	let last: PresenceData | undefined;
+	const apply = (presence: PresenceData) => {
+		last = presence;
+		target.setPresence(presence);
+	};
 	return {
 		id: PRESENCE_PUBLISHER_ID,
 		async publish(announcement) {
 			if (announcement.kind !== "space.status") return;
-			target.setPresence(presenceFor(announcement.state));
+			apply(presenceFor(announcement.state));
 		},
 		async reconcile(snapshot) {
-			target.setPresence(presenceFor(snapshot.state));
+			apply(presenceFor(snapshot.state));
+		},
+		reapply() {
+			if (last) target.setPresence(last);
 		},
 	};
 }
