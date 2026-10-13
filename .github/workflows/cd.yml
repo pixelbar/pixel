@@ -1,11 +1,11 @@
 name: CD
 
 # Merges to `main` publish GHCR and upload Sentry maps when an image path
-# changed (scripts/ci-paths.sh). They do **not** roll pixel-prod (ADR 0013):
-# that is the Release workflow. Docs / changelog / infra-only merges skip this
-# pipeline. Azure `dev` stays a local build (`just deploy-dev`). Never copy
-# pixel-dev / Mini Discord tokens into prod. This workflow does not apply
-# Terraform.
+# changed (dorny/paths-filter + .github/path-filters.yml). They do **not**
+# roll pixel-prod (ADR 0013): that is the Release workflow. Docs / changelog /
+# infra-only merges skip this pipeline. Azure `dev` stays a local build
+# (`just deploy-dev`). Never copy pixel-dev / Mini Discord tokens into prod.
+# This workflow does not apply Terraform.
 
 on:
   push:
@@ -33,18 +33,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      image: ${{ steps.paths.outputs.image }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Detect whether an image publish is needed
-        id: paths
-        env:
-          BASE_SHA: ${{ github.event.before }}
-        run: bash scripts/ci-paths.sh
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
 
   publish:
     name: Publish GHCR

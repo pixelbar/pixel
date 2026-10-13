@@ -355,17 +355,15 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 ## CI and CD
 
-What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`scripts/ci-paths.ts`](../scripts/ci-paths.ts) (`just ci-paths` locally).
+What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml) ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)).
 
-**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`.
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`, `.github/path-filters.yml`.
 
-**Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`.
+**Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`, `.github/path-filters.yml`.
 
 **Docs** (`docs/`): Biome lint + VitePress build. Not app CI.
 
 **Always on PRs:** the changelog gate. **Terraform:** workflow when `infra/`, that workflow, or the `justfile` change; Azure plan only when Terraform files under `infra/` changed (markdown does not).
-
-**Fail closed:** if GitHub cannot resolve the base SHA, check and image both run.
 
 Pull request:
 

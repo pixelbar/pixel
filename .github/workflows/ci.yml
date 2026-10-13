@@ -1,17 +1,18 @@
 name: CI
 
 # just check and the Docker smoke build each run only when their inputs
-# changed (positive allowlists in scripts/ci-paths.sh). Jobs always start so
-# required checks stay green when that job is not needed.
+# changed (dorny/paths-filter + .github/path-filters.yml). Jobs always start
+# so required checks stay green when that job is not needed.
 
 on:
   pull_request:
   push:
     branches: [main]
 
-# Least privilege: CI only needs to read the repo.
+# Least privilege: CI only needs to read the repo and (on PRs) the changed-files API.
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -26,19 +27,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      check: ${{ steps.paths.outputs.check }}
-      image: ${{ steps.paths.outputs.image }}
+      check: ${{ steps.filter.outputs.check }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
+      # Needed on push to main (git against the previous commit). Harmless on PRs
+      # where dorny uses the pull-request files API.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Detect which CI jobs are needed
-        id: paths
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: bash scripts/ci-paths.sh
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
 
   check:
     name: Lint, typecheck, test, build
@@ -48,7 +50,7 @@ jobs:
     steps:
       - name: Skip just check
         if: needs.changes.outputs.check != 'true'
-        run: echo "Skipping just check; no app/check path changed."
+        run: echo "Skipping just check; no check path changed."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: needs.changes.outputs.check == 'true'
