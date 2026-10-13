@@ -1,7 +1,7 @@
 /**
  * Move CHANGELOG [Unreleased] into a dated version and bump package.json.
  * Added → minor; Fixed/Changed/… → patch. Never major before 1.0.
- * Usage: just bump [--commit] [--date YYYY-MM-DD] [--dry-run]
+ * Usage: just bump [--commit] [--date YYYY-MM-DD] [--dry-run] [--notes-file PATH]
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -14,6 +14,7 @@ import {
 	releaseTags,
 	setPackageVersion,
 	todayUtc,
+	versionNotes,
 } from "./changelog.ts";
 
 const args = parseArgs(process.argv.slice(2));
@@ -30,6 +31,12 @@ try {
 
 	if (!result.bump) {
 		process.stdout.write(`No Unreleased notes; version stays ${result.version}.\n`);
+		if (!args.dryRun) {
+			writeNotesFile(
+				args.notesFile,
+				versionNotes(readFileSync(changelogPath, "utf8"), result.version),
+			);
+		}
 		process.exit(0);
 	}
 
@@ -38,6 +45,7 @@ try {
 
 	writeFileSync(changelogPath, result.changelog);
 	writeFileSync(packagePath, setPackageVersion(readFileSync(packagePath, "utf8"), result.version));
+	writeNotesFile(args.notesFile, result.notes);
 
 	if (!args.commit) process.exit(0);
 
@@ -60,10 +68,16 @@ try {
 	process.exit(1);
 }
 
-function parseArgs(argv: string[]): { commit: boolean; date?: string; dryRun: boolean } {
+function parseArgs(argv: string[]): {
+	commit: boolean;
+	date?: string;
+	dryRun: boolean;
+	notesFile?: string;
+} {
 	let commit = false;
 	let dryRun = false;
 	let date: string | undefined;
+	let notesFile: string | undefined;
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
 		if (arg === "--commit") {
@@ -82,9 +96,22 @@ function parseArgs(argv: string[]): { commit: boolean; date?: string; dryRun: bo
 			i += 1;
 			continue;
 		}
+		if (arg === "--notes-file") {
+			const value = argv[i + 1];
+			if (value === undefined) throw new Error("--notes-file needs a path.");
+			notesFile = value;
+			i += 1;
+			continue;
+		}
 		throw new Error(`Unknown argument: ${arg}`);
 	}
-	return { commit, date, dryRun };
+	return { commit, date, dryRun, notesFile };
+}
+
+function writeNotesFile(path: string | undefined, notes: string | undefined): void {
+	if (path === undefined) return;
+	if (notes === undefined) return;
+	writeFileSync(path, notes.endsWith("\n") ? notes : `${notes}\n`);
 }
 
 function runGit(args: readonly string[]): void {

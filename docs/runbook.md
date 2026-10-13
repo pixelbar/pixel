@@ -47,7 +47,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. Merges to `main` roll `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
+| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
@@ -68,7 +68,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | Turn closing-time posts on or off, or change the text | [Closing-time](#closing-time) |
 | Look up a person | `/admin level get user:` (admins only) |
 | See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
-| Cut a package version from Unreleased notes | `just bump` (or wait for the Release workflow on `main`) |
+| Cut a production release | GitHub → Actions → **Release** → Run workflow on `main` |
 
 Useful `just` recipes: `just dev`, `just check`, `just validate-config`, `just check-changelog`, `just bump`, `just register`, `just sentry-release`, `just command-access`, `just docker-build`, `just deploy-dev`, `just tf-validate`, `just tf-plan prod`. Run `just` to list them all.
 
@@ -244,7 +244,7 @@ az containerapp revision restart -g pixel-dev -n pixel-dev
 
 **Rough cost:** about €40–55/month for always-on `dev` without Tailscale, plus about €15 with the sidecar. West Europe. Not a quote.
 
-**Prod** (`infra/envs/prod`, #12): a maintainer applies with `PIXEL_APPLY_PROD=1 just tf-apply prod` after a **separate** Discord application, prod Key Vault secrets, and access lists exist. Coding agents must not apply prod. `just deploy-dev` still rolls only `pixel-dev`. Merges to `main` publish GHCR, then Environment `prod` approval rolls `pixel-prod` to that digest (`az`, min=max=1, no Terraform apply, no rebuild). Register prod commands with a prod `.env`, never the Mini Pixel Dev token. Steps: [`infra/envs/prod/README.md`](../infra/envs/prod/README.md).
+**Prod** (`infra/envs/prod`, #12): a maintainer applies with `PIXEL_APPLY_PROD=1 just tf-apply prod` after a **separate** Discord application, prod Key Vault secrets, and access lists exist. Coding agents must not apply prod. `just deploy-dev` still rolls only `pixel-dev`. Merges to `main` publish GHCR only. A [Release](../.github/workflows/release.yml) cuts the version and, after Environment `prod` approval, rolls `pixel-prod` (`az`, min=max=1, no Terraform apply). Register prod commands with a prod `.env`, never the Mini Pixel Dev token. Steps: [`infra/envs/prod/README.md`](../infra/envs/prod/README.md).
 
 ## Scheduled posts
 
@@ -333,7 +333,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 ## Deploys
 
-**What is deployed:** `/ping` ("Pixel `<version>` is up") or `/admin status`. The version is the git SHA the image was built from (`just docker-build` sets it; CD will too). `docker ps` shows the image tag if you run it in a container.
+**What is deployed:** `/ping` ("Pixel `<version>` is up") or `/admin status`. The version people see is `package.json` (set when a release is cut) plus the git SHA the image was built from (`PIXEL_VERSION`; `just docker-build` and CD set it). `docker ps` shows the image tag if you run it in a container.
 
 **Roll back to the previous version:** start the previous image tag instead (keep the last few tags, and don't prune them). Rolling back is safe for Pixel's own data: `members.yaml` and the other files stay as they are. If the older version doesn't know a capability that is in `members.yaml`, it logs a warning and ignores it. After a rollback that changes which commands exist, run `just register` so Discord matches.
 
@@ -341,16 +341,16 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **Deploys must stop the old instance before starting the new one,** so two never answer at once. Expect a short gap while it restarts. Overlap during a revision swap is still #11.
 
-**Azure CD (temporary routing, [ADR 0010](adr/0010-ghcr-cd.md)):**
+**Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
 
 - **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register` against the Pixel Dev guild from local `.env`, then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
-- **`prod`:** merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the SHA and moving tag `main`, upload Sentry source maps when org/token are set, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No rebuild. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, `just register` with a prod `.env`.
+- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, `just register` with a prod `.env`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) still publish the merge SHA and `:main` and upload Sentry maps; they do not log in to Azure.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
-- Prod Azure login would be GitHub Environment OIDC (`ARM_*` variables) once prod CD is re-enabled. `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` `ARM_*` and fails closed if they are missing.
-- Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply will set `container_image` when that env exists. Dev rollback is `az`, not a tfvars bump.
-- Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` once it exists). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register` so Discord matches.
+- Prod Azure login is GitHub Environment OIDC (`ARM_*` variables on Environment `prod`). `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and fails closed if they are missing.
+- Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply sets `container_image`; a later Release roll moves it again. Dev rollback is `az`, not a tfvars bump.
+- Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` with a previous SHA or `:vX.Y.Z`). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register` so Discord matches.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
-- **Sentry releases:** `just sentry-release` / the CD job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. The CD job **fails closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
+- **Sentry releases:** `just sentry-release` / the CD job / the Release job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. Those jobs **fail closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
 
 ## Changelog and versions
 
@@ -367,9 +367,9 @@ just bump --commit   # also commits and tags vX.Y.Z
 
 `Added` is a minor bump (`0.1.0` → `0.2.0`). `Fixed`, `Changed` and the other Keep a Changelog types are a patch (`0.1.0` → `0.1.1`). Until 1.0 the major version is never bumped this way. Do not invent the version date; the recipe uses today's UTC date.
 
-The **Release** workflow (`.github/workflows/release.yml`) runs the same `just bump --commit` on each push to `main` when Unreleased has notes, then pushes the commit and tag (`vX.Y.Z`). If the previous version was never tagged, it also tags that parent commit so the changelog compare links work. That commit is created with `GITHUB_TOKEN`, so it does **not** start another CD run. The new `package.json` version is what the next publish (`just deploy-dev`, or the next merge that CD builds) will show. `PIXEL_VERSION` in the image remains the git SHA.
+**To ship that version to prod and the docs site:** GitHub → Actions → **Release** → Run workflow → branch `main`. The workflow runs the same `just bump --commit`, pushes the tag, opens a GitHub Release with the Unreleased notes, builds the image from that commit, waits on Environment `prod` to roll `pixel-prod`, and publishes GitHub Pages. If the previous version was never tagged, it also tags that parent commit so the changelog compare links work. The bump commit uses `GITHUB_TOKEN`, so it does **not** start CD. If Azure or Pages fails, use **Re-run failed jobs** on that run. `PIXEL_VERSION` in the image remains the git SHA.
 
-Do not run `just bump` on a feature branch unless you are deliberately cutting a release there.
+Do not run `just bump` on a feature branch unless you are deliberately cutting a release there. Do not merge to `main` expecting prod or the docs site to move.
 
 ## Incidents
 
