@@ -44,8 +44,9 @@ describe("/info", () => {
 		]);
 	});
 
-	it("lists every topic with its summary when no topic is given", async () => {
+	it("lists every topic with its summary, privately, when no topic is given", async () => {
 		const reply = await infoCommand().handler(context());
+		expect(reply.private).toBe(true);
 		expect(reply.embeds?.[0]).toEqual({
 			title: "ℹ️ What would you like to know?",
 			description:
@@ -56,6 +57,7 @@ describe("/info", () => {
 
 	it("shows the topic's title and text as written", async () => {
 		const reply = await infoCommand().handler(context({ args: { topic: "contact" } }));
+		expect(reply.private).toBeFalsy();
 		expect(reply.embeds).toEqual([
 			{ title: "Getting in touch", description: "bestuur@pixelbar.nl", accent: "brand" },
 		]);
