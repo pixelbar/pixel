@@ -50,6 +50,14 @@ describe("/feedback", () => {
 		expect(reply.text).not.toMatch(/reply|respond|answer/i);
 	});
 
+	it("shows the message back as a code span, so nothing in it can format, link or mention", async () => {
+		const { run } = setup();
+		const reply = await run("# *bold* <@123> - https://example.com `code`");
+		expect(reply.text).toContain(
+			"This is what you sent: `# *bold* <@123> - https://example.com 'code'`",
+		);
+	});
+
 	it("tidies whitespace and line breaks before sending", async () => {
 		const { run, send } = setup();
 		await run("  too   many\n\n spaces\t here  ");
