@@ -151,7 +151,7 @@ describe("/ha list", () => {
 
 		const member = await list(IDS.member);
 		expect(fields(member.reply.embeds?.[0])).toEqual({
-			"Light · 2": "**sign** `on`\n**lamp** `off`",
+			"Lights · 2": "**sign** `on`\n**lamp** `off`",
 			"Switch · 1": "**socket** ⚠️ unavailable",
 			"Sensor · 1": "**temp** `21.5 °C`",
 		});
@@ -190,7 +190,7 @@ describe("/ha list", () => {
 		const reply = await list(IDS.member);
 		const text = JSON.stringify(reply.reply);
 		// Everything from Home Assistant sits inside a code span, which has no backticks of its own.
-		expect(fields(reply.reply.embeds?.[0])["Light · 2"]).toMatch(/^\*\*sign\*\* `[^`]+`\n/);
+		expect(fields(reply.reply.embeds?.[0])["Lights · 2"]).toMatch(/^\*\*sign\*\* `[^`]+`\n/);
 		expect(text).not.toContain("`z`");
 		for (const f of reply.reply.embeds?.[0]?.fields ?? []) {
 			for (const line of f.value.split("\n")) {
@@ -211,9 +211,27 @@ describe("/ha list", () => {
 			{ yaml: `devices:\n${many}` },
 		);
 		const field = (await list(IDS.member)).reply.embeds?.[0]?.fields?.[0];
-		expect(field?.name).toBe("Light · 150");
+		expect(field?.name).toBe("Lights · 150");
 		expect(field?.value.length).toBeLessThanOrEqual(1024);
 		expect(field?.value).toMatch(/…and \d+ more\.$/);
+	});
+
+	it("pluralises switch as switches, not switchs", async () => {
+		const { list } = setup([entity("switch.socket", "on"), entity("switch.bench", "off")], {
+			yaml: `devices:
+  - name: socket
+    entity: switch.socket
+    kind: switch
+    actions: [on, off]
+  - name: bench
+    entity: switch.bench
+    kind: switch
+    actions: [on, off]
+`,
+		});
+		expect(fields((await list(IDS.member)).reply.embeds?.[0])).toEqual({
+			"Switches · 2": "**socket** `on`\n**bench** `off`",
+		});
 	});
 
 	it("says so plainly when nothing is available to the caller", async () => {
