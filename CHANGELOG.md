@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-10-13
+
 ### Fixed
 
 - `/ha list` now pluralises its groups when there is more than one device ("Lights · 2", "Switches · 2", not "Light · 2" or "Switchs") (PIXEL-4).
@@ -112,7 +114,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.3...HEAD
+[0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/pixelbar/pixel/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/pixelbar/pixel/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/pixelbar/pixel/compare/v0.9.0...v0.10.0
