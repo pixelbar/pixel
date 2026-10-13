@@ -24,7 +24,7 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
 | Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy-dev`; `prod` by the Release workflow after approval |
 
-**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply).
+**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: `just register prod`.
 
 ## Diagrams
 
@@ -195,7 +195,7 @@ just tf-apply dev         # maintainer; first create / vault / volume (not the r
 # prod: PIXEL_APPLY_PROD=1 just tf-apply prod  (coding agents: do not)
 # seed Files: members.yaml + home-assistant/*.yaml  (not the example IDs)
 # seed KV if write_secrets was false
-just deploy-dev           # this tree → GHCR SHA → pixel-dev, then register
+just deploy-dev           # this tree → GHCR SHA → pixel-dev, then just register dev
 ```
 
 Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply sets `container_image`; a Release then rolls the published SHA.

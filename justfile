@@ -92,9 +92,44 @@ tf-apply env:
 validate-config:
     pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
-# Register slash commands on the configured Discord guild
-register:
-    pnpm exec tsx --env-file=.env scripts/register-commands.ts
+# Load `.env.dev` or `.env.prod` for a Discord laptop script. just dotenv-load
+# would otherwise let `.env` win over Node `--env-file`. Dev falls back to `.env`.
+[private]
+discord-env env script:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
+      echo "Usage: just register dev|prod  or  just command-access dev|prod"
+      exit 1
+    fi
+    file=".env.{{env}}"
+    if [ "{{env}}" = "dev" ] && [ ! -f "${file}" ] && [ -f .env ]; then
+      file=".env"
+      echo "Using .env (no .env.dev). Copy .env.example to .env.dev to keep Pixel Dev separate from a local bot."
+    fi
+    if [ ! -f "${file}" ]; then
+      echo "Missing ${file}."
+      if [ "{{env}}" = "prod" ]; then
+        echo "Copy .env.example to .env.prod and set PIXEL_ENV=prod plus the production Discord application. Never copy .env or .env.dev."
+      else
+        echo "Copy .env.example to .env.dev and fill in the Pixel Dev / test Discord application."
+      fi
+      exit 1
+    fi
+    # Node --env-file does not override existing variables. Drop anything
+    # dotenv-load took from .env so it cannot leak into the other bot.
+    for src in .env .env.dev .env.prod; do
+      if [ -f "${src}" ]; then
+        while IFS= read -r key; do
+          unset "${key}" || true
+        done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "${src}" | cut -d= -f1)
+      fi
+    done
+    pnpm exec tsx --env-file="${file}" {{script}} "{{env}}"
+
+# Register slash commands: `just register dev` or `just register prod`
+register env:
+    @just discord-env {{env}} scripts/register-commands.ts
 
 # Create a Sentry release and upload dist/ maps. Skip (do not fail) if
 # SENTRY_AUTH_TOKEN, SENTRY_ORG, or SENTRY_PROJECT is unset — do not invent
@@ -128,9 +163,9 @@ sentry-release version="" environment="":
     run_cli releases finalize "${release}"
     echo "Sentry release ${release}."
 
-# Show admin-tier commands to the people in admins.yaml (run after `register`; needs a one-off sign-in as a server manager)
-command-access:
-    pnpm exec tsx --env-file=.env scripts/command-access.ts
+# Show admin commands: `just command-access dev` or `just command-access prod`
+command-access env:
+    @just discord-env {{env}} scripts/command-access.ts
 
 # Build the container image for Azure (linux/amd64). Mini is arm64; Container
 # Apps reject arm64 images.
@@ -216,7 +251,7 @@ deploy-dev: docker-login-ghcr
     fi
     # Register before Sentry: the app is already live. A Sentry outage must not
     # skip Discord command updates. sentry-release still fails the recipe.
-    just register
+    just register dev
     just build
     if ! just sentry-release "${version}" dev; then
       echo "Sentry release failed after Discord commands were registered. pixel-dev is already on ${pin}."

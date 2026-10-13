@@ -36,6 +36,8 @@ just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
 just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)
 just tf-apply dev     # apply the dev stack � only when a maintainer says so
 just deploy-dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
+just register dev     # slash commands on Pixel Dev / a test guild (.env.dev or .env)
+just register prod    # slash commands on the production guild (.env.prod, PIXEL_ENV=prod)
 ```
 
 If you need a new repeatable task, add a `just` recipe instead of documenting a raw command.
@@ -89,7 +91,7 @@ infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/de
 - **Dependency direction:** `adapters → core ↝ features → services`. `core` imports nothing from other folders. **discord.js is imported only in `src/adapters/discord/`.** Mastodon HTTP lives only in `src/adapters/mastodon/`. When the core needs platform data, define a port in `core/ports/` and implement it in the adapter.
 - **Adding a feature:**
   1. Create `src/features/<name>/index.ts` that exports a `create<Name>Feature(deps)` factory returning a `Feature`. Dependencies come in through `deps`, never as module-level singletons.
-  2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register` so Discord sees it.
+  2. Add it to `buildFeatures` in `src/features/index.ts`, then run `just register dev` (test guild) or `just register prod` so Discord sees it.
   3. Choose the lowest tier that is safe.
   4. Add tests.
 - **Autocomplete:** an option's `suggest` function is a convenience, never validation. The command must validate the value it receives, because the platform doesn't check it came from the suggestions. Suggestions go through `Dispatcher.suggest`, so they get the same access checks as the command: don't call a suggest function any other way, and never list something the caller couldn't use. Keep them fast (Discord waits 3 s), and don't log what was typed.
@@ -99,7 +101,7 @@ infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/de
 - **Announcements:** features hand an announcement (a typed kind from `core/announcement.ts`) to the `Announcer` and never call a publisher or a platform directly. Publishers decide how each kind looks on their platform. Never hard-code platform accounts, handles or channels: they come from config. Announcement text must be safe to show anywhere, Discord posts must keep mentions disabled, and Mastodon toots must not mention anyone.
 - **Mastodon:** outbound only. Features never import it. The HTTP client lives only in `src/adapters/mastodon/`. `MASTODON_ACCESS_TOKEN` is a secret (never log it, put it in a message or a test fixture that looks real). Both `MASTODON_INSTANCE` and the token or neither: missing config leaves the publisher off and Discord still works. Tests map kinds to toot text with plain objects and mock HTTP at the client boundary, never a live instance.
 - **Calendar:** features read events from the core `Calendar` (neutral `CalendarEvent`s) and never touch a platform. An adapter plugs in a `CalendarSource` when it's ready. **Text written by other people** (event titles, locations and so on) must go through `escapeMarkdown` before it's put in a reply.
-- **Content:** `content/info/*.md` is committed to a **public** repository, so never put secrets (wifi passwords, door codes, tokens) or personal data in it, and don't add member-only topics. Keep topics short and link to the canonical page on pixelbar.nl rather than copying it. Don't invent facts: every claim should come from Pixelbar's own pages or from the board. Adding, removing or renaming a topic needs the commands re-registered (`just register`), and CI loads the real content, so keep it valid.
+- **Content:** `content/info/*.md` is committed to a **public** repository, so never put secrets (wifi passwords, door codes, tokens) or personal data in it, and don't add member-only topics. Keep topics short and link to the canonical page on pixelbar.nl rather than copying it. Don't invent facts: every claim should come from Pixelbar's own pages or from the board. Adding, removing or renaming a topic needs the commands re-registered (`just register dev` or `just register prod`), and CI loads the real content, so keep it valid.
 - **Background work:** a feature that needs it declares `start()`, which returns a stop function. Don't start timers or listeners at import time or in a factory. Anything that runs from a timer must catch its own failures so none escapes as an unhandled rejection.
 - **Config:** a new environment variable must be added to `config.ts`, `.env.example` and the architecture doc's config table.
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.
