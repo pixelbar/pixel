@@ -1,16 +1,17 @@
 name: CD
 
-# Merges to `main` publish GHCR, upload Sentry maps, then roll pixel-prod
-# to that same digest after GitHub Environment `prod` approval (ADR 0012).
-# Azure `dev` stays a local build (`just deploy-dev`). Never copy pixel-dev
-# / Mini Discord tokens into prod. This workflow does not apply Terraform.
+# Merges to `main` publish GHCR and upload Sentry maps. They do **not** roll
+# pixel-prod (ADR 0013): that is the Release workflow. Azure `dev` stays a
+# local build (`just deploy-dev`). Never copy pixel-dev / Mini Discord tokens
+# into prod. This workflow does not apply Terraform.
 
 on:
   push:
     branches: [main]
 
 # Least privilege at the workflow level. The publish job is the only one that
-# writes packages. Prod CD is the only job with id-token: write (Environment prod).
+# writes packages. Nothing here gets id-token: write (that is the Release
+# workflow's prod job).
 permissions:
   contents: read
 
@@ -161,7 +162,8 @@ jobs:
       - name: Create Sentry release and upload source maps
         uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
         with:
-          # Publish-only. The prod-cd job records the Environment prod deploy.
+          # Publish-only. Prod deploys (and the Sentry prod environment) are
+          # the Release workflow.
           release: ${{ github.sha }}
           sourcemaps: dist
           inject: false
@@ -169,75 +171,3 @@ jobs:
           set_commits: auto
           ignore_missing: true
           disable_telemetry: true
-
-  prod-cd:
-    name: Deploy prod
-    needs: publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: prod
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Require ARM_* on GitHub Environment prod
-        env:
-          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
-        run: |
-          missing=0
-          if [ -z "${ARM_CLIENT_ID}" ]; then
-            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod (variable, not secret)."
-            missing=1
-          fi
-          if [ -z "${ARM_TENANT_ID}" ]; then
-            echo "::error::ARM_TENANT_ID is not set on GitHub Environment prod."
-            missing=1
-          fi
-          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
-            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment prod."
-            missing=1
-          fi
-          if [ "${missing}" -ne 0 ]; then
-            echo "Fail closed. Image ${{ needs.publish.outputs.image }} was published. Not inventing credentials. This job does not apply Terraform and does not touch pixel-dev."
-            exit 1
-          fi
-
-      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        with:
-          client-id: ${{ vars.ARM_CLIENT_ID }}
-          tenant-id: ${{ vars.ARM_TENANT_ID }}
-          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
-
-      - name: Roll pixel-prod to the published digest
-        env:
-          IMAGE: ${{ needs.publish.outputs.image }}
-        run: |
-          set -euo pipefail
-          resource_group="pixel-prod"
-          app_name="pixel-prod"
-          if [ "${resource_group}" != "pixel-prod" ] || [ "${app_name}" != "pixel-prod" ]; then
-            echo "Refusing to deploy: this job only updates pixel-prod, never pixel-dev."
-            exit 1
-          fi
-          if ! az containerapp show -g "${resource_group}" -n "${app_name}" >/dev/null 2>&1; then
-            echo "::error::Container App ${app_name} is not in ${resource_group} yet. A maintainer applies infra/envs/prod (PIXEL_APPLY_PROD=1). This job does not apply Terraform."
-            exit 1
-          fi
-          az containerapp update \
-            -g "${resource_group}" \
-            -n "${app_name}" \
-            --image "${IMAGE}" \
-            --min-replicas 1 \
-            --max-replicas 1
-          running="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.containers[0].image" -o tsv)"
-          min="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.minReplicas" -o tsv)"
-          max="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.maxReplicas" -o tsv)"
-          echo "Running ${running} min=${min} max=${max}"
-          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
-            echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
-            exit 1
-          fi
-          echo "Rolled ${IMAGE}. Register slash commands with a prod .env (never the Mini Pixel Dev token): just register."
-          echo "Never copy pixel-dev-kv / Mini Discord tokens into prod."

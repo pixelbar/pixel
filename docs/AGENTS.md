@@ -100,7 +100,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 
 ## Before you call a change done
 
-1. `just docs-build` passes with no dead links. The Docs site workflow runs the same build on every pull request that touches `docs/`, and publishes `main` to GitHub Pages under `/<repo>/` (it sets `DOCS_BASE`), so use `withBase()` for any root path you write in a component. Don't silence it with `ignoreDeadLinks`; fix the link.
+1. `just docs-build` passes with no dead links. The Docs site workflow runs the same build on every pull request that touches `docs/`. GitHub Pages is published from a Release (it sets `DOCS_BASE` for `/<repo>/`), so use `withBase()` for any root path you write in a component. Don't silence it with `ignoreDeadLinks`; fix the link.
 2. `just lint` passes. Don't hand-format: Biome does that (tabs, double quotes).
 3. Look at what you changed in **both** themes and at phone width (390px), with no sideways scrolling. Code blocks and tables scroll inside themselves.
 4. Text holds 4.5:1 on its background in both themes, and focus shows the `--focus` ring.

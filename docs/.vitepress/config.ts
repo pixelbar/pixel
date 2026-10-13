@@ -142,6 +142,7 @@ export default defineConfig({
 						{ text: "0010 · Temporary GHCR CD", link: "/maintainers/adr/0010-ghcr-cd" },
 						{ text: "0011 · Home Assistant", link: "/maintainers/adr/0011-home-assistant" },
 						{ text: "0012 · Prod environment", link: "/maintainers/adr/0012-prod-environment" },
+						{ text: "0013 · Release workflow", link: "/maintainers/adr/0013-release-workflow" },
 					],
 				},
 			],

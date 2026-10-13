@@ -18,4 +18,4 @@ Region is West Europe. The Azure subscription is in bootstrap / env variables.
 - Prod: [`envs/prod/README.md`](envs/prod/README.md)
 - Runbook: [Terraform bootstrap](../docs/runbook.md#terraform-bootstrap), [Azure Container App (`dev`)](../docs/runbook.md#azure-container-app-dev), [Adding Pixel to a Discord server](../docs/runbook.md#adding-pixel-to-a-discord-server)
 
-`just tf-validate`, `just tf-plan dev`, `just tf-apply dev`. Prod: `just tf-plan prod`, `PIXEL_APPLY_PROD=1 just tf-apply prod`. Images: `just deploy-dev` for Azure `dev`; CD on `main` after Environment `prod` approval for `pixel-prod`. After first create, **dev** apply ignores the Pixel container image (#73); prod apply sets `container_image`. CD does not apply Terraform.
+`just tf-validate`, `just tf-plan dev`, `just tf-apply dev`. Prod: `just tf-plan prod`, `PIXEL_APPLY_PROD=1 just tf-apply prod`. Images: `just deploy-dev` for Azure `dev`; a Release after Environment `prod` approval for `pixel-prod`. After first create, **dev** apply ignores the Pixel container image (#73); prod apply sets `container_image`. CD does not apply Terraform.

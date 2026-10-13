@@ -41,7 +41,7 @@ just tf-plan prod
 PIXEL_APPLY_PROD=1 just tf-apply prod
 ```
 
-`container_image` is pinned by apply. After first create, CD on `main` (Environment `prod` approval) rolls `pixel-prod` to the published GHCR SHA with `az containerapp update` and does **not** apply Terraform. A later maintainer apply will set `container_image` from tfvars again, so bump that SHA if you apply after CD has moved on.
+`container_image` is pinned by apply. After first create, a [Release](../../../.github/workflows/release.yml) (Environment `prod` approval) rolls `pixel-prod` to the released GHCR SHA with `az containerapp update` and does **not** apply Terraform. A later maintainer apply will set `container_image` from tfvars again, so bump that SHA if you apply after a Release has moved on.
 
 ## Secrets (Key Vault)
 
@@ -69,7 +69,7 @@ az storage file upload --auth-mode login --account-name "$account" --share-name 
 
 1. Key Vault secrets exist (`discord-token`, `admins-yaml`) for the **prod** bot.
 2. `members.yaml` is on the prod share.
-3. The image exists (`ghcr.io/pixelbar/pixel:<sha>` from `main`).
+3. The image exists (`ghcr.io/pixelbar/pixel:<sha>` from a Release, or the `:main` tag from CD).
 4. Commands are registered against the **prod** guild (`just register` with a prod `.env`, never the Mini Pixel Dev `.env`).
 5. Nobody else is connected with that prod token.
 

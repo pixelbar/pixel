@@ -1,15 +1,12 @@
 name: Docs site
 
-# The website in docs/ (VitePress). Pull requests check that it builds; pushes to
-# main that change it publish it to GitHub Pages. Biome already lints docs/ in CI.
+# The website in docs/ (VitePress). Pull requests that touch it check that it
+# builds. Publishing to GitHub Pages is the Release workflow (ADR 0013). This
+# workflow can still publish by hand (workflow_dispatch) if a maintainer needs
+# to republish without cutting a version. Biome already lints docs/ in CI.
 
 on:
   pull_request:
-    paths:
-      - "docs/**"
-      - ".github/workflows/docs.yml"
-  push:
-    branches: [main]
     paths:
       - "docs/**"
       - ".github/workflows/docs.yml"
@@ -73,7 +70,7 @@ jobs:
   deploy:
     name: Publish to GitHub Pages
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

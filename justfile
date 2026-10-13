@@ -52,7 +52,8 @@ check-changelog *args:
 
 # Cut [Unreleased] into a dated version and bump package.json.
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.
-# `--commit` also creates the release commit and tag (used by CI).
+# `--commit` also creates the release commit and tag (used by the Release workflow).
+# `--notes-file PATH` writes the GitHub Release body for the cut (or current) version.
 bump *args:
     pnpm exec tsx scripts/bump-version.ts {{args}}
 
