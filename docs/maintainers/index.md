@@ -23,6 +23,11 @@ Architecture decision records, newest last.
 
 | ADR | Decision |
 | --- | --- |
+| [0001](./adr/0001-ports-and-adapters) | TypeScript, ports-and-adapters core, interactive vs publisher adapters. |
+| [0002](./adr/0002-yaml-access-lists) | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed. |
+| [0003](./adr/0003-no-database) | No database: access, schedules and planned linking are files. |
+| [0004](./adr/0004-azure-container-apps) | Azure Container Apps, single replica; GHCR; dev + prod. |
+| [0005](./adr/0005-sentry-and-pino) | Sentry for errors, pino to stdout, a rotating file and Sentry Logs. |
 | [0008](./adr/0008-terraform-bootstrap) | Terraform bootstrap: remote state and GitHub OIDC. |
 | [0009](./adr/0009-container-apps-dev) | Container Apps module and the `dev` environment. |
 | [0010](./adr/0010-ghcr-cd) | Temporary GHCR CD: local `dev`, `main` publishes only. |

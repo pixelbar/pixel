@@ -489,15 +489,15 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 
 ## Decision log
 
-Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
+Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 0006 and 0007 were skipped.
 
 | #    | Decision                                                              | Status   |
 | ---- | --------------------------------------------------------------------- | -------- |
-| 0001 | TypeScript, ports-and-adapters core, interactive vs publisher adapters | proposed |
-| 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | proposed |
+| 0001 | TypeScript, ports-and-adapters core, interactive vs publisher adapters | accepted |
+| 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | accepted |
 | 0003 | No database: access, schedules and planned linking are files          | accepted |
-| 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
-| 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
+| 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | accepted |
+| 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | accepted |
 | 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
 | 0009 | Container Apps module + `dev`: one replica, required Azure Files volume, Key Vault, optional Tailscale sidecar | accepted |
 | 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` publishes GHCR only (prod CD off until #12) | accepted (prod-off superseded by 0012) |
