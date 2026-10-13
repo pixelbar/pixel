@@ -15,6 +15,7 @@ import {
 	SKIP_CHANGELOG_LABEL,
 	setPackageVersion,
 	truthyFlag,
+	versionNotes,
 } from "./changelog.ts";
 
 const SAMPLE = `# Changelog
@@ -189,6 +190,7 @@ describe("applyRelease", () => {
 		if (!result.bump) throw new Error("expected a bump");
 		expect(result.version).toBe("0.2.0");
 		expect(result.previousVersion).toBe("0.1.0");
+		expect(result.notes).toBe("### Added\n\n- A new command.\n\n### Fixed\n\n- A reply that lied.");
 		expect(result.changelog).toContain("## [Unreleased]\n\n## [0.2.0] - 2026-10-10\n");
 		expect(result.changelog).toContain("### Added\n\n- A new command.");
 		expect(result.changelog).toContain("### Fixed\n\n- A reply that lied.");
@@ -229,5 +231,21 @@ describe("applyRelease", () => {
 
 	it("rejects a bad date", () => {
 		expect(() => applyRelease(SAMPLE, "0.1.0", "10/10/2026")).toThrow(/YYYY-MM-DD/);
+	});
+});
+
+describe("versionNotes", () => {
+	it("returns the body of a dated version section", () => {
+		expect(versionNotes(SAMPLE, "0.1.0")).toBe("### Added\n\n- Phase 1.");
+	});
+
+	it("returns undefined when that version is not in the changelog", () => {
+		expect(versionNotes(SAMPLE, "9.9.9")).toBeUndefined();
+	});
+
+	it("matches the notes applyRelease just cut", () => {
+		const result = applyRelease(SAMPLE, "0.1.0", "2026-10-10");
+		if (!result.bump) throw new Error("expected a bump");
+		expect(versionNotes(result.changelog, result.version)).toBe(result.notes);
 	});
 });

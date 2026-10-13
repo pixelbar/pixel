@@ -121,6 +121,20 @@ export default defineConfig({
 					collapsed: false,
 					items: [
 						{
+							text: "0001 · Ports and adapters",
+							link: "/maintainers/adr/0001-ports-and-adapters",
+						},
+						{
+							text: "0002 · YAML access lists",
+							link: "/maintainers/adr/0002-yaml-access-lists",
+						},
+						{ text: "0003 · No database", link: "/maintainers/adr/0003-no-database" },
+						{
+							text: "0004 · Azure Container Apps",
+							link: "/maintainers/adr/0004-azure-container-apps",
+						},
+						{ text: "0005 · Sentry and pino", link: "/maintainers/adr/0005-sentry-and-pino" },
+						{
 							text: "0008 · Terraform bootstrap",
 							link: "/maintainers/adr/0008-terraform-bootstrap",
 						},
@@ -128,6 +142,7 @@ export default defineConfig({
 						{ text: "0010 · Temporary GHCR CD", link: "/maintainers/adr/0010-ghcr-cd" },
 						{ text: "0011 · Home Assistant", link: "/maintainers/adr/0011-home-assistant" },
 						{ text: "0012 · Prod environment", link: "/maintainers/adr/0012-prod-environment" },
+						{ text: "0013 · Release workflow", link: "/maintainers/adr/0013-release-workflow" },
 					],
 				},
 			],

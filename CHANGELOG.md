@@ -9,13 +9,39 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Architecture Decision Records [0001](docs/adr/0001-ports-and-adapters.md)–[0005](docs/adr/0005-sentry-and-pino.md) (accepted): TypeScript ports-and-adapters, YAML access lists, no database, Azure Container Apps, and Sentry plus pino. 0006 and 0007 stay unused.
+
 ### Changed
 
 - `just register` and `just command-access` take `dev` or `prod` so they cannot mix Pixel Dev and production Discord tokens. Use `just register prod` with `.env.prod` (`PIXEL_ENV=prod`); `just deploy-dev` calls `just register dev`.
 
+## [0.10.2] - 2026-10-13
+
+### Changed
+
+- Merges to `main` no longer roll `pixel-prod` or publish the docs site. A maintainer runs the **Release** workflow on `main` to cut the version from Unreleased, tag `vX.Y.Z`, create a GitHub Release, publish that image, roll `pixel-prod` after Environment `prod` approval, and publish the VitePress site to GitHub Pages.
+
 ### Fixed
 
-- Terraform plan jobs skip Azure login when the PR does not change Terraform files under `infra/` (justfile and infra READMEs still run validate). After prod apply, GitHub is not Key Vault Secrets User, so a secret refresh 403'd `Plan envs/prod` on a register-only change.
+- Terraform plan jobs skip Azure login unless `infra/` Terraform files change, so README or `justfile` edits do not refresh Key Vault secrets. GitHub’s identity is not Secrets User (ADR 0012); that refresh is a 403.
+
+## [0.10.1] - 2026-10-12
+
+### Added
+
+- Pixel's status in the Discord member list now shows whether Pixelbar is open ("Watching Pixelbar is Open", green; "Watching Pixelbar is Closed", yellow). It follows the same confirmed changes as the announcements (PIXEL-N).
+
+### Fixed
+
+- Pixel's member-list presence is set again after Discord starts a new gateway session, so it is not blank until the next open or close.
+
+## [0.10.3] - 2026-10-13
+
+### Fixed
+
+- `/ha list` now pluralises its groups when there is more than one device ("Lights · 2", "Switches · 2", not "Light · 2" or "Switchs") (PIXEL-4).
 
 ## [0.10.0] - 2026-10-12
 
@@ -116,7 +142,11 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/pixelbar/pixel/compare/v0.10.3...v0.11.0
+[0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/pixelbar/pixel/compare/v0.10.1...v0.10.2
+[0.10.1]: https://github.com/pixelbar/pixel/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/pixelbar/pixel/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/pixelbar/pixel/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/pixelbar/pixel/compare/v0.7.1...v0.8.0

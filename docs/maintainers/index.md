@@ -23,11 +23,17 @@ Architecture decision records, newest last.
 
 | ADR | Decision |
 | --- | --- |
+| [0001](./adr/0001-ports-and-adapters) | TypeScript, ports-and-adapters core, interactive vs publisher adapters. |
+| [0002](./adr/0002-yaml-access-lists) | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed. |
+| [0003](./adr/0003-no-database) | No database: access, schedules and planned linking are files. |
+| [0004](./adr/0004-azure-container-apps) | Azure Container Apps, single replica; GHCR; dev + prod. |
+| [0005](./adr/0005-sentry-and-pino) | Sentry for errors, pino to stdout, a rotating file and Sentry Logs. |
 | [0008](./adr/0008-terraform-bootstrap) | Terraform bootstrap: remote state and GitHub OIDC. |
 | [0009](./adr/0009-container-apps-dev) | Container Apps module and the `dev` environment. |
 | [0010](./adr/0010-ghcr-cd) | Temporary GHCR CD: local `dev`, `main` publishes only. |
 | [0011](./adr/0011-home-assistant) | Home Assistant: official client, allow-list, no inbound webhooks. |
 | [0012](./adr/0012-prod-environment) | Prod environment and approved CD. |
+| [0013](./adr/0013-release-workflow) | Releases cut versions and promote prod. |
 
 ## Working on the site
 
@@ -42,5 +48,5 @@ just docs-build     # the static site, in docs/.vitepress/dist
 - The guide and command pages are written for people using Pixel. Keep them in the design system's voice: plain, friendly, exact, and no emoji.
 - A new maintainer doc in `docs/` needs a line in `MAINTAINER_DOCS` and the sidebar in `docs/.vitepress/config.ts`. A new ADR in `docs/adr/` only needs the sidebar.
 - Links to files outside `docs/` (`../src/…`, `../justfile`) are turned into links to GitHub when the site is built.
-- **Publishing:** the [Docs site workflow](https://github.com/pixelbar/pixel/blob/main/.github/workflows/docs.yml) builds the site on every pull request that touches `docs/`, and publishes it to GitHub Pages when such a change reaches `main`. A dead link fails the build.
+- **Publishing:** the [Docs site workflow](https://github.com/pixelbar/pixel/blob/main/.github/workflows/docs.yml) builds the site on every pull request that touches `docs/`. GitHub Pages is published as part of a [Release](https://github.com/pixelbar/pixel/blob/main/.github/workflows/release.yml) (or by running Docs site by hand). A dead link fails the build.
 - The theme is in `docs/.vitepress/theme/`. Its colours, type and spacing come from the Pixel design system: change them there first, then here.
