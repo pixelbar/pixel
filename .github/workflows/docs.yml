@@ -1,9 +1,10 @@
 name: Docs site
 
-# The website in docs/ (VitePress). Pull requests that touch it check that it
-# builds. Publishing to GitHub Pages is the Release workflow (ADR 0013). This
+# The website in docs/ (VitePress). Pull requests that touch it Biome-lint and
+# build it. Publishing to GitHub Pages is the Release workflow (ADR 0013). This
 # workflow can still publish by hand (workflow_dispatch) if a maintainer needs
-# to republish without cutting a version. Biome already lints docs/ in CI.
+# to republish without cutting a version. App CI does not run for docs-only
+# changes; lint lives here instead.
 
 on:
   pull_request:
@@ -43,9 +44,17 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-          cache-dependency-path: docs/pnpm-lock.yaml
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            docs/pnpm-lock.yaml
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install root deps (Biome)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint docs with Biome
+        run: pnpm exec biome check docs/
 
       - name: Install the site's dependencies
         run: pnpm --dir docs install --frozen-lockfile
