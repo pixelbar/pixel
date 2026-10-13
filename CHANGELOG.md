@@ -16,6 +16,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - `just register` and `just command-access` take `dev` or `prod` so they cannot mix Pixel Dev and production Discord tokens. Use `just register prod` with `.env.prod` (`PIXEL_ENV=prod`); `just deploy-dev` calls `just register dev`.
+- CI/CD runs each expensive job only when its inputs change: `just check` for app/scripts/config paths, Docker/GHCR when the image would change (including test-only `src/` edits), and the docs workflow for `docs/` (Biome + site build). Docs, changelog and infra-only changes no longer run app CI or publish an image.
 
 ## [0.10.2] - 2026-10-13
 

@@ -42,8 +42,18 @@ fmt:
 typecheck:
     pnpm exec tsc --noEmit
 
-# Everything CI runs for the Node app: lint, types, tests with coverage thresholds
+# Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
+# GitHub runs this only when a check-path changed (see just ci-paths).
 check: lint typecheck coverage
+
+# Which expensive CI/CD jobs this change needs vs BASE_SHA (default: merge-base
+# with origin/main). Prints check= and image= (fail closed if BASE_SHA is missing).
+ci-paths:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    BASE_SHA="${BASE_SHA:-$(git merge-base HEAD origin/main 2>/dev/null || true)}"
+    export BASE_SHA
+    bash scripts/ci-paths.sh
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
 # CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.

@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR and, after GitHub Environment `prod` approval, roll `pixel-prod` to that digest. Every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR when an image path changed. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
@@ -26,6 +26,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Mastodon](#mastodon)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
+- [CI and CD](#ci-and-cd)
 - [Changelog and versions](#changelog-and-versions)
 - [Incidents](#incidents)
 - [Sentry](#sentry)
@@ -48,7 +49,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
 | **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
-| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs lint, type-check, tests and an image build on every pull request. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>`. |
+| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when those jobs' path allowlists match. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when an image path changed. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
@@ -344,13 +345,77 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 **Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
 
 - **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register dev` against the Pixel Dev guild from `.env.dev` (or `.env`), then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
-- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) still publish the merge SHA and `:main` and upload Sentry maps; they do not log in to Azure.
+- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when an image path changed; they do not log in to Azure.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
 - Prod Azure login is GitHub Environment OIDC (`ARM_*` variables on Environment `prod`). `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and fails closed if they are missing.
 - Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply sets `container_image`; a later Release roll moves it again. Dev rollback is `az`, not a tfvars bump.
 - Rollback: `az containerapp update -g pixel-dev -n pixel-dev --image ghcr.io/pixelbar/pixel:<previous-sha>` (same for `pixel-prod` with a previous SHA or `:vX.Y.Z`). Confirm one replica: `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. After a rollback that changes commands, `just register dev` or `just register prod` so Discord matches.
 - If `pixel-dev` is up, do not start the Mini bot (`just dev`) on the same Pixel Dev token.
 - **Sentry releases:** `just sentry-release` / the CD job / the Release job. Needs secret `SENTRY_AUTH_TOKEN` and variables `SENTRY_ORG`, `SENTRY_PROJECT`. Those jobs **fail closed** if any are missing. Local `just sentry-release` still skips so `just deploy-dev` can roll without them.
+
+## CI and CD
+
+What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`scripts/ci-paths.ts`](../scripts/ci-paths.ts) (`just ci-paths` locally).
+
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`.
+
+**Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`.
+
+**Docs** (`docs/`): Biome lint + VitePress build. Not app CI.
+
+**Always on PRs:** the changelog gate. **Terraform:** workflow when `infra/`, that workflow, or the `justfile` change; Azure plan only when Terraform files under `infra/` changed (markdown does not).
+
+**Fail closed:** if GitHub cannot resolve the base SHA, check and image both run.
+
+Pull request:
+
+```mermaid
+flowchart TD
+  pr[Pull request]
+  pr --> clog[Changelog gate always]
+  pr --> docs{"docs/ changed?"}
+  docs -->|yes| site[Biome + docs site build]
+  docs -->|no| nosite[Docs site off]
+  pr --> tf{"infra/, justfile or terraform.yml?"}
+  tf -->|yes| tfval[just tf-validate]
+  tfval --> tffiles{"infra Terraform files?"}
+  tffiles -->|yes| azplan[Azure plan via Environment OIDC]
+  tffiles -->|no| noaz[Skip Azure plan]
+  tf -->|no| notf[Terraform workflow off]
+  pr --> checkp{"check path?"}
+  checkp -->|yes| check["just check + just build"]
+  checkp -->|no| nocheck[Skip just check]
+  pr --> imagep{"image path?"}
+  imagep -->|yes| docker[Docker image smoke]
+  imagep -->|no| nodocker[Skip Docker]
+```
+
+Merge to `main`:
+
+```mermaid
+flowchart TD
+  main[Push to main]
+  main --> ci[Same CI path filter as PRs]
+  main --> imagep{"image path?"}
+  imagep -->|yes| pub["CD: GHCR SHA and :main"]
+  pub --> maps[Sentry source maps]
+  imagep -->|no| nocd[Skip GHCR and Sentry]
+  main --> note[Does not roll pixel-prod]
+```
+
+Release ([ADR 0013](adr/0013-release-workflow.md)): GitHub → Actions → **Release** → Run workflow on `main`.
+
+```mermaid
+flowchart TD
+  human[Actions Release on main]
+  human --> bump[just bump commit]
+  bump --> tag[Tag vX.Y.Z and GitHub Release]
+  tag --> img["Rebuild GHCR :sha, :vX.Y.Z, :main"]
+  img --> sentry[Sentry maps environment prod]
+  img --> approve[Environment prod approval]
+  approve --> roll[az containerapp update pixel-prod]
+  tag --> pages[VitePress to GitHub Pages]
+```
 
 ## Changelog and versions
 
@@ -478,7 +543,7 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 
 ## Keeping this up to date
 
-- **Change infrastructure, change this file.** A pull request that changes how Pixel is built, configured, deployed or monitored must update the matching section here (and `architecture.md`). This is noted in `AGENTS.md`. The same change also needs a `CHANGELOG.md` Unreleased entry unless it is a pure chore (`skip-changelog`).
+- **Change infrastructure, change this file.** A pull request that changes how Pixel is built, configured, deployed or monitored must update the matching section here (and `architecture.md`). A CI/CD change must also update the pipeline diagrams in this file and in `architecture.md`. This is noted in `AGENTS.md`. The same change also needs a `CHANGELOG.md` Unreleased entry unless it is a pure chore (`skip-changelog`).
 - **When Terraform lands:** search for `🚧` and replace each one with real steps, keeping the "Today" steps only where they still apply. Add the real environment names, links and the on-call contact to "Who and what".
 - **Every procedure should be followed once by someone other than its author, in dev,** before it's trusted. Fix whatever they trip over, and note the date here if you like.
 - **After an incident,** add what you learned: a missing step, a better check, a new entry under [Incidents](#incidents).

@@ -10,7 +10,7 @@ Read the [operations runbook](./runbook) first. It covers access lists, moderati
 
 | Page | What it covers |
 | --- | --- |
-| [Architecture](./architecture) | The design, the phase 1 scope, configuration and deployment. |
+| [Architecture](./architecture) | The design, the phase 1 scope, configuration, deployment and CI/CD pipelines. |
 | [Identity and access](./identity-and-access) | Tiers, capabilities and how every command is authorised. Read it before touching anything auth-related. |
 | [Infrastructure](./infra) | How Azure, GitHub, Discord, Home Assistant and Sentry fit together. |
 | [Home Assistant](./home-assistant) | Setup on a test instance, the threat model and revoking the token. |
