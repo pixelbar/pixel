@@ -19,9 +19,19 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [0.10.1] - 2026-10-12
 
-### Changed
+### Added
 
-- `/info` with no topic now lists the topics in a private reply, so the menu no longer clutters the channel. Answers to a topic stay public (PIXEL-K).
+- Pixel's status in the Discord member list now shows whether Pixelbar is open ("Watching Pixelbar is Open", green; "Watching Pixelbar is Closed", yellow). It follows the same confirmed changes as the announcements (PIXEL-N).
+
+### Fixed
+
+- Pixel's member-list presence is set again after Discord starts a new gateway session, so it is not blank until the next open or close.
+
+## [0.10.3] - 2026-10-13
+
+### Fixed
+
+- `/ha list` now pluralises its groups when there is more than one device ("Lights · 2", "Switches · 2", not "Light · 2" or "Switchs") (PIXEL-4).
 
 ## [0.10.0] - 2026-10-12
 
@@ -122,7 +132,10 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/pixelbar/pixel/compare/v0.10.3...v0.11.0
+[0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3
+[0.10.2]: https://github.com/pixelbar/pixel/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/pixelbar/pixel/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/pixelbar/pixel/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/pixelbar/pixel/compare/v0.8.0...v0.9.0
