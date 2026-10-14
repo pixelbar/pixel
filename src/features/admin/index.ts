@@ -1,3 +1,4 @@
+import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
 import { type CapabilityRegistry, reportUnknownCapabilities } from "../../core/capabilities.ts";
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
@@ -7,6 +8,7 @@ import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../../services/home-devices.ts";
 import type { KindSwitch } from "../../services/kind-switch.ts";
+import { createAnnouncementsSubgroup } from "./announcements.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
 import { createClosingTimeSubgroup } from "./closing-time.ts";
 import { createDoorsSubgroup, describeDoors } from "./doors.ts";
@@ -25,6 +27,7 @@ export type AdminDeps = {
 	home: Pick<Home, "status" | "check" | "getStates">;
 	homeDevices: Pick<HomeDeviceStore, "view" | "reload" | "configured">;
 	switches: Pick<KindSwitch, "set" | "isOn">;
+	announcementRoutes: Pick<AnnouncementRoutes, "list" | "set" | "remove">;
 	reporter: ErrorReporter;
 	now?: () => Date;
 	/** Persist path for the closing-time body (`PIXEL_DATA_DIR` / Azure Files). */
@@ -119,6 +122,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 					createCapabilitySubgroup({ access: deps.access, capabilities: deps.capabilities }),
 					createDoorsSubgroup({ switches: deps.switches, reporter: deps.reporter }),
 					createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile }),
+					createAnnouncementsSubgroup({ routes: deps.announcementRoutes }),
 				],
 			},
 		],

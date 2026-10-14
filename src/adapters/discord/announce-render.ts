@@ -7,9 +7,11 @@ import { accentColor } from "./render.ts";
  * How space announcements look on Discord. Times use Discord's timestamp
  * markup, so every reader sees them in their own time zone.
  *
- * Two styles:
+ * Three styles:
  * - **timeline**: a new post for every open and every close. Never edited.
  * - **live**: one post per opening, edited to "closed" when the space closes.
+ * - **single**: one post showing the current status; each change posts the new
+ *   status and the previous post is deleted.
  */
 
 /** What goes to Discord: only embeds, and never any mentions. */
@@ -23,6 +25,9 @@ export const LIVE_OPEN_TITLE = "🟢 Pixelbar is open";
 export const LIVE_CLOSED_TITLE = "🔴 Pixelbar is closed";
 /** Marks a post as a live-style post. `/status` replies also say "Pixelbar is open", but never have this. */
 export const LIVE_OPEN_FOOTER = "This post updates when Pixelbar closes";
+
+/** Marks a post as a single-style post, which is how Pixel finds the one to replace. */
+export const SINGLE_FOOTER = "Only the latest status is kept here";
 
 const stamp = (date: Date, style: "f" | "t" | "R"): string =>
 	`<t:${Math.floor(date.getTime() / 1000)}:${style}>`;
@@ -102,5 +107,38 @@ export function liveStandaloneClosedPost(announcement: SpaceStatusAnnouncement):
 		description,
 		color: accentColor("negative"),
 		timestamp: at.toISOString(),
+	});
+}
+
+/**
+ * Single style: the current status. `at` is when this state began (null when
+ * Pixel doesn't know, e.g. when correcting a post at startup), `openedAt` is for
+ * "closed": when the stretch of being open began.
+ */
+export function singlePost(
+	state: "open" | "closed",
+	at: Date | null,
+	openedAt: Date | null,
+): AnnouncementPost {
+	if (state === "open") {
+		return post({
+			title: LIVE_OPEN_TITLE,
+			...(at ? { description: `Open since ${stamp(at, "t")} (${stamp(at, "R")})` } : {}),
+			color: accentColor("positive"),
+			...(at ? { timestamp: at.toISOString() } : {}),
+			footer: { text: SINGLE_FOOTER },
+		});
+	}
+	const description = at
+		? [`Closed ${stamp(at, "f")}.`, openedAt && `Was open for ${duration(openedAt, at)}.`]
+				.filter(Boolean)
+				.join(" ")
+		: undefined;
+	return post({
+		title: LIVE_CLOSED_TITLE,
+		...(description ? { description } : {}),
+		color: accentColor("negative"),
+		...(at ? { timestamp: at.toISOString() } : {}),
+		footer: { text: SINGLE_FOOTER },
 	});
 }

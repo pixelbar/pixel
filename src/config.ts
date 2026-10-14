@@ -55,8 +55,6 @@ const envSchema = z
 		DISCORD_APP_ID: snowflake,
 		DISCORD_GUILD_ID: snowflake,
 		DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
-		DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: optional(snowflake),
-		DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_BOT_CHANNEL_ID: optional(snowflake),
 		// Unset, empty, "off" or "none" turns closing-time posts off.
 		DISCORD_CLOSING_TIME_CHANNEL_ID: z.preprocess((v) => {
@@ -138,10 +136,6 @@ export type Config = {
 		 */
 		announcementsChannelId: string | undefined;
 		announce: {
-			/** One post per opening, edited to "closed" when the space closes. */
-			liveChannelId: string | undefined;
-			/** A new post for every open and every close; never edited. */
-			timelineChannelId: string | undefined;
 			/**
 			 * Where Pixel says it came online or is going offline. Defaults to the
 			 * announcements channel. Undefined means off.
@@ -220,8 +214,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			guildId: e.DISCORD_GUILD_ID,
 			announcementsChannelId: e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 			announce: {
-				liveChannelId: e.DISCORD_ANNOUNCE_LIVE_CHANNEL_ID,
-				timelineChannelId: e.DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID,
 				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
 			},

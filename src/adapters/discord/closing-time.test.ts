@@ -37,6 +37,7 @@ function fakeChannel() {
 			return { id: String(sent.length) };
 		}),
 		edit: vi.fn(async () => {}),
+		delete: vi.fn(async () => {}),
 		recentOwnPosts: vi.fn(async () => []),
 		findOwnPost: vi.fn(async () => undefined),
 	};

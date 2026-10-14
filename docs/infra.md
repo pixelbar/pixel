@@ -14,7 +14,7 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | Dev RG | `pixel-dev` | Pixel Dev bot |
 | Prod RG | `pixel-prod` | Production bot (`infra/envs/prod`) |
 | State | `pixelbartfstate` (GRS, shared keys **off**, Azure AD) | Containers `bootstrap`, `dev`, `prod` |
-| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** each env. CD does **not** apply Terraform. The Release workflow rolls `pixel-prod` after Environment `prod` approval |
+| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** each env (prod with `-refresh=false`, because GitHub can't read prod's Key Vault secrets). CD does **not** apply Terraform. The Release workflow rolls `pixel-prod` after Environment `prod` approval, then registers slash commands. `pixel-github-prod` may read the `discord-token` secret only (ADR 0014) |
 | App identity | UAMI `pixel-dev-app` / `pixel-prod-app` | Key Vault Secrets User |
 | Key Vault | `pixel-dev-kv` / `pixel-prod-kv` | Secret **values** are not in Terraform state. App references URIs. Never copy Dev into prod |
 | Files | `pixeldevdata` / `pixelproddata` share `pixel` | Writable persist: `members.yaml`, HA files, `data/` |
@@ -24,7 +24,7 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
 | Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy-dev`; `prod` by the Release workflow after approval |
 
-**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: `just register prod`.
+**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: the Release's `register-prod` job, after a second approval (fallback `just register prod`).
 
 ## Diagrams
 
@@ -37,7 +37,7 @@ flowchart LR
     GHCR["GHCR public<br/>ghcr.io/pixelbar/pixel"]
     CI["CI: check and/or image smoke<br/>by path allowlist"]
     CD["CD on main: GHCR when image paths<br/>change; Sentry maps"]
-    REL["Release: bump, GHCR :vX.Y.Z,<br/>Pages, approved pixel-prod"]
+    REL["Release: bump, GHCR :vX.Y.Z,<br/>Pages, approved pixel-prod,<br/>register prod commands"]
     TFW["terraform.yml: plan envs/dev + prod"]
     ENVDEV["Environment dev<br/>ARM_* for OIDC plan"]
     ENVPROD["Environment prod<br/>reviewers + ARM_*"]
@@ -159,6 +159,7 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | Image | GHCR (`just deploy-dev`, CD on `main`, or a Release) | Container App | `az containerapp update` |
 | `content/info/*.md` | git, `COPY` in the Dockerfile | image | next image |
 | `data/schedules.yaml` | created when someone uses `/schedule` | `/app/persist/data/` | Pixel; **not safe to delete** |
+| `data/announcement-routes.yaml` | `/admin announcements set` | `/app/persist/data/` | Pixel; missing → only the channels from the environment |
 | `data/closing-time.md` | `/admin closing-time set`, or a hand edit | `/app/persist/data/` | Pixel; missing → built-in default |
 | `data/home-switches.state` | `/admin doors`; missing file → doors default **on**; unreadable → **off** | persist | Pixel |
 | Example YAML in git | `config/*.example.yaml` | **never** uploaded to a real bot | local laptop only |

@@ -38,6 +38,14 @@ export class Announcer {
 		);
 	}
 
+	/** Stops sending to a publisher. Returns whether it was registered. */
+	unregister(id: string): boolean {
+		const removed = this.#publishers.delete(id);
+		if (removed)
+			this.#logger.info({ event: "announcer.unregistered", publisher: id }, "publisher removed");
+		return removed;
+	}
+
 	/** Ids of the registered publishers. */
 	get publisherIds(): string[] {
 		return [...this.#publishers.keys()];

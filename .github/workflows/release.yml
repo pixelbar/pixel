@@ -5,7 +5,8 @@ name: Release
 # (Added → minor; Fixed/Changed → patch; never major before 1.0), tags vX.Y.Z,
 # opens a GitHub Release, publishes GHCR from that commit, uploads Sentry maps,
 # publishes the VitePress docs site, then rolls pixel-prod after GitHub
-# Environment `prod` approval (ADR 0013). Merges to main do not roll prod.
+# Environment `prod` approval (ADR 0013) and registers prod slash commands
+# (ADR 0014). Merges to main do not roll prod.
 # Azure `dev` stays `just deploy-dev`. Never copy pixel-dev / Mini Discord
 # tokens. This workflow does not apply Terraform.
 on:
@@ -319,8 +320,77 @@ jobs:
             echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
             exit 1
           fi
-          echo "Rolled ${IMAGE} as ${TAG}. Register slash commands with a prod .env (never the Mini Pixel Dev token): just register."
+          echo "Rolled ${IMAGE} as ${TAG}. The next job registers slash commands on the prod guild."
           echo "Never copy pixel-dev-kv / Mini Discord tokens into prod."
+
+  register-prod:
+    name: Register prod slash commands
+    needs: [bump, prod-cd]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Register slash commands on the prod guild
+        run: |
+          set -euo pipefail
+          resource_group="pixel-prod"
+          app_name="pixel-prod"
+          # Take the application, guild and token from the running app itself,
+          # so this can only ever register the bot that was just rolled.
+          app() {
+            az containerapp show -g "${resource_group}" -n "${app_name}" --query "$1" -o tsv
+          }
+          env_of() {
+            app "properties.template.containers[0].env[?name=='$1'].value | [0]"
+          }
+          pixel_env="$(env_of PIXEL_ENV)"
+          app_id="$(env_of DISCORD_APP_ID)"
+          guild_id="$(env_of DISCORD_GUILD_ID)"
+          token_url="$(app "properties.configuration.secrets[?name=='discord-token'].keyVaultUrl | [0]")"
+          if [ "${pixel_env}" != "prod" ]; then
+            echo "::error::${app_name} has PIXEL_ENV=${pixel_env}, not prod. Refusing to register."
+            exit 1
+          fi
+          if [ -z "${app_id}" ] || [ -z "${guild_id}" ] || [ -z "${token_url}" ]; then
+            echo "::error::${app_name} is missing DISCORD_APP_ID, DISCORD_GUILD_ID or the discord-token Key Vault reference."
+            exit 1
+          fi
+          if ! token="$(az keyvault secret show --id "${token_url}" --query value -o tsv)"; then
+            echo "::error::Cannot read discord-token. A maintainer sets github_register_principal_id in infra/envs/prod and applies (ADR 0014). Until then: just register prod on a laptop, or re-run this job after the apply."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          DISCORD_TOKEN="${token}" \
+          DISCORD_APP_ID="${app_id}" \
+          DISCORD_GUILD_ID="${guild_id}" \
+          PIXEL_ENV=prod \
+            just register-ci prod
 
   docs-build:
     name: Build the site

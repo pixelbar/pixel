@@ -83,16 +83,6 @@ variable "discord_announcements_channel_id" {
   default = null
 }
 
-variable "discord_announce_live_channel_id" {
-  type    = string
-  default = null
-}
-
-variable "discord_announce_timeline_channel_id" {
-  type    = string
-  default = null
-}
-
 variable "discord_announce_bot_channel_id" {
   type    = string
   default = null
@@ -201,4 +191,10 @@ variable "tailscale_enabled" {
 variable "tailscale_image" {
   type    = string
   default = "ghcr.io/tailscale/tailscale:v1.86.5"
+}
+
+variable "github_register_principal_id" {
+  type        = string
+  default     = null
+  description = "Principal ID of pixel-github-prod (az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId). Lets the Release workflow read discord-token, and only that, to register slash commands (ADR 0014)."
 }

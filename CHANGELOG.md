@@ -12,6 +12,24 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Fixed
 
 - During a deploy, the old version going offline no longer overwrites the new version's "Pixel is online" post. Each run now only updates its own post.
+### Added
+
+- The Release workflow registers prod slash commands after it rolls `pixel-prod` (a second Environment `prod` approval), so `just register prod` is no longer a manual step after a release. It takes the app, guild and token reference from the running `pixel-prod`. **One-time setup:** a maintainer sets `github_register_principal_id` in `infra/envs/prod` (from `az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv`) and applies prod, which lets `pixel-github-prod` read the `discord-token` secret and nothing else ([ADR 0014](docs/adr/0014-release-registers-commands.md)). Until then the job fails with that instruction and `just register prod` still works.
+
+## [0.13.0] - 2026-10-14
+
+### Added
+
+- A third open/closed announcement style, **single**: the channel only ever holds the current status. Each open or close posts the new status (closed shows when, and how long it was open) and then deletes the previous post. A stale status post is corrected at startup.
+- `/admin announcements set|remove|list`: admins choose which channels get open/closed announcements and in which style (live, timeline or single), while Pixel runs. Any number of channels, one style each, e.g. a timeline in #announcements and a live post in #general. Saved in `data/announcement-routes.yaml` on the persist volume. Run `just register dev` / `just register prod` after deploying to add the command.
+
+### Removed
+
+- `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` and `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` (and their Terraform variables): open/closed announcements are only set with `/admin announcements` now. **After deploying, set them again**: `/admin announcements set style:live channel:<the live channel>` and `style:timeline` for the timeline channel, or announcements stop. Leftover values in an env file are ignored, and `data/announcements.state` is no longer used (safe to delete); a live channel finds its open post again from its recent messages.
+
+### Fixed
+
+- The Terraform workflow's prod plan no longer fails with 403 on PRs that change Terraform files: it plans with `-refresh=false`, because GitHub is deliberately not allowed to read prod's Key Vault secrets (ADR 0012). Run `just tf-plan prod` locally for the real plan before applying.
 
 ## [0.12.0] - 2026-10-14
 
@@ -155,7 +173,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/pixelbar/pixel/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/pixelbar/pixel/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/pixelbar/pixel/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3

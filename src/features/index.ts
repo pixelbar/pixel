@@ -1,3 +1,4 @@
+import type { AnnouncementRoutes } from "../core/announcement-routes.ts";
 import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
@@ -36,6 +37,7 @@ export type FeatureDeps = {
 	roles: RoleMirror;
 	home: Home;
 	homeDevices: HomeDeviceStore;
+	announcementRoutes: AnnouncementRoutes;
 	/** Emergency switches for kinds of device (`/admin doors`). */
 	switches: KindSwitch;
 	feedback: FeedbackSink;
@@ -106,6 +108,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			roles: deps.roles,
 			home: deps.home,
 			homeDevices: deps.homeDevices,
+			announcementRoutes: deps.announcementRoutes,
 			switches: deps.switches,
 			reporter: deps.reporter,
 			closingTimeFile: deps.closingTime.file,

@@ -34,6 +34,7 @@ Architecture decision records, newest last.
 | [0011](./adr/0011-home-assistant) | Home Assistant: official client, allow-list, no inbound webhooks. |
 | [0012](./adr/0012-prod-environment) | Prod environment and approved CD. |
 | [0013](./adr/0013-release-workflow) | Releases cut versions and promote prod. |
+| [0014](./adr/0014-release-registers-commands) | Releases register prod slash commands. |
 
 ## Working on the site
 
