@@ -42,6 +42,7 @@ const MAINTAINER_DOCS = [
 	"infra",
 	"home-assistant",
 	"runbook",
+	"privacy",
 	"discord-command-visibility",
 ];
 
@@ -116,6 +117,7 @@ export default defineConfig({
 						{ text: "Infrastructure", link: "/maintainers/infra" },
 						{ text: "Home Assistant", link: "/maintainers/home-assistant" },
 						{ text: "Operations runbook", link: "/maintainers/runbook" },
+						{ text: "Privacy notice", link: "/maintainers/privacy" },
 						{ text: "Hiding commands in Discord", link: "/maintainers/discord-command-visibility" },
 					],
 				},
@@ -163,7 +165,10 @@ export default defineConfig({
 				},
 				{
 					text: "Reference",
-					items: [{ text: "Commands", link: "/commands" }],
+					items: [
+						{ text: "Commands", link: "/commands" },
+						{ text: "Privacy notice", link: "/maintainers/privacy" },
+					],
 				},
 			],
 		},
