@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-14
+
 ### Added
 
 - A third open/closed announcement style, **single**: the channel only ever holds the current status. Each open or close posts the new status (closed shows when, and how long it was open) and then deletes the previous post. A stale status post is corrected at startup.
@@ -164,7 +166,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/pixelbar/pixel/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/pixelbar/pixel/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/pixelbar/pixel/compare/v0.10.3...v0.11.0
 [0.10.3]: https://github.com/pixelbar/pixel/compare/v0.10.2...v0.10.3
