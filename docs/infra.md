@@ -159,6 +159,7 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | Image | GHCR (`just deploy-dev`, CD on `main`, or a Release) | Container App | `az containerapp update` |
 | `content/info/*.md` | git, `COPY` in the Dockerfile | image | next image |
 | `data/schedules.yaml` | created when someone uses `/schedule` | `/app/persist/data/` | Pixel; **not safe to delete** |
+| `data/announcement-routes.yaml` | `/admin announcements set` | `/app/persist/data/` | Pixel; missing → only the channels from the environment |
 | `data/closing-time.md` | `/admin closing-time set`, or a hand edit | `/app/persist/data/` | Pixel; missing → built-in default |
 | `data/home-switches.state` | `/admin doors`; missing file → doors default **on**; unreadable → **off** | persist | Pixel |
 | Example YAML in git | `config/*.example.yaml` | **never** uploaded to a real bot | local laptop only |

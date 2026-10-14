@@ -143,5 +143,8 @@ For Pixel's operators. Every reply is private, and every change is recorded. How
 | `/admin capabilities grant user: capability: [reason:]` | Gives someone a capability. |
 | `/admin capabilities revoke user: capability: [reason:]` | Takes a capability away. |
 | `/admin capabilities list [user:]` | Which capabilities exist, or what one person has. |
+| `/admin announcements set` | Posts open/closed announcements in a channel, in a style: `live` (one post, edited to closed), `timeline` (a new post each time) or `single` (only the latest status, the old post deleted). Any number of channels, one style each. |
+| `/admin announcements remove` | Stops announcing in a channel. Posts already there stay. |
+| `/admin announcements list` | Which channels get announcements, and in which style. |
 | `/admin closing-time set` | Sets the closing-time reminder, in a form. |
 | `/admin doors on` · `/admin doors off` | Switches door control from Pixel on or off for everyone. |

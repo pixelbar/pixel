@@ -83,16 +83,6 @@ variable "discord_announcements_channel_id" {
   default = null
 }
 
-variable "discord_announce_live_channel_id" {
-  type    = string
-  default = null
-}
-
-variable "discord_announce_timeline_channel_id" {
-  type    = string
-  default = null
-}
-
 variable "discord_announce_bot_channel_id" {
   type    = string
   default = null

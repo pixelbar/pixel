@@ -9,6 +9,15 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- A third open/closed announcement style, **single**: the channel only ever holds the current status. Each open or close posts the new status (closed shows when, and how long it was open) and then deletes the previous post. A stale status post is corrected at startup.
+- `/admin announcements set|remove|list`: admins choose which channels get open/closed announcements and in which style (live, timeline or single), while Pixel runs. Any number of channels, one style each, e.g. a timeline in #announcements and a live post in #general. Saved in `data/announcement-routes.yaml` on the persist volume. Run `just register dev` / `just register prod` after deploying to add the command.
+
+### Removed
+
+- `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` and `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` (and their Terraform variables): open/closed announcements are only set with `/admin announcements` now. **After deploying, set them again**: `/admin announcements set style:live channel:<the live channel>` and `style:timeline` for the timeline channel, or announcements stop. Leftover values in an env file are ignored, and `data/announcements.state` is no longer used (safe to delete); a live channel finds its open post again from its recent messages.
+
 ### Fixed
 
 - The Terraform workflow's prod plan no longer fails with 403 on PRs that change Terraform files: it plans with `-refresh=false`, because GitHub is deliberately not allowed to read prod's Key Vault secrets (ADR 0012). Run `just tf-plan prod` locally for the real plan before applying.

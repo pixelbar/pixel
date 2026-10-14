@@ -69,7 +69,10 @@ export async function openAnnouncementChannel(
 		return { ok: false, problem: "the channel is in a different server" };
 	}
 
-	const me = await channel.guild.members.fetchMe();
+	// Discord can fail this (a network blip, a rate limit). Say so rather than throw, so one
+	// channel never stops the others or the rest of startup.
+	const me = await channel.guild.members.fetchMe().catch(() => null);
+	if (!me) return { ok: false, problem: "couldn't check the bot's permissions there, try again" };
 	const missing = missingPermissions(channel.permissionsFor(me), options.required);
 	if (missing.length > 0) {
 		return { ok: false, problem: `the bot lacks these permissions there: ${missing.join(", ")}` };
@@ -84,6 +87,10 @@ export async function openAnnouncementChannel(
 			},
 			async edit(id, post) {
 				await channel.messages.edit(id, post);
+			},
+			async delete(id) {
+				// Only ever the bot's own messages: Discord lets a bot delete those without any extra permission.
+				await channel.messages.delete(id);
 			},
 			async recentOwnPosts(limit) {
 				const messages = await channel.messages.fetch({ limit });

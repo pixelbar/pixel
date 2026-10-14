@@ -87,52 +87,19 @@ describe("loadConfig", () => {
 
 	it("has no announcement channels unless configured", () => {
 		expect(loadConfig(VALID).discord.announce).toEqual({
-			liveChannelId: undefined,
-			timelineChannelId: undefined,
-			botChannelId: undefined,
-			closingTimeChannelId: undefined,
-		});
-		expect(
-			loadConfig({
-				...VALID,
-				DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "",
-				DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "",
-			}).discord.announce,
-		).toEqual({
-			liveChannelId: undefined,
-			timelineChannelId: undefined,
 			botChannelId: undefined,
 			closingTimeChannelId: undefined,
 		});
 	});
 
-	it("reads one channel for each announcement style, which may be the same channel", () => {
+	it("ignores the old open/closed channel variables: admins set those with /admin announcements", () => {
+		// A deploy that still has them set must keep starting.
 		const announce = loadConfig({
 			...VALID,
 			DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "100000000000000031",
-			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "100000000000000032",
+			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "not even an id",
 		}).discord.announce;
-		expect(announce).toEqual({
-			liveChannelId: "100000000000000031",
-			timelineChannelId: "100000000000000032",
-			botChannelId: undefined,
-			closingTimeChannelId: undefined,
-		});
-		const same = loadConfig({
-			...VALID,
-			DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "100000000000000031",
-			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "100000000000000031",
-		}).discord.announce;
-		expect(same.liveChannelId).toBe(same.timelineChannelId);
-	});
-
-	it("rejects announcement channels that aren't Discord IDs", () => {
-		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "#status" })).toThrow(
-			/DISCORD_ANNOUNCE_LIVE_CHANNEL_ID/,
-		);
-		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "123" })).toThrow(
-			/DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID/,
-		);
+		expect(announce).toEqual({ botChannelId: undefined, closingTimeChannelId: undefined });
 	});
 
 	it("treats closing-time channel off, none, or empty as disabled, and accepts a Discord ID", () => {
