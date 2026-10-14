@@ -30,7 +30,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Changelog and versions](#changelog-and-versions)
 - [Incidents](#incidents)
 - [Sentry](#sentry)
-- [Privacy requests](#privacy-requests)
+- [Privacy requests](#privacy-requests) ([privacy notice](privacy.md))
 - [Disaster recovery](#disaster-recovery)
 - [Keeping this up to date](#keeping-this-up-to-date)
 
@@ -60,6 +60,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, **Where** `local` or `cloud`, Node, uptime, access list counts, Discord roles, Home Assistant) |
 | Check readiness from outside | `GET /healthz` (process is up) and `GET /readyz` (200 only while the Discord gateway is connected, otherwise 503), on `HEALTH_PORT` (default 8080) |
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
+| See what Pixel stores about people | [Privacy notice](privacy.md). Handle a request under [Privacy requests](#privacy-requests) |
 | Set up Home Assistant on a test instance | [`home-assistant.md`](home-assistant.md) |
 | A door action looks wrong | [If a door action looks wrong](#if-a-door-action-looks-wrong) |
 | Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
@@ -479,6 +480,8 @@ Discord and the rest of Pixel keep working. Check the instance is up, the token 
 
 Sentry gets errors (with the tags `command`, `feature`, `platform`, `tier` and the user's ID, so you can see who ran into it), Logs (every log line at `info` and above), **traces** (a span per command, plus outbound HTTP), **CPU profiles** of those traces, **runtime metrics** (CPU, memory, event-loop delay), process **sessions** (crash-free rate for the bot staying up), and **User Feedback** from people using `/feedback`.
 
+**Retention:** the [privacy notice](privacy.md) documents **30 days** for Sentry (same as Azure Log Analytics). 🚧 Apply that in the Sentry project (Settings → Security & Privacy / Data Retention). Terraform does not set Sentry retention.
+
 Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` (default 1: keep them all). Profiles use `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default 1). `/healthz` and `/readyz` are not traced.
 
 - **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and write here who is notified and where (email, Discord channel).
@@ -494,18 +497,21 @@ Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` 
 
 ## Privacy requests
 
-> **Draft.** The privacy notice and retention policy (#7) aren't written yet. This section lists where personal data lives so a request can be handled now, and should be revised when #7 lands.
+The public notice is [`privacy.md`](privacy.md) (linked from `/help`). This section is the operator process. **Board sign-off** on the notice, the controller (association vs board), and whether it extends another Pixelbar policy is still outstanding. Do not invent those answers.
 
-Under GDPR, someone can ask what Pixel holds about them, or ask for it to be deleted. You have **one month** to respond, so note the date you received the request. First confirm who is asking: the person must be the one whose ID it is.
+Under GDPR, someone can ask what Pixel holds about them, or ask for it to be deleted. You have **one month** to respond, so note the date you received the request. Requests go to [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl). First confirm who is asking: the person must be the one whose Discord ID it is (they can show `/whoami` in Discord). Never put real Discord IDs or names in the git repo, a pull request or a public issue.
 
 **Where personal data is:**
 
 | Where | What | How long |
 | --- | --- | --- |
-| `members.yaml` | ID, tier, any note, capabilities | Until removed |
+| `members.yaml` (and `members.yaml.bak`) | ID, tier, any note, capabilities | Until removed |
+| `admins.yaml` (host file, and Azure Key Vault) | Admin Discord IDs | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
-| Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | The log file keeps about two weeks. Azure Log Analytics for `dev` keeps 30 days (provisional until #7) |
-| Sentry (errors, Logs, User Feedback) | The same, plus any feedback they sent | Sentry's retention for the project 🚧 (write it down) |
+| Azure Files backups of those files | The same files | 14 days |
+| Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | About 14 days (rotating file) |
+| Azure Log Analytics (`pixel-dev-logs`) | The same log lines, from the container | 30 days (`log_retention_days` in Terraform; Azure's floor) |
+| Sentry (errors, Logs, User Feedback) | The same, plus any feedback they sent | **30 days intended.** 🚧 Set this in the Sentry project (Settings → Security & Privacy / Data Retention). Not applied from this repo |
 | Discord | Everything Discord itself holds | Not Pixel's data: refer them to Discord |
 
 Pixel has no database. Message content and command arguments are never logged, except a `/feedback` message, which goes to Sentry as feedback.
@@ -514,17 +520,19 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. `/admin level get user:<person>` for their tier, note and capabilities, or read their entry in `members.yaml`.
 2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules.
-3. Search the logs by their ID (see [Moderation](#moderation)).
+3. Search the logs by their ID (see [Moderation](#moderation)): the rotating file, Sentry **Logs**, and Azure Log Analytics when Pixel is in the cloud.
 4. In Sentry, search Issues, Logs and User Feedback for their ID.
 5. Send them a copy of what you found, and no one else's data.
 
 **Deletion request:**
 
-1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. Keep the entry's removal out of any shared notes: don't write their name in the record.
-2. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart).
-3. Logs: the file ages out within about two weeks. If it must be sooner, remove their lines from the log files (and from any host or platform logs). 🚧
-4. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
-5. Tell them what was removed and what was not (for example Discord's own data), and when the remainder will age out.
+1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
+2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
+3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart).
+4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
+5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
+6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.
+7. Tell them what was removed and what was not (for example Discord's own data), and when the remainder will age out.
 
 ## Disaster recovery
 

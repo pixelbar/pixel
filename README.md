@@ -171,7 +171,7 @@ Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and Git
 
 ## Running and operating Pixel
 
-The [operations runbook](docs/runbook.md) covers day-to-day tasks and incidents: access lists, moderation, Home Assistant, rotating secrets, deploys and rollbacks, what to do when the bot is down or answering twice, Sentry, privacy requests and disaster recovery. Anyone who runs Pixel should read it first. Setting up Home Assistant on a test instance, and the threat model: [`docs/home-assistant.md`](docs/home-assistant.md).
+The [operations runbook](docs/runbook.md) covers day-to-day tasks and incidents: access lists, moderation, Home Assistant, rotating secrets, deploys and rollbacks, what to do when the bot is down or answering twice, Sentry, privacy requests and disaster recovery. Anyone who runs Pixel should read it first. What Pixel stores about people: [`docs/privacy.md`](docs/privacy.md) (also linked from `/help`). Setting up Home Assistant on a test instance, and the threat model: [`docs/home-assistant.md`](docs/home-assistant.md).
 
 ## Security
 

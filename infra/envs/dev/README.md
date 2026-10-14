@@ -14,7 +14,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | --- | --- |
 | User-assigned identity | `pixel-dev-app` |
 | Key Vault (RBAC, no secret values in state) | `pixel-dev-kv` |
-| Log Analytics (30-day retention, pending #7) | `pixel-dev-logs` |
+| Log Analytics (30-day retention; see [`docs/privacy.md`](../../../docs/privacy.md)) | `pixel-dev-logs` |
 | Container Apps environment | `pixel-dev-cae` |
 | Container App, min=max replicas **1**, no public ingress | `pixel-dev` |
 | Azure Files account + share `pixel` | `pixeldevdata` |

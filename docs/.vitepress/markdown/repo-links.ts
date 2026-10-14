@@ -8,6 +8,8 @@ type Options = {
 	repoRoot: string;
 	/** Absolute path of the VitePress source directory (docs/). */
 	docsDir: string;
+	/** Where the site serves a docs page, given its path in docs/ (e.g. `runbook.md`). */
+	sitePath: (file: string) => string;
 };
 
 const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/|#|\/)/i;
@@ -17,7 +19,10 @@ const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/|#|\/)/i;
  * `../justfile`, `../.github/workflows/ci.yml`). Those aren't part of the site, so
  * point them at the file on GitHub instead of leaving a dead link.
  */
-export function repoLinks(md: MarkdownRenderer, { repo, repoRoot, docsDir }: Options): void {
+export function repoLinks(
+	md: MarkdownRenderer,
+	{ repo, repoRoot, docsDir, sitePath }: Options,
+): void {
 	md.core.ruler.push("pixel_repo_links", (state) => {
 		// realPath is where the file really is; path is where a rewrite serves it.
 		const file: unknown = state.env?.realPath ?? state.env?.path;
@@ -31,7 +36,15 @@ export function repoLinks(md: MarkdownRenderer, { repo, repoRoot, docsDir }: Opt
 				const [path = "", hash] = href.split("#");
 				const target = resolve(dirname(file), decodeURI(path));
 				const inDocs = !relative(docsDir, target).startsWith("..");
-				if (inDocs) continue;
+				if (inDocs) {
+					// Pages link to each other by file, so links work on GitHub. The site serves
+					// some of them elsewhere (rewrites), so point at where the page really is.
+					if (path.endsWith(".md")) {
+						const inside = relative(docsDir, target).split(sep).join("/");
+						token.attrSet("href", `${sitePath(inside)}${hash ? `#${hash}` : ""}`);
+					}
+					continue;
+				}
 
 				const fromRoot = relative(repoRoot, target).split(sep).join("/");
 				if (fromRoot.startsWith("..")) continue;

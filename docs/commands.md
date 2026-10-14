@@ -49,7 +49,7 @@ Checks that Pixel is alive.
 
 <PxCommand sig="/feedback message:" tier="guest" reply="private" :options="{ 'message:': 'What you\'d like to tell the maintainers, 3 to 1000 characters.' }">
 
-Sends a message to Pixel's maintainers, with your Discord name and ID so they can follow up. You can send a few at once, then one every ten minutes.
+Sends a message to Pixel's maintainers, with your Discord name and ID so they can follow up. Your message and username may be made public, so don't include anything private. You can send a few at once, then one every ten minutes. What Pixel keeps is in the [privacy notice](/privacy).
 
 </PxCommand>
 

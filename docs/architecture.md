@@ -1,6 +1,6 @@
 # Pixel architecture
 
-> Status: **living draft**. The bot is built; Azure bootstrap is applied; Container App `pixel-dev` is live. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md). Home Assistant setup and threat model: [`home-assistant.md`](home-assistant.md) ([ADR 0011](adr/0011-home-assistant.md)).
+> Status: **living draft**. The bot is built; Azure bootstrap is applied; Container App `pixel-dev` is live. Identity and access control have their own document: [`identity-and-access.md`](identity-and-access.md). What Pixel stores about people: [`privacy.md`](privacy.md). Home Assistant setup and threat model: [`home-assistant.md`](home-assistant.md) ([ADR 0011](adr/0011-home-assistant.md)).
 
 ## Goals
 
@@ -260,7 +260,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 
 | Feature   | Commands / jobs              | Tier   | Built | Notes                                               |
 | --------- | ---------------------------- | ------ | ----- | --------------------------------------------------- |
-| `help`    | `/help`                      | guest  | ✅    | Lists only the commands the caller can use          |
+| `help`    | `/help`                      | guest  | ✅    | Lists only the commands the caller can use, and links the [privacy notice](privacy.md) |
 | `ping`    | `/ping`                      | guest  | ✅    | Version                                             |
 | `whoami`  | `/whoami`                    | guest  | ✅    | Private reply: your ID and tier                     |
 | `admin`   | `/admin status`              | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |

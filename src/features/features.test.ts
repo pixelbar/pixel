@@ -24,6 +24,7 @@ import { createAdminFeature } from "./admin/index.ts";
 import { CAPABILITIES } from "./capabilities.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { buildFeatures } from "./index.ts";
+import { PRIVACY_NOTICE_URL } from "./links.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 
@@ -145,7 +146,7 @@ describe("whoami", () => {
 });
 
 describe("help", () => {
-	it("lists available commands alphabetically", async () => {
+	it("lists available commands alphabetically and links the privacy notice", async () => {
 		const reply = await onlyCommand(createHelpFeature()).handler(
 			context({
 				availableCommands: [
@@ -155,6 +156,12 @@ describe("help", () => {
 			}),
 		);
 		expect(reply.embeds?.[0]?.description).toBe("**/help** — Help\n**/whoami** — Who");
+		expect(reply.embeds?.[0]?.fields).toEqual([
+			{
+				name: "Privacy",
+				value: `What Pixel stores about you, and how to ask for a copy or deletion: ${PRIVACY_NOTICE_URL}`,
+			},
+		]);
 	});
 });
 

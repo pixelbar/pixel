@@ -13,6 +13,13 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other, and a tooltip explains each one when you hover over, tap or tab to it. Home Assistant and Scheduled posts sit under Members.
 - Website: every command, admin ones included, is now a card of its own in the commands page's outline, with a link you can share (such as `/commands#ha-set`). Links opened straight to a heading no longer land under the top bar.
+- Privacy notice ([`docs/privacy.md`](docs/privacy.md)) linked from `/help`, with log and Sentry retention and the access/deletion process in the runbook ([#7](https://github.com/pixelbar/pixel/issues/7)).
+- Website: the privacy notice is on the docs site, linked from the guide, the sidebar and the maintainers overview.
+
+### Changed
+
+- Website: the `/feedback` card now says that your message and username may be made public, so you shouldn't include anything private.
+- `/feedback` now says, in its description and its reply, that your message and username may be made public, and the reply links the privacy notice. `/help` links the privacy notice on the website (`https://pixelbar.nl/pixel/privacy`) instead of GitHub. Run `just register dev` / `just register prod` after deploying so Discord shows the new `/feedback` description.
 
 ## [0.14.0] - 2026-10-14
 
