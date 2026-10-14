@@ -1,16 +1,19 @@
 name: CD
 
-# Temporary routing (ADR 0010, #10): merges to `main` publish GHCR only.
-# Azure `dev` is a local build (`just deploy-dev`), not CI. Prod CD is
-# disabled until #12 and prod Key Vault secrets exist — this workflow has
-# no path to pixel-prod and never copies pixel-dev / Mini Discord tokens.
+# Merges to `main` publish GHCR and upload Sentry maps when an image path
+# changed (dorny/paths-filter + .github/path-filters.yml). They do **not**
+# roll pixel-prod (ADR 0013): that is the Release workflow. Docs / changelog /
+# infra-only merges skip this pipeline. Azure `dev` stays a local build
+# (`just deploy-dev`). Never copy pixel-dev / Mini Discord tokens into prod.
+# This workflow does not apply Terraform.
 
 on:
   push:
     branches: [main]
 
 # Least privilege at the workflow level. The publish job is the only one that
-# writes packages. Nothing here gets id-token: write (that would be prod Azure).
+# writes packages. Nothing here gets id-token: write (that is the Release
+# workflow's prod job).
 permissions:
   contents: read
 
@@ -25,8 +28,27 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  changes:
+    name: Path filter
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      image: ${{ steps.filter.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: .github/path-filters.yml
+
   publish:
     name: Publish GHCR
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -135,7 +157,7 @@ jobs:
             missing=1
           fi
           if [ "${missing}" -ne 0 ]; then
-            echo "Fail closed. ${{ needs.publish.outputs.image }} was published. Prod was not deployed."
+            echo "Fail closed. ${{ needs.publish.outputs.image }} was published. Sentry maps were not uploaded."
             exit 1
           fi
 
@@ -161,7 +183,8 @@ jobs:
       - name: Create Sentry release and upload source maps
         uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
         with:
-          # No environment: this job is publish-only. Prod CD is off until #12.
+          # Publish-only. Prod deploys (and the Sentry prod environment) are
+          # the Release workflow.
           release: ${{ github.sha }}
           sourcemaps: dist
           inject: false
@@ -169,21 +192,3 @@ jobs:
           set_commits: auto
           ignore_missing: true
           disable_telemetry: true
-
-  prod-cd:
-    name: Prod CD (disabled until #12)
-    needs: publish
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    permissions:
-      contents: read
-    steps:
-      - name: Do not deploy to prod
-        env:
-          IMAGE: ${{ needs.publish.outputs.image }}
-        run: |
-          echo "Prod CD is disabled until #12 and prod Key Vault secrets exist."
-          echo "Published ${IMAGE}. Did not log in to Azure. Did not update pixel-prod."
-          echo "Fail closed: this workflow has no path to the prod Container App."
-          echo "Never copy pixel-dev-kv / Mini Discord token (bot 1555857000049541231) into prod."
-          echo "Azure dev stays just deploy-dev (one replica). Do not also just dev on that token."

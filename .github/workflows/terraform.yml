@@ -39,7 +39,7 @@ jobs:
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
 
-      - name: Format-check and validate bootstrap and envs/dev
+      - name: Format-check and validate bootstrap, envs/dev and envs/prod
         run: just tf-validate
 
   plan-dev:
@@ -55,13 +55,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Skip Azure plan unless Terraform files changed
+        id: stack
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Markdown under infra/ does not change the stack. After prod apply,
+          # GitHub is not Key Vault Secrets User (ADR 0012); a secret refresh 403s.
+          if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No Terraform files in infra/. Skipping Azure plan (does not apply)."
+          fi
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: steps.stack.outputs.changed == 'true'
         with:
           terraform_version: 1.16.5
           terraform_wrapper: false
 
       - name: Require ARM_* on GitHub Environment dev
+        if: steps.stack.outputs.changed == 'true'
         env:
           ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
           ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
@@ -86,13 +108,102 @@ jobs:
           fi
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: steps.stack.outputs.changed == 'true'
         with:
           client-id: ${{ vars.ARM_CLIENT_ID }}
           tenant-id: ${{ vars.ARM_TENANT_ID }}
           subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
 
       - name: Plan infra/envs/dev
+        if: steps.stack.outputs.changed == 'true'
         working-directory: infra/envs/dev
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
           terraform plan -input=false -var-file=terraform.example.tfvars
+
+  # Environment prod must have ARM_CLIENT_ID, ARM_TENANT_ID and
+  # ARM_SUBSCRIPTION_ID as variables (not secrets). Values: infra/bootstrap/README.md.
+  # Missing ARM_* fails closed before azure/login. This job does not apply.
+  plan-prod:
+    name: Plan envs/prod
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Skip Azure plan unless Terraform files changed
+        id: stack
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Markdown under infra/ does not change the stack. The plan below skips
+          # refreshing (GitHub can't read prod's Key Vault secrets, ADR 0012).
+          if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No Terraform files in infra/. Skipping Azure plan (does not apply)."
+          fi
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        if: steps.stack.outputs.changed == 'true'
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+
+      - name: Require ARM_* on GitHub Environment prod
+        if: steps.stack.outputs.changed == 'true'
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          if [ -z "${ARM_CLIENT_ID}" ]; then
+            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod (variable, not secret)."
+            missing=1
+          fi
+          if [ -z "${ARM_TENANT_ID}" ]; then
+            echo "::error::ARM_TENANT_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
+            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Validate still ran. Not inventing credentials. This job does not apply."
+            exit 1
+          fi
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        if: steps.stack.outputs.changed == 'true'
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      # -refresh=false: GitHub is deliberately not Key Vault Secrets User on pixel-prod-kv
+      # (ADR 0012), so refreshing the Key Vault secrets in state would 403. This still checks
+      # the config against prod's state. With the example tfvars (write_secrets off) the plan
+      # shows those secrets being removed; it never applies. For the real picture, a
+      # maintainer runs `just tf-plan prod`.
+      - name: Plan infra/envs/prod
+        if: steps.stack.outputs.changed == 'true'
+        working-directory: infra/envs/prod
+        run: |
+          terraform init -backend-config=backend.azurerm.example.hcl -input=false
+          terraform plan -input=false -refresh=false -var-file=terraform.example.tfvars

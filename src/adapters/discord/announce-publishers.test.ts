@@ -4,10 +4,9 @@ import { silentLogger } from "../../core/logger.ts";
 import {
 	type AnnouncementChannel,
 	createLivePublisher,
+	createSinglePublisher,
 	createTimelinePublisher,
-	LIVE_PUBLISHER_ID,
 	type OwnPost,
-	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
 import type { AnnouncementPost } from "./announce-render.ts";
 import {
@@ -17,9 +16,14 @@ import {
 	liveClosedPost,
 	liveOpenPost,
 	liveStandaloneClosedPost,
+	SINGLE_FOOTER,
+	singlePost,
 	timelinePost,
 } from "./announce-render.ts";
 import type { LivePostStore } from "./announce-state.ts";
+
+const TIMELINE_ID = "discord:timeline:111";
+const LIVE_ID = "discord:live:111";
 
 /** An in-memory channel that records what was sent and edited. */
 class FakeChannel implements AnnouncementChannel {
@@ -29,6 +33,9 @@ class FakeChannel implements AnnouncementChannel {
 	buried: OwnPost[] = [];
 	sent: AnnouncementPost[] = [];
 	edits: { id: string; post: AnnouncementPost }[] = [];
+	deleted: string[] = [];
+	/** Ids whose delete fails. */
+	failDeletes = new Set<string>();
 	historyReads = 0;
 	historyError: Error | undefined;
 	lookupError: Error | undefined;
@@ -45,6 +52,11 @@ class FakeChannel implements AnnouncementChannel {
 	async edit(id: string, post: AnnouncementPost): Promise<void> {
 		if (this.failEdits.has(id)) throw new Error("Unknown Message");
 		this.edits.push({ id, post });
+	}
+
+	async delete(id: string): Promise<void> {
+		if (this.failDeletes.has(id)) throw new Error("Unknown Message");
+		this.deleted.push(id);
 	}
 
 	async recentOwnPosts(): Promise<OwnPost[]> {
@@ -100,8 +112,8 @@ const announcement = (
 describe("timeline publisher", () => {
 	it("sends every opening and closing as a new post, and never edits", async () => {
 		const channel = new FakeChannel();
-		const publisher = createTimelinePublisher(channel);
-		expect(publisher.id).toBe(TIMELINE_PUBLISHER_ID);
+		const publisher = createTimelinePublisher(channel, TIMELINE_ID);
+		expect(publisher.id).toBe(TIMELINE_ID);
 
 		const opened = announcement("open", T("14:10"));
 		const closed = announcement("closed", T("17:30"), T("14:10"));
@@ -114,23 +126,24 @@ describe("timeline publisher", () => {
 	});
 
 	it("has nothing to reconcile, since it never edits", () => {
-		expect(createTimelinePublisher(new FakeChannel()).reconcile).toBeUndefined();
+		expect(createTimelinePublisher(new FakeChannel(), TIMELINE_ID).reconcile).toBeUndefined();
 	});
 
 	it("lets a failed send surface so it gets reported", async () => {
 		const channel = new FakeChannel();
 		channel.sendError = new Error("Missing Permissions");
 		await expect(
-			createTimelinePublisher(channel).publish(announcement("open", T("14:10"))),
+			createTimelinePublisher(channel, TIMELINE_ID).publish(announcement("open", T("14:10"))),
 		).rejects.toThrow("Missing Permissions");
 	});
 });
 
 describe("live publisher", () => {
-	const live = (channel: FakeChannel) => createLivePublisher(channel, silentLogger);
+	const live = (channel: FakeChannel) =>
+		createLivePublisher(channel, silentLogger, undefined, LIVE_ID);
 
 	it("has its own id", () => {
-		expect(live(new FakeChannel()).id).toBe(LIVE_PUBLISHER_ID);
+		expect(live(new FakeChannel()).id).toBe(LIVE_ID);
 	});
 
 	describe("when the space opens", () => {
@@ -287,7 +300,7 @@ describe("live publisher", () => {
 
 	describe("remembering the open post", () => {
 		const liveWith = (channel: FakeChannel, store: FakeStore) =>
-			createLivePublisher(channel, silentLogger, store);
+			createLivePublisher(channel, silentLogger, store, LIVE_ID);
 
 		it("remembers the post it makes when the space opens, and forgets it when it closes", async () => {
 			const channel = new FakeChannel();
@@ -391,6 +404,158 @@ describe("live publisher", () => {
 			const store = new FakeStore("gone");
 			await liveWith(new FakeChannel(), store).reconcile?.({ state: "open", since: null });
 			expect(store.remembered).toBeUndefined();
+		});
+	});
+});
+
+describe("single publisher", () => {
+	const ID = "discord:single:111";
+	const single = (channel: FakeChannel, store?: FakeStore) =>
+		createSinglePublisher(channel, silentLogger, store, ID);
+	const statusPost = (id: string, state: "open" | "closed"): OwnPost => ({
+		id,
+		title: state === "open" ? LIVE_OPEN_TITLE : LIVE_CLOSED_TITLE,
+		footer: SINGLE_FOOTER,
+		timestamp: T("14:10"),
+	});
+
+	it("has the id it was given", () => {
+		expect(single(new FakeChannel()).id).toBe(ID);
+	});
+
+	it("posts the status, with nothing to remove the first time", async () => {
+		const channel = new FakeChannel();
+		await single(channel).publish(announcement("open", T("14:10")));
+		expect(channel.sent).toEqual([singlePost("open", T("14:10"), null)]);
+		expect(channel.deleted).toEqual([]);
+	});
+
+	it("posts the new status and deletes the previous post, so only one is left", async () => {
+		const channel = new FakeChannel();
+		channel.posts = [statusPost("old", "open")];
+		await single(channel).publish(announcement("closed", T("17:30"), T("14:10")));
+		expect(channel.sent).toEqual([singlePost("closed", T("17:30"), T("14:10"))]);
+		expect(channel.deleted).toEqual(["old"]);
+		expect(channel.edits).toEqual([]);
+	});
+
+	it("deletes every older status post, not only the newest", async () => {
+		const channel = new FakeChannel();
+		channel.posts = [statusPost("new", "closed"), statusPost("older", "open")];
+		await single(channel).publish(announcement("open", T("18:00")));
+		expect(channel.deleted).toEqual(["new", "older"]);
+	});
+
+	it("sends before it deletes, so a failed delete never leaves the channel empty", async () => {
+		const channel = new FakeChannel();
+		channel.posts = [statusPost("old", "open")];
+		channel.failDeletes.add("old");
+		await expect(
+			single(channel).publish(announcement("closed", T("17:30"))),
+		).resolves.toBeUndefined();
+		expect(channel.sent).toHaveLength(1);
+		// The next change finds the leftover and removes it too.
+		await single(channel).publish(announcement("open", T("18:00")));
+		expect(channel.deleted).toEqual([]);
+		channel.failDeletes.clear();
+		await single(channel).publish(announcement("closed", T("19:00")));
+		expect(channel.deleted).toEqual(["old"]);
+	});
+
+	it("leaves live posts and other messages alone", async () => {
+		const channel = new FakeChannel();
+		channel.posts = [
+			openPost("live", T("14:10")),
+			{ id: "chat", title: "Something else", footer: undefined, timestamp: null },
+		];
+		await single(channel).publish(announcement("closed", T("17:30")));
+		expect(channel.deleted).toEqual([]);
+	});
+
+	it("only announces the space", async () => {
+		const channel = new FakeChannel();
+		await single(channel).publish({
+			kind: "closing.time",
+			text: "",
+			body: "x",
+			at: T("17:30"),
+		});
+		expect(channel.sent).toEqual([]);
+	});
+
+	it("lets a failed send surface so it gets reported, and deletes nothing", async () => {
+		const channel = new FakeChannel();
+		channel.posts = [statusPost("old", "open")];
+		channel.sendError = new Error("Missing Permissions");
+		await expect(single(channel).publish(announcement("closed", T("17:30")))).rejects.toThrow(
+			"Missing Permissions",
+		);
+		expect(channel.deleted).toEqual([]);
+	});
+
+	describe("remembering the post", () => {
+		it("finds a post it remembered that is buried deep in the channel", async () => {
+			const channel = new FakeChannel();
+			channel.buried = [statusPost("buried", "open")];
+			const store = new FakeStore("buried");
+			await single(channel, store).publish(announcement("closed", T("17:30")));
+			expect(channel.deleted).toEqual(["buried"]);
+			expect(store.remembered).toBe("sent-1");
+		});
+
+		it("carries on when it can't load or save the hint", async () => {
+			const channel = new FakeChannel();
+			const store = new FakeStore("x");
+			store.loadError = new Error("corrupt");
+			store.saveError = new Error("disk full");
+			await expect(
+				single(channel, store).publish(announcement("open", T("14:10"))),
+			).resolves.toBeUndefined();
+			expect(channel.sent).toHaveLength(1);
+		});
+	});
+
+	describe("reconciling at startup", () => {
+		it("does nothing when there's no status post, and never posts", async () => {
+			const channel = new FakeChannel();
+			await single(channel).reconcile?.({ state: "open", since: T("14:10") });
+			expect(channel.sent).toEqual([]);
+			expect(channel.edits).toEqual([]);
+		});
+
+		it("leaves a post that is already right", async () => {
+			const channel = new FakeChannel();
+			channel.posts = [statusPost("a", "open")];
+			const store = new FakeStore();
+			await single(channel, store).reconcile?.({ state: "open", since: T("14:10") });
+			expect(channel.edits).toEqual([]);
+			expect(channel.deleted).toEqual([]);
+			expect(store.remembered).toBe("a");
+		});
+
+		it("corrects a post that went out of date while Pixel was down, by editing it", async () => {
+			const channel = new FakeChannel();
+			channel.posts = [statusPost("a", "open")];
+			await single(channel).reconcile?.({ state: "closed", since: T("17:30") });
+			expect(channel.edits).toEqual([{ id: "a", post: singlePost("closed", T("17:30"), null) }]);
+			expect(channel.sent).toEqual([]);
+		});
+
+		it("removes extras and keeps the newest", async () => {
+			const channel = new FakeChannel();
+			channel.posts = [statusPost("new", "closed"), statusPost("older", "open")];
+			await single(channel).reconcile?.({ state: "closed", since: null });
+			expect(channel.deleted).toEqual(["older"]);
+			expect(channel.edits).toEqual([]);
+		});
+
+		it("doesn't fail when the edit does", async () => {
+			const channel = new FakeChannel();
+			channel.posts = [statusPost("a", "open")];
+			channel.failEdits.add("a");
+			await expect(
+				single(channel).reconcile?.({ state: "closed", since: null }),
+			).resolves.toBeUndefined();
 		});
 	});
 });

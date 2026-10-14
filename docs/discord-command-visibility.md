@@ -6,13 +6,13 @@ Discord shows every registered slash command to everyone in the server. Pixel's 
 
 ## What Pixel does for you
 
-When commands are registered (`just register`), every command with `access.minTier: admin` is registered with *default permissions: nobody*. Discord then shows it only to server Administrators. Everyone else, including members, doesn't see it in the command picker.
+When commands are registered (`just register dev` or `just register prod`), every command with `access.minTier: admin` is registered with *default permissions: nobody*. Discord then shows it only to server Administrators. Everyone else, including members, doesn't see it in the command picker.
 
 The catch: people in `config/admins.yaml` who are **not** Discord server Administrators can't see it either, until you allow them (below).
 
 ## Letting your Pixel admins see admin commands
 
-Run `just command-access` after `just register`. It allows everyone in `config/admins.yaml` (by Discord ID) to see each admin-tier command, replacing whatever overrides those commands had.
+Run `just command-access dev` or `just command-access prod` after `just register` for that env. It allows everyone in `config/admins.yaml` (by Discord ID) to see each admin-tier command, replacing whatever overrides those commands had.
 
 **One-time setup:** in the [Developer Portal](https://discord.com/developers/applications), open Pixel → OAuth2 → Redirects and add `http://localhost:53682/callback`.
 
@@ -41,6 +41,6 @@ Discord roles can't tell Pixel's `member` from `friend` when there is one role f
 ## Things to know
 
 - Each command is set up separately. A new command (or a renamed one) needs the steps repeated. Subcommands such as `/admin status` follow their group.
-- Re-running `just register` may reset a command's overrides (Discord's docs don't say), so run `just command-access` after it. A **new** admin-tier command always starts hidden.
+- Re-running `just register` may reset a command's overrides (Discord's docs don't say), so run `just command-access` for the same env after it. A **new** admin-tier command always starts hidden.
 - Administrators and the server owner always see every command.
 - Secret commands (such as the future door control) should be admin-tier or hidden this way **and** protected by a capability. The name is still discoverable by anyone who can see it.

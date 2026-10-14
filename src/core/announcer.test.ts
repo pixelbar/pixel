@@ -51,6 +51,10 @@ describe("Announcer", () => {
 		announcer.register(publisher("discord:timeline"));
 		expect(announcer.publisherIds).toEqual(["discord:live", "discord:timeline"]);
 		expect(() => announcer.register(publisher("discord:live"))).toThrow(/Duplicate publisher/);
+		expect(announcer.unregister("discord:live")).toBe(true);
+		expect(announcer.unregister("discord:live")).toBe(false);
+		expect(announcer.publisherIds).toEqual(["discord:timeline"]);
+		announcer.register(publisher("discord:live"));
 	});
 
 	it("keeps going when one publisher fails, and reports it by publisher id", async () => {

@@ -2,7 +2,7 @@
 
 One Container App in the existing `pixel-dev` resource group. Pixel Dev bot, test guild. **Do not apply until a maintainer says so.** Applying this does not by itself make Discord answer: secrets and volume files still have to be filled in, and you must not start a second bot on the same token.
 
-Prod is #12. This root only calls `infra/modules/pixel` with `environment = "dev"`.
+Prod is [`infra/envs/prod`](../prod/) (#12). This root only calls `infra/modules/pixel` with `environment = "dev"`.
 
 Remote state: storage `pixelbartfstate`, container `dev` (created by bootstrap).
 
@@ -90,7 +90,7 @@ The share is mounted at `/app/persist` as uid 1000 (`node`). Layout:
 | Path in share | Pixel setting | Notes |
 | --- | --- | --- |
 | `members.yaml` | `PIXEL_MEMBERS_FILE` | Writable; admin commands rewrite it |
-| `home-assistant/` | `PIXEL_HOME_ASSISTANT_DIR` | `devices.yaml` (hand), `inventory.yaml` (Pixel) |
+| `home-assistant/` | `PIXEL_HOME_ASSISTANT_DIR` | `devices.yaml` (`just ha-devices` or by hand) |
 | `data/` | `PIXEL_DATA_DIR` | `schedules.yaml` must persist; `home-switches.state` lost → doors start **off** |
 
 Seed after the storage account exists, before Pixel can start (it fails closed without `members.yaml`):
@@ -129,7 +129,7 @@ Dev must not control the real doors. Use a test HA, or leave HA off.
 1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `write_secrets` or `az`.
 2. `members.yaml` (and HA files if used) are on the share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>`). If that GHCR package is still **private**, set `container_registry_server` / `container_registry_username` and create Key Vault `ghcr-pull-token` (a `read:packages` token; Azure otherwise gets 401).
-4. `just register` has been run against the Dev guild (or #10 does it).
+4. `just register dev` has been run against the Dev guild (or `just deploy-dev` does it).
 5. Nobody else is connected with that bot token.
 
 Then: `az containerapp revision list -g pixel-dev -n pixel-dev -o table` should show one replica. `/ping` in the test guild.
@@ -148,7 +148,7 @@ About **€40–55/month** for this always-on 0.5 vCPU / 1 Gi replica, Log Analy
 
 ## What this is not
 
-- Not GHCR publish or prod CD (#10 / #12). `just deploy-dev` rolls this app's image; **dev** apply leaves that pin alone after first create (#73). Prod apply will set `container_image`.
+- Not GHCR publish or prod CD. `just deploy-dev` rolls this app's image; **dev** apply leaves that pin alone after first create (#73). Prod apply sets `container_image`.
 - Not stop-then-start during deploys (#11). This stack only pins min=max replicas to 1 and `revision_mode = Single`.
-- Not `prod` (#12).
+- Not `prod` (see [`infra/envs/prod`](../prod/)).
 - Not Postgres.

@@ -42,7 +42,8 @@ fmt:
 typecheck:
     pnpm exec tsc --noEmit
 
-# Everything CI runs for the Node app: lint, types, tests with coverage thresholds
+# Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
+# GitHub runs this only when a check-path matches (.github/path-filters.yml).
 check: lint typecheck coverage
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
@@ -52,19 +53,22 @@ check-changelog *args:
 
 # Cut [Unreleased] into a dated version and bump package.json.
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.
-# `--commit` also creates the release commit and tag (used by CI).
+# `--commit` also creates the release commit and tag (used by the Release workflow).
+# `--notes-file PATH` writes the GitHub Release body for the cut (or current) version.
 bump *args:
     pnpm exec tsx scripts/bump-version.ts {{args}}
 
-# Format-check and validate bootstrap + envs/dev (needs Terraform 1.11+; CI runs this when infra/ changes)
+# Format-check and validate bootstrap + envs/dev + envs/prod (needs Terraform 1.11+; CI runs this when infra/ changes)
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false
     terraform -chdir=infra/bootstrap validate
     terraform -chdir=infra/envs/dev init -backend=false -input=false
     terraform -chdir=infra/envs/dev validate
+    terraform -chdir=infra/envs/prod init -backend=false -input=false
+    terraform -chdir=infra/envs/prod validate
 
-# Plan an env stack (dev). Needs Azure CLI signed in. Does not apply.
+# Plan an env stack (dev or prod). Needs Azure CLI signed in. Does not apply.
 tf-plan env:
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} plan
@@ -72,8 +76,16 @@ tf-plan env:
 # Apply an env stack. Do not run until a maintainer says so. Never start a
 # second Pixel on the same Discord token. On dev, after first create this
 # does not change the Pixel container image (just deploy-dev / az owns that
-# pin). Prod (#12) apply still sets container_image.
+# pin). Prod apply still sets container_image. Coding agents must not apply
+# prod: PIXEL_APPLY_PROD=1 is required.
 tf-apply env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" = "prod" ] && [ "${PIXEL_APPLY_PROD:-}" != "1" ]; then
+      echo "Refusing just tf-apply prod. Coding agents must not apply prod or write prod secrets."
+      echo "A maintainer runs: PIXEL_APPLY_PROD=1 just tf-apply prod"
+      exit 1
+    fi
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} apply
 
@@ -81,9 +93,62 @@ tf-apply env:
 validate-config:
     pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
-# Register slash commands on the configured Discord guild
-register:
-    pnpm exec tsx --env-file=.env scripts/register-commands.ts
+# Load `.env.dev` or `.env.prod` for a Discord laptop script. just dotenv-load
+# would otherwise let `.env` win over Node `--env-file`. Dev falls back to `.env`.
+[private]
+discord-env env script:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
+      echo "Usage: just register|command-access|ha-devices dev|prod"
+      exit 1
+    fi
+    file=".env.{{env}}"
+    if [ "{{env}}" = "dev" ] && [ ! -f "${file}" ] && [ -f .env ]; then
+      file=".env"
+      echo "Using .env (no .env.dev). Copy .env.example to .env.dev to keep Pixel Dev separate from a local bot."
+    fi
+    if [ ! -f "${file}" ]; then
+      echo "Missing ${file}."
+      if [ "{{env}}" = "prod" ]; then
+        echo "Copy .env.example to .env.prod and set PIXEL_ENV=prod plus the production Discord application. Never copy .env or .env.dev."
+      else
+        echo "Copy .env.example to .env.dev and fill in the Pixel Dev / test Discord application."
+      fi
+      exit 1
+    fi
+    # Node --env-file does not override existing variables. Drop anything
+    # dotenv-load took from .env so it cannot leak into the other bot.
+    for src in .env .env.dev .env.prod; do
+      if [ -f "${src}" ]; then
+        while IFS= read -r key; do
+          unset "${key}" || true
+        done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "${src}" | cut -d= -f1)
+      fi
+    done
+    pnpm exec tsx --env-file="${file}" {{script}} "{{env}}"
+
+# Register slash commands: `just register dev` or `just register prod`
+register env:
+    @just discord-env {{env}} scripts/register-commands.ts
+
+# The Release workflow's register step (ADR 0014). Reads DISCORD_* and PIXEL_ENV
+# from the job, not an env file. The command list doesn't depend on who is in
+# the access lists, so it builds from the example lists and a throwaway data dir.
+[private]
+register-ci env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+      echo "register-ci runs only in GitHub Actions. On a laptop: just register {{env}}"
+      exit 1
+    fi
+    data="$(mktemp -d)"
+    trap 'rm -rf "${data}"' EXIT
+    PIXEL_ADMINS_FILE=config/admins.example.yaml \
+    PIXEL_MEMBERS_FILE=config/members.example.yaml \
+    PIXEL_DATA_DIR="${data}" \
+      pnpm exec tsx scripts/register-commands.ts "{{env}}"
 
 # Create a Sentry release and upload dist/ maps. Skip (do not fail) if
 # SENTRY_AUTH_TOKEN, SENTRY_ORG, or SENTRY_PROJECT is unset — do not invent
@@ -117,9 +182,16 @@ sentry-release version="" environment="":
     run_cli releases finalize "${release}"
     echo "Sentry release ${release}."
 
-# Show admin-tier commands to the people in admins.yaml (run after `register`; needs a one-off sign-in as a server manager)
-command-access:
-    pnpm exec tsx --env-file=.env scripts/command-access.ts
+# Show admin commands: `just command-access dev` or `just command-access prod`
+command-access env:
+    @just discord-env {{env}} scripts/command-access.ts
+
+# Add Home Assistant devices to an env's devices.yaml on Azure: `just ha-devices dev|prod`.
+# Pulls the remote file (the truth), mirrors it to config/home-assistant/<env>/,
+# lets you pick from what Home Assistant has, validates, and pushes on a yes.
+# Needs az login, and HOME_ASSISTANT_URL/TOKEN in that env's file. Then /admin reload.
+ha-devices env:
+    @just discord-env {{env}} scripts/ha-devices.ts
 
 # Build the container image for Azure (linux/amd64). Mini is arm64; Container
 # Apps reject arm64 images.
@@ -205,10 +277,83 @@ deploy-dev: docker-login-ghcr
     fi
     # Register before Sentry: the app is already live. A Sentry outage must not
     # skip Discord command updates. sentry-release still fails the recipe.
-    just register
+    just register dev
     just build
     if ! just sentry-release "${version}" dev; then
       echo "Sentry release failed after Discord commands were registered. pixel-dev is already on ${pin}."
       exit 1
     fi
     echo "Do not run just dev against the Pixel Dev token while this app is up."
+
+# Install the website's dependencies (docs/ is its own project with its own lockfile)
+docs-install:
+    pnpm --dir docs install
+
+# Run the website locally with hot reload (http://localhost:5173)
+docs-dev:
+    pnpm --dir docs run dev
+
+# Build the website into docs/.vitepress/dist
+docs-build:
+    pnpm --dir docs run build
+
+# Serve the built website (after `just docs-build`)
+docs-preview:
+    pnpm --dir docs run preview
+
+# Build the website and share it on your tailnet with `tailscale serve` (never Funnel:
+# only devices on your tailnet can open it). Runs until Ctrl-C, which also stops sharing.
+docs-tailnet port="4173":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ts="$(command -v tailscale || true)"
+    if [ -z "$ts" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+      ts=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    fi
+    if [ -z "$ts" ]; then
+      echo "The tailscale CLI isn't installed or on PATH."
+      exit 1
+    fi
+    just docs-build
+    pnpm --dir docs exec vitepress preview --port {{port}} &
+    preview=$!
+    trap 'kill "$preview" 2>/dev/null || true' EXIT
+    for _ in $(seq 1 50); do
+      curl -fsS -o /dev/null "http://127.0.0.1:{{port}}/" && break
+      sleep 0.2
+    done
+    # Foreground serve: the share is removed when this exits.
+    "$ts" serve "http://127.0.0.1:{{port}}"
+
+# Run the website with hot reload and share it on your tailnet with `tailscale serve`
+# (never Funnel). Edits show up on the remote device as you save. Ctrl-C stops both.
+docs-tailnet-dev port="5173" https="443":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ts="$(command -v tailscale || true)"
+    if [ -z "$ts" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+      ts=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    fi
+    if [ -z "$ts" ]; then
+      echo "The tailscale CLI isn't installed or on PATH."
+      exit 1
+    fi
+    # `serve status` hides foreground shares; the JSON shows them. A share left over
+    # from a run that didn't exit cleanly holds the port until it's reset.
+    if "$ts" serve status --json | grep -q "\"{{https}}\""; then
+      echo "Something is already shared on your tailnet's port {{https}}:"
+      "$ts" serve status --json
+      echo "Stop it, or clear it with \`tailscale serve reset\`, or pick another port: just docs-tailnet-dev {{port}} 8443"
+      exit 1
+    fi
+    pnpm --dir docs exec vitepress dev --host 127.0.0.1 --port {{port}} --strictPort &
+    dev=$!
+    trap 'kill "$dev" 2>/dev/null || true' EXIT
+    for _ in $(seq 1 150); do
+      curl -fs -o /dev/null "http://127.0.0.1:{{port}}/" && break
+      kill -0 "$dev" 2>/dev/null || { echo "The dev server didn't start."; exit 1; }
+      sleep 0.2
+    done
+    # Foreground serve: the share is removed when this exits. It proxies the HMR
+    # websocket too, so hot reload works over https://<machine>.<tailnet>.ts.net/.
+    "$ts" serve --https={{https}} "http://127.0.0.1:{{port}}"

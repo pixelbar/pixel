@@ -32,13 +32,14 @@ async function main(): Promise<void> {
 		registry,
 		spaceStatus,
 		announcer,
+		announcementRoutes,
+		announcementRouteStore,
 		calendar,
 		channelPosts,
 		roles,
 		capabilityNotify,
 		home,
 		homeDevices,
-		homeInventory,
 		features,
 	} = buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
 
@@ -68,8 +69,10 @@ async function main(): Promise<void> {
 		dispatcher,
 		logger,
 		announce: config.discord.announce,
-		announceStateFile: join(config.dataDir, "announcements.state"),
 		botStatusStateFile: join(config.dataDir, "bot-status.state"),
+		announcementPostsDir: join(config.dataDir, "announcement-posts"),
+		announcementRouteStore,
+		announcementRoutes,
 		announcer,
 		calendar,
 		channelPosts,
@@ -103,7 +106,6 @@ async function main(): Promise<void> {
 						"some devices' entities weren't found in Home Assistant",
 					);
 				}
-				await homeInventory.sync();
 			})
 			.catch((error: unknown) => reporter.captureBackground(error, "home-assistant"));
 	} else {

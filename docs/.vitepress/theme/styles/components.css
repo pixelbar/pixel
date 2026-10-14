@@ -1,0 +1,572 @@
+/*
+ * Pixel components (the design system's bundle.css), for use in pages and in the
+ * Vue components in ../components. Every value comes from tokens.css.
+ * Source of truth: the Pixel design system. Keep the two in step.
+ */
+
+/* Stepped corners: one grid pixel bitten out of each corner. For things that never take focus. */
+.px-stepped {
+	clip-path: polygon(
+		0 var(--pixel),
+		var(--pixel) var(--pixel),
+		var(--pixel) 0,
+		calc(100% - var(--pixel)) 0,
+		calc(100% - var(--pixel)) var(--pixel),
+		100% var(--pixel),
+		100% calc(100% - var(--pixel)),
+		calc(100% - var(--pixel)) calc(100% - var(--pixel)),
+		calc(100% - var(--pixel)) 100%,
+		var(--pixel) 100%,
+		var(--pixel) calc(100% - var(--pixel)),
+		0 calc(100% - var(--pixel))
+	);
+}
+
+/* ---------- Button ---------- */
+.px-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	height: 40px;
+	padding: 0 var(--space-4);
+	border: 2px solid transparent;
+	border-radius: var(--radius-0);
+	font: 600 15px / 1 var(--font-sans);
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		transform 80ms steps(2),
+		box-shadow 80ms steps(2);
+}
+.px-btn--sm {
+	height: 32px;
+	padding: 0 var(--space-3);
+	font-size: 14px;
+}
+.px-btn--primary {
+	background: var(--core);
+	color: var(--on-core);
+	box-shadow: var(--glow-core);
+}
+.px-btn--primary:hover {
+	transform: translate(calc(var(--pixel) * -0.5), calc(var(--pixel) * -0.5));
+}
+.px-btn--secondary {
+	background: transparent;
+	color: var(--ink);
+	border-color: var(--border-strong);
+}
+.px-btn--secondary:hover {
+	border-color: var(--ink);
+	background: var(--surface-raised);
+}
+.px-btn--ghost {
+	background: transparent;
+	color: var(--ink);
+}
+.px-btn--ghost:hover {
+	background: var(--surface-raised);
+}
+.px-btn:disabled,
+.px-btn[aria-disabled="true"] {
+	opacity: 0.45;
+	cursor: not-allowed;
+	transform: none;
+}
+
+/* ---------- Tier badge ---------- */
+.px-tier {
+	--tier: var(--tier-guest);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-2);
+	border: 2px solid var(--tier);
+	color: var(--tier);
+	font: 500 12px / 16px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+.px-tier::before {
+	content: "";
+	width: 8px;
+	height: 8px;
+	background: var(--tier);
+}
+.px-tier--friend {
+	--tier: var(--tier-friend);
+}
+.px-tier--member {
+	--tier: var(--tier-member);
+	box-shadow: var(--glow-cyan);
+}
+.px-tier--admin {
+	--tier: var(--tier-admin);
+	box-shadow: var(--glow-magenta);
+}
+
+/* ---------- Status ---------- */
+.px-status {
+	--state: var(--ink-muted);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-1) var(--space-3);
+	background: var(--surface);
+	border: 2px solid var(--state);
+	color: var(--ink);
+	font: 600 14px / 20px var(--font-sans);
+}
+.px-status::before {
+	content: "";
+	width: 10px;
+	height: 10px;
+	border-radius: var(--radius-full);
+	background: var(--state);
+	box-shadow: 0 0 8px 0 var(--state);
+}
+.px-status--open {
+	--state: var(--status-success);
+}
+.px-status--closed {
+	--state: var(--status-danger);
+}
+.px-status small {
+	color: var(--ink-muted);
+	font-weight: 400;
+	font-size: 14px;
+}
+
+/* ---------- Code ---------- */
+.px-code {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	font: 400 14px / 22px var(--font-mono);
+}
+.px-code__bar {
+	display: flex;
+	justify-content: space-between;
+	padding: var(--space-1) var(--space-3);
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--border);
+	color: var(--ink-faint);
+	font: 500 12px / 16px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.px-code pre {
+	margin: 0;
+	padding: var(--space-3) var(--space-4);
+	overflow-x: auto;
+	color: var(--ink);
+}
+.px-c-cmd {
+	color: var(--ink);
+	font-weight: 500;
+}
+.px-c-opt {
+	color: var(--spectrum-cyan);
+}
+.px-c-val {
+	color: var(--spectrum-yellow);
+}
+.px-c-opt-optional {
+	color: var(--ink-faint);
+}
+.px-c-cmt {
+	color: var(--ink-faint);
+}
+.px-c-prompt {
+	color: var(--spectrum-magenta);
+	user-select: none;
+}
+.px-inline-code,
+.px-kbd {
+	padding: 1px var(--space-1);
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-1);
+	font: 400 0.875em / 1 var(--font-mono);
+}
+.px-kbd {
+	border-bottom-width: 3px;
+}
+
+/* ---------- Command card ---------- */
+.px-command {
+	background: var(--surface);
+	box-shadow: var(--shadow-card);
+	padding: var(--space-6);
+	display: grid;
+	gap: var(--space-3);
+}
+.px-command__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+}
+.px-command__sig {
+	position: relative;
+	margin: 0;
+	font: 500 18px / 26px var(--font-mono);
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+.px-command__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.px-command__copy {
+	color: var(--ink-muted);
+	font-family: var(--font-mono);
+	font-weight: 400;
+}
+.px-command__copy:hover {
+	color: var(--ink);
+}
+.px-command__desc {
+	margin: 0;
+	color: var(--ink-muted);
+}
+.px-command__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+.px-chip {
+	padding: 2px var(--space-2);
+	border: 1px solid var(--border-strong);
+	color: var(--ink-muted);
+	font: 400 12px / 16px var(--font-mono);
+}
+.px-chip--marked {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	border-color: var(--chip);
+	border-radius: var(--radius-0);
+	background: transparent;
+	text-align: left;
+	cursor: help;
+}
+.px-chip--marked::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	background: var(--chip);
+}
+.px-chip--marked:hover {
+	color: var(--ink);
+}
+
+/* ---------- Tooltip ----------
+ * Shown while the chip is hovered or focused (a tap focuses it on touch screens).
+ * The padding bridges the gap, so the pointer can move onto the tip. On narrow
+ * screens it hangs from the chip row instead, so it never runs off the side. */
+.px-chip-tip {
+	--chip: var(--border-strong);
+	position: relative;
+	display: inline-flex;
+}
+.px-chip-tip--public {
+	--chip: var(--spectrum-orange);
+}
+.px-chip-tip--private {
+	--chip: var(--spectrum-blue);
+}
+.px-chip-tip--cap {
+	--chip: var(--spectrum-yellow);
+}
+.px-chip-tip--cap .px-chip {
+	color: var(--ink);
+}
+.px-tip {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 10;
+	width: max-content;
+	max-width: 320px;
+	padding-top: var(--space-2);
+	visibility: hidden;
+	opacity: 0;
+	transition:
+		opacity var(--step),
+		visibility var(--step);
+}
+.px-tip__box {
+	display: block;
+	padding: var(--space-2) var(--space-3);
+	background: var(--surface);
+	border: 2px solid var(--chip);
+	box-shadow: var(--shadow-lift);
+	color: var(--ink);
+	font: 400 14px / 20px var(--font-sans);
+}
+.px-chip-tip:hover .px-tip,
+.px-chip-tip:focus-within .px-tip {
+	visibility: visible;
+	opacity: 1;
+}
+@media (max-width: 639px) {
+	.px-command__meta {
+		position: relative;
+	}
+	.px-chip-tip {
+		position: static;
+	}
+	.px-tip {
+		right: 0;
+		width: auto;
+		max-width: none;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.px-tip {
+		transition: none;
+	}
+}
+.px-visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+.px-command__opts {
+	margin: 0;
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: var(--space-1) var(--space-4);
+	border-top: 1px solid var(--border);
+	padding-top: var(--space-3);
+}
+.px-command__opts dt {
+	font: 400 14px / 22px var(--font-mono);
+	color: var(--spectrum-cyan);
+}
+.px-command__opts dd {
+	margin: 0;
+	font-size: 14px;
+	line-height: 22px;
+	color: var(--ink-muted);
+}
+
+/* ---------- Callout ---------- */
+.px-callout {
+	--tone: var(--status-info);
+	display: grid;
+	grid-template-columns: 24px 1fr;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	background: var(--surface);
+	border: 2px solid var(--tone);
+}
+.px-callout__icon {
+	width: 24px;
+	height: 24px;
+	display: grid;
+	place-items: center;
+	background: var(--tone);
+	color: var(--on-spectrum);
+	font: 600 14px / 1 var(--font-mono);
+}
+.px-callout__title {
+	margin: 0;
+	color: var(--tone);
+	font: 500 12px / 24px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.px-callout__body {
+	margin: var(--space-1) 0 0;
+	color: var(--ink);
+	font-size: 15px;
+	line-height: 24px;
+}
+.px-callout--success {
+	--tone: var(--status-success);
+}
+.px-callout--warning {
+	--tone: var(--status-warning);
+}
+.px-callout--danger {
+	--tone: var(--status-danger);
+}
+
+/* ---------- Card ---------- */
+.px-card {
+	background: var(--surface);
+	box-shadow: var(--shadow-card);
+	padding: var(--space-6);
+	transition:
+		transform 80ms steps(2),
+		box-shadow 80ms steps(2);
+}
+.px-card:hover {
+	box-shadow: var(--shadow-lift);
+	transform: translate(calc(var(--pixel) * -1), calc(var(--pixel) * -1));
+}
+.px-card__eyebrow {
+	margin: 0 0 var(--space-2);
+	color: var(--spectrum-magenta);
+	font: 500 12px / 16px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.px-card__title {
+	margin: 0 0 var(--space-2);
+	font: 600 20px / 28px var(--font-sans);
+	color: var(--ink);
+}
+.px-card__body {
+	margin: 0 0 var(--space-4);
+	color: var(--ink-muted);
+}
+.px-link {
+	color: var(--link);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-thickness: 2px;
+}
+
+/* ---------- Nav bar ---------- */
+.px-nav {
+	display: flex;
+	align-items: center;
+	gap: var(--space-6);
+	padding: var(--space-3) var(--space-6);
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+}
+.px-nav__brand {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	color: var(--ink);
+	text-decoration: none;
+}
+.px-logo-tile {
+	display: block;
+	background: var(--void);
+	line-height: 0;
+}
+.px-logo-tile img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+.px-nav__brand .px-logo-tile {
+	width: 36px;
+	height: 36px;
+}
+.px-nav__name {
+	font: 600 24px / 1 var(--font-display);
+}
+.px-nav__links {
+	display: flex;
+	gap: var(--space-4);
+	margin-right: auto;
+}
+.px-nav__links a {
+	color: var(--ink-muted);
+	text-decoration: none;
+	font-size: 15px;
+	padding: var(--space-1) 0;
+	border-bottom: 2px solid transparent;
+}
+.px-nav__links a:hover {
+	color: var(--ink);
+}
+.px-nav__links a[aria-current="page"] {
+	color: var(--ink);
+	border-bottom-color: var(--spectrum-magenta);
+}
+
+/* ---------- Spectrum ---------- */
+.px-spectrum {
+	display: flex;
+	height: 8px;
+}
+.px-spectrum > span {
+	flex: 1;
+}
+.px-spectrum--stepped > span:nth-child(odd) {
+	transform: translateY(calc(var(--pixel) * -1));
+}
+.px-spectrum > :nth-child(1) {
+	background: var(--spectrum-cyan);
+}
+.px-spectrum > :nth-child(2) {
+	background: var(--spectrum-blue);
+}
+.px-spectrum > :nth-child(3) {
+	background: var(--spectrum-violet);
+}
+.px-spectrum > :nth-child(4) {
+	background: var(--spectrum-magenta);
+}
+.px-spectrum > :nth-child(5) {
+	background: var(--spectrum-red);
+}
+.px-spectrum > :nth-child(6) {
+	background: var(--spectrum-orange);
+}
+.px-spectrum > :nth-child(7) {
+	background: var(--spectrum-yellow);
+}
+.px-spectrum > :nth-child(8) {
+	background: var(--spectrum-green);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.px-btn,
+	.px-card {
+		transition: none;
+	}
+	.px-btn:hover,
+	.px-card:hover {
+		transform: none;
+	}
+}
+
+/* ---------- Inside VitePress docs ---------- */
+
+/* Keep the doc's link and code styles off the components. */
+.vp-doc a.px-btn,
+.vp-doc .px-card a.px-btn {
+	color: inherit;
+	text-decoration: none;
+}
+.vp-doc a.px-btn--primary {
+	color: var(--on-core);
+}
+.vp-doc .px-command__sig {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font: 500 18px / 26px var(--font-mono);
+	color: var(--ink);
+}
+.vp-doc .px-command {
+	margin: var(--space-6) 0;
+}
+.vp-doc .px-command p {
+	margin: 0;
+}
+.vp-doc .px-command__opts {
+	margin: 0;
+}
+.vp-doc .px-tier,
+.vp-doc .px-chip {
+	vertical-align: middle;
+}
+.vp-doc .px-spectrum {
+	margin: var(--space-8) 0;
+}

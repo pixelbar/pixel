@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor } from "../../core/access.ts";
+import { AnnouncementRoutes } from "../../core/announcement-routes.ts";
 import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
@@ -18,7 +19,6 @@ import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
-import { HomeInventory } from "../../services/home-inventory.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
@@ -79,7 +79,7 @@ function setup(ops = nodeFileOps) {
 			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			home: new Home({ logger: silentLogger, reporter }),
 			homeDevices: HomeDeviceStore.empty(),
-			homeInventory: HomeInventory.off(),
+			announcementRoutes: new AnnouncementRoutes(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",

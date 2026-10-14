@@ -1,6 +1,6 @@
 /**
  * Shows Pixel's admin-tier commands to the people in config/admins.yaml.
- * Usage: just command-access   (run `just register` first)
+ * Usage: just command-access dev|prod   (run `just register` for that env first)
  *
  * Discord only lets a *user* change command permissions, so this walks you
  * through a one-off sign-in: it prints a link, you approve it as someone who
@@ -26,12 +26,15 @@ import { buildCore } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import { silentLogger } from "../src/core/logger.ts";
 import { nullErrorReporter } from "../src/core/ports/error-reporter.ts";
+import { assertRegisterEnv, parseRegisterTarget } from "./register-env.ts";
 
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 const TIMEOUT_MS = 5 * 60_000;
 
+const target = parseRegisterTarget(process.argv.slice(2));
 const config = loadConfig();
+assertRegisterEnv(target, config.env);
 const { registry, access } = buildCore(config, silentLogger, nullErrorReporter);
 const names = hiddenCommandNames(registry.all().map((c) => c.definition));
 const overrides = adminOverrides(access.view.discord);
@@ -108,7 +111,7 @@ const registered = (await rest.get(Routes.applicationGuildCommands(appId, guildI
 const missing = names.filter((n) => !registered.some((c) => c.name === n));
 if (missing.length > 0) {
 	process.stderr.write(
-		`Not registered yet: ${missing.map((n) => `/${n}`).join(", ")}. Run \`just register\` first.\n`,
+		`Not registered yet: ${missing.map((n) => `/${n}`).join(", ")}. Run \`just register ${target}\` first.\n`,
 	);
 	process.exit(1);
 }

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor } from "../../core/access.ts";
+import { AnnouncementRoutes } from "../../core/announcement-routes.ts";
 import { CapabilityRegistry } from "../../core/capabilities.ts";
 import type { ResolvedUser } from "../../core/command.ts";
 import { Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
@@ -18,7 +19,6 @@ import { RoleMirror } from "../../core/role-mirror.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
-import { HomeInventory } from "../../services/home-inventory.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
@@ -91,7 +91,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 			roles: new RoleMirror({ logger: silentLogger, reporter }),
 			home: new Home({ logger: silentLogger, reporter }),
 			homeDevices: HomeDeviceStore.empty(),
-			homeInventory: HomeInventory.off(),
+			announcementRoutes: new AnnouncementRoutes(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",
@@ -119,7 +119,7 @@ const human = (id: string, displayName = "Someone"): ResolvedUser => ({
 
 function run(
 	dispatcher: Dispatcher,
-	subcommand: "grant" | "revoke" | "list",
+	subcommand: "grant" | "grant-all" | "revoke" | "list",
 	args: Record<string, string>,
 	target?: ResolvedUser,
 	as: Partial<PlatformActor> = { userId: IDS.admin, displayName: "Ada", handle: "ada_l" },
@@ -161,19 +161,22 @@ describe("who may run them", () => {
 		["a member", IDS.member],
 		["a friend", IDS.friend],
 		["a guest", IDS.guest],
-	])("refuses grant, revoke and list to %s, and changes nothing", async (_label, userId) => {
-		const { dispatcher } = setup();
-		const before = BEFORE();
-		for (const sub of ["grant", "revoke", "list"] as const) {
-			const result = await run(dispatcher, sub, { capability: "front-door" }, human(IDS.member), {
-				userId,
-			});
-			expect(result.reply.text).toBe(MESSAGES.deniedTier);
-		}
-		expect(read()).toBe(before);
-	});
+	])(
+		"refuses grant, grant-all, revoke and list to %s, and changes nothing",
+		async (_label, userId) => {
+			const { dispatcher } = setup();
+			const before = BEFORE();
+			for (const sub of ["grant", "grant-all", "revoke", "list"] as const) {
+				const result = await run(dispatcher, sub, { capability: "front-door" }, human(IDS.member), {
+					userId,
+				});
+				expect(result.reply.text).toBe(MESSAGES.deniedTier);
+			}
+			expect(read()).toBe(before);
+		},
+	);
 
-	it("lists them as /admin capabilities grant, revoke and list for /help", async () => {
+	it("lists them as /admin capabilities grant, grant-all, revoke and list for /help", async () => {
 		const { commands } = setup();
 		const admin = commands.get("admin")?.definition;
 		expect(admin?.subcommands?.map((s) => s.name)).toContain("capabilities");
@@ -332,6 +335,75 @@ describe("grant", () => {
 		expect(grant?.options?.find((o) => o.name === "capability")).toMatchObject({
 			choices: ["front-door", "workshop"],
 		});
+	});
+});
+
+describe("grant-all", () => {
+	it("gives a member every capability in one audited change, keeping what they had", async () => {
+		const { dispatcher, store, notified } = setup();
+		const result = await run(
+			dispatcher,
+			"grant-all",
+			{ reason: "trusted" },
+			human(IDS.friend, "Grace"),
+		);
+
+		expect(result.private).toBe(true);
+		expect(result.reply.embeds?.[0]?.title).toBe("Capabilities granted");
+		expect(fieldsOf(result).Capabilities).toBe("front-door: Open the front door");
+		expect(store.view.records.get(IDS.friend)?.capabilities).toEqual(["workshop", "front-door"]);
+		expect(openStore().view.records.get(IDS.friend)?.capabilities).toEqual([
+			"workshop",
+			"front-door",
+		]);
+		expect(events("access.changed")).toHaveLength(1);
+		expect(events("access.changed")[0]?.obj).toMatchObject({
+			kind: "set-capabilities",
+			target: `discord:${IDS.friend}`,
+			reason: "trusted",
+		});
+		expect(notified).toHaveLength(1);
+	});
+
+	it("works for an admin, who otherwise holds nothing", async () => {
+		const { dispatcher, store } = setup();
+		await run(dispatcher, "grant-all", {}, human(IDS.admin));
+		expect(store.view.records.get(IDS.admin)?.capabilities).toEqual(["front-door", "workshop"]);
+		expect(store.view.discord.get(IDS.admin)).toBe("admin");
+	});
+
+	it("says so and writes nothing when they already have everything", async () => {
+		const { dispatcher, notified } = setup();
+		await run(dispatcher, "grant-all", {}, human(IDS.member));
+		const before = BEFORE();
+		notified.length = 0;
+		const result = await run(dispatcher, "grant-all", {}, human(IDS.member));
+		expect(result.reply.text).toContain("already has every capability. Nothing changed.");
+		expect(read()).toBe(before);
+		expect(notified).toEqual([]);
+	});
+
+	it("refuses a guest, a bot and a too-long reason, and changes nothing", async () => {
+		const { dispatcher } = setup();
+		const before = BEFORE();
+		const guest = await run(dispatcher, "grant-all", {}, human(UNLISTED));
+		expect(guest.reply.text).toContain("is a guest");
+		const bot = await run(dispatcher, "grant-all", {}, { ...human(IDS.member), isBot: true });
+		expect(bot.reply.text).toBeDefined();
+		const long = await run(
+			dispatcher,
+			"grant-all",
+			{ reason: "x".repeat(MAX_REASON_LENGTH + 1) },
+			human(IDS.member),
+		);
+		expect(long.reply.text).toContain(`at most ${MAX_REASON_LENGTH}`);
+		expect(read()).toBe(before);
+	});
+
+	it("says so when no capabilities are registered", async () => {
+		const { dispatcher } = setup(new CapabilityRegistry());
+		const result = await run(dispatcher, "grant-all", {}, human(IDS.member));
+		expect(result.reply.text).toBe("No capabilities are registered yet.");
 	});
 });
 

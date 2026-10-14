@@ -1,0 +1,538 @@
+/*
+ * Maps VitePress's default theme onto the Pixel tokens. Only colours, type,
+ * corners and depth change; VitePress keeps its layout and behaviour.
+ */
+
+:root,
+.dark {
+	--vp-c-bg: var(--bg);
+	--vp-c-bg-alt: var(--bg);
+	--vp-c-bg-elv: var(--surface);
+	--vp-c-bg-soft: var(--surface-raised);
+
+	--vp-c-text-1: var(--ink);
+	--vp-c-text-2: var(--ink-muted);
+	--vp-c-text-3: var(--ink-faint);
+
+	--vp-c-border: var(--border-strong);
+	--vp-c-divider: var(--border);
+	--vp-c-gutter: var(--border);
+
+	--vp-c-brand-1: var(--link);
+	--vp-c-brand-2: var(--link);
+	--vp-c-brand-3: var(--core);
+	--vp-c-brand-soft: var(--surface-raised);
+
+	--vp-c-default-soft: var(--surface-raised);
+
+	--vp-c-tip-1: var(--status-success);
+	--vp-c-note-1: var(--status-info);
+	--vp-c-important-1: var(--spectrum-violet);
+	--vp-c-warning-1: var(--status-warning);
+	--vp-c-danger-1: var(--status-danger);
+	--vp-c-caution-1: var(--status-danger);
+
+	--vp-font-family-base: var(--font-sans);
+	--vp-font-family-mono: var(--font-mono);
+
+	--vp-nav-bg-color: var(--surface);
+	--vp-local-nav-bg-color: var(--bg);
+	--vp-sidebar-bg-color: var(--bg);
+
+	--vp-code-font-size: 0.875em;
+	--vp-code-color: var(--ink);
+	--vp-code-bg: var(--surface-raised);
+	--vp-code-block-color: var(--ink);
+	--vp-code-block-bg: var(--surface);
+	--vp-code-line-height: 22px;
+	--vp-code-copy-code-bg: var(--surface-raised);
+	--vp-code-copy-code-hover-bg: var(--surface);
+	--vp-code-copy-code-border-color: var(--border-strong);
+	--vp-code-copy-code-hover-border-color: var(--ink);
+
+	--vp-button-brand-border: transparent;
+	--vp-button-brand-text: var(--on-core);
+	--vp-button-brand-bg: var(--core);
+	--vp-button-brand-hover-border: transparent;
+	--vp-button-brand-hover-text: var(--on-core);
+	--vp-button-brand-hover-bg: var(--core);
+	--vp-button-brand-active-border: transparent;
+	--vp-button-brand-active-text: var(--on-core);
+	--vp-button-brand-active-bg: var(--core);
+	--vp-button-alt-border: var(--border-strong);
+	--vp-button-alt-text: var(--ink);
+	--vp-button-alt-bg: transparent;
+	--vp-button-alt-hover-border: var(--ink);
+	--vp-button-alt-hover-text: var(--ink);
+	--vp-button-alt-hover-bg: var(--surface-raised);
+
+	--vp-custom-block-font-size: 15px;
+
+	--vp-home-hero-name-color: var(--ink);
+}
+
+/* ---------- Pixels are square ---------- */
+
+.Layout *,
+.Layout *::before,
+.Layout *::after,
+.VPLocalSearchBox *,
+.VPLocalSearchBox *::before,
+.VPLocalSearchBox *::after {
+	border-radius: var(--radius-0) !important;
+}
+.vp-doc :not(pre) > code,
+.vp-doc kbd,
+.px-inline-code,
+.px-kbd {
+	border-radius: var(--radius-1) !important;
+}
+.px-status::before {
+	border-radius: var(--radius-full) !important;
+}
+
+/* ---------- Focus ---------- */
+
+:focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+}
+
+body {
+	background: var(--bg);
+}
+
+/* ---------- Nav bar ---------- */
+
+.VPNavBar,
+.VPNavBar.has-sidebar .content-body,
+.VPNavBar:not(.home) .content-body {
+	background: var(--surface) !important;
+}
+.VPNavBar .divider-line,
+.VPNavBar.has-sidebar .divider-line {
+	background: var(--border) !important;
+}
+.VPNavBar.home:not(.top) .divider-line,
+.VPNavBar.home.top .divider-line {
+	background: var(--border) !important;
+}
+.VPNavBar .title {
+	border-bottom-color: var(--border) !important;
+}
+.VPNavBarTitle .title {
+	gap: var(--space-3);
+	font: 600 24px / 1 var(--font-display);
+	color: var(--ink);
+}
+.VPNavBarTitle .logo {
+	width: 36px;
+	height: 36px;
+	margin-right: 0;
+}
+.dark .VPNavBarTitle .logo {
+	background: var(--void);
+}
+.VPNavBarMenuLink {
+	font-size: 15px !important;
+	font-weight: 400 !important;
+	color: var(--ink-muted) !important;
+	border-bottom: 2px solid transparent;
+	line-height: 26px !important;
+	margin: 0 var(--space-2);
+	padding: 0 !important;
+}
+.VPNavBarMenuLink:hover {
+	color: var(--ink) !important;
+}
+.VPNavBarMenuLink.active {
+	color: var(--ink) !important;
+	border-bottom-color: var(--spectrum-magenta);
+}
+
+/* The theme switch: a square track with a pixel for a thumb */
+.VPSwitch {
+	border: 2px solid var(--border-strong) !important;
+	background: var(--surface-raised) !important;
+}
+.VPSwitch:hover {
+	border-color: var(--ink) !important;
+}
+.VPSwitch .check {
+	top: 1px !important;
+	left: 1px !important;
+	background: var(--core) !important;
+	box-shadow: none !important;
+}
+.VPSwitch .icon svg {
+	color: var(--on-core) !important;
+	fill: var(--on-core) !important;
+}
+
+/* Search button */
+.DocSearch-Button,
+.VPNavBarSearchButton {
+	border: 1px solid var(--border-strong) !important;
+	background: transparent !important;
+}
+.VPLocalSearchBox .shell {
+	border: 1px solid var(--border-strong);
+	box-shadow: var(--shadow-lift) !important;
+	background: var(--surface) !important;
+}
+.VPLocalSearchBox .result.selected {
+	border-color: var(--ink) !important;
+	background: var(--surface-raised) !important;
+}
+.VPLocalSearchBox mark {
+	background: var(--spectrum-yellow);
+	color: var(--on-spectrum);
+}
+
+/* ---------- Sidebar ---------- */
+
+.VPSidebar {
+	border-right: 1px solid var(--border);
+}
+.VPSidebarItem.level-0 > .item > .text,
+.VPSidebarItem.level-0 > .item > h2.text,
+.VPSidebarItem.level-0 > .item .text {
+	font: 500 12px / 16px var(--font-mono) !important;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ink-faint) !important;
+	padding: var(--space-2) 0;
+}
+.VPSidebarItem.level-1 .text {
+	font-size: 15px !important;
+	color: var(--ink-muted) !important;
+}
+.VPSidebarItem.level-1 .link:hover .text {
+	color: var(--ink) !important;
+}
+.VPSidebarItem.is-active > .item .link > .text {
+	color: var(--ink) !important;
+	font-weight: 600;
+}
+.VPSidebarItem.is-active > .item > .indicator {
+	background: var(--spectrum-magenta) !important;
+	width: 4px !important;
+}
+
+/* Outline (right-hand "On this page") */
+.VPDocAsideOutline .outline-title {
+	font: 500 12px / 16px var(--font-mono) !important;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ink-faint);
+}
+.VPDocAsideOutline .outline-marker {
+	background: var(--spectrum-magenta) !important;
+	width: 4px !important;
+}
+.VPDocAsideOutline .outline-link.active {
+	color: var(--ink) !important;
+}
+/* Nesting you can see: a guide line down each nested list, and a heading that has
+ * entries under it reads as their group. Also used by the phone's "On this page". */
+ul.VPDocOutlineItem.nested {
+	margin-left: var(--space-1);
+	padding-left: var(--space-3);
+	border-left: 1px solid var(--border);
+}
+.VPDocOutlineItem li:has(> ul) > .outline-link {
+	color: var(--ink);
+	font-weight: 600;
+}
+/* On the commands page the entries under a group are commands: code, as on the cards. */
+.px-commands-page .VPDocOutlineItem.nested li:not(:has(> ul)) > .outline-link {
+	font: 400 13px / 32px var(--font-mono);
+}
+
+/* ---------- Doc typography ---------- */
+
+/* A link opened straight to a heading (/commands#ha-set) lands below the fixed nav
+ * and the phone's "On this page" bar, not under them. */
+.vp-doc :is(h1, h2, h3, h4, h5, h6) {
+	scroll-margin-top: calc(var(--vp-nav-height) + var(--space-16));
+}
+.vp-doc h1 {
+	font: 600 48px / 52px var(--font-display);
+	letter-spacing: 0;
+	margin-bottom: var(--space-6);
+}
+.vp-doc h2 {
+	font: 500 28px / 32px var(--font-display);
+	letter-spacing: 0;
+	margin-top: var(--space-12);
+	padding-top: var(--space-6);
+	border-top: 1px solid var(--border);
+}
+.vp-doc h3 {
+	font: 600 20px / 28px var(--font-sans);
+	letter-spacing: 0;
+	margin-top: var(--space-8);
+}
+.vp-doc h4 {
+	font: 600 16px / 26px var(--font-sans);
+}
+@media (max-width: 640px) {
+	.vp-doc h1 {
+		font-size: 36px;
+		line-height: 40px;
+	}
+}
+.vp-doc p,
+.vp-doc li {
+	line-height: 26px;
+}
+.vp-doc > div > p:first-of-type:is(h1 + p) {
+	font-size: 18px;
+	line-height: 30px;
+	color: var(--ink-muted);
+}
+
+.vp-doc a {
+	color: var(--link);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-thickness: 2px;
+	font-weight: 400;
+}
+.vp-doc a:hover {
+	color: var(--ink);
+}
+.vp-doc .header-anchor {
+	text-decoration: none;
+	color: var(--ink-faint);
+}
+
+.vp-doc :not(pre) > code {
+	padding: 1px var(--space-1);
+	border: 1px solid var(--border);
+	color: var(--ink);
+}
+.vp-doc a > code {
+	color: inherit;
+}
+.vp-doc kbd {
+	padding: 1px var(--space-1);
+	border: 1px solid var(--border);
+	border-bottom-width: 3px;
+	background: var(--surface-raised);
+	font: 400 0.875em / 1 var(--font-mono);
+}
+
+.vp-doc hr {
+	border-top: 1px solid var(--border);
+}
+
+.vp-doc blockquote {
+	border-left: 4px solid var(--border-strong);
+	color: var(--ink-muted);
+}
+
+/* Tables: label-style headers on a raised strip */
+.vp-doc table {
+	display: block;
+	overflow-x: auto;
+	border-collapse: collapse;
+}
+.vp-doc tr {
+	background: var(--surface);
+	border-top: 1px solid var(--border);
+}
+.vp-doc tr:nth-child(2n) {
+	background: var(--surface);
+}
+.vp-doc th {
+	background: var(--surface-raised);
+	color: var(--ink-faint);
+	font: 500 12px / 16px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.vp-doc th,
+.vp-doc td {
+	border: 1px solid var(--border);
+}
+.vp-doc td {
+	font-size: 15px;
+	line-height: 24px;
+}
+
+/* ---------- Code blocks: a label bar over a square block ---------- */
+
+.vp-doc div[class*="language-"] {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	padding-top: 24px;
+}
+.vp-doc div[class*="language-"] > span.lang,
+.vp-doc div[class*="language-"]:hover > span.lang {
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 24px;
+	padding: 0 var(--space-3);
+	opacity: 1;
+	text-align: left;
+	background: var(--surface-raised);
+	border-bottom: 1px solid var(--border);
+	color: var(--ink-faint);
+	font: 500 12px / 24px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.vp-doc div[class*="language-"] > button.copy {
+	top: 0;
+	right: 0;
+	width: 24px;
+	height: 24px;
+	background-size: 14px;
+	border-width: 0 0 0 1px;
+	z-index: 4;
+}
+.vp-doc div[class*="language-"] > button.copy.copied::before,
+.vp-doc div[class*="language-"] > button.copy:hover.copied::before {
+	height: 24px;
+	font: 500 12px / 22px var(--font-mono);
+	border-radius: 0;
+}
+@media (max-width: 639px) {
+	.vp-doc div[class*="language-"] {
+		margin-left: 0;
+		margin-right: 0;
+	}
+}
+
+/* ---------- Custom blocks become Pixel callouts ---------- */
+
+.custom-block {
+	--tone: var(--status-info);
+	--glyph: "i";
+	position: relative;
+	padding: var(--space-4) var(--space-4) var(--space-4) calc(var(--space-4) + 24px + var(--space-3));
+	background: var(--surface) !important;
+	border: 2px solid var(--tone) !important;
+	color: var(--ink) !important;
+	font-size: 15px;
+	line-height: 24px;
+}
+.custom-block::before {
+	content: var(--glyph);
+	position: absolute;
+	top: var(--space-4);
+	left: var(--space-4);
+	width: 24px;
+	height: 24px;
+	display: grid;
+	place-items: center;
+	background: var(--tone);
+	color: var(--on-spectrum);
+	font: 600 14px / 1 var(--font-mono);
+}
+.custom-block .custom-block-title {
+	margin: 0;
+	color: var(--tone);
+	font: 500 12px / 24px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+.custom-block p {
+	color: var(--ink) !important;
+}
+.custom-block a {
+	color: var(--link) !important;
+}
+.custom-block code {
+	background: var(--surface-raised) !important;
+}
+.custom-block.tip {
+	--tone: var(--status-success);
+	--glyph: "\2713";
+}
+.custom-block.important {
+	--tone: var(--spectrum-violet);
+	--glyph: "*";
+}
+.custom-block.warning {
+	--tone: var(--status-warning);
+	--glyph: "!";
+}
+.custom-block.danger,
+.custom-block.caution {
+	--tone: var(--status-danger);
+	--glyph: "\00D7";
+}
+.custom-block.details {
+	--tone: var(--border-strong);
+	--glyph: "+";
+}
+.custom-block.details::before {
+	color: var(--surface);
+}
+
+/* ---------- Buttons ---------- */
+
+.VPButton {
+	border-width: 2px !important;
+	font-weight: 600 !important;
+	transition:
+		transform var(--step),
+		box-shadow var(--step) !important;
+}
+.VPButton.brand {
+	box-shadow: var(--glow-core);
+}
+.VPButton.brand:hover {
+	transform: translate(-2px, -2px);
+}
+
+/* ---------- Footer and doc footer ---------- */
+
+.VPFooter {
+	background: var(--bg) !important;
+	border-top: 1px solid var(--border) !important;
+}
+.VPFooter a {
+	color: var(--link);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+.VPDocFooter .pager-link {
+	background: var(--surface);
+	border: 1px solid var(--border) !important;
+	box-shadow: var(--shadow-card);
+	transition:
+		transform var(--step),
+		box-shadow var(--step);
+}
+.VPDocFooter .pager-link:hover {
+	border-color: var(--border) !important;
+	box-shadow: var(--shadow-lift);
+	transform: translate(calc(var(--pixel) * -1), calc(var(--pixel) * -1));
+}
+.VPDocFooter .desc {
+	font: 500 12px / 16px var(--font-mono);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--ink-faint) !important;
+}
+.VPDocFooter .title {
+	color: var(--ink) !important;
+}
+.VPDocFooter .edit-link-button {
+	color: var(--link) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.VPButton,
+	.VPDocFooter .pager-link {
+		transition: none !important;
+	}
+	.VPButton.brand:hover,
+	.VPDocFooter .pager-link:hover {
+		transform: none;
+	}
+}

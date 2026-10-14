@@ -1,29 +1,42 @@
 name: Release
 
-# On each push to main (and when someone runs this by hand), cut a version
-# from CHANGELOG [Unreleased] and bump package.json. Added → minor;
-# Fixed/Changed → patch. Never major before 1.0. No-ops when Unreleased is empty.
+# A maintainer cuts a production release from main (Actions → Release → Run
+# workflow). This workflow: cuts CHANGELOG [Unreleased] and bumps package.json
+# (Added → minor; Fixed/Changed → patch; never major before 1.0), tags vX.Y.Z,
+# opens a GitHub Release, publishes GHCR from that commit, uploads Sentry maps,
+# publishes the VitePress docs site, then rolls pixel-prod after GitHub
+# Environment `prod` approval (ADR 0013) and registers prod slash commands
+# (ADR 0014). Merges to main do not roll prod.
+# Azure `dev` stays `just deploy-dev`. Never copy pixel-dev / Mini Discord
+# tokens. This workflow does not apply Terraform.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
+# Least privilege at the workflow level. Jobs raise what they need.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 # Actions are pinned to commit SHAs (with the version in a comment) so a
 # moved or compromised tag can't change what runs here.
 
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
 jobs:
   bump:
     name: Version bump
-    if: ${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'Release v') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+      tag: ${{ steps.cut.outputs.tag }}
+      sha: ${{ steps.cut.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,19 +55,397 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cut Unreleased into a version
+        id: cut
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          before="$(git rev-parse HEAD)"
-          just bump --commit
-          after="$(git rev-parse HEAD)"
-          if [ "${before}" = "${after}" ]; then
-            echo "No version bump."
-            exit 0
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Cut releases from main (got ${GITHUB_REF_NAME})."
+            exit 1
           fi
-          git push origin HEAD:${{ github.ref_name }}
-          git push origin --tags
+          notes="${RUNNER_TEMP}/release-notes.md"
+          before="$(git rev-parse HEAD)"
+          subject="$(git log -1 --pretty=%s)"
+          just bump --commit --notes-file "${notes}"
+          after="$(git rev-parse HEAD)"
+          version="$(python3 -c "import json; print(json.load(open('package.json', encoding='utf-8'))['version'])")"
+          if [ "${before}" = "${after}" ]; then
+            if [ "${subject}" != "Release v${version}" ]; then
+              echo "::error::No Unreleased notes in CHANGELOG.md. Add entries, merge to main, then run this workflow."
+              exit 1
+            fi
+            echo "HEAD is already Release v${version}; continuing without another bump."
+          else
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            git push origin --tags
+          fi
+          if [ ! -s "${notes}" ]; then
+            echo "::error::Release notes for v${version} are empty."
+            exit 1
+          fi
+          sha="$(git rev-parse HEAD)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${version}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+          if gh release view "v${version}" >/dev/null 2>&1; then
+            echo "GitHub Release v${version} already exists."
+          else
+            gh release create "v${version}" \
+              --title "v${version}" \
+              --notes-file "${notes}" \
+              --target "${sha}"
+          fi
+
+  publish:
+    name: Publish GHCR
+    needs: bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.pin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        env:
+          SHA: ${{ needs.bump.outputs.sha }}
+          VERSION: ${{ needs.bump.outputs.version }}
+        run: |
+          pin="${IMAGE_NAME}:${SHA}"
+          tags="${pin},${IMAGE_NAME}:v${VERSION},${IMAGE_NAME}:main"
+          echo "pin=${pin}" >> "${GITHUB_OUTPUT}"
+          echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
+          echo "Publishing ${tags}"
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            PIXEL_VERSION=${{ needs.bump.outputs.sha }}
+            PIXEL_GIT_SHA=${{ needs.bump.outputs.sha }}
+            PIXEL_GIT_BRANCH=${{ needs.bump.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Fail if the image contains secrets or access lists
+        env:
+          PIN: ${{ steps.meta.outputs.pin }}
+        run: |
+          docker pull "${PIN}"
+          if docker run --rm --entrypoint sh "${PIN}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+            echo "::error::Image ${PIN} contains .env or access lists. Do not deploy it."
+            exit 1
+          fi
+          echo "No .env or access lists in ${PIN}."
+
+      - name: Make GHCR package public (no secrets in the image)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Azure Container Apps cannot pull a private ghcr.io/pixelbar/pixel
+          # image (401 / DENIED). Public is the intended fix; the image has no
+          # secrets. This token may lack package-admin; then a maintainer must
+          # flip visibility in the GitHub UI.
+          package="/orgs/${{ github.repository_owner }}/packages/container/${{ github.event.repository.name }}"
+          for attempt in 1 2 3 4 5; do
+            if gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "${package}" \
+              -f visibility=public; then
+              echo "Package ${{ github.repository }} is public."
+              exit 0
+            fi
+            echo "Visibility update failed (attempt ${attempt}); waiting for the package to exist."
+            sleep 5
+          done
+          echo "::warning::Could not set ghcr.io/${{ github.repository }} public from this job. A maintainer must: GitHub → Packages → pixel → Package settings → Change visibility → Public. Until then Azure pulls 401."
+
+  sentry-release:
+    name: Sentry release (source maps)
+    needs: [bump, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+    steps:
+      - name: Require Sentry org and token
+        run: |
+          missing=0
+          if [ -z "${SENTRY_AUTH_TOKEN}" ]; then
+            echo "::error::SENTRY_AUTH_TOKEN is not set (repository secret)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_ORG}" ]; then
+            echo "::error::SENTRY_ORG is not set (repository variable)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_PROJECT}" ]; then
+            echo "::error::SENTRY_PROJECT is not set (repository variable)."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. ${{ needs.publish.outputs.image }} was published. Sentry maps were not uploaded."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install and compile (source maps)
+        run: |
+          pnpm install --frozen-lockfile
+          just build
+
+      - name: Create Sentry release and upload source maps
+        uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
+        with:
+          environment: prod
+          release: ${{ needs.bump.outputs.sha }}
+          sourcemaps: dist
+          inject: false
+          url_prefix: /app/dist
+          set_commits: auto
+          ignore_missing: true
+          disable_telemetry: true
+
+  prod-cd:
+    name: Deploy prod
+    needs: [bump, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require ARM_* on GitHub Environment prod
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          if [ -z "${ARM_CLIENT_ID}" ]; then
+            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment prod (variable, not secret)."
+            missing=1
+          fi
+          if [ -z "${ARM_TENANT_ID}" ]; then
+            echo "::error::ARM_TENANT_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
+            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment prod."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Image ${{ needs.publish.outputs.image }} was published. Not inventing credentials. This job does not apply Terraform and does not touch pixel-dev."
+            exit 1
+          fi
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Roll pixel-prod to the published digest
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          TAG: ${{ needs.bump.outputs.tag }}
+        run: |
+          set -euo pipefail
+          resource_group="pixel-prod"
+          app_name="pixel-prod"
+          if [ "${resource_group}" != "pixel-prod" ] || [ "${app_name}" != "pixel-prod" ]; then
+            echo "Refusing to deploy: this job only updates pixel-prod, never pixel-dev."
+            exit 1
+          fi
+          if ! az containerapp show -g "${resource_group}" -n "${app_name}" >/dev/null 2>&1; then
+            echo "::error::Container App ${app_name} is not in ${resource_group} yet. A maintainer applies infra/envs/prod (PIXEL_APPLY_PROD=1). This job does not apply Terraform."
+            exit 1
+          fi
+          az containerapp update \
+            -g "${resource_group}" \
+            -n "${app_name}" \
+            --image "${IMAGE}" \
+            --min-replicas 1 \
+            --max-replicas 1
+          running="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.containers[0].image" -o tsv)"
+          min="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.minReplicas" -o tsv)"
+          max="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.maxReplicas" -o tsv)"
+          echo "Running ${running} min=${min} max=${max} (${TAG})"
+          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
+            echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
+            exit 1
+          fi
+          echo "Rolled ${IMAGE} as ${TAG}. The next job registers slash commands on the prod guild."
+          echo "Never copy pixel-dev-kv / Mini Discord tokens into prod."
+
+  register-prod:
+    name: Register prod slash commands
+    needs: [bump, prod-cd]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Register slash commands on the prod guild
+        run: |
+          set -euo pipefail
+          resource_group="pixel-prod"
+          app_name="pixel-prod"
+          # Take the application, guild and token from the running app itself,
+          # so this can only ever register the bot that was just rolled.
+          app() {
+            az containerapp show -g "${resource_group}" -n "${app_name}" --query "$1" -o tsv
+          }
+          env_of() {
+            app "properties.template.containers[0].env[?name=='$1'].value | [0]"
+          }
+          pixel_env="$(env_of PIXEL_ENV)"
+          app_id="$(env_of DISCORD_APP_ID)"
+          guild_id="$(env_of DISCORD_GUILD_ID)"
+          token_url="$(app "properties.configuration.secrets[?name=='discord-token'].keyVaultUrl | [0]")"
+          if [ "${pixel_env}" != "prod" ]; then
+            echo "::error::${app_name} has PIXEL_ENV=${pixel_env}, not prod. Refusing to register."
+            exit 1
+          fi
+          if [ -z "${app_id}" ] || [ -z "${guild_id}" ] || [ -z "${token_url}" ]; then
+            echo "::error::${app_name} is missing DISCORD_APP_ID, DISCORD_GUILD_ID or the discord-token Key Vault reference."
+            exit 1
+          fi
+          if ! token="$(az keyvault secret show --id "${token_url}" --query value -o tsv)"; then
+            echo "::error::Cannot read discord-token. A maintainer sets github_register_principal_id in infra/envs/prod and applies (ADR 0014). Until then: just register prod on a laptop, or re-run this job after the apply."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          DISCORD_TOKEN="${token}" \
+          DISCORD_APP_ID="${app_id}" \
+          DISCORD_GUILD_ID="${guild_id}" \
+          PIXEL_ENV=prod \
+            just register-ci prod
+
+  docs-build:
+    name: Build the site
+    needs: bump
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.bump.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install the site's dependencies
+        run: pnpm --dir docs install --frozen-lockfile
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Build (fails on dead links)
+        run: just docs-build
+        env:
+          DOCS_BASE: ${{ steps.pages.outputs.base_path }}
+
+      - name: Upload the site for Pages
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/.vitepress/dist
+
+  docs-deploy:
+    name: Publish to GitHub Pages
+    needs: docs-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

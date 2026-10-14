@@ -38,7 +38,7 @@ cp .env.example .env                                # fill in the values
 cp config/admins.example.yaml config/admins.yaml    # add yourself
 cp config/members.example.yaml config/members.yaml
 just validate-config
-just register                                       # register slash commands on your test guild
+just register dev                                   # register slash commands on your test guild
 just dev                                            # run Pixel with hot reload
 ```
 
@@ -53,16 +53,17 @@ Never develop against the production bot.
 
 ### Announcements
 
-Pixel can post when Pixelbar opens or closes, in two styles. Each has its own channel setting, you can use either, both or neither, and they can be the same channel:
+Pixel can post when Pixelbar opens or closes, in three styles. Admins choose which channels get which style while Pixel runs, with `/admin announcements set style:<live|timeline|single> channel:<#channel>` (any number of channels, one style each; `remove` and `list` too), and it is saved in `data/announcement-routes.yaml`, so it survives restarts and deploys. There is no environment setting for these:
 
-- **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
-- **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
+- **Live**: opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
+- **Timeline**: a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
+- **Single**: the channel only ever holds the current status, "🟢 Pixelbar is open" or "🔴 Pixelbar is closed" with when it closed and how long it was open. Each change posts the new status and then deletes the previous post.
 
 Pixel also says when **it** comes online and goes offline, in the announcements channel (`DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, or `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` to put it elsewhere): a new "🟢 Pixel is online" post on every start with the version, commit, branch (when it isn't `main`) and a short status, edited to "🔴 Pixel is offline" with the uptime when it shuts down. If it crashed, the next start marks the old post "stopped unexpectedly".
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
-**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register`.
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register dev` or `just register prod`.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
@@ -84,7 +85,7 @@ The text of the answer, in markdown…
 - Keep answers **short** and link to the full page on the website, which stays the source of truth for prices, rules and opening times.
 - **This repository is public.** Never put passwords, door codes or personal details in these files.
 - A broken file fails the checks on your pull request, with a message saying what's wrong.
-- Changes go live on the next deploy. **Adding, removing or renaming a topic** also needs `just register`.
+- Changes go live on the next deploy. **Adding, removing or renaming a topic** also needs `just register dev` or `just register prod`.
 
 ### Access lists
 
@@ -115,17 +116,14 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_APP_ID`              | Application ID                                     |
 | `DISCORD_GUILD_ID`            | The one guild Pixel serves                         |
 | `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` | Optional. Where announcements and the weekly poll are posted. `/info` points people at it |
-| `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` | Optional. Channel for the **live** style: one post per opening, edited to "closed" when the space closes |
 | `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | Optional. Post Pixel's own online/offline status here instead of the announcements channel |
-| `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | Optional. Channel for the **timeline** style: a new post for every open and every close, never edited |
 | `DISCORD_CLOSING_TIME_CHANNEL_ID` | Optional. Channel for the closing-time reminder. Unset, `off` or `none` disables it |
 | `PIXEL_CLOSING_TIME_FILE` | Optional. Closing-time message body. Defaults to `data/closing-time.md`. Missing or empty → built-in default |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
-| `PIXEL_HOME_SYNC_MINUTES`     | Optional. How often (minutes) Pixel refreshes `inventory.yaml`, a list of everything Home Assistant has so you can copy devices into `devices.yaml`. It is not an allow-list. Defaults to 60, 0 for only at startup and on `/admin reload` |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcement-routes.yaml` (the channels set with `/admin announcements`), optional `closing-time.md`. Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in, and that `{{date}}` tokens use when a user-set post goes out. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
@@ -150,22 +148,26 @@ Run `just` to list every recipe.
 | `just validate-config` | Validate the access list files                |
 | `just check-changelog` | Fail if this branch does not change `CHANGELOG.md` vs `origin/main` |
 | `just bump`            | Cut `[Unreleased]` into a dated version and bump `package.json` |
-| `just register`        | Register slash commands with Discord          |
-| `just command-access`  | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
+| `just register dev`    | Register slash commands on Pixel Dev / a test guild |
+| `just register prod`   | Register slash commands on the production guild (`.env.prod`) |
+| `just command-access dev` / `prod` | Show admin-tier commands to the admins in `admins.yaml` (see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md)) |
+| `just docs-dev`        | Run the website (`docs/`, VitePress) locally; `just docs-install` first |
 | `just docker-build`    | Build the container image                     |
-| `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` |
+| `just tf-validate`     | Format-check and validate bootstrap + `envs/dev` + `envs/prod` |
 | `just tf-plan dev`     | Plan the `dev` Container App stack            |
 | `just tf-apply dev`    | Apply `dev` — only when a maintainer says so  |
-| `just deploy-dev`      | Local GHCR push, roll onto Azure `pixel-dev`, Sentry release, `just register` (never prod) |
+| `just tf-plan prod`    | Plan the `prod` stack                         |
+| `PIXEL_APPLY_PROD=1 just tf-apply prod` | Apply `prod` — maintainer only; agents must not |
+| `just deploy-dev`      | Local GHCR push, roll onto Azure `pixel-dev`, Sentry release, `just register dev` (never prod) |
 | `just sentry-release`  | Upload source maps; skipped unless Sentry org/token are set |
 
 ## CI
 
-Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. Pull requests also run a [changelog](.github/workflows/changelog.yml) job that fails unless `CHANGELOG.md` changed, or the PR has the `skip-changelog` label. [Terraform](.github/workflows/terraform.yml) validates bootstrap and `infra/envs/dev` only when `infra/`, that workflow, or the `justfile` change, then plans `dev` (fails closed without Environment `dev` `ARM_*`). [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps (fails closed without org/token). It does **not** deploy prod. A [Release](.github/workflows/release.yml) job on `main` cuts `CHANGELOG.md` Unreleased into a dated version and bumps `package.json` when there are notes. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
+Every pull request and push to `main` runs [CI](.github/workflows/ci.yml). It runs `just check` (lint, type-check, tests with coverage thresholds) and the production build, and checks that the Docker image builds. Pull requests also run a [changelog](.github/workflows/changelog.yml) job that fails unless `CHANGELOG.md` changed, or the PR has the `skip-changelog` label. [Terraform](.github/workflows/terraform.yml) validates bootstrap, `infra/envs/dev` and `infra/envs/prod` only when `infra/`, that workflow, or the `justfile` change, then plans each env only if `infra/` Terraform files changed (fails closed without Environment `ARM_*`). [CD](.github/workflows/cd.yml) on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` and uploads Sentry source maps (fails closed without org/token). It does **not** deploy prod. A [Release](.github/workflows/release.yml) is run by a maintainer on `main`: it cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes that image, rolls `pixel-prod` after Environment `prod` approval, and publishes the docs site. Azure `dev` is `just deploy-dev` from a local build. No Terraform apply on merge.
 
 ## Deployment
 
-Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **Temporarily**, `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod CD is off until `#12`. **No database.** See the [infra overview](docs/infra.md) (diagrams), [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md) and [ADR 0009](docs/adr/0009-container-apps-dev.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
+Terraform **bootstrap** (`infra/bootstrap`, #8) is applied: remote state and GitHub OIDC. Container App **`pixel-dev`** is live (#9). **`infra/envs/prod`** (#12) is in repo; coding agents must not apply it. `just deploy-dev` (local GHCR push) rolls Azure `dev`; merges to `main` publish GHCR only. Prod and the docs site ship from a [Release](.github/workflows/release.yml). **No database.** See the [infra overview](docs/infra.md) (diagrams), [Deployment](docs/architecture.md#deployment), the [dev README](infra/envs/dev/README.md), the [prod README](infra/envs/prod/README.md), [ADR 0012](docs/adr/0012-prod-environment.md) and [ADR 0013](docs/adr/0013-release-workflow.md). If `pixel-dev` is up, do not also run `just dev` on the same Pixel Dev token.
 
 ## Running and operating Pixel
 

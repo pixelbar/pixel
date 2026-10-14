@@ -50,7 +50,7 @@ Home Assistant can attach entity permissions to groups ([Permissions](https://de
 
 Because the token can call any service its user can, Pixel never offers "any entity". The devices it may touch are a human-written allow-list, `config/home-assistant/devices.yaml` (#38): name, entity, kind, allowed actions, `minTier`. Kinds in `src/core/home-kinds/` decide the HA domain and the exact service each action calls. People cannot pass a service name or extra data.
 
-`inventory.yaml` lists what Home Assistant has so a person can copy an entry into the allow-list. It is never read back, never offered in a command, and grants nothing.
+Pixel does not keep a list of everything Home Assistant has. `just ha-devices` (a laptop script) reads it live so a person can pick devices to add to the allow-list; it grants nothing and is never offered in a command. (Earlier, Pixel wrote an `inventory.yaml` for the same purpose; it was removed once the script replaced it.)
 
 Who may use a listed device is one rule in `core/home-access.ts`: the tier floor to read; the floor plus `ha-admin` or the kind's capability plus an allowed action to act. A refusal is always `HOME_DENIED`.
 

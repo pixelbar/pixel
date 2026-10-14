@@ -138,6 +138,7 @@ function fakeChannel(posts: OwnPost[] = []) {
 		edit: vi.fn(async (id, post) => {
 			edits.push({ id, post });
 		}),
+		delete: vi.fn(async () => {}),
 		recentOwnPosts: vi.fn(async () => posts),
 		findOwnPost: vi.fn(async (id) => posts.find((p) => p.id === id)),
 	};
@@ -201,6 +202,22 @@ describe("the bot status publisher", () => {
 		]);
 	});
 
+	it("going offline edits only its own post, even when a newer run is already online", async () => {
+		const { channel, edits } = fakeChannel([onlineOwn("100", started)]);
+		const store = memoryStore();
+		const publisher = createBotStatusPublisher(channel, silentLogger, store);
+		await publisher.publish(up); // posts "100"... fake assigns the id
+		const own = store.get();
+		// A newer run (the deploy replacing this one) posts its own online message.
+		vi.mocked(channel.recentOwnPosts).mockResolvedValue([
+			onlineOwn("999", new Date(started.getTime() + 60_000)),
+			onlineOwn(own ?? "100", started),
+		]);
+		edits.length = 0;
+		await publisher.publish(down);
+		expect(edits.map((e) => e.id)).toEqual([own]);
+	});
+
 	it("posts the offline message on its own when there's nothing to update", async () => {
 		const { channel, sent } = fakeChannel();
 		await createBotStatusPublisher(channel, silentLogger).publish(down);
@@ -247,8 +264,8 @@ describe("the bot status publisher", () => {
 describe("the space publishers", () => {
 	it("ignore bot status announcements", async () => {
 		const { channel, sent } = fakeChannel();
-		await createTimelinePublisher(channel).publish(up);
-		await createLivePublisher(channel, silentLogger).publish(down);
+		await createTimelinePublisher(channel, "discord:timeline:1").publish(up);
+		await createLivePublisher(channel, silentLogger, undefined, "discord:live:1").publish(down);
 		expect(sent).toEqual([]);
 		expect(channel.recentOwnPosts).not.toHaveBeenCalled();
 	});

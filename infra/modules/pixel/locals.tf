@@ -45,8 +45,6 @@ locals {
       DISCORD_GUILD_ID         = var.discord_guild_id
     },
     var.discord_announcements_channel_id != null ? { DISCORD_ANNOUNCEMENTS_CHANNEL_ID = var.discord_announcements_channel_id } : {},
-    var.discord_announce_live_channel_id != null ? { DISCORD_ANNOUNCE_LIVE_CHANNEL_ID = var.discord_announce_live_channel_id } : {},
-    var.discord_announce_timeline_channel_id != null ? { DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID = var.discord_announce_timeline_channel_id } : {},
     var.discord_announce_bot_channel_id != null ? { DISCORD_ANNOUNCE_BOT_CHANNEL_ID = var.discord_announce_bot_channel_id } : {},
     var.discord_role_member != null ? { DISCORD_ROLE_MEMBER = var.discord_role_member } : {},
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},

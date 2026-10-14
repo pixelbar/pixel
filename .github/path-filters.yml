@@ -1,0 +1,39 @@
+# Which expensive CI/CD jobs run for a change.
+# Used by dorny/paths-filter in ci.yml and cd.yml.
+# Keep the pipeline diagrams in docs/architecture.md and docs/runbook.md in sync.
+#
+# check  → just check + just build
+# image  → Docker smoke (PR) / GHCR + Sentry (main)
+# src/** (including tests) is in both: a test-only change still checks and publishes.
+
+check:
+  - "src/**"
+  - "scripts/**"
+  - "content/**"
+  - "config/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - "tsconfig.json"
+  - "tsconfig.*.json"
+  - "biome.json"
+  - "vitest.config.*"
+  - "justfile"
+  - ".nvmrc"
+  - ".github/workflows/ci.yml"
+  - ".github/path-filters.yml"
+
+image:
+  - "src/**"
+  - "content/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - "tsconfig.json"
+  - "tsconfig.*.json"
+  - "Dockerfile"
+  - ".dockerignore"
+  - "justfile"
+  - ".github/workflows/ci.yml"
+  - ".github/workflows/cd.yml"
+  - ".github/path-filters.yml"

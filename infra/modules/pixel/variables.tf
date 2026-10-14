@@ -101,28 +101,6 @@ variable "discord_announcements_channel_id" {
   }
 }
 
-variable "discord_announce_live_channel_id" {
-  type        = string
-  default     = null
-  description = "Optional. DISCORD_ANNOUNCE_LIVE_CHANNEL_ID."
-
-  validation {
-    condition     = var.discord_announce_live_channel_id == null || can(regex("^\\d{17,20}$", var.discord_announce_live_channel_id))
-    error_message = "discord_announce_live_channel_id must be a Discord ID or unset."
-  }
-}
-
-variable "discord_announce_timeline_channel_id" {
-  type        = string
-  default     = null
-  description = "Optional. DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID."
-
-  validation {
-    condition     = var.discord_announce_timeline_channel_id == null || can(regex("^\\d{17,20}$", var.discord_announce_timeline_channel_id))
-    error_message = "discord_announce_timeline_channel_id must be a Discord ID or unset."
-  }
-}
-
 variable "discord_announce_bot_channel_id" {
   type        = string
   default     = null
@@ -172,6 +150,12 @@ variable "sentry_enabled" {
   type        = bool
   default     = false
   description = "If true, the app reads SENTRY_DSN from Key Vault secret sentry-dsn."
+}
+
+variable "github_register_principal_id" {
+  type        = string
+  default     = null
+  description = "Object (principal) ID of this env's GitHub OIDC identity (pixel-github-<env>). When set, it may read the discord-token secret and nothing else, so CD can register slash commands (ADR 0014). Null: commands are registered from a laptop."
 }
 
 variable "write_secrets" {

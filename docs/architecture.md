@@ -19,7 +19,7 @@
 | Mastodon publisher (outbound toots; no input)               | Bluesky and other outbound publishers               |
 | Tiers from `config/admins.yaml` and `config/members.yaml`   | Reading Discord roles (never: roles are only mirrored to) |
 | SpaceAPI status, Discord events, info, help, whoami         | A database (none: access, schedules and planned linking are files) |
-| Sentry, pino, `just`, CI, Terraform bootstrap + `dev` stack | Remaining CD (#10: Sentry org, `ARM_*`), prod (#12) |
+| Sentry, pino, `just`, CI, Terraform bootstrap + `dev` + `prod` stacks | Stop-then-start overlap (#11) |
 
 **Non-goals:** horizontal scaling, input from broadcast platforms, LLM chat, languages other than English.
 
@@ -178,11 +178,12 @@ type Feature = {
 - **Placeholders and deferrals are edited into the result.** Edits always set both content and embeds, because Discord keeps any field an edit leaves out.
 - **Visibility can't change after the first response.** If the first response was public but the result is private, Pixel deletes it and sends the result as an ephemeral follow-up. A private result is never shown publicly.
 - **Accents:** `Embed.accent` sets the colour of the embed's side bar.
-- **Registration:** `just register` runs a script that builds the command list from the registry and sends it with a REST PUT to the guild. Commands are registered to the guild only, because Pixel serves just one, so updates show up instantly.
-- **Publishers:** two styles of space announcement, each with its own channel setting, and either, both or neither can be on. They can also be the same channel. All posts are embeds with mentions disabled, and times use Discord's timestamp markup, so everyone sees them in their own time zone.
-  - **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited, so a status-only channel reads as a log of exactly when the space opened and closed. "🟢 Pixelbar opened" and "🔴 Pixelbar closed", with how long it was open if known.
-  - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a new "🟢 Pixelbar is open" post; closing **edits that same post** to "🔴 Pixelbar is closed: was open from … to …". Opening again makes another new post. A closed post is never turned back into an open one, so nobody is confused by a message that flips back.
-  - **Finding the open post to edit.** Pixel uses the message ID it remembered in `announcements.state` (so it works even if the post is buried in a busy channel), and also looks through its own recent messages in the channel (so it still works if the remembered ID was lost, for example after a deploy, and a deleted post simply isn't found). Only posts carrying the live footer count, so a `/status` reply can't be mistaken for one. Pixel keeps the invariant that at most one post, the newest, says "open".
+- **Registration:** `just register dev` or `just register prod` runs a script that builds the command list from the registry and sends it with a REST PUT to the guild. A Release does prod itself after rolling `pixel-prod` ([ADR 0014](adr/0014-release-registers-commands.md)). Commands are registered to the guild only, because Pixel serves just one, so updates show up instantly. `.env.dev` and `.env.prod` stay separate so the tokens cannot mix.
+- **Publishers:** three styles of space announcement. Admins pair styles with channels at runtime with `/admin announcements set|remove|list` (a channel has one style, any number of channels can be set, and the pairings are saved in `data/announcement-routes.yaml`). There is no environment setting for them. Each pairing is its own publisher, `discord:<style>:<channel id>`, started and stopped without a restart. All posts are embeds with mentions disabled, and times use Discord's timestamp markup, so everyone sees them in their own time zone.
+  - **Timeline**: a new post for every open and every close, never edited, so a status-only channel reads as a log of exactly when the space opened and closed. "🟢 Pixelbar opened" and "🔴 Pixelbar closed", with how long it was open if known.
+  - **Live**: opening makes a new "🟢 Pixelbar is open" post; closing **edits that same post** to "🔴 Pixelbar is closed: was open from … to …". Opening again makes another new post. A closed post is never turned back into an open one, so nobody is confused by a message that flips back.
+  - **Single**: the channel only holds the current status. A change posts the new "🟢 Pixelbar is open" or "🔴 Pixelbar is closed" (closed shows when, and how long it was open, like the other styles) **and then** deletes the previous status post, so a failed delete never leaves the channel empty and the next change tidies up. Pixel finds the posts to delete like the live style does (remembered ID in `announcement-posts/single-<channel>.state`, plus its recent messages), by a footer only single posts carry. At startup it corrects a status post that went stale while Pixel was down by editing it, and removes extras, without posting anything new. Deleting its own messages needs no extra permission.
+  - **Finding the open post to edit.** Pixel uses the message ID it remembered for that channel in `announcement-posts/live-<channel>.state` (so it works even if the post is buried in a busy channel), and also looks through its own recent messages in the channel (so it still works if the remembered ID was lost, for example after a deploy, and a deleted post simply isn't found). Only posts carrying the live footer count, so a `/status` reply can't be mistaken for one. Pixel keeps the invariant that at most one post, the newest, says "open".
   - **Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): a new "Closing time" embed with the configured body (or a built-in default). Mentions stay disabled. Unset, `off` or `none` turns it off. The same post is used for `/closing-time` and for the automatic hook after a space-closed announcement.
   - **Startup checks.** For each channel, Pixel checks it exists, is a text channel in the Pixelbar server, and that the bot has the permissions it needs: View Channel, Send Messages and Embed Links, plus Read Message History for the live style. If not, that publisher stays off with a clear log and a Sentry report, and everything else keeps working. No new Discord intents are needed.
 - **Bot status** (`features/bot-status`, `adapters/discord/bot-status.ts`): Pixel says when it comes online and goes offline, in the announcements channel (`DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, or `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` to post elsewhere; neither set means off).
@@ -191,6 +192,7 @@ type Feature = {
   - **A crash can't say goodbye.** On the next start, any of Pixel's posts still saying online (found by the remembered ID in `bot-status.state`, and by title and footer among its recent messages, like the live space post) are edited to "⚠️ Pixel stopped unexpectedly" before the new online post goes up.
   - **Where the commit and branch come from:** `PIXEL_GIT_SHA` and `PIXEL_GIT_BRANCH`, passed in by CI and `just docker-build` as build arguments (an image has no `.git`). From a checkout without them, Pixel asks git; anything it can't find is left out.
   - It goes through the `Announcer` as a `bot.status` announcement; the space publishers ignore it, and it needs the same permissions as the live style (including Read Message History).
+- **Presence** (`adapters/discord/presence.ts`): Pixel's own status in the member list says whether Pixelbar is open: "Watching Pixelbar is Open" with the green dot, or "Watching Pixelbar is Closed" with the yellow (idle) dot. It's a publisher like the others, so it hears the space state at startup (`reconcile`) and on each confirmed change, never on a flicker, and needs no channel, permission or intent. It's set only when the space is known to be open or closed: before SpaceAPI has answered, or after Pixel has been unable to ask for a long time, it shows whatever it last set. Discord clears it when Pixel goes offline. After a reconnect that cannot resume the session, Pixel sets the last known presence again.
 - **Calendar source:** once connected, the adapter plugs the server's Discord scheduled events into the core `Calendar`. It reads them over REST on every call, needing no extra intents or permissions. (discord.js only skips the request when asked for one event by ID, which this never does.) Voice and stage channel names come from discord.js's channel cache, which Discord keeps current through gateway updates, so a renamed channel is right immediately. `calendar-map.ts` (pure, fully tested) maps each Discord event to a neutral `CalendarEvent`: external events use their location text, voice and stage events use the channel's name, finished and cancelled events are dropped, and recurrence rules become plain words ("weekly on Tuesday"). Discord returns a recurring event once, showing its next occurrence.
 
 ## Mastodon adapter (publisher only)
@@ -231,16 +233,9 @@ Pixel never offers "any entity". The devices it may touch are listed in `config/
 
 The file **fails closed** like the access files: when `HOME_ASSISTANT_URL` is set and the file is missing or invalid, Pixel doesn't start. Errors name the file, the position and the field, never a value, because the file describes the building. `/admin reload` re-reads it, and an invalid edit keeps the old list. At startup and on reload, Pixel warns about devices whose entity HA doesn't know (a typo), and `/admin status` shows how many devices are allowed. `just validate-config` checks it too.
 
-### The inventory (known, not usable)
+### Adding devices (`just ha-devices`)
 
-Alongside the allow-list, Pixel keeps an **inventory** of everything Home Assistant has that it has a kind for, in `config/home-assistant/inventory.yaml` (gitignored, rewritten on every sync). It exists so a person can see what's there, copy an entry into `devices.yaml` and give it a tier and actions, and so later features (richer `/status`, sensors) have the information to hand.
-
-It is **not an allow-list**, and nothing reads it to decide anything. Entries have no tier and no actions, the file is never loaded back into Pixel, and the inventory is never offered by a command or autocomplete. A device is usable only when a person has listed it in `devices.yaml`.
-
-- **When:** once Home Assistant has connected, then every `PIXEL_HOME_SYNC_MINUTES` (default 60; 0 means only at startup and on `/admin reload`). A failed run is skipped, not retried: the next run is the retry. An outage is logged once, and the old file stays.
-- **What:** entities in a domain that has a kind (light, switch, lock, sensor, binary_sensor), leaving out those Home Assistant files as config or diagnostic and those someone hid. Each entry has a suggested `name` (a valid, unique device name made from the friendly name), the `entity`, the `kind`, the friendly name and the area. It has no state, because that changes constantly. Entries already in `devices.yaml` are marked `inDevicesFile`. At most 1000 entries, sensors being the first cut.
-- **How:** it reads the same compact entity list Home Assistant's own app uses, which a non-admin token may read. If that list can't be read the run fails rather than guessing which entities are setup ones. The file is written atomically (mode 0600), and only when something other than the time changed. Names come from Home Assistant and are cleaned before they're written.
-- `/admin status` shows how many are known and when it last synced, and `/admin reload` syncs now.
+Pixel itself never writes the devices file, and it keeps no list of everything Home Assistant has. People change the allow-list on Azure with `just ha-devices dev|prod`, a laptop script (`scripts/ha-devices.ts`): it pulls the env's `devices.yaml` from its file share, reads the entities Home Assistant has that Pixel has a kind for (live, with the same non-admin token, leaving out those filed as config or diagnostic and those someone hid), and lets a person tick the ones to add or untick the ones to remove. It validates the result with the same loader Pixel uses, shows a diff, and uploads only on a yes and only if the remote didn't change meanwhile. The remote file is the truth; a local mirror lives under `config/home-assistant/<env>/`. What Home Assistant has is only ever something to pick from: it carries no tier and no actions, and a device is usable only once it is in `devices.yaml` (then `/admin reload`).
 
 ## Services and ports
 
@@ -280,18 +275,19 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `closing-time` | `/closing-time`         | member | ✅    | Private. Posts the closing-time reminder. Off when no channel is configured |
 | `closing-time` | after space-closed      | n/a    | ✅    | Same send path as the command, after a confirmed close |
 | `events`  | `/events`                    | guest  | ✅    | Public. What's on now, then the next events (5 at most), with when, how soon, where and how often it repeats |
-| `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`, with no topic it lists them |
+| `info`    | `/info [topic]`              | guest  | ✅    | Public. Short answers about Pixelbar from `content/info/`. With no topic it lists them in a private reply |
 | `home`    | `/ha list`                   | friend | ✅    | Private. The devices you may use (by each device's tier floor), grouped by kind, with their live state. Unavailable and unknown show as themselves. Says so when nothing is available to you, or when Home Assistant isn't set up |
 | `home`    | `/ha status device:`         | friend | ✅    | Private. One device's live state, when it last changed and a few details for its kind (brightness, battery, the unit of a reading). `device` autocompletes, offering only what you may see. An unknown device and one you may not see get the same generic answer. Looking at a door is logged |
 | `home`    | `/ha set device: state:`     | friend | ✅    | Private. Changes a device, such as `on` or `off` for a light or `lock` / `unlock` for a door. Needs the device's tier floor and `ha-admin` or the kind's capability, and an action the devices file allows. Both options autocomplete: `state` offers what that device allows, and what you may run. Reports what really happened. Never offers unlatch. Refused for a door while `/admin doors` is off |
 | `home`    | `/ha open door:`             | member | ✅    | Private. Unlocks a door (never unlatches). Needs `ha-doors` or `ha-admin`. `door` autocompletes with only the doors you may unlock. Refused while `/admin doors` is off |
 | `admin`   | `/admin doors off\|on`        | admin  | ✅    | Private. The emergency switch for door control from Pixel, for everyone, at once. Remembered across restarts. Shown in `/admin status` |
+| `admin`   | `/admin announcements set\|remove\|list` | admin  | ✅    | Private. Which channels get open/closed announcements and in which style (live, timeline or single). `set` takes a style and a channel and checks the bot can post there; the admin must be able to post there too. Channels from the environment can't be changed here |
 | `admin`   | `/admin closing-time set`    | admin  | ✅    | Private. Opens a modal for the closing-time reminder (prefilled when one is already saved) and writes `PIXEL_DATA_DIR/closing-time.md` (the Azure Files persist share on cloud) |
 | `schedules` | `/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the text, then schedules a message in a channel. See "Scheduled posts" |
 | `schedules` | `/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the question and answers, then schedules a native Discord poll |
 | `schedules` | `/schedule list`, `preview`, `pause`, `resume`, `delete` | member + `schedule-posts` | ✅ | Private. Manage scheduled posts; `schedule` autocompletes by name or ID. `preview` fills tokens as of the next occurrence (message text; poll question and answers) |
 | `schedules` | `/schedule edit [schedule:] [when:] [repeat:] [days:] [name:]` | member + `schedule-posts` | ✅ | Private. Without `schedule`, lists only this user's still-upcoming posts. With one, opens the compose modal prefilled (message text, or poll question and answers) and writes the same `data/schedules.yaml`. Autocomplete goes through `Dispatcher.suggest` and never offers anyone else's items. Same generic refusal for an id that isn't theirs or has already posted |
-| `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
+| `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. The reply shows the message back as a code span. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The Home Assistant commands
 
@@ -364,7 +360,7 @@ The text of the answer, in markdown…
 - **The file name is the topic's ID**: lowercase letters, digits and single dashes, up to 32 characters (`membership.md`). It's what people pick in `/info topic:`.
 - **Short answers that link to the canonical page.** Pixelbar's website is the source of truth for prices, rules and opening times, so each topic is a few lines plus a link. That way the bot doesn't become a second copy to keep up to date.
 - **Everything is checked at startup**, and Pixel refuses to start if anything is wrong, listing every problem at once: a bad file name, a missing title or summary, unknown keys, empty text, text over 4,000 characters, or more than 25 topics (Discord's limit for choices). CI loads the real `content/info/` folder in a test, so a broken edit fails the PR.
-- **`/info` with no topic lists them all** with their summaries. The topic choices are built from the files, so they're registered with Discord: **editing a topic's text goes live on the next deploy**, and **adding, removing or renaming a topic also needs the commands re-registered** (`just register`; the deploy pipeline will do it, #10).
+- **`/info` with no topic lists them all** with their summaries, in a private reply, since the menu is only for the person asking. The topic choices are built from the files, so they're registered with Discord: **editing a topic's text goes live on the next deploy**, and **adding, removing or renaming a topic also needs the commands re-registered** (`just register dev` or `just register prod`; `just deploy-dev` does the Dev guild).
 - **Content is baked into the Docker image** (`COPY content ./content`), so changing it means a deploy.
 - **The content is public.** This repository is public, so never put secrets (wifi passwords, door codes) or personal data in `content/`. That's why there are no member-only topics yet.
 - The text is shown as written, since it comes from this reviewed repository. (Text written by other people, like event titles, is always escaped.)
@@ -396,7 +392,7 @@ The message **body** is a file (`PIXEL_CLOSING_TIME_FILE`, default `data/closing
   - **Profiling** (`@sentry/profiling-node`) attaches a CPU profile to sampled traces (`profileLifecycle: "trace"`). `profileSessionSampleRate` comes from `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default `1`). The native integration is left out when the rate is `0`.
   - Errors are not sampled (`sampleRate` is `1`).
   - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
-  - Releases are tagged with the git SHA (`PIXEL_VERSION`). Source maps upload from CD / `just sentry-release`. The CD job **fails closed** if `SENTRY_ORG`, `SENTRY_PROJECT`, or `SENTRY_AUTH_TOKEN` is missing.
+  - Releases are tagged with the git SHA (`PIXEL_VERSION`). Source maps upload from CD, the Release workflow, and `just sentry-release`. Those jobs **fail closed** if `SENTRY_ORG`, `SENTRY_PROJECT`, or `SENTRY_AUTH_TOKEN` is missing.
   - `environment` is `local`, `dev` or `prod`.
 - **Logs:** everything is logged through the one pino logger (`observability/logger.ts`, no `console`), and each line goes to **three** places:
   - **The console:** JSON, or readable with pino-pretty when `PIXEL_ENV=local`.
@@ -418,17 +414,15 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_VERSION`               |        | Set by the image build (git SHA); the Sentry release |
 | `PIXEL_ADMINS_FILE`           |        | Default `config/admins.yaml`                   |
 | `PIXEL_MEMBERS_FILE`          |        | Default `config/members.yaml`. Pixel writes to it (and to `<file>.bak` and a temp file in the same folder), so the folder must be writable |
-| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state: `schedules.yaml` (must persist), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Gitignored |
+| `PIXEL_DATA_DIR`              |        | Default `data`. Runtime state: `schedules.yaml` (must persist), `home-switches.state`, `space.state`, `announcement-routes.yaml` (channels set with `/admin announcements`), `announcement-posts/` (each live or single channel's current post), optional `closing-time.md`. Gitignored |
 | `PIXEL_TIMEZONE`              |        | Default `Europe/Amsterdam`. The time zone event times are shown in, and the zone `{{date}}` / `{{dateWithTime}}` (and the rest of the date family) use when a user-set post goes out |
 | `PIXEL_CONTENT_DIR`           |        | Default `content`. The reviewed content Pixel reads (`info/*.md` for `/info`). Read-only |
 | `DISCORD_TOKEN`               | yes    |                                                |
 | `DISCORD_APP_ID`              |        |                                                |
 | `DISCORD_GUILD_ID`            |        | The only guild Pixel serves                    |
 | `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` |    | Optional. The channel where announcements and the weekly poll are posted. `/info` points people at it. (Not the space-status posts below) |
-| `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` |   | Optional. Live style: one post per opening, edited to "closed" |
 | `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | | Optional. Where Pixel says it's online or offline. Defaults to `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` |
 | `PIXEL_GIT_SHA`, `PIXEL_GIT_BRANCH` | | Set by CI and the image build. The commit and branch shown in the online post. From a checkout, Pixel asks git instead |
-| `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` | | Optional. Timeline style: a new post for every open and close |
 | `DISCORD_CLOSING_TIME_CHANNEL_ID` | | Optional. Where the closing-time reminder is posted. Unset, empty, `off` or `none` disables both `/closing-time` and the automatic post after space-close |
 | `PIXEL_CLOSING_TIME_FILE`     |        | Optional. Operator-authored closing-time body. Default `{PIXEL_DATA_DIR}/closing-time.md`. Missing or empty → built-in default. Not a secret |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
@@ -441,7 +435,6 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `MASTODON_VISIBILITY`         |        | Optional. `unlisted` (default) or `public`. Never `private` or `direct` |
 | `MASTODON_ANNOUNCE_KINDS`     |        | Optional. Comma-separated kinds to toot. Default `space.status`. `off` / `none` turns toots off |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
-| `PIXEL_HOME_SYNC_MINUTES`     |        | Default `60`. How often the inventory (`inventory.yaml`, everything Home Assistant has: known, not usable) is refreshed. 0 means only at startup and on `/admin reload` |
 | `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
 | `SENTRY_TRACES_SAMPLE_RATE`   |        | Default `1`. How many traces Sentry keeps (`0`–`1`). Needs `SENTRY_DSN`. Errors are always kept. |
 | `SENTRY_PROFILE_SESSION_SAMPLE_RATE` |  | Default `1`. How many of those traces get a CPU profile (`0`–`1`). Needs `SENTRY_DSN`. |
@@ -464,16 +457,72 @@ How the hosted pieces fit together (diagrams of Azure, GitHub, Discord, Home Ass
 There is **no database**. Access, schedules and (planned) account linking are files. Do not add Postgres because an old issue said so (#15, #18).
 
 - **Platform:** Azure Container Apps, **exactly one replica**, no ingress, with a managed identity. A Discord gateway connection needs an always-on process. Two replicas would both connect and answer every command twice. Max replicas = 1 (not a variable). Deploys **stop the old instance before starting the new one** (#11). This stack only pins min=max=1 and `revision_mode = Single`. A database lock is not a plan; there is no database.
-- **Images:** local `just deploy-dev` pushes `ghcr.io/pixelbar/pixel:<sha>` (or a `dev-dirty-*` tag) and moving `:dev` for Azure `dev`. Merges to `main` push the SHA and moving `:main` via [`.github/workflows/cd.yml`](../.github/workflows/cd.yml). Builds are **linux/amd64** (Azure Container Apps); the Mini is arm64, so `just deploy-dev` cross-builds. The images contain no secrets and no access lists. The GHCR package is **public** so Container Apps can pull without a registry password. If it is ever private again, `dev` can set `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`. The running app pins an explicit tag, never `latest` alone. After first create, **dev** Terraform ignores that pin so apply cannot roll it back (#73). Prod apply will set `container_image`. CI still builds with `push: false` as a smoke check.
+- **Images:** local `just deploy-dev` pushes `ghcr.io/pixelbar/pixel:<sha>` (or a `dev-dirty-*` tag) and moving `:dev` for Azure `dev`. Merges to `main` push the SHA and moving `:main` via [`.github/workflows/cd.yml`](../.github/workflows/cd.yml). A Release rebuilds from the bump commit and also tags `:vX.Y.Z`. Builds are **linux/amd64** (Azure Container Apps); the Mini is arm64, so `just deploy-dev` cross-builds. The images contain no secrets and no access lists. The GHCR package is **public** so Container Apps can pull without a registry password. If it is ever private again, `dev` can set `container_registry_server` / `container_registry_username` and Key Vault `ghcr-pull-token`. The running app pins an explicit tag, never `latest` alone. After first create, **dev** Terraform ignores that pin so apply cannot roll it back (#73). Prod apply will set `container_image`. CI still builds with `push: false` as a smoke check.
 - **Secrets:** Key Vault. Discord token, Home Assistant token, Sentry DSN, Tailscale auth key, `admins.yaml`, and optional `ghcr-pull-token` (private GHCR only) reach the container as secrets, never as image layers or Terraform state. Terraform may write them at apply from ephemeral write-only inputs (`write_secrets`); otherwise set them with `az` or the portal. Prod must not receive the Mini local / Pixel Dev token (that bot lives in `pixel-dev-kv`).
-- **Access files:** `admins.yaml` is a **read-only** Key Vault secret mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It lives on a **writable Azure Files volume with snapshots**. `config/home-assistant/` is on the same volume: `devices.yaml` is a human allow-list; `inventory.yaml` is rewritten by Pixel. There is no block-list (#6).
-- **Runtime files:** the Azure Files share is mounted at `/app/persist` as uid 1000 (`node`), covering `members.yaml`, `home-assistant/`, and `PIXEL_DATA_DIR` (`schedules.yaml` must persist; `home-switches.state` lost → doors start **off**; `space.state` and `announcements.state` only cost details). A container's own filesystem is thrown away on every deploy.
-- **Environments (temporary routing):** `dev` (Pixel Dev bot, test guild) is `infra/envs/dev`. `prod` (Pixel bot, Pixelbar guild) is #12. Separate bots, tokens and vaults. **`just deploy-dev`** (a local build) rolls Azure `dev` (one replica, then `just register`, then Sentry release). **Merges to `main`** publish GHCR only. CI does not deploy pull requests, and **does not deploy prod** until #12. This overrides the earlier `main` → `dev` plan until [ADR 0010](adr/0010-ghcr-cd.md) is reverted. Fail closed: never copy the Mini / Pixel Dev Discord token into prod.
-- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC, applied) then `infra/modules/pixel` and `infra/envs/dev` (#9). Secret values never go into Terraform state; apply can take them as ephemeral write-only inputs. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md) and [ADR 0009](adr/0009-container-apps-dev.md). CD does **not** apply Terraform. After first create, **dev** apply ignores the Pixel container image; `just deploy-dev` / `az` updates it. Prod (#12) apply will set `container_image`.
+- **Access files:** `admins.yaml` is a **read-only** Key Vault secret mount. `members.yaml` is rewritten by admin commands, so it **cannot** be a read-only secret mount. It lives on a **writable Azure Files volume with snapshots**. `config/home-assistant/` is on the same volume: `devices.yaml` is a human allow-list (changed with `just ha-devices`). There is no block-list (#6).
+- **Runtime files:** the Azure Files share is mounted at `/app/persist` as uid 1000 (`node`), covering `members.yaml`, `home-assistant/`, and `PIXEL_DATA_DIR` (`schedules.yaml` must persist; `home-switches.state` lost → doors start **off**; `space.state` and `announcement-posts/` only cost details; `announcement-routes.yaml` is where `/admin announcements` choices live, so keep it). A container's own filesystem is thrown away on every deploy.
+- **Environments:** `dev` (Pixel Dev bot, test guild) is `infra/envs/dev`. `prod` (production Pixel bot, production guild) is `infra/envs/prod`. Separate bots, tokens and vaults. **`just deploy-dev`** (a local build) rolls Azure `dev` (one replica, then `just register dev`, then Sentry release). **Merges to `main`** publish GHCR only. **Release** (`workflow_dispatch` on `main`) cuts the version, publishes that image, GitHub Environment `prod` approval rolls `pixel-prod` to that digest (no Terraform apply) and then registers prod slash commands, and publishes the docs site. CI does not deploy pull requests. Fail closed: never copy the Mini / Pixel Dev Discord token into prod. See [ADR 0012](adr/0012-prod-environment.md), [ADR 0013](adr/0013-release-workflow.md) and [ADR 0014](adr/0014-release-registers-commands.md).
+- **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC, applied) then `infra/modules/pixel`, `infra/envs/dev` (#9) and `infra/envs/prod` (#12). Secret values never go into Terraform state; apply can take them as ephemeral write-only inputs. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md), [ADR 0009](adr/0009-container-apps-dev.md) and [ADR 0012](adr/0012-prod-environment.md). CD does **not** apply Terraform. After first create, **dev** apply ignores the Pixel container image; `just deploy-dev` / `az` updates it. Prod apply sets `container_image`. Coding agents must not apply prod (`PIXEL_APPLY_PROD=1` required).
 - **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path (`tailscale_enabled`); `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Both URL and token or neither. Sidecar is userspace (no TUN). LAN MagicDNS through it is remaining work for #43.
 - **Cost (rough):** always-on `dev` is about €40–55/month West Europe without Tailscale, plus about €15 with the sidecar. Not a quote.
-- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. It runs `just check` (lint, type-check, tests with coverage thresholds) and `just build`, uploads the coverage report, and checks that the Docker image builds. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` (bootstrap and `envs/dev`) only when `infra/`, that workflow, or the `justfile` change, then `terraform plan` on `envs/dev` via GitHub Environment `dev` OIDC. Missing `ARM_*` **fails closed**. No apply on merge. Actions are pinned to commit SHAs.
-- **CD (built, temporary routing):** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register` + Sentry release). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only: publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). **No Azure login and no `pixel-prod` update** until #12. See [ADR 0010](adr/0010-ghcr-cd.md).
+- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with allowlists in [`.github/path-filters.yml`](../.github/path-filters.yml) decides which expensive jobs run: **check** (`just check` + `just build`) when app/scripts/config/tooling paths change; **Docker smoke** when image inputs change (`src/` including tests, `content/`, Dockerfile, lockfile, …). Jobs always start so required GitHub checks stay green when that job is not needed. [`changelog.yml`](../.github/workflows/changelog.yml) still runs on every PR. [`docs.yml`](../.github/workflows/docs.yml) Biome-lints and builds the site when `docs/` changes. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` only when `infra/`, that workflow, or the `justfile` change, then `terraform plan` on each env via GitHub Environment `dev` / `prod` OIDC **only if `infra/` Terraform files changed** (markdown does not). Missing `ARM_*` **fails closed**. No apply on merge. GitHub is not Key Vault Secrets User, so a secret refresh would 403 (ADR 0012). Actions are pinned to commit SHAs.
+- **CD:** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register dev` + Sentry release). Production slash commands: the Release's `register-prod` job (fallback `just register prod`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only, and only when an **image** path changed: publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). **No Azure login and no `pixel-prod` update** on merge. [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`workflow_dispatch` on `main`) cuts the version, publishes `:vX.Y.Z`, Environment `prod` approval rolls `pixel-prod` (`az`, min=max=1, no Terraform apply), a second approval runs `register-prod` (reads only `discord-token` from `pixel-prod-kv`), and publishes GitHub Pages. See [ADR 0010](adr/0010-ghcr-cd.md), [ADR 0012](adr/0012-prod-environment.md) and [ADR 0013](adr/0013-release-workflow.md).
+
+### CI and CD pipelines
+
+How a change moves through GitHub. Operator steps: [`runbook.md`](runbook.md). Hosting picture: [`infra.md`](infra.md). Path allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml).
+
+Pull request:
+
+```mermaid
+flowchart TD
+  pr[Pull request]
+  pr --> clog[Changelog gate always]
+  pr --> docs{"docs/ changed?"}
+  docs -->|yes| site[Biome + docs site build]
+  docs -->|no| nosite[Docs site off]
+  pr --> tf{"infra/, justfile or terraform.yml?"}
+  tf -->|yes| tfval[just tf-validate]
+  tfval --> tffiles{"infra Terraform files?"}
+  tffiles -->|yes| azplan[Azure plan via Environment OIDC]
+  tffiles -->|no| noaz[Skip Azure plan]
+  tf -->|no| notf[Terraform workflow off]
+  pr --> checkp{"check path?"}
+  checkp -->|yes| check["just check + just build"]
+  checkp -->|no| nocheck[Skip just check]
+  pr --> imagep{"image path?"}
+  imagep -->|yes| docker[Docker image smoke]
+  imagep -->|no| nodocker[Skip Docker]
+```
+
+Merge to `main`:
+
+```mermaid
+flowchart TD
+  main[Push to main]
+  main --> ci[Same CI path filter as PRs]
+  main --> imagep{"image path?"}
+  imagep -->|yes| pub["CD: GHCR SHA and :main"]
+  pub --> maps[Sentry source maps]
+  imagep -->|no| nocd[Skip GHCR and Sentry]
+  main --> note[Does not roll pixel-prod]
+```
+
+Release (a human runs **Actions → Release** on `main`; [ADR 0013](adr/0013-release-workflow.md)):
+
+```mermaid
+flowchart TD
+  human[Actions Release on main]
+  human --> bump[just bump commit]
+  bump --> tag[Tag vX.Y.Z and GitHub Release]
+  tag --> img["Rebuild GHCR :sha, :vX.Y.Z, :main"]
+  img --> sentry[Sentry maps environment prod]
+  img --> approve[Environment prod approval]
+  approve --> roll[az containerapp update pixel-prod]
+  roll --> approve2[Environment prod approval]
+  approve2 --> register[Register prod slash commands]
+  tag --> pages[VitePress to GitHub Pages]
+```
 
 ## Adding a platform (later)
 
@@ -489,16 +538,19 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 
 ## Decision log
 
-Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`.
+Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 0006 and 0007 were skipped.
 
 | #    | Decision                                                              | Status   |
 | ---- | --------------------------------------------------------------------- | -------- |
-| 0001 | TypeScript, ports-and-adapters core, interactive vs publisher adapters | proposed |
-| 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | proposed |
+| 0001 | TypeScript, ports-and-adapters core, interactive vs publisher adapters | accepted |
+| 0002 | Phase 1 tiers from gitignored YAML files; admins in a separate file; fail closed | accepted |
 | 0003 | No database: access, schedules and planned linking are files          | accepted |
-| 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | proposed |
-| 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | proposed |
+| 0004 | Azure Container Apps, single replica; GHCR; dev + prod                | accepted |
+| 0005 | Sentry for errors (no PII), pino to stdout, a rotating file and Sentry Logs | accepted |
 | 0008 | Terraform bootstrap: remote state (Azure AD, no shared keys) and GitHub OIDC (UAMI per env) | accepted |
 | 0009 | Container Apps module + `dev`: one replica, required Azure Files volume, Key Vault, optional Tailscale sidecar | accepted |
-| 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` publishes GHCR only (prod CD off until #12) | accepted |
+| 0010 | Temporary GHCR CD: local `just deploy-dev` → Azure `dev`; `main` publishes GHCR only (prod CD off until #12) | accepted (prod-off superseded by 0012) |
 | 0011 | Home Assistant: official WebSocket client, non-admin token, no inbound webhooks, allow-list is the fence | accepted |
+| 0012 | Prod environment (`infra/envs/prod`) and approved CD to `pixel-prod` (same digest, no rebuild) | accepted (merge promotion superseded by 0013, registration by 0014) |
+| 0013 | Release workflow cuts versions and promotes prod + the docs site; merges to `main` do not roll `pixel-prod` | accepted (registration superseded by 0014) |
+| 0014 | Release registers prod slash commands; `pixel-github-prod` may read only `discord-token` | accepted |

@@ -41,7 +41,6 @@ describe("buildCore", () => {
 			dataDir: join(dir, "data"),
 			contentDir: join(dir, "content"),
 			homeAssistantDir: "config/home-assistant",
-			homeSyncMinutes: 60,
 			heartbeatMinutes: 0,
 			logDir: undefined,
 			timezone: "Europe/Amsterdam",
@@ -56,8 +55,6 @@ describe("buildCore", () => {
 				guildId: "100000000000000020",
 				announcementsChannelId: undefined,
 				announce: {
-					liveChannelId: undefined,
-					timelineChannelId: undefined,
 					botChannelId: undefined,
 					closingTimeChannelId: undefined,
 				},
@@ -562,22 +559,7 @@ describe("buildCore", () => {
 			);
 		});
 
-		it("has a working inventory, with the interval from the config, only when Home Assistant is set up", () => {
-			const haDir = join(dir, "ha");
-			mkdirSync(haDir);
-			writeFileSync(join(haDir, "devices.yaml"), "devices: []\n");
-			const on = buildCore(
-				{ ...haConfig(haDir), homeSyncMinutes: 15 },
-				silentLogger,
-				nullErrorReporter,
-			);
-			expect(on.homeInventory.configured).toBe(true);
-			expect(on.homeInventory.intervalMs).toBe(15 * 60_000);
-			const off = buildCore(config, silentLogger, nullErrorReporter);
-			expect(off.homeInventory.configured).toBe(false);
-		});
-
-		it("never lets the inventory into the devices people can use", async () => {
+		it("ignores a leftover inventory.yaml: only devices.yaml decides what people can use", async () => {
 			const haDir = join(dir, "ha");
 			mkdirSync(haDir);
 			writeFileSync(join(haDir, "devices.yaml"), "devices: []\n");

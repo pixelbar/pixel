@@ -26,7 +26,7 @@ const fileSchema = z.strictObject({ channelId: snowflake, messageId: snowflake }
 
 const HEADER = "# Pixel's record of its live Discord status post. Safe to delete or edit.\n";
 
-/** Keeps the hint in a small YAML file (`announcements.state`). */
+/** Keeps the hint in a small YAML file, one per channel (`announcement-posts/<style>-<channel>.state`). */
 export class FileLivePostStore implements LivePostStore {
 	readonly #path: string;
 	readonly #channelId: string;

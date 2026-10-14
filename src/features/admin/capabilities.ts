@@ -6,7 +6,7 @@ import { escapeMarkdown } from "../../core/format.ts";
 import { type AccessStore, MAX_REASON_LENGTH } from "../../core/ports/access-store.ts";
 
 /**
- * `/admin capabilities grant|revoke|list`: who holds which named permission.
+ * `/admin capabilities grant|grant-all|revoke|list`: who holds which named permission.
  * Grants live in the members file, change only through the access store (so
  * they are audited), and are by immutable user ID. A capability does nothing
  * for a guest, and never replaces the tier a command requires.
@@ -78,6 +78,54 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 							fields: [
 								{ name: "Person", value: describe(target) },
 								{ name: "Capability", value: label(name) },
+							],
+						},
+					],
+				};
+			},
+		},
+		{
+			name: "grant-all",
+			description: "Give someone every capability that exists",
+			access: { minTier: "admin" },
+			private: true,
+			options: [
+				{ name: "user", description: "The person", type: "user", required: true },
+				reasonOption,
+			],
+			handler: async ({ args, users, principal }) => {
+				if (names.length === 0) throw new UserFacingError("No capabilities are registered yet.");
+				const target = pickedUser(users);
+				const reason = checkedReason(args.reason);
+				const view = access.view;
+				const tier: Tier = view.discord.get(target.id) ?? "guest";
+				if (tier === "guest") {
+					throw new UserFacingError(
+						`${describe(target)} is a guest, so a capability would do nothing. Make them a member or friend first.`,
+					);
+				}
+				const held = view.records.get(target.id)?.capabilities ?? [];
+				const missing = names.filter((name) => !held.includes(name));
+				if (missing.length === 0) {
+					return { text: `${describe(target)} already has every capability. Nothing changed.` };
+				}
+				await access.apply(
+					{
+						kind: "set-capabilities",
+						id: target.id,
+						capabilities: [...held, ...missing],
+						...(reason ? { reason } : {}),
+					},
+					principal,
+				);
+				return {
+					embeds: [
+						{
+							title: "Capabilities granted",
+							accent: "positive",
+							fields: [
+								{ name: "Person", value: describe(target) },
+								{ name: "Capabilities", value: missing.map(label).join("\n") },
 							],
 						},
 					],
