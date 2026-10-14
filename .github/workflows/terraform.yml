@@ -149,8 +149,8 @@ jobs:
             echo "changed=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          # Markdown under infra/ does not change the stack. After prod apply,
-          # GitHub is not Key Vault Secrets User (ADR 0012); a secret refresh 403s.
+          # Markdown under infra/ does not change the stack. The plan below skips
+          # refreshing (GitHub can't read prod's Key Vault secrets, ADR 0012).
           if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
             echo "changed=true" >> "${GITHUB_OUTPUT}"
           else
@@ -196,9 +196,14 @@ jobs:
           tenant-id: ${{ vars.ARM_TENANT_ID }}
           subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
 
+      # -refresh=false: GitHub is deliberately not Key Vault Secrets User on pixel-prod-kv
+      # (ADR 0012), so refreshing the Key Vault secrets in state would 403. This still checks
+      # the config against prod's state. With the example tfvars (write_secrets off) the plan
+      # shows those secrets being removed; it never applies. For the real picture, a
+      # maintainer runs `just tf-plan prod`.
       - name: Plan infra/envs/prod
         if: steps.stack.outputs.changed == 'true'
         working-directory: infra/envs/prod
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
-          terraform plan -input=false -var-file=terraform.example.tfvars
+          terraform plan -input=false -refresh=false -var-file=terraform.example.tfvars

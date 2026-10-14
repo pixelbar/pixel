@@ -14,7 +14,7 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | Dev RG | `pixel-dev` | Pixel Dev bot |
 | Prod RG | `pixel-prod` | Production bot (`infra/envs/prod`) |
 | State | `pixelbartfstate` (GRS, shared keys **off**, Azure AD) | Containers `bootstrap`, `dev`, `prod` |
-| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** each env. CD does **not** apply Terraform. The Release workflow rolls `pixel-prod` after Environment `prod` approval |
+| GitHub OIDC | UAMI `pixel-github-dev` / `pixel-github-prod` | `terraform.yml` **plans** each env (prod with `-refresh=false`, because GitHub can't read prod's Key Vault secrets). CD does **not** apply Terraform. The Release workflow rolls `pixel-prod` after Environment `prod` approval |
 | App identity | UAMI `pixel-dev-app` / `pixel-prod-app` | Key Vault Secrets User |
 | Key Vault | `pixel-dev-kv` / `pixel-prod-kv` | Secret **values** are not in Terraform state. App references URIs. Never copy Dev into prod |
 | Files | `pixeldevdata` / `pixelproddata` share `pixel` | Writable persist: `members.yaml`, HA files, `data/` |

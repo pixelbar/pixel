@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- The Terraform workflow's prod plan no longer fails with 403 on PRs that change Terraform files: it plans with `-refresh=false`, because GitHub is deliberately not allowed to read prod's Key Vault secrets (ADR 0012). Run `just tf-plan prod` locally for the real plan before applying.
+
 ## [0.12.0] - 2026-10-14
 
 ### Added
