@@ -248,8 +248,8 @@ describe("the bot status publisher", () => {
 describe("the space publishers", () => {
 	it("ignore bot status announcements", async () => {
 		const { channel, sent } = fakeChannel();
-		await createTimelinePublisher(channel).publish(up);
-		await createLivePublisher(channel, silentLogger).publish(down);
+		await createTimelinePublisher(channel, "discord:timeline:1").publish(up);
+		await createLivePublisher(channel, silentLogger, undefined, "discord:live:1").publish(down);
 		expect(sent).toEqual([]);
 		expect(channel.recentOwnPosts).not.toHaveBeenCalled();
 	});

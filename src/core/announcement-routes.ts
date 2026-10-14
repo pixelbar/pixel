@@ -12,8 +12,6 @@ export type AnnouncementRoute = {
 	style: SpaceAnnounceStyle;
 	/** Platform channel ID. */
 	channelId: string;
-	/** `config` routes come from the environment and can't be changed here. */
-	source: "config" | "admin";
 	/** Why it isn't posting right now (the channel is gone, a permission is missing). Safe to show. */
 	problem?: string;
 };
@@ -32,10 +30,10 @@ export type RouteManager = {
 	list(): readonly AnnouncementRoute[];
 	/**
 	 * Gives a channel a style. Throws a `UserFacingError` saying why when it can't (the
-	 * channel is set in the environment, it can't be used, or the list is full).
+	 * channel can't be used, or the list is full).
 	 */
 	set(style: SpaceAnnounceStyle, channelId: string): Promise<RouteSet>;
-	/** Stops announcing to a channel. Throws a `UserFacingError` for one set in the environment. */
+	/** Stops announcing to a channel. */
 	remove(channelId: string): Promise<RouteRemove>;
 };
 

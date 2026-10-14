@@ -14,9 +14,6 @@ import {
 } from "./announce-render.ts";
 import type { LivePostStore } from "./announce-state.ts";
 
-export const TIMELINE_PUBLISHER_ID = "discord:timeline";
-export const LIVE_PUBLISHER_ID = "discord:live";
-
 /** One of the bot's own messages in the announcement channel. */
 export type OwnPost = {
 	id: string;
@@ -45,10 +42,7 @@ const RECENT_POSTS = 50;
  * Timeline style: every open and every close is a new post, never edited, so a
  * status-only channel reads as a log of exactly when the space opened and closed.
  */
-export function createTimelinePublisher(
-	channel: AnnouncementChannel,
-	id: string = TIMELINE_PUBLISHER_ID,
-): Publisher {
+export function createTimelinePublisher(channel: AnnouncementChannel, id: string): Publisher {
 	return {
 		id,
 		async publish(announcement) {
@@ -144,8 +138,8 @@ function createPostTracker(
 export function createLivePublisher(
 	channel: AnnouncementChannel,
 	logger: Logger,
-	store?: LivePostStore,
-	id: string = LIVE_PUBLISHER_ID,
+	store: LivePostStore | undefined,
+	id: string,
 ): Publisher {
 	const log = logger.child({ publisher: id });
 	const { findPosts: findOpenPosts, remember } = createPostTracker(channel, log, store, isOpenPost);

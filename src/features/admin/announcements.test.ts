@@ -165,23 +165,19 @@ describe("/admin announcements", () => {
 			expect(reply.text).toContain("/admin announcements set");
 		});
 
-		it("lists every channel with its style, marks configuration ones and problems, and explains the styles", async () => {
+		it("lists every channel with its style, marks problems, and explains the styles", async () => {
 			const { sub } = setup([
-				{ style: "live", channelId: "333333333333333333", source: "config" },
-				{ style: "timeline", channelId: "222222222222222222", source: "admin" },
-				{ style: "single", channelId: GENERAL, source: "admin", problem: "the bot can't see it" },
+				{ style: "timeline", channelId: "222222222222222222" },
+				{ style: "single", channelId: GENERAL, problem: "the bot can't see it" },
 			]);
 			const text = (await sub("list").handler(context({ principal: admin() }))).text ?? "";
-			expect(text).toContain("<#333333333333333333>: **live** (from configuration)");
 			expect(text).toContain("<#222222222222222222>: **timeline**");
 			expect(text).toContain(`<#${GENERAL}>: **single** ⚠️ not posting: the bot can't see it`);
 			expect(text).toContain("**single**: only the latest status");
 		});
 
 		it("describes one route", () => {
-			expect(describeRoute({ style: "live", channelId: GENERAL, source: "admin" })).toBe(
-				`<#${GENERAL}>: **live**`,
-			);
+			expect(describeRoute({ style: "live", channelId: GENERAL })).toBe(`<#${GENERAL}>: **live**`);
 		});
 	});
 });

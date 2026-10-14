@@ -101,28 +101,6 @@ variable "discord_announcements_channel_id" {
   }
 }
 
-variable "discord_announce_live_channel_id" {
-  type        = string
-  default     = null
-  description = "Optional. DISCORD_ANNOUNCE_LIVE_CHANNEL_ID."
-
-  validation {
-    condition     = var.discord_announce_live_channel_id == null || can(regex("^\\d{17,20}$", var.discord_announce_live_channel_id))
-    error_message = "discord_announce_live_channel_id must be a Discord ID or unset."
-  }
-}
-
-variable "discord_announce_timeline_channel_id" {
-  type        = string
-  default     = null
-  description = "Optional. DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID."
-
-  validation {
-    condition     = var.discord_announce_timeline_channel_id == null || can(regex("^\\d{17,20}$", var.discord_announce_timeline_channel_id))
-    error_message = "discord_announce_timeline_channel_id must be a Discord ID or unset."
-  }
-}
-
 variable "discord_announce_bot_channel_id" {
   type        = string
   default     = null

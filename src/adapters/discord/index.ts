@@ -14,13 +14,7 @@ import {
 	openAnnouncementChannel,
 	TIMELINE_PERMISSIONS,
 } from "./announce-channel.ts";
-import {
-	type AnnouncementChannel,
-	createLivePublisher,
-	createTimelinePublisher,
-	LIVE_PUBLISHER_ID,
-	TIMELINE_PUBLISHER_ID,
-} from "./announce-publishers.ts";
+import type { AnnouncementChannel } from "./announce-publishers.ts";
 import { DiscordAnnouncementRoutes, type DiscordRoutesOptions } from "./announce-routes.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import type { DiscordOption } from "./args.ts";
@@ -46,17 +40,16 @@ export type DiscordAdapterDeps = {
 	guildId: string;
 	dispatcher: Dispatcher;
 	logger: Logger;
-	/** Discord channels that get announcements. Each is optional; unset means off. */
+	/**
+	 * Discord channels for the other announcements. Each is optional; unset means off.
+	 * Open/closed announcements aren't here: admins set those with `/admin announcements`.
+	 */
 	announce: {
-		liveChannelId: string | undefined;
-		timelineChannelId: string | undefined;
 		/** Where Pixel says it's online or offline. */
 		botChannelId: string | undefined;
 		/** Closing-time reminder. Undefined means off. */
 		closingTimeChannelId: string | undefined;
 	};
-	/** Where the live style remembers which post is open (`announcements.state`). */
-	announceStateFile: string;
 	/** Where the bot status remembers this run's post (`bot-status.state`). */
 	botStatusStateFile: string;
 	/** Where each admin-set live or single channel remembers its current post. */
@@ -129,23 +122,6 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			create: (channel: AnnouncementChannel, channelId: string) => Publisher;
 		}[] = [
 			{
-				id: LIVE_PUBLISHER_ID,
-				channelId: deps.announce.liveChannelId,
-				required: LIVE_PERMISSIONS,
-				create: (channel, channelId) =>
-					createLivePublisher(
-						channel,
-						logger,
-						new FileLivePostStore(deps.announceStateFile, channelId),
-					),
-			},
-			{
-				id: TIMELINE_PUBLISHER_ID,
-				channelId: deps.announce.timelineChannelId,
-				required: TIMELINE_PERMISSIONS,
-				create: (channel) => createTimelinePublisher(channel),
-			},
-			{
 				id: BOT_STATUS_PUBLISHER_ID,
 				channelId: deps.announce.botChannelId,
 				// Reading history lets it find the post to update when Pixel goes offline.
@@ -169,6 +145,20 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			},
 		];
 
+		// Open/closed announcements: the channels admins set with /admin announcements. Plugged in
+		// first, so `/admin announcements` works even if a channel below can't be opened.
+		const routes = new DiscordAnnouncementRoutes({
+			store: deps.announcementRouteStore,
+			announcer: deps.announcer,
+			logger,
+			reportError,
+			postsDir: deps.announcementPostsDir,
+			openChannel: (channelId, required) =>
+				openAnnouncementChannel(ready, { channelId, guildId, required }),
+		});
+		deps.announcementRoutes.use(routes);
+		await routes.start();
+
 		for (const { id, channelId, required, create } of wanted) {
 			if (!channelId) continue;
 			const opened = await openAnnouncementChannel(ready, { channelId, guildId, required });
@@ -183,38 +173,17 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				reportError(new Error(`Announcements to ${id} are off: ${opened.problem}`));
 			}
 		}
-		// Channels admins set with /admin announcements, on top of the ones from the environment.
-		const routes = new DiscordAnnouncementRoutes({
-			store: deps.announcementRouteStore,
-			announcer: deps.announcer,
-			logger,
-			reportError,
-			postsDir: deps.announcementPostsDir,
-			configRoutes: [
-				...(deps.announce.liveChannelId
-					? [{ style: "live" as const, channelId: deps.announce.liveChannelId }]
-					: []),
-				...(deps.announce.timelineChannelId
-					? [{ style: "timeline" as const, channelId: deps.announce.timelineChannelId }]
-					: []),
-			],
-			openChannel: (channelId, required) =>
-				openAnnouncementChannel(ready, { channelId, guildId, required }),
-		});
-		await routes.start();
-		deps.announcementRoutes.use(routes);
 		// Pixel's own status in the member list follows the space. It needs no channel.
 		const presence = createPresencePublisher(ready.user);
 		deps.announcer.register(presence);
 		// Client options have no presence (the space isn't known at login), and
 		// setPresence is not sent on IDENTIFY. After an invalid session, put it back.
 		client.on(Events.ShardReady, () => presence.reapply());
-		if (
-			!deps.announce.liveChannelId &&
-			!deps.announce.timelineChannelId &&
-			deps.announcementRouteStore.list().length === 0
-		) {
-			logger.info({ event: "discord.announce_unset" }, "no announcement channels configured");
+		if (deps.announcementRouteStore.list().length === 0) {
+			logger.info(
+				{ event: "discord.announce_unset" },
+				"no open/closed announcement channels set (/admin announcements set)",
+			);
 		}
 	}
 

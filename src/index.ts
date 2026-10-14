@@ -69,7 +69,6 @@ async function main(): Promise<void> {
 		dispatcher,
 		logger,
 		announce: config.discord.announce,
-		announceStateFile: join(config.dataDir, "announcements.state"),
 		botStatusStateFile: join(config.dataDir, "bot-status.state"),
 		announcementPostsDir: join(config.dataDir, "announcement-posts"),
 		announcementRouteStore,

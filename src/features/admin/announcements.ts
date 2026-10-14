@@ -14,8 +14,8 @@ import { UserFacingError } from "../../core/errors.ts";
  * - **single**: only the latest status is kept: the new status is posted and the
  *   previous post is deleted.
  *
- * Admins only, private. Channels set in the environment are listed but can't be
- * changed here.
+ * Admins only, private. This is the only way to set where they go: there is no
+ * environment setting, and the choices are saved in `data/announcement-routes.yaml`.
  */
 
 const STYLE_HELP: Record<SpaceAnnounceStyle, string> = {
@@ -29,9 +29,8 @@ const channelLink = (channelId: string): string => `<#${channelId}>`;
 
 /** One line for `/admin announcements list`. */
 export function describeRoute(route: AnnouncementRoute): string {
-	const where = route.source === "config" ? " (from configuration)" : "";
 	const problem = route.problem ? ` ⚠️ not posting: ${route.problem}` : "";
-	return `${channelLink(route.channelId)}: **${route.style}**${where}${problem}`;
+	return `${channelLink(route.channelId)}: **${route.style}**${problem}`;
 }
 
 export function createAnnouncementsSubgroup(deps: {

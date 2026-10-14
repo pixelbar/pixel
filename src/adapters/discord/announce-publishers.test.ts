@@ -6,9 +6,7 @@ import {
 	createLivePublisher,
 	createSinglePublisher,
 	createTimelinePublisher,
-	LIVE_PUBLISHER_ID,
 	type OwnPost,
-	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
 import type { AnnouncementPost } from "./announce-render.ts";
 import {
@@ -23,6 +21,9 @@ import {
 	timelinePost,
 } from "./announce-render.ts";
 import type { LivePostStore } from "./announce-state.ts";
+
+const TIMELINE_ID = "discord:timeline:111";
+const LIVE_ID = "discord:live:111";
 
 /** An in-memory channel that records what was sent and edited. */
 class FakeChannel implements AnnouncementChannel {
@@ -111,8 +112,8 @@ const announcement = (
 describe("timeline publisher", () => {
 	it("sends every opening and closing as a new post, and never edits", async () => {
 		const channel = new FakeChannel();
-		const publisher = createTimelinePublisher(channel);
-		expect(publisher.id).toBe(TIMELINE_PUBLISHER_ID);
+		const publisher = createTimelinePublisher(channel, TIMELINE_ID);
+		expect(publisher.id).toBe(TIMELINE_ID);
 
 		const opened = announcement("open", T("14:10"));
 		const closed = announcement("closed", T("17:30"), T("14:10"));
@@ -125,23 +126,24 @@ describe("timeline publisher", () => {
 	});
 
 	it("has nothing to reconcile, since it never edits", () => {
-		expect(createTimelinePublisher(new FakeChannel()).reconcile).toBeUndefined();
+		expect(createTimelinePublisher(new FakeChannel(), TIMELINE_ID).reconcile).toBeUndefined();
 	});
 
 	it("lets a failed send surface so it gets reported", async () => {
 		const channel = new FakeChannel();
 		channel.sendError = new Error("Missing Permissions");
 		await expect(
-			createTimelinePublisher(channel).publish(announcement("open", T("14:10"))),
+			createTimelinePublisher(channel, TIMELINE_ID).publish(announcement("open", T("14:10"))),
 		).rejects.toThrow("Missing Permissions");
 	});
 });
 
 describe("live publisher", () => {
-	const live = (channel: FakeChannel) => createLivePublisher(channel, silentLogger);
+	const live = (channel: FakeChannel) =>
+		createLivePublisher(channel, silentLogger, undefined, LIVE_ID);
 
 	it("has its own id", () => {
-		expect(live(new FakeChannel()).id).toBe(LIVE_PUBLISHER_ID);
+		expect(live(new FakeChannel()).id).toBe(LIVE_ID);
 	});
 
 	describe("when the space opens", () => {
@@ -298,7 +300,7 @@ describe("live publisher", () => {
 
 	describe("remembering the open post", () => {
 		const liveWith = (channel: FakeChannel, store: FakeStore) =>
-			createLivePublisher(channel, silentLogger, store);
+			createLivePublisher(channel, silentLogger, store, LIVE_ID);
 
 		it("remembers the post it makes when the space opens, and forgets it when it closes", async () => {
 			const channel = new FakeChannel();

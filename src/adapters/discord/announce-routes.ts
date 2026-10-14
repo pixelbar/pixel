@@ -33,8 +33,6 @@ export type DiscordRoutesOptions = {
 	reportError: (error: unknown) => void;
 	/** Where each live or single route remembers its current post. */
 	postsDir: string;
-	/** Routes from the environment: already running, and not for admins to change. */
-	configRoutes: readonly { style: SpaceAnnounceStyle; channelId: string }[];
 	/** Opens a channel and checks the bot can use it. */
 	openChannel: (channelId: string, required: readonly bigint[]) => Promise<OpenedChannel>;
 };
@@ -60,10 +58,6 @@ export class DiscordAnnouncementRoutes implements RouteManager {
 	/** Starts every saved route. One bad channel never stops the others. */
 	async start(): Promise<void> {
 		for (const route of this.#options.store.list()) {
-			if (this.#isConfigChannel(route.channelId)) {
-				this.#problems.set(route.channelId, "this channel is now set in Pixel's configuration");
-				continue;
-			}
 			try {
 				await this.#activate(route.style, route.channelId);
 			} catch (error) {
@@ -81,18 +75,13 @@ export class DiscordAnnouncementRoutes implements RouteManager {
 	}
 
 	list(): readonly AnnouncementRoute[] {
-		const config = this.#options.configRoutes.map(
-			(r): AnnouncementRoute => ({ ...r, source: "config" }),
-		);
-		const admin = this.#options.store.list().map((r): AnnouncementRoute => {
+		return this.#options.store.list().map((r): AnnouncementRoute => {
 			const problem = this.#problems.get(r.channelId);
-			return { ...r, source: "admin", ...(problem ? { problem } : {}) };
+			return { ...r, ...(problem ? { problem } : {}) };
 		});
-		return [...config, ...admin];
 	}
 
 	async set(style: SpaceAnnounceStyle, channelId: string): Promise<RouteSet> {
-		this.#refuseConfig(channelId, "change");
 		const current = this.#options.store.list().find((r) => r.channelId === channelId);
 		if (!current && !this.#options.store.canAdd(channelId)) {
 			throw new UserFacingError(
@@ -115,7 +104,6 @@ export class DiscordAnnouncementRoutes implements RouteManager {
 	}
 
 	async remove(channelId: string): Promise<RouteRemove> {
-		this.#refuseConfig(channelId, "remove");
 		const current = this.#options.store.list().find((r) => r.channelId === channelId);
 		if (!current) return { removed: false, saved: true };
 		this.#options.announcer.unregister(routePublisherId(current.style, channelId));
@@ -126,18 +114,6 @@ export class DiscordAnnouncementRoutes implements RouteManager {
 			"announcement route removed",
 		);
 		return { removed: true, previous: current.style, saved };
-	}
-
-	#isConfigChannel(channelId: string): boolean {
-		return this.#options.configRoutes.some((r) => r.channelId === channelId);
-	}
-
-	#refuseConfig(channelId: string, verb: string): void {
-		if (this.#isConfigChannel(channelId)) {
-			throw new UserFacingError(
-				`That channel's announcements come from Pixel's configuration, so I can't ${verb} them here.`,
-			);
-		}
 	}
 
 	/** Opens the channel and registers its publisher, replacing the one it had (if any). */

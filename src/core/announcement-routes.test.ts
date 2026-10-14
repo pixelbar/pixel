@@ -7,7 +7,7 @@ import {
 } from "./announcement-routes.ts";
 
 const manager = (): RouteManager => ({
-	list: vi.fn(() => [{ style: "single" as const, channelId: "1", source: "admin" as const }]),
+	list: vi.fn(() => [{ style: "single" as const, channelId: "1" }]),
 	set: vi.fn(async () => ({ result: "added" as const, saved: true })),
 	remove: vi.fn(async () => ({ removed: true, saved: true })),
 });

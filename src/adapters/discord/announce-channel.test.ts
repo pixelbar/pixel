@@ -1,8 +1,9 @@
-import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
+import { type Client, PermissionFlagsBits, PermissionsBitField } from "discord.js";
 import { describe, expect, it } from "vitest";
 import {
 	LIVE_PERMISSIONS,
 	missingPermissions,
+	openAnnouncementChannel,
 	TIMELINE_PERMISSIONS,
 	toOwnPost,
 } from "./announce-channel.ts";
@@ -97,6 +98,53 @@ describe("toOwnPost", () => {
 			title: undefined,
 			footer: undefined,
 			timestamp: null,
+		});
+	});
+});
+
+describe("openAnnouncementChannel", () => {
+	const GUILD = "100000000000000001";
+	const CHANNEL = "100000000000000002";
+
+	/** Just enough of a discord.js client for opening one channel. */
+	function client(
+		fetchMe: () => Promise<unknown>,
+		granted = new PermissionsBitField(LIVE_PERMISSIONS),
+	) {
+		const channel = {
+			guildId: GUILD,
+			isDMBased: () => false,
+			isSendable: () => true,
+			guild: { members: { fetchMe } },
+			permissionsFor: () => granted,
+		};
+		return { channels: { fetch: async () => channel } } as unknown as Client<true>;
+	}
+
+	const open = (c: Client<true>) =>
+		openAnnouncementChannel(c, { channelId: CHANNEL, guildId: GUILD, required: LIVE_PERMISSIONS });
+
+	it("opens a channel the bot can use", async () => {
+		expect((await open(client(async () => ({})))).ok).toBe(true);
+	});
+
+	it("says it couldn't check, instead of throwing, when Discord won't say who the bot is", async () => {
+		const failing = client(async () => {
+			throw new Error("503 Service Unavailable");
+		});
+		await expect(open(failing)).resolves.toEqual({
+			ok: false,
+			problem: "couldn't check the bot's permissions there, try again",
+		});
+	});
+
+	it("names the permissions the bot is missing", async () => {
+		const result = await open(
+			client(async () => ({}), new PermissionsBitField(TIMELINE_PERMISSIONS)),
+		);
+		expect(result).toEqual({
+			ok: false,
+			problem: "the bot lacks these permissions there: ReadMessageHistory",
 		});
 	});
 });

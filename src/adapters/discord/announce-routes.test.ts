@@ -19,7 +19,6 @@ import {
 
 const GENERAL = "111111111111111111";
 const ANNOUNCEMENTS = "222222222222222222";
-const ENV_LIVE = "333333333333333333";
 
 /** A channel that records what is sent to it. */
 function fakeChannel() {
@@ -70,7 +69,6 @@ describe("DiscordAnnouncementRoutes", () => {
 			logger: silentLogger,
 			reportError,
 			postsDir: join(dir, "posts"),
-			configRoutes: [{ style: "live", channelId: ENV_LIVE }],
 			openChannel: async (channelId, required): Promise<OpenedChannel> => {
 				opened.push({ channelId, required });
 				const problem = problems.get(channelId);
@@ -177,14 +175,6 @@ describe("DiscordAnnouncementRoutes", () => {
 			expect([...registered.keys()]).toEqual([routePublisherId("timeline", GENERAL)]);
 		});
 
-		it("won't touch a channel the configuration already announces in", async () => {
-			const { routes, store } = setup();
-			await expect(routes.set("single", ENV_LIVE)).rejects.toThrow(
-				/come from Pixel's configuration/,
-			);
-			expect(store.list()).toEqual([]);
-		});
-
 		it("refuses once there are too many channels", async () => {
 			const { routes } = setup({
 				store: {
@@ -227,21 +217,13 @@ describe("DiscordAnnouncementRoutes", () => {
 			const { routes } = setup();
 			await expect(routes.remove(GENERAL)).resolves.toEqual({ removed: false, saved: true });
 		});
-
-		it("won't touch a channel the configuration announces in", async () => {
-			const { routes } = setup();
-			await expect(routes.remove(ENV_LIVE)).rejects.toThrow(/come from Pixel's configuration/);
-		});
 	});
 
 	describe("list", () => {
-		it("shows configuration routes and admin routes together", async () => {
+		it("shows every channel with its style", async () => {
 			const { routes } = setup();
 			await routes.set("single", GENERAL);
-			expect(routes.list()).toEqual([
-				{ style: "live", channelId: ENV_LIVE, source: "config" },
-				{ style: "single", channelId: GENERAL, source: "admin" },
-			]);
+			expect(routes.list()).toEqual([{ style: "single", channelId: GENERAL }]);
 		});
 	});
 
@@ -305,19 +287,121 @@ describe("DiscordAnnouncementRoutes", () => {
 			expect(routes.list().find((r) => r.channelId === GENERAL)?.problem).toBeUndefined();
 		});
 
-		it("doesn't post twice to a channel that has since been put in the configuration", async () => {
-			saved([{ style: "timeline", channelId: ENV_LIVE }]);
-			const { routes, registered } = setup();
-			await routes.start();
-			expect(registered.size).toBe(0);
-			expect(routes.list().at(-1)?.problem).toMatch(/now set in Pixel's configuration/);
-		});
-
 		it("writes its post memory under the given directory", async () => {
 			const { routes, registered } = setup();
 			await routes.set("live", GENERAL);
 			await registered.get(routePublisherId("live", GENERAL))?.publish(open);
 			expect(readFileSync(join(dir, "posts", `live-${GENERAL}.state`), "utf8")).toContain(GENERAL);
+		});
+	});
+
+	describe("several channels at once", () => {
+		const THIRD = "444444444444444444";
+
+		/**
+		 * A channel that keeps what the bot posted, with ids unique to the channel so a
+		 * mixed-up memory would point at the wrong message. History is hidden, so the
+		 * only way to find the previous post is the remembered message ID.
+		 */
+		/** A Discord-shaped message ID, unique to the channel: its first digit says which. */
+		const messageId = (prefix: string, n: number) => `${prefix}${String(n).padStart(17, "0")}`;
+
+		function rememberingChannel(prefix: string) {
+			const posts = new Map<string, AnnouncementPost>();
+			const deleted: string[] = [];
+			let next = 1;
+			const channel: AnnouncementChannel = {
+				send: async (post) => {
+					const id = messageId(prefix, next++);
+					posts.set(id, post);
+					return { id };
+				},
+				edit: async (id, post) => {
+					posts.set(id, post);
+				},
+				delete: async (id) => {
+					if (!posts.delete(id)) throw new Error(`Unknown Message ${id}`);
+					deleted.push(id);
+				},
+				recentOwnPosts: async () => [],
+				findOwnPost: async (id) => {
+					const embed = posts.get(id)?.embeds[0];
+					if (!embed) return undefined;
+					return {
+						id,
+						title: embed.title,
+						footer: embed.footer?.text,
+						timestamp: embed.timestamp ? new Date(embed.timestamp) : null,
+					};
+				},
+			};
+			return { channel, posts, deleted };
+		}
+
+		it("keeps each single channel to exactly its own one post, across changes and a restart", async () => {
+			const channels = new Map([
+				[GENERAL, rememberingChannel("7")],
+				[ANNOUNCEMENTS, rememberingChannel("8")],
+				[THIRD, rememberingChannel("9")],
+			]);
+			const openChannel = async (channelId: string): Promise<OpenedChannel> => {
+				const found = channels.get(channelId);
+				return found ? { ok: true, channel: found.channel } : { ok: false, problem: "unknown" };
+			};
+
+			// Two single channels and a timeline, set by an admin.
+			const first = setup({ openChannel });
+			await first.routes.set("single", GENERAL);
+			await first.routes.set("single", ANNOUNCEMENTS);
+			await first.routes.set("timeline", THIRD);
+			expect(first.store.list()).toHaveLength(3);
+			expect(first.registered.size).toBe(3);
+
+			const announce = async (
+				registered: Map<string, Publisher>,
+				a: typeof open | typeof closed,
+			) => {
+				for (const publisher of registered.values()) await publisher.publish(a);
+			};
+			await announce(first.registered, open);
+			await announce(first.registered, closed);
+
+			const general = channels.get(GENERAL);
+			const announcements = channels.get(ANNOUNCEMENTS);
+			// Each single channel replaced only its own post.
+			expect([...(general?.posts.keys() ?? [])]).toEqual(["700000000000000002"]);
+			expect(general?.deleted).toEqual(["700000000000000001"]);
+			expect([...(announcements?.posts.keys() ?? [])]).toEqual(["800000000000000002"]);
+			expect(announcements?.deleted).toEqual(["800000000000000001"]);
+			// The timeline keeps every post.
+			expect(channels.get(THIRD)?.posts.size).toBe(2);
+
+			// Each single channel remembers its own post in its own file.
+			const memory = (channelId: string) =>
+				readFileSync(join(dir, "posts", `single-${channelId}.state`), "utf8");
+			expect(memory(GENERAL)).toContain("700000000000000002");
+			expect(memory(GENERAL)).not.toContain(messageId("8", 2));
+			expect(memory(ANNOUNCEMENTS)).toContain("800000000000000002");
+			expect(memory(ANNOUNCEMENTS)).not.toContain(messageId("7", 2));
+
+			// After a restart, the saved routes come back and each finds its own post again.
+			const second = setup({ openChannel });
+			await second.routes.start();
+			expect(second.registered.size).toBe(3);
+			await announce(second.registered, open);
+			expect([...(general?.posts.keys() ?? [])]).toEqual(["700000000000000003"]);
+			expect([...(announcements?.posts.keys() ?? [])]).toEqual(["800000000000000003"]);
+			expect(general?.deleted).toEqual(["700000000000000001", "700000000000000002"]);
+			expect(announcements?.deleted).toEqual(["800000000000000001", "800000000000000002"]);
+		});
+
+		it("removing one channel leaves the others announcing", async () => {
+			const { routes, registered } = setup();
+			await routes.set("single", GENERAL);
+			await routes.set("single", ANNOUNCEMENTS);
+			await routes.remove(GENERAL);
+			expect([...registered.keys()]).toEqual([routePublisherId("single", ANNOUNCEMENTS)]);
+			expect(routes.list()).toEqual([{ style: "single", channelId: ANNOUNCEMENTS }]);
 		});
 	});
 });
