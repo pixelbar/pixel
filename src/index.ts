@@ -38,7 +38,6 @@ async function main(): Promise<void> {
 		capabilityNotify,
 		home,
 		homeDevices,
-		homeInventory,
 		features,
 	} = buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
 
@@ -103,7 +102,6 @@ async function main(): Promise<void> {
 						"some devices' entities weren't found in Home Assistant",
 					);
 				}
-				await homeInventory.sync();
 			})
 			.catch((error: unknown) => reporter.captureBackground(error, "home-assistant"));
 	} else {

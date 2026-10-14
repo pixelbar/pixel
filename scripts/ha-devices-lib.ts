@@ -13,7 +13,7 @@ import {
 	type HomeDeviceTier,
 	loadHomeDevices,
 } from "../src/services/home-devices.ts";
-import type { InventoryEntry } from "../src/services/home-inventory.ts";
+import type { InventoryEntry } from "./ha-inventory.ts";
 import type { RegisterTarget } from "./register-env.ts";
 
 /** Where each env's `devices.yaml` lives: the Azure Files share Pixel mounts at `/app/persist`. */

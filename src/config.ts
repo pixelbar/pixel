@@ -35,7 +35,6 @@ const envSchema = z
 		PIXEL_DATA_DIR: z.string().min(1).default("data"),
 		PIXEL_CONTENT_DIR: z.string().min(1).default("content"),
 		PIXEL_HOME_ASSISTANT_DIR: z.string().min(1).default("config/home-assistant"),
-		PIXEL_HOME_SYNC_MINUTES: z.coerce.number().int().min(0).max(1440).default(60),
 		// How often Pixel checks in with its Sentry cron monitor. 0 turns the heartbeat off.
 		PIXEL_HEARTBEAT_MINUTES: z.coerce.number().int().min(0).max(60).default(5),
 		// Empty turns the log file off. Logs still go to the console and to Sentry.
@@ -116,8 +115,6 @@ export type Config = {
 	contentDir: string;
 	/** Where the Home Assistant device allow-list lives (`devices.yaml`). Only read when Home Assistant is configured. */
 	homeAssistantDir: string;
-	/** How often the Home Assistant inventory is synced, in minutes. 0 means only at startup and on reload. */
-	homeSyncMinutes: number;
 	/** How often Pixel checks in with its Sentry cron monitor, in minutes. 0 means off. */
 	heartbeatMinutes: number;
 	/** Where the rotating log file goes. Undefined means no file (console and Sentry only). */
@@ -209,7 +206,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		dataDir: e.PIXEL_DATA_DIR,
 		contentDir: e.PIXEL_CONTENT_DIR,
 		homeAssistantDir: e.PIXEL_HOME_ASSISTANT_DIR,
-		homeSyncMinutes: e.PIXEL_HOME_SYNC_MINUTES,
 		heartbeatMinutes: e.PIXEL_HEARTBEAT_MINUTES,
 		logDir: e.PIXEL_LOG_DIR === "" ? undefined : e.PIXEL_LOG_DIR,
 		timezone: e.PIXEL_TIMEZONE,

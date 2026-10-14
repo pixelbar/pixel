@@ -23,7 +23,7 @@ export type EntityState = {
 };
 
 /**
- * An entity as Home Assistant lists it, for the inventory: what it is, not what it
+ * An entity as Home Assistant lists it, for `just ha-devices`: what it is, not what it
  * reports right now. Text here is untrusted.
  */
 export type HomeEntity = {
@@ -67,7 +67,7 @@ export type HomeBackend = {
 	/** Fresh states for these entities. Entities that don't exist are left out. */
 	getStates(entityIds: readonly string[]): Promise<Map<string, EntityState>>;
 	callService(call: ServiceCall): Promise<void>;
-	/** Every entity Home Assistant has, with its category and area. For the inventory only. */
+	/** Every entity Home Assistant has, with its category and area. Only `just ha-devices` reads it. */
 	listEntities(): Promise<HomeEntity[]>;
 };
 
@@ -189,11 +189,6 @@ export class Home {
 
 	async getState(entityId: string): Promise<EntityState | undefined> {
 		return (await this.getStates([entityId])).get(entityId);
-	}
-
-	/** Everything Home Assistant has, fresh. For the inventory: it says what exists, never what may be used. */
-	async listEntities(): Promise<HomeEntity[]> {
-		return this.#run("listEntities", (backend) => backend.listEntities());
 	}
 
 	/** Makes one call, once. If Home Assistant isn't reachable it fails at once and nothing is queued or retried. */

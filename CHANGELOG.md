@@ -17,8 +17,12 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
-- `just register` and `just command-access` take `dev` or `prod` so they cannot mix Pixel Dev and production Discord tokens. Use `just register prod` with `.env.prod` (`PIXEL_ENV=prod`); `just deploy-dev` calls `just register dev`.
+- `just register and `just command-access` take `dev` or `prod` so they cannot mix Pixel Dev and production Discord tokens. Use `just register prod` with `.env.prod` (`PIXEL_ENV=prod`); `just deploy-dev` calls `just register dev`.
 - CI/CD runs each expensive job only when its inputs change ([`dorny/paths-filter`](https://github.com/dorny/paths-filter) + [`.github/path-filters.yml`](.github/path-filters.yml)): `just check` for app/scripts/config paths, Docker/GHCR when the image would change (including test-only `src/` edits), and the docs workflow for `docs/` (Biome + site build). Docs, changelog and infra-only changes no longer run app CI or publish an image.
+
+### Removed
+
+- `inventory.yaml` and everything behind it: Pixel no longer writes a list of what Home Assistant has, so the hourly sync, the `PIXEL_HOME_SYNC_MINUTES` setting, and the "N known, synced X ago" line in `/admin status` and the inventory line in `/admin reload` are gone. `just ha-devices` reads Home Assistant live when you add devices. Remove `PIXEL_HOME_SYNC_MINUTES` from your env if you set it (it is ignored), and delete any leftover `home-assistant/inventory.yaml` from the dev and prod file shares (harmless either way).
 
 ## [0.10.2] - 2026-10-13
 

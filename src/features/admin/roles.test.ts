@@ -23,7 +23,6 @@ import {
 import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
-import { HomeInventory } from "../../services/home-inventory.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { createAdminFeature } from "./index.ts";
@@ -103,7 +102,6 @@ function setup(backend?: Fake, homeBackend?: HomeBackend, runtime: "local" | "cl
 			roles,
 			home,
 			homeDevices: HomeDeviceStore.empty(),
-			homeInventory: HomeInventory.off(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",

@@ -90,7 +90,7 @@ The share is mounted at `/app/persist` as uid 1000 (`node`). Layout:
 | Path in share | Pixel setting | Notes |
 | --- | --- | --- |
 | `members.yaml` | `PIXEL_MEMBERS_FILE` | Writable; admin commands rewrite it |
-| `home-assistant/` | `PIXEL_HOME_ASSISTANT_DIR` | `devices.yaml` (hand), `inventory.yaml` (Pixel) |
+| `home-assistant/` | `PIXEL_HOME_ASSISTANT_DIR` | `devices.yaml` (`just ha-devices` or by hand) |
 | `data/` | `PIXEL_DATA_DIR` | `schedules.yaml` must persist; `home-switches.state` lost → doors start **off** |
 
 Seed after the storage account exists, before Pixel can start (it fails closed without `members.yaml`):

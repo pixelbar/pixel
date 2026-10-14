@@ -65,7 +65,6 @@ In `.env` (see `.env.example`) or the Container App / Key Vault:
 | `HOME_ASSISTANT_URL` | The origin from the table above |
 | `HOME_ASSISTANT_TOKEN` | The long-lived token |
 | `PIXEL_HOME_ASSISTANT_DIR` | Optional. Defaults to `config/home-assistant`. On Azure this is on the persist share |
-| `PIXEL_HOME_SYNC_MINUTES` | Optional. Defaults to `60`. How often `inventory.yaml` is rewritten. `0` means only at startup and on `/admin reload` |
 
 Copy the example allow-list, then empty it so Pixel does not warn about sample entities that your test instance does not have:
 
@@ -95,13 +94,9 @@ In Discord, `/admin status` should show **Connected** and `0 devices allowed`. I
 
 `/ha list` as a friend or member says there is nothing available to you, which is right until you add devices.
 
-Wait for `config/home-assistant/inventory.yaml` (or run `/admin reload`). That file is rewritten by Pixel. It lists lights, switches, locks and sensors Home Assistant has. **It allows nothing.** Do not commit it.
+### 6. Add devices
 
-### 6. Add devices from the inventory
-
-On Azure, `just ha-devices dev` (or `prod`) does this for you: it reads what Home Assistant has, lets you pick, and pushes the checked file to the share. See the [runbook](runbook.md). By hand:
-
-Open `inventory.yaml`, copy one entry into `devices.yaml`, and set `minTier` and `actions`. Example (names here are from `devices.example.yaml`, not the space):
+On Azure, `just ha-devices dev` (or `prod`) does this for you: it reads what Home Assistant has, lets you pick, and pushes the checked file to the share. See the [runbook](runbook.md). By hand, write an entry in `devices.yaml` (the entity ID is on the entity's page in Home Assistant) and set `minTier` and `actions`. Example (names here are from `devices.example.yaml`, not the space):
 
 ```yaml
 devices:
@@ -156,7 +151,7 @@ Each row is a threat and what Pixel actually does about it. Identification of Di
 | **Leaked token that belongs to an admin** | The above, plus users, integrations and system settings. | Don't. Pixel warns in `/admin status`, the logs and Sentry if `auth/current_user` says `is_admin`. Redo the token as a non-admin. |
 | **Compromised Discord account** of someone with `ha-doors` or `ha-admin` | Unlock (and lock) every door in `devices.yaml`, from Discord, identified as that person. A stolen session of someone with only `ha-lights` can only run listed light actions. | Doors are member-only; the capability is never implied; every door action is logged (`home.action`) with ID, name, handle, device, before/after and outcome; `/admin doors off` without a deploy; revoke the HA token to stop the integration; Discord ban / timeout plus demote to guest. There is **no** confirmation button, public notice, per-person rate limit or "only while the space is open" check yet. |
 | **Compromised Discord account** of someone without HA capabilities | They can still run every command their tier allows (`/ha list` and `/ha status` on devices at or below their floor). They cannot change a device. | Same as any other takeover: Discord moderation, then `/admin level set` / revoke. `/ha` refusals say `HOME_DENIED` and do not confirm that a device exists. |
-| **Someone who can edit `devices.yaml` or `members.yaml`** | Widen the allow-list (add a door, add `unlock`) or grant `ha-doors` / `ha-admin`. | Files live on a protected volume (Azure Files + snapshots) or a laptop you control. `admins.yaml` is not writable from Discord. Capability grants are audited and the person is DMed. Inventory is never an allow-list. |
+| **Someone who can edit `devices.yaml` or `members.yaml`** | Widen the allow-list (add a door, add `unlock`) or grant `ha-doors` / `ha-admin`. | Files live on a protected volume (Azure Files + snapshots) or a laptop you control. `admins.yaml` is not writable from Discord. Capability grants are audited and the person is DMed. |
 | **Compromised Home Assistant admin account, or a wide-open remote-access route** (Nabu Casa, exposed port, leaked sidecar) | Full control of the building, bypassing Pixel. | Pixel cannot fix a broken HA. Use a strong unique password and MFA on HA admins; do not expose HA to the internet except via Nabu Casa or Tailscale; keep the Pixel user non-admin so a *Pixel* leak is not an *HA admin* leak. Rotate HA passwords and the Pixel token. |
 | **Home Assistant down or slow** | `/ha` says it cannot reach HA. Discord, SpaceAPI and the rest keep working. | Connect in the background, reconnect forever, fail at once, no queue, no retry, time limit on every call. HA is not on `/healthz`. After a refused token the connection stays off until `/admin reload`. A hung call cannot hold a command forever. |
 | **Typo or hostile text from Home Assistant** (friendly names, states, attributes) | Could try to inject mentions or formatting into Discord. | Device names come from `devices.yaml`, not HA. States and attributes are shown as code spans, control characters stripped, length limited. HA's own error text is never shown. |

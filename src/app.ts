@@ -29,7 +29,6 @@ import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
-import { HomeInventory, INVENTORY_FILE } from "./services/home-inventory.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
 import { ScheduleStore } from "./services/schedules.ts";
@@ -48,7 +47,6 @@ export type Core = {
 	/** The devices Pixel may touch in Home Assistant. Empty when Home Assistant isn't set up. */
 	homeDevices: HomeDeviceStore;
 	/** Everything Home Assistant has, written to a file for people to read. Never an allow-list. */
-	homeInventory: HomeInventory;
 	/** Emergency switches for kinds of device, such as doors (`/admin doors`). */
 	switches: KindSwitch;
 	registry: CommandRegistry;
@@ -106,16 +104,6 @@ export function buildCore(
 	const homeDevices = config.homeAssistant
 		? HomeDeviceStore.open({ dir: config.homeAssistantDir, kinds: HOME_KINDS })
 		: HomeDeviceStore.empty();
-	const homeInventory = config.homeAssistant
-		? new HomeInventory({
-				home,
-				kinds: HOME_KINDS,
-				devices: homeDevices,
-				file: join(config.homeAssistantDir, INVENTORY_FILE),
-				logger,
-				intervalMs: config.homeSyncMinutes * 60_000,
-			})
-		: HomeInventory.off();
 	// Everything starts on; what an admin switches off is remembered across restarts.
 	const switches = new KindSwitch({
 		file: join(config.dataDir, "home-switches.state"),
@@ -168,7 +156,6 @@ export function buildCore(
 		roles,
 		home,
 		homeDevices,
-		homeInventory,
 		switches,
 		reporter,
 		spaceStatus,
@@ -203,7 +190,6 @@ export function buildCore(
 		roles,
 		home,
 		homeDevices,
-		homeInventory,
 		switches,
 		registry,
 		dispatcher,

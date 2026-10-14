@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HOME_KINDS } from "../src/core/home-kinds/index.ts";
 import { HomeDevicesError } from "../src/services/home-devices.ts";
-import type { InventoryEntry } from "../src/services/home-inventory.ts";
 import {
 	actionChoices,
 	appendDevices,
@@ -20,6 +19,7 @@ import {
 	tiersFor,
 	validateDevices,
 } from "./ha-devices-lib.ts";
+import type { InventoryEntry } from "./ha-inventory.ts";
 
 const kind = (name: string) => {
 	const found = HOME_KINDS.get(name);

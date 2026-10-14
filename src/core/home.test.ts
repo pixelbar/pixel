@@ -255,25 +255,3 @@ describe("check", () => {
 		expect(await hanging.home.check()).toEqual({ kind: "reconnecting" });
 	});
 });
-
-describe("listing every entity", () => {
-	const listed = [
-		{ entityId: "light.a", name: "A", area: "Hall", category: undefined, hidden: false },
-	];
-
-	it("passes the list on, fresh each time", async () => {
-		const listEntities = vi.fn(async () => listed);
-		const { home } = setup({ listEntities });
-		expect(await home.listEntities()).toEqual(listed);
-		await home.listEntities();
-		expect(listEntities).toHaveBeenCalledTimes(2);
-	});
-
-	it("fails at once while not connected, and when nothing is plugged in", async () => {
-		const listEntities = vi.fn(async () => listed);
-		const { home } = setup({ listEntities, status: () => ({ kind: "reconnecting" }) });
-		await expect(home.listEntities()).rejects.toThrow(HOME_MESSAGES.unreachable);
-		expect(listEntities).not.toHaveBeenCalled();
-		await expect(setup().home.listEntities()).rejects.toThrow(HOME_MESSAGES.notSetUp);
-	});
-});

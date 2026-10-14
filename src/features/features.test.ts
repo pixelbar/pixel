@@ -15,7 +15,6 @@ import { nullFeedbackSink } from "../core/ports/feedback.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
 import { HomeDeviceStore } from "../services/home-devices.ts";
-import { HomeInventory } from "../services/home-inventory.ts";
 import { KindSwitch } from "../services/kind-switch.ts";
 import { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
@@ -53,7 +52,6 @@ const deps = () => ({
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 	homeDevices: HomeDeviceStore.empty(),
-	homeInventory: HomeInventory.off(),
 	switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
@@ -169,7 +167,6 @@ function adminSubcommand(
 		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 		homeDevices: HomeDeviceStore.empty(),
-		homeInventory: HomeInventory.off(),
 		switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
@@ -228,7 +225,6 @@ describe("admin", () => {
 			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 			homeDevices: HomeDeviceStore.empty(),
-			homeInventory: HomeInventory.off(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter: { ...nullErrorReporter, captureBackground },
 			closingTimeFile: "data/closing-time.md",
