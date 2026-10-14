@@ -13,6 +13,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other, and a tooltip explains each one when you hover over, tap or tab to it. Home Assistant and Scheduled posts sit under Members.
 - Website: every command, admin ones included, is now a card of its own in the commands page's outline, with a link you can share (such as `/commands#ha-set`). Links opened straight to a heading no longer land under the top bar.
+- Website: a privacy notice (what Pixel stores about people, why, where, for how long, and how to ask for a copy or deletion), linked from the guide, the sidebar and the maintainers overview.
+
+### Changed
+
+- Website: the `/feedback` card now says that your message and username may be made public, so you shouldn't include anything private.
 
 ## [0.14.0] - 2026-10-14
 
