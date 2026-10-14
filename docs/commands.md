@@ -1,5 +1,6 @@
 ---
 outline: [2, 4]
+pageClass: px-commands-page
 ---
 
 # Commands
