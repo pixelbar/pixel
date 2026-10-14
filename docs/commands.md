@@ -1,5 +1,5 @@
 ---
-outline: [2, 3]
+outline: [2, 4]
 ---
 
 # Commands
@@ -72,25 +72,25 @@ Lights, switches and doors in the space. You only ever see the devices you're al
 
 <PxCommandTray query="/ha" :selected="2" caption="Typing /ha shows the four Home Assistant commands." />
 
-<PxCommand sig="/ha list" tier="friend" reply="private">
+<PxCommand :level="4" sig="/ha list" tier="friend" reply="private">
 
 The devices you may use, and their state.
 
 </PxCommand>
 
-<PxCommand sig="/ha status device:" tier="friend" reply="private" autocomplete :options="{ 'device:': 'Which device.' }">
+<PxCommand :level="4" sig="/ha status device:" tier="friend" reply="private" autocomplete :options="{ 'device:': 'Which device.' }">
 
 One device's live state, when it last changed and a few details for its kind.
 
 </PxCommand>
 
-<PxCommand sig="/ha set device: state:" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ 'device:': 'Which device. Only the ones you may change are offered.', 'state:': 'What to set it to, such as on or off. Only the actions that device allows are offered.' }">
+<PxCommand :level="4" sig="/ha set device: state:" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ 'device:': 'Which device. Only the ones you may change are offered.', 'state:': 'What to set it to, such as on or off. Only the actions that device allows are offered.' }">
 
 Changes a device, such as switching a light on or off. Needs the capability for that kind of device, or `ha-admin`.
 
 </PxCommand>
 
-<PxCommand sig="/ha open door:" tier="member" reply="private" autocomplete :caps="['ha-doors', 'ha-admin']" :options="{ 'door:': 'Which door.' }">
+<PxCommand :level="4" sig="/ha open door:" tier="member" reply="private" autocomplete :caps="['ha-doors', 'ha-admin']" :options="{ 'door:': 'Which door.' }">
 
 Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlocks.
 
@@ -102,55 +102,144 @@ Messages and polls that Pixel posts in a channel, once or on a repeat. These nee
 
 <PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
 
-<PxCommand sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00 or tomorrow 9am.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
+<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00 or tomorrow 9am.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
 
 Schedules a message. A form opens for the text. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
 </PxCommand>
 
-<PxCommand sig="/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post it.', '[repeat:]': 'How often. Once if left out.', '[days:]': 'For weekly and fortnightly: which days.', '[duration:]': 'How long people can vote, from 1 hour to 2 weeks. 1 day if left out.', '[multiple:]': 'Let people pick more than one answer.', '[name:]': 'A name to find it by later.' }">
+<PxCommand :level="4" sig="/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post it.', '[repeat:]': 'How often. Once if left out.', '[days:]': 'For weekly and fortnightly: which days.', '[duration:]': 'How long people can vote, from 1 hour to 2 weeks. 1 day if left out.', '[multiple:]': 'Let people pick more than one answer.', '[name:]': 'A name to find it by later.' }">
 
 Schedules a native Discord poll. A form opens for the question and the answers, one per line (2 to 10).
 
 </PxCommand>
 
-<PxCommand sig="/schedule list" tier="member" reply="private" :caps="['schedule-posts']">
+<PxCommand :level="4" sig="/schedule list" tier="member" reply="private" :caps="['schedule-posts']">
 
 Every scheduled post, with where and when it goes out next.
 
 </PxCommand>
 
-<PxCommand sig="/schedule edit schedule: [when:] [repeat:] [days:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.' }">
+<PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.' }">
 
 Changes one of your own scheduled posts before it goes out: its content, and optionally when and how often.
 
 </PxCommand>
 
-These take the `schedule:` to act on, and need the same tier and capability:
+<PxCommand :level="4" sig="/schedule preview schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
 
-| Command | What it does |
-| --- | --- |
-| `/schedule preview schedule:` | Shows exactly what a scheduled post will look like. |
-| `/schedule pause schedule:` | Stops a schedule from posting until it's resumed. |
-| `/schedule resume schedule:` | Starts a paused schedule again. Nothing missed while paused is posted. |
-| `/schedule delete schedule:` | Deletes a schedule. |
+Shows exactly what a scheduled post will look like.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/schedule pause schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
+
+Stops a schedule from posting until it's resumed.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/schedule resume schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
+
+Starts a paused schedule again. Nothing missed while paused is posted.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/schedule delete schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
+
+Deletes a schedule.
+
+</PxCommand>
 
 ## Admin
 
 For Pixel's operators. Every reply is private, and every change is recorded. How to use them is in the [runbook](/maintainers/runbook).
 
-| Command | What it does |
-| --- | --- |
-| `/admin status` | Pixel's health and an overview of the access lists. |
-| `/admin reload` | Re-reads the admin and member lists after they were edited by hand. |
-| `/admin level set user: level: [reason:]` | Makes someone a member or friend, or sets them back to guest. |
-| `/admin level get user:` | Someone's level, where it comes from, and their capabilities. |
-| `/admin sync [user:]` | Sets Discord roles to match Pixel's lists, for one person or everyone listed. |
-| `/admin capabilities grant user: capability: [reason:]` | Gives someone a capability. |
-| `/admin capabilities revoke user: capability: [reason:]` | Takes a capability away. |
-| `/admin capabilities list [user:]` | Which capabilities exist, or what one person has. |
-| `/admin announcements set` | Posts open/closed announcements in a channel, in a style: `live` (one post, edited to closed), `timeline` (a new post each time) or `single` (only the latest status, the old post deleted). Any number of channels, one style each. |
-| `/admin announcements remove` | Stops announcing in a channel. Posts already there stay. |
-| `/admin announcements list` | Which channels get announcements, and in which style. |
-| `/admin closing-time set` | Sets the closing-time reminder, in a form. |
-| `/admin doors on` · `/admin doors off` | Switches door control from Pixel on or off for everyone. |
+<PxCommand sig="/admin status" tier="admin" reply="private">
+
+Pixel's health and an overview of the access lists.
+
+</PxCommand>
+
+<PxCommand sig="/admin reload" tier="admin" reply="private">
+
+Re-reads the admin and member lists after they were edited by hand.
+
+</PxCommand>
+
+<PxCommand sig="/admin level set user: level: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'level:': 'member, friend or guest. Guest keeps their entry but gives no access.', '[reason:]': 'Why, for the audit log.' }">
+
+Makes someone a member or friend, or sets them back to guest.
+
+</PxCommand>
+
+<PxCommand sig="/admin level get user:" tier="admin" reply="private" :options="{ 'user:': 'The person.' }">
+
+Someone's level, where it comes from, and their capabilities.
+
+</PxCommand>
+
+<PxCommand sig="/admin sync [user:]" tier="admin" reply="private" :options="{ '[user:]': 'Just this person. Leave it out to sync everyone in Pixel\'s lists.' }">
+
+Sets Discord roles to match Pixel's lists, for one person or everyone listed.
+
+</PxCommand>
+
+<PxCommand sig="/admin capabilities grant user: capability: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
+
+Gives someone a capability.
+
+</PxCommand>
+
+<PxCommand sig="/admin capabilities grant-all user: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', '[reason:]': 'Why, for the audit log.' }">
+
+Gives someone every capability that exists.
+
+</PxCommand>
+
+<PxCommand sig="/admin capabilities revoke user: capability: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
+
+Takes a capability away.
+
+</PxCommand>
+
+<PxCommand sig="/admin capabilities list [user:]" tier="admin" reply="private" :options="{ '[user:]': 'Show just this person.' }">
+
+Which capabilities exist, or what one person has.
+
+</PxCommand>
+
+<PxCommand sig="/admin announcements set style: channel:" tier="admin" reply="private" :options="{ 'style:': 'live (one post, edited to closed), timeline (a new post each time) or single (only the latest status, the old post deleted).', 'channel:': 'Where to announce.' }">
+
+Posts open/closed announcements in a channel, in a style. Any number of channels, one style each.
+
+</PxCommand>
+
+<PxCommand sig="/admin announcements remove channel:" tier="admin" reply="private" :options="{ 'channel:': 'The channel to stop announcing in.' }">
+
+Stops announcing in a channel. Posts already there stay.
+
+</PxCommand>
+
+<PxCommand sig="/admin announcements list" tier="admin" reply="private">
+
+Which channels get announcements, and in which style.
+
+</PxCommand>
+
+<PxCommand sig="/admin closing-time set" tier="admin" reply="private" form>
+
+Sets the closing-time reminder. A form opens for the text.
+
+</PxCommand>
+
+<PxCommand sig="/admin doors off" tier="admin" reply="private">
+
+Switches door control from Pixel off for everyone, at once.
+
+</PxCommand>
+
+<PxCommand sig="/admin doors on" tier="admin" reply="private">
+
+Switches door control from Pixel back on.
+
+</PxCommand>

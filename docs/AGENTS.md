@@ -71,7 +71,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 - **Voice:** plain, friendly, exact. English, sentence case, "you" for the reader. The site describes Pixel in the third person ("Pixel posts when the space opens").
 - **No emoji in the interface.**
 - **Commands are code, as Discord shows them:** `/ha set device: state:`, `/info [topic:]`. Required options end in a colon; optional ones go in brackets.
-- **Every command shows its lowest tier and its reply.** Use `<PxCommand>` with the tier from the command's `access.minTier`, `reply="private"` or `"public"` from `private: true`, and any `capability` in `caps`. Copy names, options and descriptions from `src/features/`, not from memory. Admin commands get a short table only; never describe admin internals.
+- **Every command shows its lowest tier and its reply.** Use `<PxCommand>` with the tier from the command's `access.minTier`, `reply="private"` or `"public"` from `private: true`, and any `capability` in `caps`. Copy names, options and descriptions from `src/features/`, not from memory. Admin commands get cards too, with a one-line description each; never describe admin internals. Each card's signature is a heading, so it's in the outline and linkable (`/commands#ha-set`): pass `:level="4"` to cards inside a `###` subsection.
 - **Don't invent facts.** Behaviour comes from the code and the maintainer docs. Facts about Pixelbar (prices, opening times, rules) are linked on [pixelbar.nl](https://pixelbar.nl), not restated.
 - **The repository is public.** No secrets, tokens, door codes, real Discord IDs, people's names, Home Assistant URLs or the space's device names, not even as examples. Use obviously fake values.
 

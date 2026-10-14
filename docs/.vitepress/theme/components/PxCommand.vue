@@ -2,6 +2,9 @@
 /**
  * One slash command: its signature, the lowest tier, how it replies, what it needs
  * and its options. The description goes in the default slot (markdown works).
+ *
+ * The signature is a real heading, so each command is in the page outline and has a
+ * link of its own. The options are marked `ignore-header`: the outline shows `/ha set`.
  */
 import { computed, onBeforeUnmount, ref } from "vue";
 import PxTierBadge from "./PxTierBadge.vue";
@@ -18,6 +21,8 @@ const props = defineProps<{
 	form?: boolean;
 	/** Option name (with its colon) → what it does. */
 	options?: Record<string, string>;
+	/** Heading level: one below the section the card is in. */
+	level?: 3 | 4 | 5;
 }>();
 
 type Part = { text: string; kind: "cmd" | "opt" | "optional" };
@@ -122,13 +127,16 @@ onBeforeUnmount(() => clearTimeout(resetTimer));
 </script>
 
 <template>
-	<article :id="id" class="px-command">
+	<article class="px-command">
 		<div class="px-command__head">
-			<code class="px-command__sig">
-				<span v-for="(part, i) in parts" :key="i" :class="CLASSES[part.kind]">{{
-					i > 0 ? ` ${part.text}` : part.text
-				}}</span>
-			</code>
+			<component :is="`h${level ?? 3}`" :id="id" class="px-command__sig">
+				<span
+					v-for="(part, i) in parts"
+					:key="i"
+					:class="[CLASSES[part.kind], { 'ignore-header': part.kind !== 'cmd' }]"
+					>{{ i > 0 ? ` ${part.text}` : part.text }}</span
+				><a class="header-anchor" :href="`#${id}`" :aria-label="`Link to ${name}`">&#8203;</a>
+			</component>
 			<div class="px-command__actions">
 				<button
 					type="button"

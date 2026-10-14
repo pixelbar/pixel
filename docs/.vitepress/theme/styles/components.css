@@ -209,6 +209,8 @@
 	gap: var(--space-3);
 }
 .px-command__sig {
+	position: relative;
+	margin: 0;
 	font: 500 18px / 26px var(--font-mono);
 	color: var(--ink);
 	overflow-wrap: anywhere;
@@ -545,11 +547,11 @@
 .vp-doc a.px-btn--primary {
 	color: var(--on-core);
 }
-.vp-doc code.px-command__sig {
+.vp-doc .px-command__sig {
+	margin: 0;
 	padding: 0;
 	border: 0;
-	background: none;
-	font-size: 18px;
+	font: 500 18px / 26px var(--font-mono);
 	color: var(--ink);
 }
 .vp-doc .px-command {

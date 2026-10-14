@@ -236,6 +236,11 @@ body {
 
 /* ---------- Doc typography ---------- */
 
+/* A link opened straight to a heading (/commands#ha-set) lands below the fixed nav
+ * and the phone's "On this page" bar, not under them. */
+.vp-doc :is(h1, h2, h3, h4, h5, h6) {
+	scroll-margin-top: calc(var(--vp-nav-height) + var(--space-16));
+}
 .vp-doc h1 {
 	font: 600 48px / 52px var(--font-display);
 	letter-spacing: 0;
