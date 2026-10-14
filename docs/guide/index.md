@@ -36,16 +36,16 @@ Run `/info topic:membership` in Discord, or read about it on [pixelbar.nl](https
 
 ## Announcements
 
-Pixel posts in Discord when the space opens and when it closes. A change is posted once it has held for two checks in a row (about 30 to 60 seconds), so flicking the switch doesn't flood the channel.
-
-Pixel can also toot the same news on Mastodon, and it says when it comes online and goes offline itself. Which channels it posts in is up to the people who run it.
+Pixel posts in Discord and toots on Mastodon when the space opens and when it closes.
 
 ## Feedback and problems
 
-Use `/feedback` to send a message to Pixel's maintainers. It's private, and the reply tells you what's sent with it (your Discord name and ID, so they can follow up).
+Use `/feedback` to send a message to Pixel's maintainers. This should not be used for any private information (better to DM @NinjaLikesCheez), feedback is **mostly** private, but will in the future automatically open public GitHub issues. This will include your username and the message you typed. You can see an [example here](https://github.com/pixelbar/pixel/issues/96)
 
 ::: warning Found a security problem?
-Email the board at [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl) instead of posting it in Discord or opening a public issue.
+Email the board at [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl) and cc [ninjalikescheez@pixelbar.nl](mailto:ninjalikescheez@pixelbar.nl) instead of posting it in Discord or opening a public issue.
+
+You can also use [GitHub's vulnerability reporting mechnism](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)
 :::
 
 Pixel is a Pixelbar community project. The source is on [GitHub](https://github.com/pixelbar/pixel), and the [maintainer docs](/maintainers/) explain how it's built and run.

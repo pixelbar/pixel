@@ -7,11 +7,7 @@ pageClass: px-commands-page
 
 Every command Pixel answers in Discord, grouped by who can use it. Each card shows the lowest tier it needs, how it replies, and any capability it needs on top.
 
-Required options end in a colon, like `device:`. Optional ones are in brackets, like `[topic:]`. Discord lists the options as you type. **Copy** puts the command's name on your clipboard.
-
-- **Public reply:** everyone in the channel sees the reply, and that you used the command.
-- **Private reply:** only you see the reply.
-- **Needs …:** a [capability](/guide/tiers#capabilities) an admin grants on top of your tier. When a card lists more than one, any one of them will do.
+Required options end in a colon, like `device:`. Optional ones are in brackets, like `[topic:]`. Discord lists the options as you type.
 
 ## For everyone
 
