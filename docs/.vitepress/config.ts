@@ -42,9 +42,22 @@ const MAINTAINER_DOCS = [
 	"infra",
 	"home-assistant",
 	"runbook",
-	"privacy",
 	"discord-command-visibility",
 ];
+
+/**
+ * Where a docs page is served: the maintainer docs and ADRs are rewritten under
+ * /maintainers/, everything else is where it is. `file` is relative to docs/, e.g. `runbook.md`.
+ */
+function siteRoute(file: string): string {
+	const rewritten = MAINTAINER_DOCS.includes(file.replace(/\.md$/, ""))
+		? `maintainers/${file}`
+		: file.startsWith("adr/")
+			? `maintainers/${file}`
+			: file;
+	const route = rewritten.replace(/(^|\/)index\.md$/, "$1").replace(/\.md$/, "");
+	return `/${route}`;
+}
 
 export default defineConfig({
 	base,
@@ -82,7 +95,7 @@ export default defineConfig({
 		config(md) {
 			md.use(escapeMustache);
 			md.use(mermaidFence);
-			md.use(repoLinks, { repo: REPO, repoRoot, docsDir });
+			md.use(repoLinks, { repo: REPO, repoRoot, docsDir, sitePath: siteRoute });
 		},
 	},
 
@@ -102,6 +115,7 @@ export default defineConfig({
 		nav: [
 			{ text: "Guide", link: "/guide/", activeMatch: "^/guide/" },
 			{ text: "Commands", link: "/commands" },
+			{ text: "Privacy", link: "/privacy" },
 			{ text: "Maintainers", link: "/maintainers/", activeMatch: "^/maintainers/" },
 			...(version ? [{ text: `v${version}`, link: `${REPO}/blob/main/CHANGELOG.md` }] : []),
 		],
@@ -117,7 +131,6 @@ export default defineConfig({
 						{ text: "Infrastructure", link: "/maintainers/infra" },
 						{ text: "Home Assistant", link: "/maintainers/home-assistant" },
 						{ text: "Operations runbook", link: "/maintainers/runbook" },
-						{ text: "Privacy notice", link: "/maintainers/privacy" },
 						{ text: "Hiding commands in Discord", link: "/maintainers/discord-command-visibility" },
 					],
 				},
@@ -167,7 +180,7 @@ export default defineConfig({
 					text: "Reference",
 					items: [
 						{ text: "Commands", link: "/commands" },
-						{ text: "Privacy notice", link: "/maintainers/privacy" },
+						{ text: "Privacy notice", link: "/privacy" },
 					],
 				},
 			],

@@ -48,6 +48,6 @@ Email the board at [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl) and cc [nin
 You can also use [GitHub's vulnerability reporting mechanism](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)
 :::
 
-What Pixel stores about you, and how to ask for a copy or deletion, is in the [privacy notice](/maintainers/privacy).
+What Pixel stores about you, and how to ask for a copy or deletion, is in the [privacy notice](/privacy).
 
 Pixel is a Pixelbar community project. The source is on [GitHub](https://github.com/pixelbar/pixel), and the [maintainer docs](/maintainers/) explain how it's built and run.
