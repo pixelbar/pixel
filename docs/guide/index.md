@@ -45,7 +45,7 @@ Use `/feedback` to send a message to Pixel's maintainers. This should not be use
 ::: warning Found a security problem?
 Email the board at [bestuur@pixelbar.nl](mailto:bestuur@pixelbar.nl) and cc [ninjalikescheez@pixelbar.nl](mailto:ninjalikescheez@pixelbar.nl) instead of posting it in Discord or opening a public issue.
 
-You can also use [GitHub's vulnerability reporting mechnism](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)
+You can also use [GitHub's vulnerability reporting mechanism](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)
 :::
 
 Pixel is a Pixelbar community project. The source is on [GitHub](https://github.com/pixelbar/pixel), and the [maintainer docs](/maintainers/) explain how it's built and run.
