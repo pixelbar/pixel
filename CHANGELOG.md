@@ -11,7 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other and explain themselves when you hover over them.
+- Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other, and a tooltip explains each one when you hover over, tap or tab to it. Home Assistant and Scheduled posts sit under Members.
 
 ## [0.14.0] - 2026-10-14
 

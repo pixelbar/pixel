@@ -28,16 +28,20 @@ const CLASSES: Record<Part["kind"], string> = {
 	optional: "px-c-opt-optional",
 };
 
-const REPLY = {
+type Chip = { key: string; label: string; hint: string; tone?: "public" | "private" | "cap" };
+
+const REPLY: Record<"public" | "private", Omit<Chip, "key">> = {
 	public: {
 		label: "Public reply",
-		hint: "Everyone in the channel sees the reply, and that you used the command.",
+		hint: "Pixel answers in the channel. Everyone there sees the reply, and that you used the command.",
+		tone: "public",
 	},
 	private: {
 		label: "Private reply",
-		hint: "Only you see the reply.",
+		hint: "Only you see Pixel's answer. Nobody else in the channel sees it, or that you used the command.",
+		tone: "private",
 	},
-} as const;
+};
 
 const parts = computed<Part[]>(() =>
 	props.sig.split(/\s+/).map((text) => ({
@@ -62,7 +66,41 @@ const id = computed(() =>
 		.replace(/[^a-z0-9-]/gi, ""),
 );
 
-const caps = computed(() => props.caps ?? []);
+const chips = computed<Chip[]>(() => {
+	const list: Chip[] = [{ key: "reply", ...REPLY[props.reply] }];
+	const caps = props.caps ?? [];
+	if (caps.length > 0) {
+		list.push({
+			key: "cap",
+			label: `Needs ${caps.join(" or ")}`,
+			hint:
+				caps.length > 1
+					? "A capability an admin grants on top of your tier. Any one of these will do."
+					: "A capability an admin grants on top of your tier.",
+			tone: "cap",
+		});
+	}
+	if (props.autocomplete) {
+		list.push({
+			key: "autocomplete",
+			label: "Autocomplete",
+			hint: "Discord suggests values as you type. Pixel still checks whatever you pick.",
+		});
+	}
+	if (props.form) {
+		list.push({
+			key: "form",
+			label: "Opens a form",
+			hint: "Discord opens a form for the longer text after you send the command.",
+		});
+	}
+	return list;
+});
+
+/** Escape closes a tooltip without moving the pointer. */
+function dismiss(event: KeyboardEvent) {
+	(event.currentTarget as HTMLElement).blur();
+}
 
 const copyState = ref<"idle" | "copied" | "failed">("idle");
 let resetTimer: ReturnType<typeof setTimeout> | undefined;
@@ -105,17 +143,24 @@ onBeforeUnmount(() => clearTimeout(resetTimer));
 		</div>
 		<div class="px-command__desc"><slot /></div>
 		<div class="px-command__meta">
-			<span class="px-chip px-chip--marked" :class="`px-chip--${reply}`" :title="REPLY[reply].hint">{{
-				REPLY[reply].label
-			}}</span>
 			<span
-				v-if="caps.length > 0"
-				class="px-chip px-chip--marked px-chip--cap"
-				title="A capability an admin grants on top of your tier. Any one of these will do."
-				>Needs {{ caps.join(" or ") }}</span
+				v-for="chip in chips"
+				:key="chip.key"
+				class="px-chip-tip"
+				:class="chip.tone && `px-chip-tip--${chip.tone}`"
 			>
-			<span v-if="autocomplete" class="px-chip">Autocomplete</span>
-			<span v-if="form" class="px-chip">Opens a form</span>
+				<button
+					type="button"
+					class="px-chip px-chip--marked"
+					:aria-describedby="`${id}-${chip.key}`"
+					@keydown.esc="dismiss"
+				>
+					{{ chip.label }}
+				</button>
+				<span :id="`${id}-${chip.key}`" role="tooltip" class="px-tip">
+					<span class="px-tip__box">{{ chip.hint }}</span>
+				</span>
+			</span>
 		</div>
 		<dl v-if="options && Object.keys(options).length > 0" class="px-command__opts">
 			<template v-for="(text, opt) in options" :key="opt">

@@ -1,5 +1,5 @@
 ---
-outline: [2, 2]
+outline: [2, 3]
 ---
 
 # Commands
@@ -58,13 +58,15 @@ Sends a message to Pixel's maintainers, with your Discord name and ID so they ca
 
 ## Members
 
+For paid members. Commands marked Friend also work with a friend membership.
+
 <PxCommand sig="/closing-time" tier="member" reply="private">
 
 Posts the closing-time reminder in the closing-time channel. Pixel also posts it by itself when the space closes.
 
 </PxCommand>
 
-## Home Assistant
+### Home Assistant
 
 Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and Pixel checks again whatever autocomplete offered.
 
@@ -94,7 +96,7 @@ Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlock
 
 </PxCommand>
 
-## Scheduled posts
+### Scheduled posts
 
 Messages and polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
 
