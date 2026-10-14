@@ -32,3 +32,8 @@ output "github_client_ids" {
   value       = { for name, id in azurerm_user_assigned_identity.github : name => id.client_id }
   description = "Per-environment client IDs. Put each in that GitHub environment as ARM_CLIENT_ID."
 }
+
+output "github_principal_ids" {
+  value       = { for name, id in azurerm_user_assigned_identity.github : name => id.principal_id }
+  description = "Per-environment principal IDs. Set prod's as github_register_principal_id in infra/envs/prod so the Release workflow can register slash commands (ADR 0014)."
+}

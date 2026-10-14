@@ -70,7 +70,7 @@ az storage file upload --auth-mode login --account-name "$account" --share-name 
 1. Key Vault secrets exist (`discord-token`, `admins-yaml`) for the **prod** bot.
 2. `members.yaml` is on the prod share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>` from a Release, or the `:main` tag from CD).
-4. Commands are registered against the **prod** guild (`just register prod` with `.env.prod`, never `.env` or `.env.dev`).
+4. Commands are registered against the **prod** guild. A Release does this in its `register-prod` job once `github_register_principal_id` is set to `pixel-github-prod`'s principal ID (`terraform -chdir=infra/bootstrap output github_principal_ids`) and applied; it can read `discord-token` and nothing else ([ADR 0014](../../../docs/adr/0014-release-registers-commands.md)). By hand: `just register prod` with `.env.prod`, never `.env` or `.env.dev`.
 5. Nobody else is connected with that prod token.
 
 Then: `az containerapp replica list -g pixel-prod -n pixel-prod -o table` must show one replica. `/ping` in the production guild.

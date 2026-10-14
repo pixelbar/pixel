@@ -192,3 +192,9 @@ variable "tailscale_image" {
   type    = string
   default = "ghcr.io/tailscale/tailscale:v1.86.5"
 }
+
+variable "github_register_principal_id" {
+  type        = string
+  default     = null
+  description = "Principal ID of pixel-github-prod (bootstrap output github_principal_ids.prod). Lets the Release workflow read discord-token, and only that, to register slash commands (ADR 0014)."
+}
