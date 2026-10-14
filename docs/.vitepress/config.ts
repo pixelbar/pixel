@@ -88,6 +88,9 @@ export default defineConfig({
 	vite: {
 		// Mermaid is big, but it's split out and only loaded on pages with a diagram.
 		build: { chunkSizeWarningLimit: 1600 },
+		// `just docs-tailnet-dev` proxies the dev server through `tailscale serve`, which
+		// keeps the *.ts.net Host. Only machines on the tailnet can reach those names.
+		server: { allowedHosts: [".ts.net"] },
 	},
 
 	themeConfig: {

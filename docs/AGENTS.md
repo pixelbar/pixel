@@ -20,6 +20,7 @@ just docs-dev        # local server with hot reload, http://localhost:5173
 just docs-build      # static build into docs/.vitepress/dist; must pass before a change is done
 just docs-preview    # serve the last build
 just docs-tailnet    # build and share on your tailnet with `tailscale serve` (never Funnel)
+just docs-tailnet-dev  # the dev server (hot reload) on your tailnet, same rules
 just lint            # Biome, which also checks docs/
 ```
 

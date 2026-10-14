@@ -324,3 +324,27 @@ docs-tailnet port="4173":
     done
     # Foreground serve: the share is removed when this exits.
     "$ts" serve "http://127.0.0.1:{{port}}"
+
+# Run the website with hot reload and share it on your tailnet with `tailscale serve`
+# (never Funnel). Edits show up on the remote device as you save. Ctrl-C stops both.
+docs-tailnet-dev port="5173":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ts="$(command -v tailscale || true)"
+    if [ -z "$ts" ] && [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+      ts=/Applications/Tailscale.app/Contents/MacOS/Tailscale
+    fi
+    if [ -z "$ts" ]; then
+      echo "The tailscale CLI isn't installed or on PATH."
+      exit 1
+    fi
+    pnpm --dir docs exec vitepress dev --host 127.0.0.1 --port {{port}} --strictPort &
+    dev=$!
+    trap 'kill "$dev" 2>/dev/null || true' EXIT
+    for _ in $(seq 1 100); do
+      curl -fsS -o /dev/null "http://127.0.0.1:{{port}}/" && break
+      sleep 0.2
+    done
+    # Foreground serve: the share is removed when this exits. It proxies the HMR
+    # websocket too, so hot reload works over https://<machine>.<tailnet>.ts.net/.
+    "$ts" serve "http://127.0.0.1:{{port}}"
