@@ -1,6 +1,6 @@
 # Tiers and capabilities
 
-Pixel decides what you may do from two things: your **tier**, and any **capabilities** an admin has given you. Both are checked every time you run a command, in one place, before the command runs.
+Two things decide what you can and can't do with Pixel: your **tier** and any **capabilities** you've been granted. Both are checked every time you run a command.
 
 ## Tiers
 
@@ -8,22 +8,22 @@ Tiers are ordered: a higher tier can do everything a lower one can.
 
 | Tier | Who |
 | --- | --- |
-| <PxTierBadge tier="guest" /> | Everyone who isn't listed. Being in the Discord server, or being known to Pixel, makes you a guest and nothing more. |
-| <PxTierBadge tier="friend" /> | A paid "friend of Pixelbar" membership. |
+| <PxTierBadge tier="admin" /> | Pixel's operators |
 | <PxTierBadge tier="member" /> | A paid Pixelbar membership. |
-| <PxTierBadge tier="admin" /> | Pixel's operators. Admins are members too. |
+| <PxTierBadge tier="friend" /> | A paid "friend of Pixelbar" membership. |
+| <PxTierBadge tier="guest" /> | Everyone who isn't listed. Being in the Discord server, or being known to Pixel, makes you a guest. |
 
-Pixel knows you by your Discord user ID, never by your name or nickname, so changing your name changes nothing. Discord roles don't give you a tier either: Pixel sets the member and friend roles to match its own lists, never the other way round.
+Pixel uses your Discord ID - a unique identifier assigned by Discord to identify you. This ID is per account across Discord.
 
 `/help` lists only the commands your tier allows, and `/whoami` shows the tier Pixel has for you.
 
 ::: info Your tier is wrong?
-Ask a Pixel admin. Only they can change it, and every change is recorded.
+Ask a Pixel admin. Only they can change it.
 :::
 
 ## Capabilities
 
-A capability is a named permission for one person, for things that shouldn't reach every member. A command that needs one checks your tier **and** the capability: both must hold.
+A capability is a named permission for one person, for things that shouldn't reach every tier. A command that needs one checks your tier **and** the capability: both must hold.
 
 | Capability | What it allows |
 | --- | --- |
@@ -39,8 +39,4 @@ A capability is a named permission for one person, for things that shouldn't rea
 
 ## Home Assistant devices
 
-Each device has its own lowest tier, set by the people who run Pixel. Seeing a device and its state needs only that tier. Changing it needs the tier, plus `ha-admin` or the capability for that kind of device, plus an action that device allows.
-
-Doors are for members only, and an admin can switch all door control off at once.
-
-When Pixel says no to a device, it doesn't say why: the reply is the same whether the device doesn't exist or you aren't allowed. That way it never gives away what's in the building.
+Each device has its own minimum tier to be used. Seeing a device and its state needs only that tier. Changing it needs the tier, plus `ha-admin` or the capability for that kind of device, plus an action that device allows.

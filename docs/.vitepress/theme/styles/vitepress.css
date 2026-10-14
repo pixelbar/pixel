@@ -233,9 +233,29 @@ body {
 .VPDocAsideOutline .outline-link.active {
 	color: var(--ink) !important;
 }
+/* Nesting you can see: a guide line down each nested list, and a heading that has
+ * entries under it reads as their group. Also used by the phone's "On this page". */
+ul.VPDocOutlineItem.nested {
+	margin-left: var(--space-1);
+	padding-left: var(--space-3);
+	border-left: 1px solid var(--border);
+}
+.VPDocOutlineItem li:has(> ul) > .outline-link {
+	color: var(--ink);
+	font-weight: 600;
+}
+/* On the commands page the entries under a group are commands: code, as on the cards. */
+.px-commands-page .VPDocOutlineItem.nested li:not(:has(> ul)) > .outline-link {
+	font: 400 13px / 32px var(--font-mono);
+}
 
 /* ---------- Doc typography ---------- */
 
+/* A link opened straight to a heading (/commands#ha-set) lands below the fixed nav
+ * and the phone's "On this page" bar, not under them. */
+.vp-doc :is(h1, h2, h3, h4, h5, h6) {
+	scroll-margin-top: calc(var(--vp-nav-height) + var(--space-16));
+}
 .vp-doc h1 {
 	font: 600 48px / 52px var(--font-display);
 	letter-spacing: 0;
