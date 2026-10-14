@@ -327,7 +327,7 @@ docs-tailnet port="4173":
 
 # Run the website with hot reload and share it on your tailnet with `tailscale serve`
 # (never Funnel). Edits show up on the remote device as you save. Ctrl-C stops both.
-docs-tailnet-dev port="5173":
+docs-tailnet-dev port="5173" https="443":
     #!/usr/bin/env bash
     set -euo pipefail
     ts="$(command -v tailscale || true)"
@@ -338,13 +338,22 @@ docs-tailnet-dev port="5173":
       echo "The tailscale CLI isn't installed or on PATH."
       exit 1
     fi
+    # `serve status` hides foreground shares; the JSON shows them. A share left over
+    # from a run that didn't exit cleanly holds the port until it's reset.
+    if "$ts" serve status --json | grep -q "\"{{https}}\""; then
+      echo "Something is already shared on your tailnet's port {{https}}:"
+      "$ts" serve status --json
+      echo "Stop it, or clear it with \`tailscale serve reset\`, or pick another port: just docs-tailnet-dev {{port}} 8443"
+      exit 1
+    fi
     pnpm --dir docs exec vitepress dev --host 127.0.0.1 --port {{port}} --strictPort &
     dev=$!
     trap 'kill "$dev" 2>/dev/null || true' EXIT
-    for _ in $(seq 1 100); do
-      curl -fsS -o /dev/null "http://127.0.0.1:{{port}}/" && break
+    for _ in $(seq 1 150); do
+      curl -fs -o /dev/null "http://127.0.0.1:{{port}}/" && break
+      kill -0 "$dev" 2>/dev/null || { echo "The dev server didn't start."; exit 1; }
       sleep 0.2
     done
     # Foreground serve: the share is removed when this exits. It proxies the HMR
     # websocket too, so hot reload works over https://<machine>.<tailnet>.ts.net/.
-    "$ts" serve "http://127.0.0.1:{{port}}"
+    "$ts" serve --https={{https}} "http://127.0.0.1:{{port}}"
