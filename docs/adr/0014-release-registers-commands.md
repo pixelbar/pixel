@@ -18,6 +18,6 @@ This **supersedes** the registration clauses of ADR 0012 and ADR 0013. Everythin
 
 ## Consequences
 
-- A maintainer applies `infra/envs/prod` once with `github_register_principal_id` set (`terraform -chdir=infra/bootstrap output github_principal_ids`). Until then the job fails closed with that instruction; prod is already rolled, and **Re-run failed jobs** works after the apply.
+- A maintainer applies `infra/envs/prod` once with `github_register_principal_id` set (`az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv`). Until then the job fails closed with that instruction; prod is already rolled, and **Re-run failed jobs** works after the apply.
 - The job uses Environment `prod` (its OIDC subject is `environment:prod`), so a reviewer approves it as a second step after `prod-cd`.
 - The prod bot token is readable by a workflow job on `main` after approval, not only by the app. A compromised workflow could act as the bot in the guild, but could not change access lists, Home Assistant or Azure beyond what Contributor already allowed.

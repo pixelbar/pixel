@@ -196,5 +196,5 @@ variable "tailscale_image" {
 variable "github_register_principal_id" {
   type        = string
   default     = null
-  description = "Principal ID of pixel-github-prod (bootstrap output github_principal_ids.prod). Lets the Release workflow read discord-token, and only that, to register slash commands (ADR 0014)."
+  description = "Principal ID of pixel-github-prod (az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId). Lets the Release workflow read discord-token, and only that, to register slash commands (ADR 0014)."
 }
