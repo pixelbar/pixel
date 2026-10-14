@@ -100,7 +100,7 @@ discord-env env script:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
-      echo "Usage: just register dev|prod  or  just command-access dev|prod"
+      echo "Usage: just register|command-access|ha-devices dev|prod"
       exit 1
     fi
     file=".env.{{env}}"
@@ -167,6 +167,13 @@ sentry-release version="" environment="":
 # Show admin commands: `just command-access dev` or `just command-access prod`
 command-access env:
     @just discord-env {{env}} scripts/command-access.ts
+
+# Add Home Assistant devices to an env's devices.yaml on Azure: `just ha-devices dev|prod`.
+# Pulls the remote file (the truth), mirrors it to config/home-assistant/<env>/,
+# lets you pick from what Home Assistant has, validates, and pushes on a yes.
+# Needs az login, and HOME_ASSISTANT_URL/TOKEN in that env's file. Then /admin reload.
+ha-devices env:
+    @just discord-env {{env}} scripts/ha-devices.ts
 
 # Build the container image for Azure (linux/amd64). Mini is arm64; Container
 # Apps reject arm64 images.

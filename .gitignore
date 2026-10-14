@@ -19,6 +19,8 @@ config/*.bak
 # the home device list describes the building — only the example is committed
 config/home-assistant/*.yaml
 !config/home-assistant/*.example.yaml
+# per-env mirrors of the Azure files, written by `just ha-devices`
+config/home-assistant/*/
 
 # runtime state (e.g. data/space.state)
 data/
