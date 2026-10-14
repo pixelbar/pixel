@@ -209,7 +209,7 @@ Someone unlocked (or locked) a door who shouldn't have, a door moved when nobody
 
 **Who can apply:** Owner on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`. Later changes: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md).
 
-**GitHub Environment `prod`** (reviewers, branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`). Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and **fails closed** if they are missing. Coding agents must not apply prod.
+**GitHub Environment `prod`** (reviewers, branch `main`) needs `ARM_CLIENT_ID`, `ARM_TENANT_ID` and `ARM_SUBSCRIPTION_ID` as **variables**, not secrets. Values: [`infra/bootstrap/README.md`](../infra/bootstrap/README.md). Azure `dev` uses local `az` (`just tf-apply dev`, `just deploy-dev`). Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and **fails closed** if they are missing. The prod plan runs with `-refresh=false`: GitHub is not Key Vault Secrets User on `pixel-prod-kv` (ADR 0012), so refreshing the secrets in state would fail with 403. It plans with the example tfvars, so it shows the Key Vault secrets being removed; that is expected and it never applies. Before applying prod, run `just tf-plan prod` locally for the real plan. Coding agents must not apply prod.
 
 **Do not** apply bootstrap from GitHub Actions, and do not run a second Pixel bot against the same Discord token.
 
