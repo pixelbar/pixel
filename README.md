@@ -53,10 +53,11 @@ Never develop against the production bot.
 
 ### Announcements
 
-Pixel can post when Pixelbar opens or closes, in two styles. Each has its own channel setting, you can use either, both or neither, and they can be the same channel:
+Pixel can post when Pixelbar opens or closes, in three styles. Admins choose which channels get which style while Pixel runs, with `/admin announcements set style:<live|timeline|single> channel:<#channel>` (any number of channels, one style each; `remove` and `list` too), and it is remembered across restarts. The two environment variables below still work and are shown in the list as coming from configuration:
 
 - **Live** (`DISCORD_ANNOUNCE_LIVE_CHANNEL_ID`): opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
 - **Timeline** (`DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`): a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
+- **Single**: the channel only ever holds the current status, "🟢 Pixelbar is open" or "🔴 Pixelbar is closed" with when it closed and how long it was open. Each change posts the new status and then deletes the previous post. Set with `/admin announcements set`.
 
 Pixel also says when **it** comes online and goes offline, in the announcements channel (`DISCORD_ANNOUNCEMENTS_CHANNEL_ID`, or `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` to put it elsewhere): a new "🟢 Pixel is online" post on every start with the version, commit, branch (when it isn't `main`) and a short status, edited to "🔴 Pixel is offline" with the uptime when it shuts down. If it crashed, the next start marks the old post "stopped unexpectedly".
 
@@ -124,7 +125,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`, optional `closing-time.md`. Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcements.state`, `announcement-routes.yaml` (the channels set with `/admin announcements`), optional `closing-time.md`. Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in, and that `{{date}}` tokens use when a user-set post goes out. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |

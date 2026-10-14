@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AnnouncementRoutes } from "../core/announcement-routes.ts";
 import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
 import { CapabilityRegistry } from "../core/capabilities.ts";
@@ -52,6 +53,7 @@ const deps = () => ({
 	roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 	home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 	homeDevices: HomeDeviceStore.empty(),
+	announcementRoutes: new AnnouncementRoutes(),
 	switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
@@ -114,6 +116,7 @@ describe("buildFeatures", () => {
 			["capabilities", "admin"],
 			["doors", "admin"],
 			["closing-time", "admin"],
+			["announcements", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -167,6 +170,7 @@ function adminSubcommand(
 		roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 		home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 		homeDevices: HomeDeviceStore.empty(),
+		announcementRoutes: new AnnouncementRoutes(),
 		switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
@@ -225,6 +229,7 @@ describe("admin", () => {
 			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
 			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
 			homeDevices: HomeDeviceStore.empty(),
+			announcementRoutes: new AnnouncementRoutes(),
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter: { ...nullErrorReporter, captureBackground },
 			closingTimeFile: "data/closing-time.md",

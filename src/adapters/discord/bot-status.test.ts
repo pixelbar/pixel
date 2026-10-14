@@ -138,6 +138,7 @@ function fakeChannel(posts: OwnPost[] = []) {
 		edit: vi.fn(async (id, post) => {
 			edits.push({ id, post });
 		}),
+		delete: vi.fn(async () => {}),
 		recentOwnPosts: vi.fn(async () => posts),
 		findOwnPost: vi.fn(async (id) => posts.find((p) => p.id === id)),
 	};

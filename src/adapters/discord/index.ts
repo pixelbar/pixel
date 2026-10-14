@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { actorLogFields, type PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
+import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
 import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
 import type { CapabilityNotifier } from "../../core/capability-notify.ts";
@@ -20,6 +21,7 @@ import {
 	LIVE_PUBLISHER_ID,
 	TIMELINE_PUBLISHER_ID,
 } from "./announce-publishers.ts";
+import { DiscordAnnouncementRoutes, type DiscordRoutesOptions } from "./announce-routes.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import type { DiscordOption } from "./args.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
@@ -57,8 +59,14 @@ export type DiscordAdapterDeps = {
 	announceStateFile: string;
 	/** Where the bot status remembers this run's post (`bot-status.state`). */
 	botStatusStateFile: string;
+	/** Where each admin-set live or single channel remembers its current post. */
+	announcementPostsDir: string;
+	/** The (style, channel) pairings admins have set with `/admin announcements`. */
+	announcementRouteStore: DiscordRoutesOptions["store"];
+	/** Where this adapter plugs in running those pairings once it's ready. */
+	announcementRoutes: Pick<AnnouncementRoutes, "use">;
 	/** Where this adapter's announcement publishers register once they're ready. */
-	announcer: Pick<Announcer, "register">;
+	announcer: Pick<Announcer, "register" | "unregister">;
 	/** Where this adapter plugs in the server's scheduled events once it's ready. */
 	calendar: Pick<Calendar, "use">;
 	/** Where this adapter plugs in posting to channels (scheduled posts) once it's ready. */
@@ -175,13 +183,37 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				reportError(new Error(`Announcements to ${id} are off: ${opened.problem}`));
 			}
 		}
+		// Channels admins set with /admin announcements, on top of the ones from the environment.
+		const routes = new DiscordAnnouncementRoutes({
+			store: deps.announcementRouteStore,
+			announcer: deps.announcer,
+			logger,
+			reportError,
+			postsDir: deps.announcementPostsDir,
+			configRoutes: [
+				...(deps.announce.liveChannelId
+					? [{ style: "live" as const, channelId: deps.announce.liveChannelId }]
+					: []),
+				...(deps.announce.timelineChannelId
+					? [{ style: "timeline" as const, channelId: deps.announce.timelineChannelId }]
+					: []),
+			],
+			openChannel: (channelId, required) =>
+				openAnnouncementChannel(ready, { channelId, guildId, required }),
+		});
+		await routes.start();
+		deps.announcementRoutes.use(routes);
 		// Pixel's own status in the member list follows the space. It needs no channel.
 		const presence = createPresencePublisher(ready.user);
 		deps.announcer.register(presence);
 		// Client options have no presence (the space isn't known at login), and
 		// setPresence is not sent on IDENTIFY. After an invalid session, put it back.
 		client.on(Events.ShardReady, () => presence.reapply());
-		if (!deps.announce.liveChannelId && !deps.announce.timelineChannelId) {
+		if (
+			!deps.announce.liveChannelId &&
+			!deps.announce.timelineChannelId &&
+			deps.announcementRouteStore.list().length === 0
+		) {
 			logger.info({ event: "discord.announce_unset" }, "no announcement channels configured");
 		}
 	}

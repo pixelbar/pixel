@@ -85,6 +85,10 @@ export async function openAnnouncementChannel(
 			async edit(id, post) {
 				await channel.messages.edit(id, post);
 			},
+			async delete(id) {
+				// Only ever the bot's own messages: Discord lets a bot delete those without any extra permission.
+				await channel.messages.delete(id);
+			},
 			async recentOwnPosts(limit) {
 				const messages = await channel.messages.fetch({ limit });
 				return [...messages.values()]

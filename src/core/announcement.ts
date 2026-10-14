@@ -81,6 +81,17 @@ export const ANNOUNCEMENT_KINDS = [
 ] as const satisfies readonly Announcement["kind"][];
 export type AnnouncementKind = Announcement["kind"];
 
+/**
+ * How open/closed announcements look in a channel (platform-neutral names; the
+ * publisher for each platform decides the details):
+ * - **live**: one post per opening, edited to "closed" when the space closes.
+ * - **timeline**: a new post for every open and every close, never edited.
+ * - **single**: only the latest status is kept: each change posts the new status
+ *   and removes the previous post, so the channel always shows exactly one.
+ */
+export const SPACE_ANNOUNCE_STYLES = ["live", "timeline", "single"] as const;
+export type SpaceAnnounceStyle = (typeof SPACE_ANNOUNCE_STYLES)[number];
+
 /** The space's state right now, as seen at startup. */
 export type SpaceSnapshot = {
 	state: "open" | "closed";

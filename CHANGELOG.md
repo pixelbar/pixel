@@ -18,6 +18,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Added
 
 - `/admin capabilities grant-all user:` gives someone every capability in one audited change, admins included. Individual capabilities can still be revoked.
+- A third open/closed announcement style, **single**: the channel only ever holds the current status. Each open or close posts the new status (closed shows when, and how long it was open) and then deletes the previous post. A stale status post is corrected at startup.
+- `/admin announcements set|remove|list`: admins pair announcement styles with channels at runtime (any number of channels, one style each, e.g. a timeline in #announcements and a live post in #general), saved in `data/announcement-routes.yaml`. `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` and `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID` still work and show in the list. Run `just register dev` / `just register prod` after deploying to add the command.
 - Architecture Decision Records [0001](docs/adr/0001-ports-and-adapters.md)–[0005](docs/adr/0005-sentry-and-pino.md) (accepted): TypeScript ports-and-adapters, YAML access lists, no database, Azure Container Apps, and Sentry plus pino. 0006 and 0007 stay unused.
 - `just ha-devices dev|prod`: add or remove Home Assistant devices from a searchable list where what's listed starts ticked (`/` to search, `s` to show what's ticked, esc to go back), and push to that env's `devices.yaml` on Azure. It pulls the remote file (the truth) into a local mirror under `config/home-assistant/<env>/`, stops if the mirror has edits the remote doesn't, validates, shows the diff and pushes only on a yes and only if the remote hasn't changed meanwhile. Doors start with no actions, and dev offers none. Then `/admin reload`.
 

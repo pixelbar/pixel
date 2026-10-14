@@ -7,6 +7,8 @@ import {
 	liveClosedPost,
 	liveOpenPost,
 	liveStandaloneClosedPost,
+	SINGLE_FOOTER,
+	singlePost,
 	timelinePost,
 } from "./announce-render.ts";
 import { accentColor } from "./render.ts";
@@ -124,5 +126,54 @@ describe("every post", () => {
 			expect(post.allowedMentions).toEqual({ parse: [] });
 			expect(Object.keys(post).sort()).toEqual(["allowedMentions", "embeds"]);
 		}
+	});
+});
+
+describe("single style", () => {
+	it("shows an opening with its time and carries the marker Pixel finds it by", () => {
+		expect(singlePost("open", at, null)).toEqual({
+			embeds: [
+				{
+					title: LIVE_OPEN_TITLE,
+					description: `Open since <t:${unix(at)}:t> (<t:${unix(at)}:R>)`,
+					color: accentColor("positive"),
+					timestamp: at.toISOString(),
+					footer: { text: SINGLE_FOOTER },
+				},
+			],
+			allowedMentions: { parse: [] },
+		});
+	});
+
+	it("shows a closing with the time and how long it was open", () => {
+		expect(singlePost("closed", at, openedAt)).toEqual({
+			embeds: [
+				{
+					title: LIVE_CLOSED_TITLE,
+					description: `Closed <t:${unix(at)}:f>. Was open for 3h 20m.`,
+					color: accentColor("negative"),
+					timestamp: at.toISOString(),
+					footer: { text: SINGLE_FOOTER },
+				},
+			],
+			allowedMentions: { parse: [] },
+		});
+	});
+
+	it("leaves out how long when it doesn't know", () => {
+		expect(singlePost("closed", at, null).embeds[0]?.description).toBe(`Closed <t:${unix(at)}:f>.`);
+	});
+
+	it("leaves out the time when it doesn't know it", () => {
+		const open = singlePost("open", null, null).embeds[0];
+		const closed = singlePost("closed", null, null).embeds[0];
+		expect(open).toMatchObject({ title: LIVE_OPEN_TITLE, footer: { text: SINGLE_FOOTER } });
+		expect(open).not.toHaveProperty("description");
+		expect(open).not.toHaveProperty("timestamp");
+		expect(closed).not.toHaveProperty("description");
+	});
+
+	it("never mentions anyone", () => {
+		expect(singlePost("open", at, null).allowedMentions).toEqual({ parse: [] });
 	});
 });

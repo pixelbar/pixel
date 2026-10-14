@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 import { checkAccess, splitRef } from "./core/access.ts";
+import { AnnouncementRoutes } from "./core/announcement-routes.ts";
 import { Announcer } from "./core/announcer.ts";
 import { Calendar } from "./core/calendar.ts";
 import {
@@ -28,6 +29,7 @@ import { buildFeatures } from "./features/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
+import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
@@ -57,6 +59,9 @@ export type Core = {
 	channelPosts: ChannelPosts;
 	/** Platform adapters register their publishers here once they're ready. */
 	announcer: Announcer;
+	/** Where open/closed announcements go: set by admins, run by the Discord adapter. */
+	announcementRoutes: AnnouncementRoutes;
+	announcementRouteStore: AnnouncementRouteStore;
 	/** A platform adapter plugs its events in here once it's ready. */
 	calendar: Calendar;
 	/** Not started here — the bot calls `startFeatures()` once the adapters are ready. */
@@ -120,6 +125,11 @@ export function buildCore(
 	});
 
 	const announcer = new Announcer({ logger, reporter });
+	const announcementRoutes = new AnnouncementRoutes();
+	const announcementRouteStore = new AnnouncementRouteStore({
+		file: join(config.dataDir, "announcement-routes.yaml"),
+		logger,
+	});
 	const calendar = new Calendar({ logger, reporter });
 	const channelPosts = new ChannelPosts();
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
@@ -156,6 +166,7 @@ export function buildCore(
 		roles,
 		home,
 		homeDevices,
+		announcementRoutes,
 		switches,
 		reporter,
 		spaceStatus,
@@ -195,6 +206,8 @@ export function buildCore(
 		dispatcher,
 		spaceStatus,
 		announcer,
+		announcementRoutes,
+		announcementRouteStore,
 		calendar,
 		channelPosts,
 		features,
