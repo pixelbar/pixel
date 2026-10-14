@@ -280,8 +280,14 @@ try {
 		process.stderr.write("Cancelled. Nothing was pushed.\n");
 		process.exitCode = 130;
 	} else {
-		throw error;
+		process.stderr.write(
+			`${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+		);
+		process.exitCode = 1;
 	}
 } finally {
 	rmSync(work, { recursive: true, force: true });
 }
+// The Home Assistant client keeps retrying a connection that never came up and its close()
+// can't stop that, so leave explicitly once the files are cleaned up, or the process hangs.
+process.exit();
