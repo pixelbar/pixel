@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other and explain themselves when you hover over them.
+
 ## [0.14.0] - 2026-10-14
 
 ### Fixed

@@ -213,6 +213,19 @@
 	color: var(--ink);
 	overflow-wrap: anywhere;
 }
+.px-command__actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+}
+.px-command__copy {
+	color: var(--ink-muted);
+	font-family: var(--font-mono);
+	font-weight: 400;
+}
+.px-command__copy:hover {
+	color: var(--ink);
+}
 .px-command__desc {
 	margin: 0;
 	color: var(--ink-muted);
@@ -227,6 +240,38 @@
 	border: 1px solid var(--border-strong);
 	color: var(--ink-muted);
 	font: 400 12px / 16px var(--font-mono);
+}
+.px-chip--marked {
+	--chip: var(--border-strong);
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	border-color: var(--chip);
+	cursor: help;
+}
+.px-chip--marked::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	background: var(--chip);
+}
+.px-chip--public {
+	--chip: var(--spectrum-orange);
+}
+.px-chip--private {
+	--chip: var(--spectrum-blue);
+}
+.px-chip--cap {
+	--chip: var(--spectrum-yellow);
+	color: var(--ink);
+}
+.px-visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 .px-command__opts {
 	margin: 0;
