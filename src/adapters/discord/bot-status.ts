@@ -149,15 +149,33 @@ export function createBotStatusPublisher(
 		}
 	}
 
+	/** This run's own online post. Going offline edits this one, never a newer run's. */
+	let ownId: string | undefined;
+
 	return {
 		id: BOT_STATUS_PUBLISHER_ID,
 		async publish(announcement) {
 			if (announcement.kind !== "bot.status") return;
+			if (announcement.phase === "down" && ownId) {
+				// During a deploy the new version is already online (with a newer post) when the
+				// old one goes offline, so only touch the post this run made.
+				const id = ownId;
+				ownId = undefined;
+				const updated = await edit(id, offlinePost(announcement));
+				try {
+					if (store?.load() === id) remember(undefined);
+				} catch {
+					// An unreadable record isn't worth failing over.
+				}
+				if (!updated) await channel.send(offlinePost(announcement));
+				return;
+			}
 			const online = await onlinePosts();
 			if (announcement.phase === "up") {
 				// Anything still saying online belongs to a run that never said goodbye.
 				for (const stale of online) await edit(stale.id, crashedPost(stale.timestamp));
 				const sent = await channel.send(onlinePost(announcement));
+				ownId = sent.id;
 				remember(sent.id);
 				return;
 			}

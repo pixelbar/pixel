@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- During a deploy, the old version going offline no longer overwrites the new version's "Pixel is online" post. Each run now only updates its own post.
+
 ## [0.12.0] - 2026-10-14
 
 ### Added
