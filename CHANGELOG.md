@@ -9,6 +9,9 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- During a deploy, the old version going offline no longer overwrites the new version's "Pixel is online" post. Each run now only updates its own post.
 ### Added
 
 - The Release workflow registers prod slash commands after it rolls `pixel-prod` (a second Environment `prod` approval), so `just register prod` is no longer a manual step after a release. It takes the app, guild and token reference from the running `pixel-prod`. **One-time setup:** a maintainer sets `github_register_principal_id` in `infra/envs/prod` (from `az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv`) and applies prod, which lets `pixel-github-prod` read the `discord-token` secret and nothing else ([ADR 0014](docs/adr/0014-release-registers-commands.md)). Until then the job fails with that instruction and `just register prod` still works.
