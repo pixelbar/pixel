@@ -1,7 +1,5 @@
 import type { Feature } from "../../core/feature.ts";
-
-/** Public notice: what Pixel stores, why, and how to ask for a copy or deletion. */
-export const PRIVACY_NOTICE_URL = "https://github.com/pixelbar/pixel/blob/main/docs/privacy.md";
+import { PRIVACY_NOTICE_URL } from "../links.ts";
 
 export function createHelpFeature(): Feature {
 	return {

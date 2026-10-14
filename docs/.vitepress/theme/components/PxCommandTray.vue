@@ -48,7 +48,11 @@ const COMMANDS: readonly Command[] = [
 	},
 	{ name: "/whoami", description: "See what Pixel knows about you" },
 	{ name: "/ping", description: "Check that Pixel is alive" },
-	{ name: "/feedback", description: "Send feedback about Pixel to its maintainers" },
+	{
+		name: "/feedback",
+		description:
+			"Send feedback to Pixel's maintainers. Your message and username may be made public",
+	},
 	{ name: "/closing-time", description: "Post the closing-time reminder" },
 	{ name: "/ha list", description: "The devices you may use, and their state" },
 	{ name: "/ha status", description: "The live state of one device" },

@@ -19,7 +19,10 @@ const EXTERNAL = /^([a-z][a-z0-9+.-]*:|\/\/|#|\/)/i;
  * `../justfile`, `../.github/workflows/ci.yml`). Those aren't part of the site, so
  * point them at the file on GitHub instead of leaving a dead link.
  */
-export function repoLinks(md: MarkdownRenderer, { repo, repoRoot, docsDir, sitePath }: Options): void {
+export function repoLinks(
+	md: MarkdownRenderer,
+	{ repo, repoRoot, docsDir, sitePath }: Options,
+): void {
 	md.core.ruler.push("pixel_repo_links", (state) => {
 		// realPath is where the file really is; path is where a rewrite serves it.
 		const file: unknown = state.env?.realPath ?? state.env?.path;

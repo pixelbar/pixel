@@ -4,6 +4,7 @@ import type { Feature } from "../../core/feature.ts";
 import { inlineCode } from "../../core/format.ts";
 import type { FeedbackSink } from "../../core/ports/feedback.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
+import { PRIVACY_NOTICE_URL } from "../links.ts";
 
 export const MIN_FEEDBACK_LENGTH = 3;
 export const MAX_FEEDBACK_LENGTH = 1000;
@@ -30,7 +31,8 @@ export function createFeedbackFeature({ sink, limiter }: FeedbackDeps): Feature 
 		commands: [
 			{
 				name: "feedback",
-				description: "Send feedback about Pixel to its maintainers",
+				description:
+					"Send feedback to Pixel's maintainers. Your message and username may be made public",
 				access: { minTier: "guest" },
 				private: true,
 				options: [
@@ -64,7 +66,7 @@ export function createFeedbackFeature({ sink, limiter }: FeedbackDeps): Feature 
 					logger.info({ event: "feedback.sent", length }, "feedback sent");
 					// Shown back (privately, as a code span so nothing in it can format, link or mention) so people can see exactly what they sent.
 					return {
-						text: `Thank you, your feedback was sent to Pixel's maintainers, with your Discord name and ID so they can follow up. This is what you sent: ${inlineCode(message, MAX_FEEDBACK_LENGTH)}`,
+						text: `Thank you, your feedback was sent to Pixel's maintainers, with your Discord name and ID so they can follow up. Your message and username may be made public. What Pixel keeps: ${PRIVACY_NOTICE_URL}\nThis is what you sent: ${inlineCode(message, MAX_FEEDBACK_LENGTH)}`,
 					};
 				},
 			},

@@ -22,8 +22,9 @@ import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { CAPABILITIES } from "./capabilities.ts";
-import { createHelpFeature, PRIVACY_NOTICE_URL } from "./help/index.ts";
+import { createHelpFeature } from "./help/index.ts";
 import { buildFeatures } from "./index.ts";
+import { PRIVACY_NOTICE_URL } from "./links.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 

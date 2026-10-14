@@ -19,6 +19,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - Website: the `/feedback` card now says that your message and username may be made public, so you shouldn't include anything private.
+- `/feedback` now says, in its description and its reply, that your message and username may be made public, and the reply links the privacy notice. `/help` links the privacy notice on the website (`https://pixelbar.nl/pixel/privacy`) instead of GitHub. Run `just register dev` / `just register prod` after deploying so Discord shows the new `/feedback` description.
 
 ## [0.14.0] - 2026-10-14
 

@@ -4,6 +4,7 @@ import type { FeedbackSink } from "../../core/ports/feedback.ts";
 import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
 import { context, IDS, plain, principal } from "../../testing/fixtures.ts";
+import { PRIVACY_NOTICE_URL } from "../links.ts";
 import { createFeedbackFeature, MAX_FEEDBACK_LENGTH, MIN_FEEDBACK_LENGTH } from "./index.ts";
 
 function setup(options: { send?: FeedbackSink["send"]; limiter?: RateLimiter } = {}) {
@@ -46,6 +47,8 @@ describe("/feedback", () => {
 			from: who,
 		});
 		expect(reply.text).toContain("Thank you");
+		expect(reply.text).toContain("may be made public");
+		expect(reply.text).toContain(PRIVACY_NOTICE_URL);
 		expect(reply.text).toContain("Discord name and ID");
 		expect(reply.text).not.toMatch(/reply|respond|answer/i);
 	});
