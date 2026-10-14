@@ -132,6 +132,24 @@ discord-env env script:
 register env:
     @just discord-env {{env}} scripts/register-commands.ts
 
+# The Release workflow's register step (ADR 0014). Reads DISCORD_* and PIXEL_ENV
+# from the job, not an env file. The command list doesn't depend on who is in
+# the access lists, so it builds from the example lists and a throwaway data dir.
+[private]
+register-ci env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+      echo "register-ci runs only in GitHub Actions. On a laptop: just register {{env}}"
+      exit 1
+    fi
+    data="$(mktemp -d)"
+    trap 'rm -rf "${data}"' EXIT
+    PIXEL_ADMINS_FILE=config/admins.example.yaml \
+    PIXEL_MEMBERS_FILE=config/members.example.yaml \
+    PIXEL_DATA_DIR="${data}" \
+      pnpm exec tsx scripts/register-commands.ts "{{env}}"
+
 # Create a Sentry release and upload dist/ maps. Skip (do not fail) if
 # SENTRY_AUTH_TOKEN, SENTRY_ORG, or SENTRY_PROJECT is unset — do not invent
 # an org. Pixel itself does not read these; they are for this recipe and CD.

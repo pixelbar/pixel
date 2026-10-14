@@ -26,6 +26,10 @@ discord_guild_id = "100000000000000002"
 # home_assistant_url = "https://example.ui.nabu.casa"
 # mastodon_instance  = "https://mastodon.example"
 
+# Lets the Release workflow read discord-token (only) and register slash
+# commands (ADR 0014). az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv
+# github_register_principal_id = "00000000-0000-0000-0000-000000000000"
+
 sentry_enabled    = false
 tailscale_enabled = false
 

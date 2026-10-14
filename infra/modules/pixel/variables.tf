@@ -152,6 +152,12 @@ variable "sentry_enabled" {
   description = "If true, the app reads SENTRY_DSN from Key Vault secret sentry-dsn."
 }
 
+variable "github_register_principal_id" {
+  type        = string
+  default     = null
+  description = "Object (principal) ID of this env's GitHub OIDC identity (pixel-github-<env>). When set, it may read the discord-token secret and nothing else, so CD can register slash commands (ADR 0014). Null: commands are registered from a laptop."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false

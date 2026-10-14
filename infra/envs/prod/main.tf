@@ -31,4 +31,5 @@ module "pixel" {
   mastodon_access_token            = var.mastodon_access_token
   sentry_dsn                       = var.sentry_dsn
   tailscale_auth_key               = var.tailscale_auth_key
+  github_register_principal_id     = var.github_register_principal_id
 }
