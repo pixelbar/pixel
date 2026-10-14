@@ -154,7 +154,6 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | `admins.yaml` | gitignored `config/admins.yaml` (example file is fake IDs only) | KV `admins-yaml` → `/app/secrets/admins-yaml` | humans only; commands never write it |
 | `members.yaml` | gitignored `config/members.yaml`, uploaded to the share | `/app/persist/members.yaml` | Pixel (`/admin level`, capabilities) and humans |
 | `devices.yaml` | gitignored `config/home-assistant/devices.yaml` | `/app/persist/home-assistant/` | humans; `/admin reload` |
-| `inventory.yaml` | not seeded; Pixel writes it from HA | same dir | Pixel |
 | HA token / URL | HA long-lived token (non-admin user) + plain URL | KV + env | humans |
 | `SENTRY_DSN` | Sentry project → KV | env | humans |
 | Image | GHCR (`just deploy-dev`, CD on `main`, or a Release) | Container App | `az containerapp update` |

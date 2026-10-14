@@ -149,7 +149,7 @@ export class HomeAssistantBackend implements HomeBackend {
 					type: "config/entity_registry/list_for_display",
 				}),
 			]);
-			// The category and the hidden flag decide what the inventory leaves out, so if
+			// The category and the hidden flag decide what `just ha-devices` leaves out, so if
 			// this list can't be read the call fails rather than guessing. The areas only
 			// add detail, so they can be missing.
 			const areas = await this.#areaNames(connection);
@@ -193,7 +193,7 @@ export class HomeAssistantBackend implements HomeBackend {
 		} catch (error) {
 			this.#logger.warn(
 				{ event: "home.areas_failed", why: describeFailure(error) },
-				"couldn't read the areas, so the inventory has none",
+				"couldn't read the areas, so the device picker has none",
 			);
 			return { byEntity: () => undefined };
 		}

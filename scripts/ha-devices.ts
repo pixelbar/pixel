@@ -38,7 +38,6 @@ import {
 	HomeDevicesError,
 	type HomeDevicesView,
 } from "../src/services/home-devices.ts";
-import { buildInventory, type InventoryEntry } from "../src/services/home-inventory.ts";
 import { devicePicker } from "./device-picker.ts";
 import {
 	actionChoices,
@@ -59,6 +58,7 @@ import {
 	tiersFor,
 	validateDevices,
 } from "./ha-devices-lib.ts";
+import { buildInventory, type InventoryEntry } from "./ha-inventory.ts";
 import { assertRegisterEnv, parseRegisterTarget } from "./register-env.ts";
 
 const run = promisify(execFile);
