@@ -21,6 +21,8 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",
+		"@inquirer/core": "^12.0.4",
+		"@inquirer/prompts": "^8.7.3",
 		"@types/node": "^26.6.4",
 		"@types/ws": "^8.18.2",
 		"@vitest/coverage-v8": "^5.0.3",

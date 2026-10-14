@@ -38,6 +38,7 @@ just tf-apply dev     # apply the dev stack — only when a maintainer says so
 just deploy-dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
 just register dev     # slash commands on Pixel Dev / a test guild (.env.dev or .env)
 just register prod    # slash commands on the production guild (.env.prod, PIXEL_ENV=prod)
+just ha-devices dev   # pick HA devices and push them to that env's devices.yaml on Azure (also prod)
 ```
 
 If you need a new repeatable task, add a `just` recipe instead of documenting a raw command.

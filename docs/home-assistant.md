@@ -99,6 +99,8 @@ Wait for `config/home-assistant/inventory.yaml` (or run `/admin reload`). That f
 
 ### 6. Add devices from the inventory
 
+On Azure, `just ha-devices dev` (or `prod`) does this for you: it reads what Home Assistant has, lets you pick, and pushes the checked file to the share. See the [runbook](runbook.md). By hand:
+
 Open `inventory.yaml`, copy one entry into `devices.yaml`, and set `minTier` and `actions`. Example (names here are from `devices.example.yaml`, not the space):
 
 ```yaml
