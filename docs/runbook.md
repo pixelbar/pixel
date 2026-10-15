@@ -25,7 +25,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Closing-time](#closing-time)
 - [Mastodon](#mastodon)
 - [Space state](#space-state)
-- [Secrets](#secrets)
+- [Secrets](#secrets) ([sync with Key Vault](#sync-secrets-with-key-vault))
 - [Deploys](#deploys)
 - [CI and CD](#ci-and-cd)
 - [Changelog and versions](#changelog-and-versions)
@@ -147,7 +147,7 @@ That's all: Pixel updates `members.yaml` itself, keeps `members.yaml.bak`, and l
 
 **Azure (`dev`):**
 
-- **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. Edit the secret (`az keyvault secret set --vault-name pixel-dev-kv --name admins-yaml --file config/admins.yaml`), then restart the Container App. Versions of the secret are history.
+- **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. `just secrets-pull dev` writes it to `config/admins.dev.yaml`; edit that, then `just secrets-push dev`, which checks it against the env's `members.yaml` and offers the restart (see [Sync secrets with Key Vault](#sync-secrets-with-key-vault)). Versions of the secret are history.
 - **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit: upload the file to the share (see [Azure Container App (`dev`)](#azure-container-app-dev)) then `/admin reload`, or restart. Daily backups of the share keep 14 days.
 - Prod (#12) will be the same layout in `pixel-prod`.
 
@@ -240,8 +240,10 @@ After apply, Discord still will not answer until Key Vault secrets exist (`write
 **Restart the app** (after rotating a secret or changing `admins.yaml`):
 
 ```sh
-az containerapp revision restart -g pixel-dev -n pixel-dev
+just restart dev
 ```
+
+That restarts the running revision (`az containerapp revision restart`); it doesn't deploy anything. `just restart prod` does the same for `pixel-prod`.
 
 **See that there is exactly one replica:** `az containerapp replica list -g pixel-dev -n pixel-dev -o table`. If a command is answered twice, stop the extra instance (a laptop, or an old revision). Never raise `max_replicas`. Overlap during a deploy is #11.
 
@@ -362,7 +364,33 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **If a secret leaked:** rotate it first, then work out where it leaked from. Check the logs and Sentry for the time window. A leaked Discord token lets someone act as the bot in your server, so treat it as urgent.
 
-**Azure (`dev`):** put values in gitignored `terraform.tfvars` with `write_secrets = true` and re-apply (not stored in state), or `az keyvault secret set --vault-name pixel-dev-kv --name discord-token --file -` (and the other names above), then `az containerapp revision restart -g pixel-dev -n pixel-dev`. Prod vaults are #12. Never commit secret values.
+**Azure:** "put it in the secret store" means `just secrets-push dev` (or `prod`), below, which also offers the restart. Terraform can still write the values from gitignored `terraform.tfvars` with `write_secrets = true` (not stored in state). Never commit secret values.
+
+### Sync secrets with Key Vault
+
+`just secrets-pull` and `just secrets-push` keep an environment's **app** secrets (the `app` group in the manifest: Discord token, `admins.yaml`, Home Assistant, Mastodon, space state, Sentry) in step between its Key Vault and your laptop ([ADR 0016](adr/0016-secrets-sync.md)). The Tailscale key and the registry token are `infra` secrets: Terraform owns them and the tool never touches them.
+
+| Env | Key Vault | Local env secrets | Local `admins.yaml` | Container App |
+| --- | --- | --- | --- | --- |
+| `dev` | `pixel-dev-kv` | `.env.dev` | `config/admins.dev.yaml` | `pixel-dev` |
+| `prod` | `pixel-prod-kv` | `.env.prod` (must set `PIXEL_ENV=prod`) | `config/admins.prod.yaml` | `pixel-prod` |
+
+These local files are gitignored and written readable only by you. **You need:** `az login` on the Pixel subscription, **Key Vault Secrets Officer** on the vault (Secrets User is enough to pull), and the same storage access as `just ha-devices` (a push reads `members.yaml` from the share to check `admins.yaml`).
+
+**Change a secret:**
+
+1. `just secrets-pull dev`. It reads every app secret from the vault and writes it into `.env.dev` (only those keys; the rest of the file stays as it is) and `config/admins.dev.yaml`. If one of your local values differs from the vault, it lists which and asks before overwriting, so an edit you haven't pushed isn't lost by accident.
+2. Edit the value in `.env.dev`, or edit `config/admins.dev.yaml`.
+3. `just secrets-push dev`. It reads the vault again (the live values) and lists each secret as `=` the same, `~` changes, `+` new in Key Vault, or `!` only in Key Vault (a push never deletes). Values are never shown, only their length. `admins.yaml` changes are shown as a diff and checked against `members.yaml` on the share, the way Pixel checks them at startup.
+4. Say yes to push. For `prod` you also type `prod`. It stops without writing if the vault changed since it was read (run it again), and reads every value back afterwards.
+5. **Restart.** Pixel reads secrets only at startup, so it keeps the old values until it restarts. The tool offers to run `just restart dev` for you; say no and run it yourself when it suits (a restart is a short gap in the bot).
+6. Check `/ping` and `/admin status` in that environment's server.
+
+**Guards:** it refuses an env file whose `PIXEL_ENV` is for the other bot, and a Discord token that's also in another bot's file (`.env.dev` or `.env` for prod; `.env.prod` for dev). Never copy the Pixel Dev or Mini token into `.env.prod`.
+
+**If `terraform.tfvars` has `write_secrets = true`** with app values in it, the next apply that bumps `secrets_version` writes those values back over the vault. Keep the tfvars up to date, or set `write_secrets = false` once the vault is seeded and use the sync from then on.
+
+**A new app secret:** add it to the manifest first (above). Once the stack has it, put the value in `.env.<env>` under its environment variable and `just secrets-push <env>`; it shows as `+` new in Key Vault.
 
 ## Deploys
 

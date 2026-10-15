@@ -31,6 +31,9 @@ just test             # tests only
 just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
 just validate-secrets # validate infra/secrets.manifest.yaml and list the Key Vault secrets
+just secrets-pull dev # pull that env's app secrets from Key Vault into .env.dev + config/admins.dev.yaml
+just secrets-push dev # diff local app secrets against Key Vault and push on a yes (never prod from an agent)
+just restart dev      # restart that env's Container App so it reads its secrets again
 just check-changelog  # fail if this branch does not change CHANGELOG.md vs origin/main
 just bump             # cut [Unreleased] into a dated version and bump package.json
 just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
@@ -105,7 +108,7 @@ infra/                  # Terraform. bootstrap/ is #8; modules/pixel and envs/de
 - **Calendar:** features read events from the core `Calendar` (neutral `CalendarEvent`s) and never touch a platform. An adapter plugs in a `CalendarSource` when it's ready. **Text written by other people** (event titles, locations and so on) must go through `escapeMarkdown` before it's put in a reply.
 - **Content:** `content/info/*.md` is committed to a **public** repository, so never put secrets (wifi passwords, door codes, tokens) or personal data in it, and don't add member-only topics. Keep topics short and link to the canonical page on pixelbar.nl rather than copying it. Don't invent facts: every claim should come from Pixelbar's own pages or from the board. Adding, removing or renaming a topic needs the commands re-registered (`just register dev` or `just register prod`), and CI loads the real content, so keep it valid.
 - **Background work:** a feature that needs it declares `start()`, which returns a stop function. Don't start timers or listeners at import time or in a factory. Anything that runs from a timer must catch its own failures so none escapes as an unhandled rejection.
-- **Secrets manifest:** [`infra/secrets.manifest.yaml`](infra/secrets.manifest.yaml) is the one list of Key Vault secrets (names and metadata only, never a value; [ADR 0015](docs/adr/0015-secrets-manifest.md)). A new secret is an entry there plus its Terraform variable and write-only entry, the setting in `config.ts`, `.env.example`, the architecture table and the runbook; `scripts/secrets-manifest.test.ts` names what you missed. Don't hard-code a secret's vault name in `locals.tf`.
+- **Secrets manifest:** [`infra/secrets.manifest.yaml`](infra/secrets.manifest.yaml) is the one list of Key Vault secrets (names and metadata only, never a value; [ADR 0015](docs/adr/0015-secrets-manifest.md)). A new secret is an entry there plus its Terraform variable and write-only entry, the setting in `config.ts`, `.env.example`, the architecture table and the runbook; `scripts/secrets-manifest.test.ts` names what you missed. Don't hard-code a secret's vault name in `locals.tf`. Maintainers sync the `app` group with `just secrets-pull` / `just secrets-push` ([ADR 0016](docs/adr/0016-secrets-sync.md)); the sync never prints a value, so keep it that way. Coding agents never run `just secrets-push prod`.
 - **Config:** a new environment variable must be added to `config.ts`, `.env.example` and the architecture doc's config table.
 - **Errors:** throw `UserFacingError` for problems the user should see. Anything else is reported to Sentry, and the user gets a generic reply.
 - **Types:** `strict`, no `any` (use `unknown` and narrow it). Prefer `type` over `interface`.
