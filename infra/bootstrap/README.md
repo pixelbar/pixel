@@ -68,7 +68,7 @@ In each GitHub Environment (`dev`, `prod`), set **variables** (not secrets). App
 
 Create Environment `prod` if it is missing (reviewers, deploying branch `main`). Terraform plan on PRs uses Environment `dev` / `prod` and **fails closed** without `ARM_*`. Do not store an Azure client secret.
 
-Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only. The [Release](../../.github/workflows/release.yml) workflow rolls `pixel-prod` after Environment `prod` approval. Neither applies Terraform.
+Azure `dev` image rollouts are `just deploy dev` with local `az`, not these variables. [CD](../../.github/workflows/cd.yml) on `main` publishes GHCR only. The [Release](../../.github/workflows/release.yml) workflow rolls `pixel-prod` after Environment `prod` approval. Neither applies Terraform.
 
 ## Recover
 
@@ -79,5 +79,5 @@ Azure `dev` image rollouts are `just deploy-dev` with local `az`, not these vari
 ## What this is not
 
 - Not the Container App, volume, Key Vault, or Tailscale sidecar (`infra/envs/dev`, #9 / #43).
-- Not the Container App image rollout (`just deploy-dev` for `dev`; [Release](../../.github/workflows/release.yml) after Environment `prod` approval for `pixel-prod`).
+- Not the Container App image rollout (`just deploy dev` for `dev`; [Release](../../.github/workflows/release.yml) after Environment `prod` approval for `pixel-prod`).
 - Not Postgres. Pixel’s state is files on a volume.

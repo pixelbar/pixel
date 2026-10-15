@@ -5,49 +5,62 @@ default:
     @just --list
 
 # Install dependencies
+[group('develop')]
 install:
     pnpm install
 
 # Run Pixel locally with hot reload (also restarts when access lists change)
+[group('develop')]
 dev:
     pnpm exec tsx watch --include 'config/*.yaml' --env-file=.env --import ./src/instrument.ts src/index.ts
 
 # Compile TypeScript to dist/
+[group('develop')]
 build:
     rm -rf dist
     pnpm exec tsc -p tsconfig.build.json
 
 # Run the compiled build (after `just build`)
+[group('develop')]
 start:
     node --env-file=.env --import ./dist/instrument.js dist/index.js
 
 # Run tests (pass extra args through, e.g. `just test --watch`)
+[group('develop')]
 test *args:
     pnpm exec vitest run {{args}}
 
 # Run tests with coverage; fails below the thresholds in vitest.config.ts
+[group('develop')]
 coverage:
     pnpm exec vitest run --coverage
 
 # Lint and check formatting
+[group('develop')]
 lint:
     pnpm exec biome check .
 
 # Fix formatting and safe lint issues
+[group('develop')]
 fmt:
     pnpm exec biome check --write .
     -terraform fmt -recursive infra
 
 # Type-check everything, including tests and scripts
+[group('develop')]
 typecheck:
     pnpm exec tsc --noEmit
 
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
 # GitHub runs this only when a check-path matches (.github/path-filters.yml).
+[group('develop')]
+[doc("Everything CI runs for the Node app: lint, types, tests with coverage thresholds")]
 check: lint typecheck coverage
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
 # CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.
+[group('release')]
+[doc("Fail unless this branch updates CHANGELOG.md vs the base (default origin/main)")]
 check-changelog *args:
     pnpm exec tsx scripts/check-changelog.ts {{args}}
 
@@ -55,10 +68,13 @@ check-changelog *args:
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.
 # `--commit` also creates the release commit and tag (used by the Release workflow).
 # `--notes-file PATH` writes the GitHub Release body for the cut (or current) version.
+[group('release')]
+[doc("Cut [Unreleased] into a dated version and bump package.json")]
 bump *args:
     pnpm exec tsx scripts/bump-version.ts {{args}}
 
 # Format-check and validate bootstrap + envs/dev + envs/prod (needs Terraform 1.11+; CI runs this when infra/ changes)
+[group('terraform')]
 tf-validate:
     terraform fmt -check -recursive infra
     terraform -chdir=infra/bootstrap init -backend=false -input=false
@@ -69,7 +85,9 @@ tf-validate:
     terraform -chdir=infra/envs/prod validate
 
 # Plan an env stack (dev or prod). Needs Azure CLI signed in. Does not apply.
+[group('terraform')]
 tf-plan env:
+    @pnpm exec tsx scripts/env.ts shell {{env}} >/dev/null
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} plan
 
@@ -78,63 +96,35 @@ tf-plan env:
 # does not change the Pixel container image (just deploy-dev / az owns that
 # pin). Prod apply still sets container_image. Coding agents must not apply
 # prod: PIXEL_APPLY_PROD=1 is required.
+[group('terraform')]
+[doc("Apply an env stack (maintainers only; prod needs PIXEL_APPLY_PROD=1)")]
 tf-apply env:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{env}}" = "prod" ] && [ "${PIXEL_APPLY_PROD:-}" != "1" ]; then
-      echo "Refusing just tf-apply prod. Coding agents must not apply prod or write prod secrets."
-      echo "A maintainer runs: PIXEL_APPLY_PROD=1 just tf-apply prod"
-      exit 1
-    fi
+    pnpm exec tsx scripts/env.ts apply {{env}}
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} apply
 
 # Validate the access list files and the Home Assistant devices file
+[group('config')]
 validate-config:
     pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
 # Validate infra/secrets.manifest.yaml (names only; no Azure login, no values)
+[group('config')]
 validate-secrets:
     pnpm exec tsx scripts/validate-secrets.ts
 
-# Load `.env.dev` or `.env.prod` for a Discord laptop script. just dotenv-load
-# would otherwise let `.env` win over Node `--env-file`. Dev falls back to `.env`.
-[private]
-discord-env env script:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
-      echo "Usage: just register|command-access|ha-devices dev|prod"
-      exit 1
-    fi
-    file=".env.{{env}}"
-    if [ "{{env}}" = "dev" ] && [ ! -f "${file}" ] && [ -f .env ]; then
-      file=".env"
-      echo "Using .env (no .env.dev). Copy .env.example to .env.dev to keep Pixel Dev separate from a local bot."
-    fi
-    if [ ! -f "${file}" ]; then
-      echo "Missing ${file}."
-      if [ "{{env}}" = "prod" ]; then
-        echo "Copy .env.example to .env.prod and set PIXEL_ENV=prod plus the production Discord application. Never copy .env or .env.dev."
-      else
-        echo "Copy .env.example to .env.dev and fill in the Pixel Dev / test Discord application."
-      fi
-      exit 1
-    fi
-    # Node --env-file does not override existing variables. Drop anything
-    # dotenv-load took from .env so it cannot leak into the other bot.
-    for src in .env .env.dev .env.prod; do
-      if [ -f "${src}" ]; then
-        while IFS= read -r key; do
-          unset "${key}" || true
-        done < <(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "${src}" | cut -d= -f1)
-      fi
-    done
-    pnpm exec tsx --env-file="${file}" {{script}} "{{env}}"
+# Names only, never a secret. Every laptop tool reads these from scripts/envs.ts.
+# Show where an env lives (env file, subscription, resource group, app, vault, share): `just env dev`
+[group('environments')]
+env env:
+    @pnpm exec tsx scripts/env.ts show {{env}}
 
 # Register slash commands: `just register dev` or `just register prod`
+[group('environments')]
 register env:
-    @just discord-env {{env}} scripts/register-commands.ts
+    pnpm exec tsx scripts/register-commands.ts {{env}}
 
 # The Release workflow's register step (ADR 0014). Reads DISCORD_* and PIXEL_ENV
 # from the job, not an env file. The command list doesn't depend on who is in
@@ -152,6 +142,7 @@ register-ci env:
     PIXEL_ADMINS_FILE=config/admins.example.yaml \
     PIXEL_MEMBERS_FILE=config/members.example.yaml \
     PIXEL_DATA_DIR="${data}" \
+    PIXEL_ENV_SOURCE=process \
       pnpm exec tsx scripts/register-commands.ts "{{env}}"
 
 # Create a Sentry release and upload dist/ maps. Skip (do not fail) if
@@ -159,6 +150,8 @@ register-ci env:
 # an org. Pixel itself does not read these; they are for this recipe and CD.
 # `version` must match PIXEL_VERSION in the running image (git SHA on main).
 # Pass environment=dev after a real deploy; omit it for publish-only.
+[group('release')]
+[doc("Create a Sentry release and upload dist/ source maps (skips without SENTRY_* settings)")]
 sentry-release version="" environment="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -187,57 +180,55 @@ sentry-release version="" environment="":
     echo "Sentry release ${release}."
 
 # Show admin commands: `just command-access dev` or `just command-access prod`
+[group('environments')]
 command-access env:
-    @just discord-env {{env}} scripts/command-access.ts
+    pnpm exec tsx scripts/command-access.ts {{env}}
 
 # Add Home Assistant devices to an env's devices.yaml on Azure: `just ha-devices dev|prod`.
 # Pulls the remote file (the truth), mirrors it to config/home-assistant/<env>/,
 # lets you pick from what Home Assistant has, validates, and pushes on a yes.
 # Needs az login, and HOME_ASSISTANT_URL/TOKEN in that env's file. Then /admin reload.
+[group('environments')]
+[doc("Pick Home Assistant devices and push an env's devices.yaml: `just ha-devices dev|prod`")]
 ha-devices env:
-    @just discord-env {{env}} scripts/ha-devices.ts
+    pnpm exec tsx scripts/ha-devices.ts {{env}}
 
 # Pulls terraform-tfvars into infra/envs/<env>/terraform.tfvars, the app secrets (as
 # secrets-pull), and read-only mirrors of members.yaml, devices.yaml and announcement-routes.yaml.
 # Pull everything for an env (tfvars, secrets, share config) to edit, plan or sync: `just pull dev|prod`
+[group('environments')]
 pull env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} pull --all
 
 # Diffs against the live vault and pushes on a yes. Refuses tfvars that hold a secret or
 # are for the other env. The share mirrors never go back up (Pixel writes those).
 # Push an env's tfvars and app secrets after showing the diff: `just push dev|prod`
+[group('environments')]
 push env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} push --all
 
 # Which secrets: the `app` group in infra/secrets.manifest.yaml. Never prints a value.
 # Asks before overwriting a local edit. Needs az login. See docs/runbook.md#secrets.
 # Pull an env's Key Vault secrets into .env.<env> + config/admins.<env>.yaml to edit them
+[group('environments')]
 secrets-pull env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} pull
 
 # Reads the vault (the live values), shows what would change by name and length, pushes
 # on a yes if the vault hasn't changed meanwhile, reads it back, then offers `just restart`.
 # Push local secrets to an env's Key Vault after showing the diff: `just secrets-push dev|prod`
+[group('environments')]
 secrets-push env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} push
 
 # Restarts the running revision in place (one replica); it doesn't deploy anything.
 # Restart an env's Container App so it reads its secrets again: `just restart dev|prod`
+[group('environments')]
 restart env:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
-      echo "Usage: just restart dev|prod"
-      exit 1
-    fi
-    subscription="d150e252-e2f0-47fb-8a4a-c3f29e9aebd4"
-    resource_group="pixel-{{env}}"
-    app_name="pixel-{{env}}"
-    current_sub="$(az account show --query id -o tsv)"
-    if [ "${current_sub}" != "${subscription}" ]; then
-      echo "az is not on the Pixel subscription (${subscription}). Run: az account set --subscription ${subscription}"
-      exit 1
-    fi
+    eval "$(pnpm exec tsx scripts/env.ts shell {{env}})"
+    pnpm exec tsx scripts/env.ts check-az {{env}}
     revision="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query properties.latestRevisionName -o tsv)"
     echo "Restarting ${revision} (${app_name})…"
     az containerapp revision restart -g "${resource_group}" -n "${app_name}" --revision "${revision}" --only-show-errors --output none
@@ -245,6 +236,8 @@ restart env:
 
 # Build the container image for Azure (linux/amd64). Mini is arm64; Container
 # Apps reject arm64 images.
+[group('release')]
+[doc("Build the container image for Azure (linux/amd64)")]
 docker-build tag="pixel:local":
     docker build \
       --platform linux/amd64 \
@@ -254,6 +247,7 @@ docker-build tag="pixel:local":
       -t {{tag}} .
 
 # Log in to GHCR. Needs `gh auth refresh --scopes write:packages,read:packages,repo`.
+[group('release')]
 docker-login-ghcr:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -261,22 +255,21 @@ docker-login-ghcr:
     echo "$(gh auth token)" | docker login ghcr.io -u "${user}" --password-stdin
 
 # Does not start Pixel. Needs docker, gh (write:packages), and az on the Pixel subscription.
-# If pixel-dev is up, do not also run `just dev` on the same Discord token.
-# Build this tree, push to GHCR, roll onto Azure pixel-dev. Never prod.
-deploy-dev: docker-login-ghcr
+# If pixel-dev is up, do not also run `just dev` on the same Discord token. Prod ships
+# only from the Release workflow, so `just deploy prod` refuses.
+# Build this tree, push to GHCR, roll it onto an env's Container App: `just deploy dev`
+[group('environments')]
+deploy env:
     #!/usr/bin/env bash
     set -euo pipefail
+    pnpm exec tsx scripts/env.ts deploy {{env}}
+    eval "$(pnpm exec tsx scripts/env.ts shell {{env}})"
+    pnpm exec tsx scripts/env.ts check-az {{env}}
+    just docker-login-ghcr
     image_name="ghcr.io/pixelbar/pixel"
     sha="$(git rev-parse HEAD)"
     short="$(git rev-parse --short HEAD)"
     branch="$(git rev-parse --abbrev-ref HEAD)"
-    subscription="d150e252-e2f0-47fb-8a4a-c3f29e9aebd4"
-    resource_group="pixel-dev"
-    app_name="pixel-dev"
-    if [ "${resource_group}" != "pixel-dev" ] || [ "${app_name}" != "pixel-dev" ]; then
-      echo "Refusing to deploy: this recipe only updates pixel-dev, never prod."
-      exit 1
-    fi
     version="${short}"
     pin="${image_name}:${sha}"
     if [ -n "$(git status --porcelain)" ]; then
@@ -284,27 +277,22 @@ deploy-dev: docker-login-ghcr
       pin="${image_name}:dev-dirty-$(date -u +%Y%m%dT%H%M%SZ)"
       echo "Working tree is dirty; tagging ${pin} instead of ${sha}."
     fi
-    current_sub="$(az account show --query id -o tsv)"
-    if [ "${current_sub}" != "${subscription}" ]; then
-      echo "az is not on the Pixel subscription (${subscription}). Run: az account set --subscription ${subscription}"
-      exit 1
-    fi
     docker build \
       --platform linux/amd64 \
       --build-arg PIXEL_VERSION="${version}" \
       --build-arg PIXEL_GIT_SHA="${sha}" \
       --build-arg PIXEL_GIT_BRANCH="${branch}" \
       -t "${pin}" \
-      -t "${image_name}:dev" \
+      -t "${image_name}:{{env}}" \
       .
     if docker run --rm --platform linux/amd64 --entrypoint sh "${pin}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
       echo "Image ${pin} contains .env or access lists. Not pushing."
       exit 1
     fi
     docker push "${pin}"
-    docker push "${image_name}:dev"
+    docker push "${image_name}:{{env}}"
     if ! az containerapp show -g "${resource_group}" -n "${app_name}" >/dev/null 2>&1; then
-      echo "Container App ${app_name} is not in ${resource_group} yet (#9). Image ${pin} was pushed. Apply infra/envs/dev, then re-run. This recipe does not apply Terraform."
+      echo "Container App ${app_name} is not in ${resource_group} yet (#9). Image ${pin} was pushed. Apply infra/envs/{{env}}, then re-run. This recipe does not apply Terraform."
       exit 1
     fi
     az containerapp update \
@@ -321,38 +309,45 @@ deploy-dev: docker-login-ghcr
       echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
       exit 1
     fi
-    if [ "${PIXEL_ENV:-local}" = "prod" ]; then
-      echo "Refusing just register: PIXEL_ENV=prod. deploy-dev is the Pixel Dev guild only. Never copy a prod token into this path."
-      exit 1
-    fi
     # Register before Sentry: the app is already live. A Sentry outage must not
     # skip Discord command updates. sentry-release still fails the recipe.
-    just register dev
+    # just register reads {{env}}'s own env file and refuses one for the other bot.
+    just register {{env}}
     just build
-    if ! just sentry-release "${version}" dev; then
-      echo "Sentry release failed after Discord commands were registered. pixel-dev is already on ${pin}."
+    if ! just sentry-release "${version}" {{env}}; then
+      echo "Sentry release failed after Discord commands were registered. ${app_name} is already on ${pin}."
       exit 1
     fi
-    echo "Do not run just dev against the Pixel Dev token while this app is up."
+    echo "Do not run just dev against the ${env_file} Discord token while this app is up."
+
+# The old name for `just deploy dev`; kept for a release (#116).
+[group('environments')]
+deploy-dev: (deploy "dev")
 
 # Install the website's dependencies (docs/ is its own project with its own lockfile)
+[group('docs')]
 docs-install:
     pnpm --dir docs install
 
 # Run the website locally with hot reload (http://localhost:5173)
+[group('docs')]
 docs-dev:
     pnpm --dir docs run dev
 
 # Build the website into docs/.vitepress/dist
+[group('docs')]
 docs-build:
     pnpm --dir docs run build
 
 # Serve the built website (after `just docs-build`)
+[group('docs')]
 docs-preview:
     pnpm --dir docs run preview
 
 # Build the website and share it on your tailnet with `tailscale serve` (never Funnel:
 # only devices on your tailnet can open it). Runs until Ctrl-C, which also stops sharing.
+[group('docs')]
+[doc("Build the website and share it on your tailnet (tailscale serve, never Funnel)")]
 docs-tailnet port="4173":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -377,6 +372,8 @@ docs-tailnet port="4173":
 
 # Run the website with hot reload and share it on your tailnet with `tailscale serve`
 # (never Funnel). Edits show up on the remote device as you save. Ctrl-C stops both.
+[group('docs')]
+[doc("Run the website with hot reload and share it on your tailnet (never Funnel)")]
 docs-tailnet-dev port="5173" https="443":
     #!/usr/bin/env bash
     set -euo pipefail

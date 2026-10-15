@@ -4,17 +4,15 @@ import { HomeDevicesError } from "../src/services/home-devices.ts";
 import {
 	actionChoices,
 	appendDevices,
-	azDownloadArgs,
-	azUploadArgs,
 	checkName,
 	choiceLabel,
 	compareMirror,
+	DEVICES_PATH,
 	type DeviceChoice,
 	defaultDescription,
 	deviceChoices,
 	mirrorDir,
 	planChanges,
-	REMOTES,
 	removeDevices,
 	tiersFor,
 	validateDevices,
@@ -55,24 +53,10 @@ const entries: InventoryEntry[] = [
 	{ name: "back-door", entity: "lock.back_door", kind: "door", friendlyName: "Back door" },
 ];
 
-describe("remotes", () => {
-	it("points each env at its own share and the file Pixel reads", () => {
-		expect(REMOTES.dev.account).toBe("pixeldevdata");
-		expect(REMOTES.prod.account).toBe("pixelproddata");
-		expect(REMOTES.prod.path).toBe("home-assistant/devices.yaml");
+describe("devices file", () => {
+	it("is the file Pixel reads, mirrored per env", () => {
+		expect(DEVICES_PATH).toBe("home-assistant/devices.yaml");
 		expect(mirrorDir("prod")).toBe("config/home-assistant/prod");
-	});
-
-	it("builds az arguments with login auth and no shell", () => {
-		const down = azDownloadArgs(REMOTES.dev, "/tmp/x.yaml");
-		expect(down.slice(0, 3)).toEqual(["storage", "file", "download"]);
-		expect(down).toContain("login");
-		expect(down[down.indexOf("--account-name") + 1]).toBe("pixeldevdata");
-		expect(down[down.indexOf("--dest") + 1]).toBe("/tmp/x.yaml");
-		const up = azUploadArgs(REMOTES.prod, "/tmp/y.yaml");
-		expect(up.slice(0, 3)).toEqual(["storage", "file", "upload"]);
-		expect(up[up.indexOf("--source") + 1]).toBe("/tmp/y.yaml");
-		expect(up[up.indexOf("--path") + 1]).toBe("home-assistant/devices.yaml");
 	});
 });
 

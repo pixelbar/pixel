@@ -47,8 +47,7 @@ import {
 	parseAdmins,
 	parseMembers,
 } from "../src/services/access-config.ts";
-import { azDownloadArgs, REMOTES } from "./ha-devices-lib.ts";
-import { assertRegisterEnv, type RegisterTarget } from "./register-env.ts";
+import { assertPixelEnv, ENVS, EnvError, type Target } from "./envs.ts";
 import { loadSecretsManifest, type SecretEntry, SecretsManifestError } from "./secrets-manifest.ts";
 import {
 	azSetArgs,
@@ -76,6 +75,7 @@ import {
 	toPush,
 	VAULTS,
 } from "./secrets-sync-lib.ts";
+import { azDownloadArgs, shareRemote } from "./share.ts";
 
 const run = promisify(execFile);
 
@@ -88,7 +88,7 @@ const say = (text = "") => process.stdout.write(`${text}\n`);
 type Mode = "pull" | "push";
 type Scope = "secrets" | "all";
 
-function parseArgs(argv: readonly string[]): { target: RegisterTarget; mode: Mode; scope: Scope } {
+function parseArgs(argv: readonly string[]): { target: Target; mode: Mode; scope: Scope } {
 	const [target, mode, flag] = argv;
 	if (
 		(target === "dev" || target === "prod") &&
@@ -121,7 +121,7 @@ function azFailure(error: unknown): string {
 /** The local text of each file secret, by vault name. */
 function localFiles(
 	entries: readonly SecretEntry[],
-	target: RegisterTarget,
+	target: Target,
 ): Map<string, string | undefined> {
 	return new Map(
 		entries.filter(isFile).map((e) => [e.vault, readText(localFile(e, target))] as const),
@@ -130,7 +130,7 @@ function localFiles(
 
 /** Every managed secret the vault has. A missing one is simply not in the map. */
 async function readVault(
-	target: RegisterTarget,
+	target: Target,
 	entries: readonly SecretEntry[],
 ): Promise<Map<string, string>> {
 	const vault = VAULTS[target];
@@ -174,25 +174,21 @@ async function showDiff(
 }
 
 /** Downloads a file from the env's share. Undefined when it isn't there. */
-async function download(target: RegisterTarget, path: string): Promise<string | undefined> {
+async function download(target: Target, path: string): Promise<string | undefined> {
 	// Downloads run in parallel, so each gets its own file.
 	const dest = join(work, `download-${path.replaceAll("/", "_")}`);
 	try {
-		await run("az", azDownloadArgs({ ...REMOTES[target], path }, dest));
+		await run("az", azDownloadArgs(shareRemote(target, path), dest));
 	} catch (error) {
 		const why = azFailure(error);
 		if (isShareNotFound(why)) return undefined;
-		throw new Stop(`Couldn't read ${path} from ${REMOTES[target].account}: ${why}`);
+		throw new Stop(`Couldn't read ${path} from ${ENVS[target].storageAccount}: ${why}`);
 	}
 	return readFileSync(dest, "utf8");
 }
 
 /** Checks admins.yaml against the env's members.yaml on the share, as Pixel does at startup. */
-async function checkAdmins(
-	target: RegisterTarget,
-	entry: SecretEntry,
-	text: string,
-): Promise<void> {
+async function checkAdmins(target: Target, entry: SecretEntry, text: string): Promise<void> {
 	const members = await download(target, "members.yaml");
 	if (members === undefined)
 		throw new Stop(`${target}'s share has no members.yaml to check against.`);
@@ -205,7 +201,7 @@ async function checkAdmins(
 }
 
 /** Refuses a tfvars file that's for the other env, sets an unknown variable or holds a secret. */
-function checkTfvars(target: RegisterTarget, text: string): void {
+function checkTfvars(target: Target, text: string): void {
 	const problems = tfvarsProblems(
 		text,
 		target,
@@ -214,14 +210,14 @@ function checkTfvars(target: RegisterTarget, text: string): void {
 	if (problems.length > 0) throw new Stop(`${problems.join("\n")}\nNothing was pushed.`);
 }
 
-function summary(rows: readonly Row[], mode: Mode, target: RegisterTarget): void {
+function summary(rows: readonly Row[], mode: Mode, target: Target): void {
 	for (const row of rows) say(describe(row, mode, target));
 	say();
 }
 
 /** Mirrors the share's config files, read-only, asking before replacing one that differs. */
-async function pullShare(target: RegisterTarget): Promise<void> {
-	say(`Reading config files from ${REMOTES[target].account} (${target})…`);
+async function pullShare(target: Target): Promise<void> {
+	say(`Reading config files from ${ENVS[target].storageAccount} (${target})…`);
 	const files = await Promise.all(
 		shareFiles(target).map(async (file) => ({
 			...file,
@@ -252,15 +248,11 @@ async function pullShare(target: RegisterTarget): Promise<void> {
 	for (const f of files) if (f.remote !== undefined) writePrivate(f.mirror, f.remote);
 }
 
-async function pull(
-	target: RegisterTarget,
-	entries: readonly SecretEntry[],
-	scope: Scope,
-): Promise<void> {
+async function pull(target: Target, entries: readonly SecretEntry[], scope: Scope): Promise<void> {
 	const vault = VAULTS[target];
 	const envPath = envFile(target);
 	const envText = readText(envPath);
-	assertRegisterEnv(target, envText === undefined ? target : pixelEnvOf(envText));
+	assertPixelEnv(target, envText === undefined ? target : pixelEnvOf(envText));
 
 	say(`Reading ${entries.length} secrets from ${vault.vault} (${target})…`);
 	const remote = await readVault(target, entries);
@@ -309,11 +301,7 @@ async function pull(
 	if (scope === "all") say(`For Terraform: just tf-plan ${target}`);
 }
 
-async function push(
-	target: RegisterTarget,
-	entries: readonly SecretEntry[],
-	scope: Scope,
-): Promise<void> {
+async function push(target: Target, entries: readonly SecretEntry[], scope: Scope): Promise<void> {
 	const vault = VAULTS[target];
 	const envPath = envFile(target);
 	const envText = readText(envPath);
@@ -322,7 +310,7 @@ async function push(
 			`Missing ${envPath}. Run just ${scope === "all" ? "pull" : "secrets-pull"} ${target} first.`,
 		);
 	}
-	assertRegisterEnv(target, pixelEnvOf(envText));
+	assertPixelEnv(target, pixelEnvOf(envText));
 	const local = localValues(entries, envText, localFiles(entries, target));
 
 	const others = otherEnvFiles(target).flatMap((file) => {
@@ -449,8 +437,8 @@ try {
 	} else if (error instanceof Error && error.name === "ExitPromptError") {
 		process.stderr.write("Cancelled. Nothing more was written.\n");
 		process.exitCode = 130;
-	} else if (error instanceof Error && error.message.startsWith("Refusing")) {
-		// assertRegisterEnv: the env file is for the other bot.
+	} else if (error instanceof EnvError) {
+		// assertPixelEnv: the env file is for the other bot.
 		process.stderr.write(`${error.message}\n`);
 		process.exitCode = 1;
 	} else {
