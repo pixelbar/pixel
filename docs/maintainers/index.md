@@ -37,6 +37,7 @@ Architecture decision records, newest last.
 | [0013](./adr/0013-release-workflow) | Releases cut versions and promote prod. |
 | [0014](./adr/0014-release-registers-commands) | Releases register prod slash commands. |
 | [0015](./adr/0015-secrets-manifest) | One manifest lists every Key Vault secret. |
+| [0016](./adr/0016-secrets-sync) | `just secrets-pull` / `secrets-push` sync app secrets between Key Vault and the laptop. |
 
 ## Working on the site
 

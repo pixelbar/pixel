@@ -1,7 +1,7 @@
 /**
  * Loads and validates `infra/secrets.manifest.yaml`: the list of secrets Pixel's hosting
  * keeps in Azure Key Vault. Names and metadata only; values never pass through here.
- * Used by `just validate-secrets` and, next, the Key Vault sync tool. See ADR 0015.
+ * Used by `just validate-secrets` and `just secrets-pull` / `secrets-push`. See ADRs 0015 and 0016.
  */
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";

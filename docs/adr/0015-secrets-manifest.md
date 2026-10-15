@@ -1,6 +1,6 @@
 # 0015. A secrets manifest is the one list of Key Vault secrets
 
-* Status: accepted
+* Status: accepted (the sync tool is [ADR 0016](0016-secrets-sync.md))
 * Date: 2026-10-15
 
 ## Context

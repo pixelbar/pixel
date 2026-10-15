@@ -197,6 +197,40 @@ command-access env:
 ha-devices env:
     @just discord-env {{env}} scripts/ha-devices.ts
 
+# Which secrets: the `app` group in infra/secrets.manifest.yaml. Never prints a value.
+# Asks before overwriting a local edit. Needs az login. See docs/runbook.md#secrets.
+# Pull an env's Key Vault secrets into .env.<env> + config/admins.<env>.yaml to edit them
+secrets-pull env:
+    pnpm exec tsx scripts/secrets-sync.ts {{env}} pull
+
+# Reads the vault (the live values), shows what would change by name and length, pushes
+# on a yes if the vault hasn't changed meanwhile, reads it back, then offers `just restart`.
+# Push local secrets to an env's Key Vault after showing the diff: `just secrets-push dev|prod`
+secrets-push env:
+    pnpm exec tsx scripts/secrets-sync.ts {{env}} push
+
+# Restarts the running revision in place (one replica); it doesn't deploy anything.
+# Restart an env's Container App so it reads its secrets again: `just restart dev|prod`
+restart env:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{env}}" != "dev" ] && [ "{{env}}" != "prod" ]; then
+      echo "Usage: just restart dev|prod"
+      exit 1
+    fi
+    subscription="d150e252-e2f0-47fb-8a4a-c3f29e9aebd4"
+    resource_group="pixel-{{env}}"
+    app_name="pixel-{{env}}"
+    current_sub="$(az account show --query id -o tsv)"
+    if [ "${current_sub}" != "${subscription}" ]; then
+      echo "az is not on the Pixel subscription (${subscription}). Run: az account set --subscription ${subscription}"
+      exit 1
+    fi
+    revision="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query properties.latestRevisionName -o tsv)"
+    echo "Restarting ${revision} (${app_name})…"
+    az containerapp revision restart -g "${resource_group}" -n "${app_name}" --revision "${revision}" --only-show-errors --output none
+    echo "Restarted. Check /ping in the {{env}} server, and /admin status."
+
 # Build the container image for Azure (linux/amd64). Mini is arm64; Container
 # Apps reject arm64 images.
 docker-build tag="pixel:local":
