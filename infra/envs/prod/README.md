@@ -31,7 +31,7 @@ The app sets `PIXEL_RUNTIME=cloud` and `PIXEL_ENV=prod`. There is **no database*
 3. A **new** Discord application (not Pixel Dev). Invite it with scopes `bot` and `applications.commands`. Put that application ID and guild ID in gitignored `terraform.tfvars`. See [Adding Pixel to a Discord server](../../../docs/runbook.md#adding-pixel-to-a-discord-server).
 4. Azure CLI, signed in as someone who can write role assignments on `pixel-prod`.
 5. Terraform 1.11+ (`just tf-validate` uses 1.16.5, same as CI).
-6. Copy `terraform.example.tfvars` to `terraform.tfvars`. Secret values belong there with `write_secrets = true`, or in `TF_VAR_*` — never in the example file, never from `pixel-dev-kv`.
+6. `just pull prod` to get the shared `terraform.tfvars` (Key Vault `terraform-tfvars`). The very first time, copy `terraform.example.tfvars` to `terraform.tfvars` and `just push prod`. Secret values go in gitignored `secrets.auto.tfvars` with `write_secrets = true`, or in `TF_VAR_*` — never in `terraform.tfvars`, never from `pixel-dev-kv`.
 
 ## Apply (maintainer only)
 

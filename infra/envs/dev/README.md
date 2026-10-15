@@ -29,7 +29,7 @@ There is **no database**.
 1. Bootstrap is applied ([`infra/bootstrap/README.md`](../../bootstrap/README.md)).
 2. Azure CLI, signed in as someone who can write role assignments on `pixel-dev` (Owner, or Contributor plus the custom role used for bootstrap).
 3. Terraform 1.11+ (`just tf-validate` uses 1.16.5, same as CI). Write-only secret inputs need 1.11.
-4. Copy `terraform.example.tfvars` to `terraform.tfvars` (gitignored) and put the **Pixel Dev** application ID and test guild ID. Secret values belong in that gitignored file with `write_secrets = true`, or in `TF_VAR_*` — never in `terraform.example.tfvars`.
+4. `just pull dev` to get the shared `terraform.tfvars` (Key Vault `terraform-tfvars`; see the runbook's [Pull and push an environment](../../../docs/runbook.md#pull-and-push-an-environment)). The very first time, copy `terraform.example.tfvars` to `terraform.tfvars` (gitignored), put the **Pixel Dev** application ID and test guild ID, and `just push dev`. Secret values go in gitignored `secrets.auto.tfvars` with `write_secrets = true`, or in `TF_VAR_*` — never in `terraform.tfvars` or `terraform.example.tfvars`.
 5. Register providers once per subscription if they are not already:
 
    ```sh
@@ -57,7 +57,7 @@ Do not run Pixel locally against the same Discord token while this app is up.
 
 ## Secrets (Key Vault)
 
-**Preferred for a local apply:** gitignored `terraform.tfvars` (or `TF_VAR_discord_token`). Values are write-only and are not stored in Terraform state.
+**App secrets:** `just secrets-push dev` sets them in Key Vault directly. **For a write-only apply:** gitignored `secrets.auto.tfvars` (or `TF_VAR_discord_token`), never the shared `terraform.tfvars`. Values are write-only and are not stored in Terraform state.
 
 ```hcl
 write_secrets    = true
