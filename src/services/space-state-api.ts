@@ -33,6 +33,8 @@ export type HttpSpaceStateApiOptions = {
 	user: string;
 	/** A secret. */
 	token: string;
+	/** Extra request headers. Their values are secrets, like the token. */
+	headers?: Record<string, string>;
 	fetch?: typeof globalThis.fetch;
 	timeoutMs?: number;
 	maxResponseBytes?: number;
@@ -44,6 +46,7 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 	readonly #url: string;
 	readonly #user: string;
 	readonly #token: string;
+	readonly #headers: Record<string, string>;
 	readonly #fetch: typeof globalThis.fetch;
 	readonly #timeoutMs: number;
 	readonly #maxResponseBytes: number;
@@ -52,6 +55,7 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 		this.#url = options.url;
 		this.#user = options.user;
 		this.#token = options.token;
+		this.#headers = options.headers ?? {};
 		this.#fetch = options.fetch ?? globalThis.fetch;
 		this.#timeoutMs = options.timeoutMs ?? 10_000;
 		this.#maxResponseBytes = options.maxResponseBytes ?? 4 * 1024;
@@ -64,6 +68,10 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 		url.searchParams.set("token", this.#token);
 		url.searchParams.set("state", state);
 
+		// Set last, so a configured header can't change what we ask for.
+		const headers = new Headers(this.#headers);
+		headers.set("accept", "text/plain");
+
 		let response: Response;
 		try {
 			response = await this.#fetch(url, {
@@ -71,7 +79,7 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 				// The token is in the URL: never follow a redirect to another host.
 				redirect: "error",
 				signal: AbortSignal.timeout(this.#timeoutMs),
-				headers: { accept: "text/plain" },
+				headers,
 			});
 		} catch (error) {
 			// No `cause`: a network error can carry the URL, and the URL holds the token.

@@ -396,7 +396,12 @@ describe("buildCore", () => {
 		});
 
 		describe("/spacestate", () => {
-			const spaceStateApi = { url: "https://space.example/state", user: "pixel", token: "tok" };
+			const spaceStateApi = {
+				url: "https://space.example/state",
+				user: "pixel",
+				token: "tok",
+				headers: {},
+			};
 			const setState = (core: ReturnType<typeof buildCore>, userId: string, state: string) =>
 				core.dispatcher.dispatch({
 					actor: actor({ userId }),

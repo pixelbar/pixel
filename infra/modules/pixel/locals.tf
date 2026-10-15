@@ -26,6 +26,7 @@ locals {
     home-assistant     = var.home_assistant_url != null
     mastodon           = var.mastodon_instance != null
     spacestate         = var.spacestate_api_url != null
+    spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null

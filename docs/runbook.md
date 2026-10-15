@@ -309,9 +309,10 @@ Members with the `spacestate` capability can set the space open or closed with `
 
 1. Set `SPACESTATE_API_URL` to the API address, and `SPACESTATE_USER` and `SPACESTATE_TOKEN` to the credentials it expects. Set all three or none: setting only some stops startup.
 2. On Azure, set `spacestate_api_url` in the environment's `terraform.tfvars`, and create the Key Vault secrets `spacestate-user` and `spacestate-token` (with `write_secrets = true` and the `spacestate_user` / `spacestate_token` inputs, or with `az keyvault secret set`). The app reads them as `SPACESTATE_USER` and `SPACESTATE_TOKEN`.
-3. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
-4. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
-5. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
+3. Optional: if the API needs extra request headers, set `SPACESTATE_ADDITIONAL_HEADERS` to a JSON object such as `{"X-Example": "value"}`. It is a secret so the values stay out of the public repository. On Azure, set `spacestate_additional_headers_enabled = true` and create the Key Vault secret `spacestate-additional-headers` (`just secrets-push`, or the `spacestate_additional_headers` input).
+4. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
+5. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
+6. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
 
 **Turn it off:** unset all three variables (on Azure, unset `spacestate_api_url`). The command stays but says it isn't set up. To stop one person, revoke their capability.
 

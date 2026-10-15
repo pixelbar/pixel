@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- `/spacestate`: optional `SPACESTATE_ADDITIONAL_HEADERS` (a JSON object of header names to values, sent with the state call), for headers the API needs on that call. It is a secret so the values stay out of the public repository: Key Vault `spacestate-additional-headers` on Azure, switched on by the new `spacestate_additional_headers_enabled` Terraform variable. Unset, nothing changes.
+
 - `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
 
 ## [0.15.0] - 2026-10-15
