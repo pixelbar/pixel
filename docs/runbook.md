@@ -318,6 +318,8 @@ Members with the `spacestate` capability can set the space open or closed with `
 
 **If it fails:** the person is told nothing changed, and Sentry gets an event tagged `spacestate` with a message such as "did not accept the change" (the API answered something other than `SUCCESS`), "responded with HTTP 403" (wrong user or token) or "request failed" (unreachable). The message never has the URL, the token or the API's answer. Check the credentials first. Pixel never retries.
 
+**See the request and response:** in Sentry, a failed `/spacestate set` event has a `spacestate_api` section (Contexts), and every call, successful or not, has the same fields as `spacestate_api.*` attributes on the `spacestate` command's trace. They hold the address with `user=[redacted]&token=[redacted]`, the state sent, the HTTP status, content type and length, the response body (control characters removed, cut to 1,024 characters, and left out entirely when over the 4 KiB cap or unreadable), the outcome (`success`, `rejected`, `http-error`, `too-large`, `unreadable` or `network-error`) and how long it took. Request headers, including `SPACESTATE_ADDITIONAL_HEADERS`, are never sent. Without a Sentry DSN nothing is collected.
+
 The user and token are in the URL's query string, so treat anything that could hold the whole URL (a proxy log, a copy of the settings) as a secret.
 
 ## Secrets

@@ -7,6 +7,9 @@ const captureException = vi.fn();
 const addBreadcrumb = vi.fn();
 const startSpan = vi.fn((_opts: unknown, run: (span: unknown) => unknown) => run({}));
 const metricsCount = vi.fn();
+const setContext = vi.fn();
+const setAttributes = vi.fn();
+let activeSpan: { setAttributes: typeof setAttributes } | undefined = { setAttributes };
 
 vi.mock("@sentry/node", () => ({
 	withScope: (callback: (s: typeof scope) => void) => callback(scope),
@@ -14,6 +17,8 @@ vi.mock("@sentry/node", () => ({
 	captureException: (error: unknown) => captureException(error),
 	addBreadcrumb: (crumb: unknown) => addBreadcrumb(crumb),
 	startSpan: (opts: unknown, run: (span: unknown) => unknown) => startSpan(opts, run),
+	setContext: (...args: unknown[]) => setContext(...args),
+	getActiveSpan: () => activeSpan,
 	metrics: { count: (...args: unknown[]) => metricsCount(...args) },
 }));
 
@@ -37,6 +42,37 @@ describe("createSentryReporter", () => {
 			message: "reloaded",
 			level: "info",
 		});
+	});
+
+	it("attaches an exchange as a context and as flat span attributes", () => {
+		createSentryReporter().attach?.("spacestate_api", {
+			request: { method: "POST", state: "open" },
+			response: { status: 200, body: "SUCCESS" },
+			durationMs: 12,
+			skipped: undefined,
+		});
+		expect(setContext).toHaveBeenCalledWith(
+			"spacestate_api",
+			expect.objectContaining({ request: { method: "POST", state: "open" } }),
+		);
+		expect(setAttributes).toHaveBeenCalledWith({
+			"spacestate_api.request.method": "POST",
+			"spacestate_api.request.state": "open",
+			"spacestate_api.response.status": 200,
+			"spacestate_api.response.body": "SUCCESS",
+			"spacestate_api.durationMs": 12,
+		});
+	});
+
+	it("still attaches the context when no span is active", () => {
+		activeSpan = undefined;
+		try {
+			createSentryReporter().attach?.("spacestate_api", { outcome: "success" });
+			expect(setContext).toHaveBeenCalledOnce();
+			expect(setAttributes).not.toHaveBeenCalled();
+		} finally {
+			activeSpan = { setAttributes };
+		}
 	});
 
 	it("captures background errors tagged with their source and no user", () => {

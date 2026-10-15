@@ -132,6 +132,8 @@ export function buildCore(
 				user: config.spaceStateApi.user,
 				token: config.spaceStateApi.token,
 				headers: config.spaceStateApi.headers,
+				// Sentry shows the request and response; the user and token are redacted first.
+				observe: (exchange) => reporter.attach?.("spacestate_api", { ...exchange }),
 				...(options.fetch ? { fetch: options.fetch } : {}),
 			})
 		: undefined;

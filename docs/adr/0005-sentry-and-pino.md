@@ -14,6 +14,7 @@ Operators need to see unexpected failures and which command ran, without putting
 - The Sentry user is the stable platform ID (`discord:<id>`), with display name and handle so people can recognise them. All `dataCollection` categories are off (including stack-frame locals and IP inference). `beforeSend` scrubs anything that looks like a token.
 - **pino** is the only logger. No `console.log`. Each line goes to **stdout**, a **rotating file** in `PIXEL_LOG_DIR` (about two weeks; empty turns the file off), and **Sentry Logs** (`info` and above). Tokens and authorization headers are redacted.
 - Action logs use `actorLogFields()`: `user` (`discord:<id>`), `userName` and `userHandle`. Act on the ID, never the name. Do not log message content or command arguments unless an ADR says so.
+- **Outgoing HTTP is not collected wholesale** (`httpBodies` and `urlQueryParams` stay off), because the space state API takes its credentials in the query string. Instead `HttpSpaceStateApi` hands a sanitised exchange (redacted address, state, status, capped body) to the reporter's `attach`, which sets it as a Sentry context and span attributes.
 - A small HTTP server exposes `/healthz` (process alive) and `/readyz` (Discord gateway connected). Incoming probes are not Sentry request sessions.
 
 ## Consequences
