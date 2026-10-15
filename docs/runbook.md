@@ -406,7 +406,7 @@ These local files are gitignored and written readable only by you. **You need:**
 
 All of them are gitignored. The share files are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
 
-**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. Its diff is shown in full.
+**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
 
 **Change Terraform settings:**
 
