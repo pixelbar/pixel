@@ -287,6 +287,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `schedules` | `/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]` | member + `schedule-posts` | ✅ | Private. Opens a form for the question and answers, then schedules a native Discord poll |
 | `schedules` | `/schedule list`, `preview`, `pause`, `resume`, `delete` | member + `schedule-posts` | ✅ | Private. Manage scheduled posts; `schedule` autocompletes by name or ID. `preview` fills tokens as of the next occurrence (message text; poll question and answers) |
 | `schedules` | `/schedule edit [schedule:] [when:] [repeat:] [days:] [name:]` | member + `schedule-posts` | ✅ | Private. Without `schedule`, lists only this user's still-upcoming posts. With one, opens the compose modal prefilled (message text, or poll question and answers) and writes the same `data/schedules.yaml`. Autocomplete goes through `Dispatcher.suggest` and never offers anyone else's items. Same generic refusal for an id that isn't theirs or has already posted |
+| `spacestate` | `/spacestate set state:`  | member + `spacestate` | ✅ | Private. `state` is `open` or `close`. Tells the space state API that Pixelbar is open or closed (`close` is sent as `closed`). Says so when it isn't set up, and that nothing changed when the API doesn't answer `SUCCESS`. See "Setting the space state" |
 | `feedback`| `/feedback message:`         | guest  | ✅    | Private. Sends a message (3–1000 characters) to Sentry as user feedback, with the sender's Discord name and ID. The reply shows the message back as a code span. At most a few per person, then one every ten minutes. Says so if Sentry isn't set up |
 
 ### The Home Assistant commands
@@ -318,6 +319,16 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
   - **`/ha open door:`** is a shortcut that only takes doors and always runs `unlock`. Pixel never offers unlatch (`open` / `lock.open`): the door kind only has lock and unlock, so `/ha set` cannot run it and a devices file that lists `open` is refused.
   - **An emergency switch.** `/admin doors off` (admins only) stops every door action from `/ha set` and `/ha open` at once, for everyone, and hides doors from autocomplete; `/admin doors on` brings them back. It's on by default and remembered across restarts in `data/home-switches.state` (`services/kind-switch.ts`). If that file exists but can't be read, doors start **off** until an admin switches them on. `/admin status` shows the state, and each switch is logged (`home.kind_switched`, with who) and left as a Sentry breadcrumb.
   - Every door action is logged like any other (`home.action` with who, door, action, before, after and outcome). There is no confirmation step, rate limit or public notice: logging is enough for now, and they can be added later if needed.
+
+### Setting the space state
+
+`/spacestate set state:open|close` tells the space's state API that Pixelbar is open or closed. It is a command for members who hold the `spacestate` capability: both the tier and the capability must hold, only the dispatcher checks them, and an admin without the capability is refused.
+
+- **The call.** `services/space-state-api.ts` sends `POST SPACESTATE_API_URL?user=…&token=…&state=open|closed` and treats the answer `SUCCESS` as done. Anything else (another body, an HTTP error, a timeout, a body that is too large) is a failure. The option is `close`, but the API wants `closed`, so the feature maps it. The handler checks the value again whatever the platform let through.
+- **The URL is a secret.** The user and token travel in the query string, so the URL is never logged or put in an error message, redirects are refused so it can't be sent to another host, and the response body is never echoed. A failed request carries no `cause`, because a network error can hold the URL.
+- **Who did it.** Each change is logged (`spacestate.set`, with who by `actorLogFields`) and left as a Sentry breadcrumb. A failure is logged and reported to Sentry as `spacestate`, and the person is told privately that nothing changed.
+- **No announcement from here.** It only asks the API to change the state. `/status` and the open/closed announcements still read the state back from SpaceAPI, so they follow when the change shows up there and are confirmed the usual way (two polls).
+- **Off when not configured.** `SPACESTATE_API_URL`, `SPACESTATE_USER` and `SPACESTATE_TOKEN` are set together or not at all, like Home Assistant. With none set the command still exists and says it isn't set up.
 
 ### Scheduled posts
 
@@ -434,6 +445,9 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `MASTODON_ACCOUNT`            |        | Optional. Public handle for logs only (`user@instance`). The token decides which account posts |
 | `MASTODON_VISIBILITY`         |        | Optional. `unlisted` (default) or `public`. Never `private` or `direct` |
 | `MASTODON_ANNOUNCE_KINDS`     |        | Optional. Comma-separated kinds to toot. Default `space.status`. `off` / `none` turns toots off |
+| `SPACESTATE_API_URL`          |        | Optional, with the user and token. The API `/spacestate` calls to set the space open or closed (http or https). Not a secret |
+| `SPACESTATE_USER`             | yes    | Optional, with the address and token. Sent as `user` to that API. Key Vault `spacestate-user` when hosted |
+| `SPACESTATE_TOKEN`            | yes    | Optional, with the address and user. Sent as `token` to that API. A secret. All three unset means `/spacestate` says it isn't set up |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
 | `SENTRY_TRACES_SAMPLE_RATE`   |        | Default `1`. How many traces Sentry keeps (`0`–`1`). Needs `SENTRY_DSN`. Errors are always kept. |

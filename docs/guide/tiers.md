@@ -28,6 +28,7 @@ A capability is a named permission for one person, for things that shouldn't rea
 | Capability | What it allows |
 | --- | --- |
 | `schedule-posts` | Schedule messages and polls in channels you can post in, with `/schedule`. |
+| `spacestate` | Set the space open or closed, with `/spacestate set`. Members only. |
 | `ha-lights` | Change lights in Home Assistant, with `/ha set`. |
 | `ha-switches` | Change switches in Home Assistant, with `/ha set`. |
 | `ha-doors` | Unlock doors, with `/ha open`. Members only. |

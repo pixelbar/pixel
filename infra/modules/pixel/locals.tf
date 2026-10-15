@@ -19,6 +19,7 @@ locals {
     ["discord-token", "admins-yaml"],
     var.home_assistant_url != null ? ["home-assistant-token"] : [],
     var.mastodon_instance != null ? ["mastodon-access-token"] : [],
+    var.spacestate_api_url != null ? ["spacestate-user", "spacestate-token"] : [],
     var.sentry_enabled ? ["sentry-dsn"] : [],
     var.tailscale_enabled ? ["tailscale-auth-key"] : [],
     var.container_registry_server != null ? ["ghcr-pull-token"] : [],
@@ -50,12 +51,14 @@ locals {
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
+    var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
   )
 
   pixel_secret_env = merge(
     { DISCORD_TOKEN = "discord-token" },
     var.home_assistant_url != null ? { HOME_ASSISTANT_TOKEN = "home-assistant-token" } : {},
     var.mastodon_instance != null ? { MASTODON_ACCESS_TOKEN = "mastodon-access-token" } : {},
+    var.spacestate_api_url != null ? { SPACESTATE_USER = "spacestate-user", SPACESTATE_TOKEN = "spacestate-token" } : {},
     var.sentry_enabled ? { SENTRY_DSN = "sentry-dsn" } : {},
   )
 }

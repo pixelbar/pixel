@@ -334,6 +334,69 @@ describe("the log directory", () => {
 	});
 });
 
+describe("space state API settings", () => {
+	const URL_ = "https://space.example/api/state";
+	const USER = "pixel-test-user";
+	const TOKEN = "spacestate-test-token";
+	const ALL = { SPACESTATE_API_URL: URL_, SPACESTATE_USER: USER, SPACESTATE_TOKEN: TOKEN };
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).spaceStateApi).toBeUndefined();
+		expect(
+			loadConfig({
+				...VALID,
+				SPACESTATE_API_URL: "",
+				SPACESTATE_USER: "",
+				SPACESTATE_TOKEN: "",
+			}).spaceStateApi,
+		).toBeUndefined();
+	});
+
+	it("reads the address, user and token, trimmed", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				SPACESTATE_API_URL: URL_,
+				SPACESTATE_USER: ` ${USER} `,
+				SPACESTATE_TOKEN: ` ${TOKEN} `,
+			}).spaceStateApi,
+		).toEqual({ url: URL_, user: USER, token: TOKEN });
+	});
+
+	it.each([
+		["only the address", { SPACESTATE_API_URL: URL_ }],
+		["only the user", { SPACESTATE_USER: USER }],
+		["only the token", { SPACESTATE_TOKEN: TOKEN }],
+		["no token", { SPACESTATE_API_URL: URL_, SPACESTATE_USER: USER }],
+		["no address", { SPACESTATE_USER: USER, SPACESTATE_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing any value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/SPACESTATE_API_URL, SPACESTATE_USER and SPACESTATE_TOKEN together/);
+		for (const value of [URL_, USER, TOKEN]) expect(message).not.toContain(value);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the address %j", (url) => {
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_API_URL: url })).toThrow(
+			/SPACESTATE_API_URL/,
+		);
+	});
+
+	it("rejects a blank-only user or token", () => {
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_TOKEN: "   " })).toThrow(
+			/SPACESTATE_TOKEN/,
+		);
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_USER: "   " })).toThrow(
+			/SPACESTATE_USER/,
+		);
+	});
+});
+
 describe("Mastodon settings", () => {
 	const INSTANCE = "https://mastodon.example";
 	const TOKEN = "mastodon-test-token";

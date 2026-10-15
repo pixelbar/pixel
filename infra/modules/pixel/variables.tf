@@ -146,6 +146,17 @@ variable "mastodon_instance" {
   }
 }
 
+variable "spacestate_api_url" {
+  type        = string
+  default     = null
+  description = "Optional. SPACESTATE_API_URL: the API that /spacestate calls to set the space open or closed. Not a secret. The user and token are Key Vault secrets (spacestate-user, spacestate-token). Set the URL to turn /spacestate on."
+
+  validation {
+    condition     = var.spacestate_api_url == null || can(regex("^https?://", var.spacestate_api_url))
+    error_message = "spacestate_api_url must be an http(s) URL or unset."
+  }
+}
+
 variable "sentry_enabled" {
   type        = bool
   default     = false
@@ -211,6 +222,22 @@ variable "mastodon_access_token" {
   sensitive   = true
   default     = null
   description = "MASTODON_ACCESS_TOKEN. Required when write_secrets is true and mastodon_instance is set."
+}
+
+variable "spacestate_user" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SPACESTATE_USER. Required when write_secrets is true and spacestate_api_url is set."
+}
+
+variable "spacestate_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SPACESTATE_TOKEN. Required when write_secrets is true and spacestate_api_url is set."
 }
 
 variable "sentry_dsn" {

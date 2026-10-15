@@ -34,6 +34,7 @@ import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
 import { ScheduleStore } from "./services/schedules.ts";
+import { HttpSpaceStateApi } from "./services/space-state-api.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
 
@@ -124,6 +125,16 @@ export function buildCore(
 		...(options.fetch ? { fetch: options.fetch } : {}),
 	});
 
+	// Off (the command says so) unless the API address, user and token are all set.
+	const spaceState = config.spaceStateApi
+		? new HttpSpaceStateApi({
+				url: config.spaceStateApi.url,
+				user: config.spaceStateApi.user,
+				token: config.spaceStateApi.token,
+				...(options.fetch ? { fetch: options.fetch } : {}),
+			})
+		: undefined;
+
 	const announcer = new Announcer({ logger, reporter });
 	const announcementRoutes = new AnnouncementRoutes();
 	const announcementRouteStore = new AnnouncementRouteStore({
@@ -170,6 +181,7 @@ export function buildCore(
 		switches,
 		reporter,
 		spaceStatus,
+		spaceState,
 		announcer,
 		calendar,
 		channelPosts,

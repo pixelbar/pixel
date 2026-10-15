@@ -15,6 +15,7 @@ import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
+import type { SpaceStateApi } from "../services/space-state-api.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createClosingTimeFeature } from "./closing-time/index.ts";
@@ -25,6 +26,7 @@ import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
+import { createSpaceStateFeature } from "./spacestate/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 
@@ -43,6 +45,8 @@ export type FeatureDeps = {
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;
 	spaceStatus: SpaceStatus;
+	/** Sets the space open or closed (`/spacestate`). Undefined when it isn't configured. */
+	spaceState: SpaceStateApi | undefined;
 	announcer: Announcer;
 	calendar: Calendar;
 	/** Where scheduled posts go, once the platform adapter is ready. */
@@ -79,6 +83,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			logger: deps.logger,
 			onSpaceClosed: closingTime.onSpaceClosed,
 		}),
+		createSpaceStateFeature({ api: deps.spaceState, reporter: deps.reporter }),
 		closingTime,
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),

@@ -110,6 +110,12 @@ variable "mastodon_instance" {
   description = "Optional Mastodon instance origin. The access token is an ephemeral input / Key Vault secret. Set both or neither."
 }
 
+variable "spacestate_api_url" {
+  type        = string
+  default     = null
+  description = "Optional. The API /spacestate calls to set the space open or closed. Not a secret. The user and token are ephemeral inputs / Key Vault secrets. Set the URL to turn /spacestate on."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false
@@ -158,6 +164,22 @@ variable "mastodon_access_token" {
   sensitive   = true
   default     = null
   description = "MASTODON_ACCESS_TOKEN. Required when write_secrets is true and mastodon_instance is set."
+}
+
+variable "spacestate_user" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SPACESTATE_USER. Required when write_secrets is true and spacestate_api_url is set."
+}
+
+variable "spacestate_token" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SPACESTATE_TOKEN. Required when write_secrets is true and spacestate_api_url is set."
 }
 
 variable "sentry_dsn" {

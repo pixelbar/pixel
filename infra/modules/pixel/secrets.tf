@@ -8,6 +8,8 @@ locals {
     "admins-yaml"           = var.admins_yaml
     "home-assistant-token"  = var.home_assistant_token
     "mastodon-access-token" = var.mastodon_access_token
+    "spacestate-user"       = var.spacestate_user
+    "spacestate-token"      = var.spacestate_token
     "sentry-dsn"            = var.sentry_dsn
     "tailscale-auth-key"    = var.tailscale_auth_key
     "ghcr-pull-token"       = var.container_registry_password

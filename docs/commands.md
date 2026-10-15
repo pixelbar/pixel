@@ -147,6 +147,16 @@ Deletes a schedule.
 
 </PxCommand>
 
+### Space state
+
+Sets whether Pixelbar shows as open or closed. This needs the `spacestate` capability.
+
+<PxCommand :level="4" sig="/spacestate set state:" tier="member" reply="private" :caps="['spacestate']" :options="{ 'state:': 'open or close.' }">
+
+Tells the space's state API that Pixelbar is open or closed. `/status` and the open and closed announcements follow once the change shows up on SpaceAPI. If the API doesn't accept it, Pixel says nothing changed.
+
+</PxCommand>
+
 ## Admin
 
 For Pixel's operators. Every reply is private, and every change is recorded. How to use them is in the [runbook](/maintainers/runbook).

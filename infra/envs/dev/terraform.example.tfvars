@@ -35,6 +35,10 @@ discord_guild_id = "100000000000000002"
 # mastodon-access-token as well, or leave both unset (off).
 # mastodon_instance = "https://mastodon.example"
 
+# /spacestate (set the space open or closed). Set the matching Key Vault
+# secrets spacestate-user and spacestate-token as well, or leave all unset (off).
+# spacestate_api_url = "https://space.example/api/state"
+
 sentry_enabled    = false
 tailscale_enabled = false
 
@@ -45,6 +49,8 @@ tailscale_enabled = false
 # admins_yaml_file = "../../../config/admins.yaml"
 # home_assistant_token = "..."
 # mastodon_access_token = "..."
+# spacestate_user       = "..."
+# spacestate_token      = "..."
 # sentry_dsn           = "..."
 # tailscale_auth_key   = "..."
 # container_registry_password = "..."
