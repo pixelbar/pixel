@@ -42,7 +42,8 @@ discord_guild_id = "100000000000000002"
 sentry_enabled    = false
 tailscale_enabled = false
 
-# Leave false here. Real apply: write_secrets = true plus gitignored values.
+# Leave false here. Real apply: write_secrets = true plus the values below in
+# gitignored secrets.auto.tfvars, never in terraform.tfvars (just push refuses it).
 # write_secrets   = true
 # secrets_version = 1
 # discord_token   = "..."

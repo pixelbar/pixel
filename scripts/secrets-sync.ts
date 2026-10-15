@@ -1,10 +1,17 @@
 /**
- * Syncs an env's app secrets between Azure Key Vault and this laptop.
- * Usage: just secrets-pull dev|prod  or  just secrets-push dev|prod
+ * Syncs an env's config and secrets between Azure and this laptop.
+ * Usage: just pull dev|prod, just push dev|prod (everything below), or
+ *        just secrets-pull dev|prod, just secrets-push dev|prod (app secrets only).
  *
- * Which secrets: the `app` group in infra/secrets.manifest.yaml (ADR 0015). Env secrets
- * live in `.env.dev` / `.env.prod` under their environment variable; `admins-yaml` in
- * `config/admins.<env>.yaml`. `infra` secrets stay with Terraform and are never touched.
+ * What, from infra/secrets.manifest.yaml (ADRs 0015 and 0016):
+ *   - `app` secrets: env secrets in `.env.<env>` under their environment variable, and
+ *     `admins-yaml` in `config/admins.<env>.yaml`.
+ *   - `tooling` (just pull / push only): the stack's settings, `terraform-tfvars`, in
+ *     `infra/envs/<env>/terraform.tfvars`. Secret Terraform inputs never go in it: they
+ *     belong in `secrets.auto.tfvars`, which stays on the laptop.
+ *   - just pull also mirrors `members.yaml`, `devices.yaml` and `announcement-routes.yaml`
+ *     from the env's file share, read-only: Pixel and `just ha-devices` write those.
+ * `infra` secrets stay with Terraform and are never touched.
  *
  * pull: reads every managed secret from the env's vault and writes it locally, so you
  *       can edit it. If a local value differs (an edit you haven't pushed), it shows
@@ -12,12 +19,13 @@
  * push: reads the vault (the live values), compares it with the local ones, shows what
  *       would change and asks. Before writing it checks the vault hasn't changed since,
  *       and after writing it reads every value back. A push never deletes a secret.
- *       Then it offers to restart the Container App, which reads secrets at startup.
+ *       Then it offers to restart the Container App if an app secret changed (it reads
+ *       secrets at startup), and says to plan and apply if the tfvars changed.
  *
- * Values are never printed: a secret is shown by name and length. `admins.yaml` isn't a
- * token, so its diff is shown, and it is checked against the env's `members.yaml` the
- * way Pixel checks it at startup. Needs `az login` with Key Vault Secrets Officer on
- * the vault (and Storage File Data Privileged Reader on the share for `admins-yaml`).
+ * Secret values are never printed: a secret is shown by name and length. File secrets
+ * (admins.yaml, terraform.tfvars) hold no tokens, so their diffs are shown. Needs `az
+ * login` with Key Vault Secrets Officer on the vault, and the storage access `just
+ * ha-devices` uses (admins.yaml is checked against the share's members.yaml).
  */
 import { execFile, spawnSync } from "node:child_process";
 import {
@@ -43,13 +51,15 @@ import { azDownloadArgs, REMOTES } from "./ha-devices-lib.ts";
 import { assertRegisterEnv, type RegisterTarget } from "./register-env.ts";
 import { loadSecretsManifest, type SecretEntry, SecretsManifestError } from "./secrets-manifest.ts";
 import {
-	adminsFile,
 	azSetArgs,
 	azShowArgs,
 	compare,
 	describe,
 	envFile,
+	isFile,
 	isNotFound,
+	isShareNotFound,
+	localFile,
 	localValues,
 	newEnvFile,
 	otherEnvFiles,
@@ -58,7 +68,10 @@ import {
 	type Row,
 	reusedDiscordToken,
 	setEnvValues,
+	shareFiles,
+	stackVariables,
 	syncedSecrets,
+	tfvarsProblems,
 	toPull,
 	toPush,
 	VAULTS,
@@ -72,16 +85,19 @@ class Stop extends Error {
 
 const say = (text = "") => process.stdout.write(`${text}\n`);
 
-function parseArgs(argv: readonly string[]): { target: RegisterTarget; mode: "pull" | "push" } {
-	const [target, mode] = argv;
+type Mode = "pull" | "push";
+type Scope = "secrets" | "all";
+
+function parseArgs(argv: readonly string[]): { target: RegisterTarget; mode: Mode; scope: Scope } {
+	const [target, mode, flag] = argv;
 	if (
 		(target === "dev" || target === "prod") &&
 		(mode === "pull" || mode === "push") &&
-		argv.length === 2
+		(argv.length === 2 || (argv.length === 3 && flag === "--all"))
 	) {
-		return { target, mode };
+		return { target, mode, scope: flag === "--all" ? "all" : "secrets" };
 	}
-	throw new Stop("Usage: just secrets-pull dev|prod  or  just secrets-push dev|prod");
+	throw new Stop("Usage: just pull|push dev|prod  or  just secrets-pull|secrets-push dev|prod");
 }
 
 const work = mkdtempSync(join(tmpdir(), "pixel-secrets-"));
@@ -102,6 +118,16 @@ function azFailure(error: unknown): string {
 	return stderr || (error as Error).message;
 }
 
+/** The local text of each file secret, by vault name. */
+function localFiles(
+	entries: readonly SecretEntry[],
+	target: RegisterTarget,
+): Map<string, string | undefined> {
+	return new Map(
+		entries.filter(isFile).map((e) => [e.vault, readText(localFile(e, target))] as const),
+	);
+}
+
 /** Every managed secret the vault has. A missing one is simply not in the map. */
 async function readVault(
 	target: RegisterTarget,
@@ -112,7 +138,9 @@ async function readVault(
 	await Promise.all(
 		entries.map(async (entry) => {
 			try {
-				const { stdout } = await run("az", azShowArgs(vault, entry.vault), { maxBuffer: 1 << 20 });
+				const { stdout } = await run("az", azShowArgs(vault, entry.vault), {
+					maxBuffer: 1 << 20,
+				});
 				out.set(entry.vault, parseShown(stdout));
 			} catch (error) {
 				const why = azFailure(error);
@@ -127,14 +155,14 @@ async function readVault(
 	return out;
 }
 
-/** Shows how admins.yaml would change. It's IDs, not a token, so a diff is fine. */
-async function showAdminsDiff(
+/** Shows how a file secret would change. They hold no tokens, so a diff is fine. */
+async function showDiff(
 	from: string | undefined,
 	to: string,
 	labels: [string, string],
 ): Promise<void> {
-	const a = join(work, "from.yaml");
-	const b = join(work, "to.yaml");
+	const a = join(work, "from");
+	const b = join(work, "to");
 	writeFileSync(a, from ?? "", { mode: 0o600 });
 	writeFileSync(b, to, { mode: 0o600 });
 	try {
@@ -145,84 +173,157 @@ async function showAdminsDiff(
 	}
 }
 
-/** Checks admins.yaml against the env's members.yaml on the share, as Pixel does at startup. */
-async function checkAdmins(target: RegisterTarget, text: string): Promise<void> {
-	const file = adminsFile(target);
-	const members = join(work, "members.yaml");
+/** Downloads a file from the env's share. Undefined when it isn't there. */
+async function download(target: RegisterTarget, path: string): Promise<string | undefined> {
+	// Downloads run in parallel, so each gets its own file.
+	const dest = join(work, `download-${path.replaceAll("/", "_")}`);
 	try {
-		await run("az", azDownloadArgs({ ...REMOTES[target], path: "members.yaml" }, members));
+		await run("az", azDownloadArgs({ ...REMOTES[target], path }, dest));
 	} catch (error) {
-		throw new Stop(
-			`Couldn't read members.yaml from ${REMOTES[target].account} to check ${file}: ${azFailure(error)}`,
-		);
+		const why = azFailure(error);
+		if (isShareNotFound(why)) return undefined;
+		throw new Stop(`Couldn't read ${path} from ${REMOTES[target].account}: ${why}`);
 	}
-	const paths = { adminsFile: file, membersFile: `members.yaml on ${target}` };
+	return readFileSync(dest, "utf8");
+}
+
+/** Checks admins.yaml against the env's members.yaml on the share, as Pixel does at startup. */
+async function checkAdmins(
+	target: RegisterTarget,
+	entry: SecretEntry,
+	text: string,
+): Promise<void> {
+	const members = await download(target, "members.yaml");
+	if (members === undefined)
+		throw new Stop(`${target}'s share has no members.yaml to check against.`);
+	const paths = { adminsFile: localFile(entry, target), membersFile: `members.yaml on ${target}` };
 	buildAccessConfig(
 		parseAdmins(text, paths.adminsFile),
-		parseMembers(readFileSync(members, "utf8"), paths.membersFile),
+		parseMembers(members, paths.membersFile),
 		paths,
 	);
 }
 
-function summary(rows: readonly Row[], mode: "pull" | "push", target: RegisterTarget): void {
+/** Refuses a tfvars file that's for the other env, sets an unknown variable or holds a secret. */
+function checkTfvars(target: RegisterTarget, text: string): void {
+	const problems = tfvarsProblems(
+		text,
+		target,
+		stackVariables(readFileSync(`infra/envs/${target}/variables.tf`, "utf8")),
+	);
+	if (problems.length > 0) throw new Stop(`${problems.join("\n")}\nNothing was pushed.`);
+}
+
+function summary(rows: readonly Row[], mode: Mode, target: RegisterTarget): void {
 	for (const row of rows) say(describe(row, mode, target));
 	say();
 }
 
-async function pull(target: RegisterTarget, entries: readonly SecretEntry[]): Promise<void> {
+/** Mirrors the share's config files, read-only, asking before replacing one that differs. */
+async function pullShare(target: RegisterTarget): Promise<void> {
+	say(`Reading config files from ${REMOTES[target].account} (${target})…`);
+	const files = await Promise.all(
+		shareFiles(target).map(async (file) => ({
+			...file,
+			remote: await download(target, file.path),
+		})),
+	);
+	const differs = files.filter((f) => {
+		const local = readText(f.mirror);
+		return f.remote !== undefined && local !== undefined && local !== f.remote;
+	});
+	for (const f of files) {
+		if (f.remote === undefined) say(`  - ${f.path}: not on the share`);
+		else say(`  ${differs.includes(f) ? "~" : "="} ${f.path} → ${f.mirror}`);
+	}
+	say();
+	if (differs.length > 0) {
+		for (const f of differs)
+			await showDiff(readText(f.mirror), f.remote as string, [f.mirror, f.path]);
+		const ok = await confirm({
+			message: `Replace ${differs.length} local mirror(s) with ${target}'s? They're read-only copies: Pixel and just ha-devices change the real ones.`,
+			default: true,
+		});
+		if (!ok) {
+			say("Left the mirrors as they are.");
+			return;
+		}
+	}
+	for (const f of files) if (f.remote !== undefined) writePrivate(f.mirror, f.remote);
+}
+
+async function pull(
+	target: RegisterTarget,
+	entries: readonly SecretEntry[],
+	scope: Scope,
+): Promise<void> {
 	const vault = VAULTS[target];
 	const envPath = envFile(target);
 	const envText = readText(envPath);
-	const adminsText = readText(adminsFile(target));
 	assertRegisterEnv(target, envText === undefined ? target : pixelEnvOf(envText));
 
 	say(`Reading ${entries.length} secrets from ${vault.vault} (${target})…`);
 	const remote = await readVault(target, entries);
-	const rows = compare(entries, localValues(entries, envText, adminsText), remote);
+	const rows = compare(entries, localValues(entries, envText, localFiles(entries, target)), remote);
 	summary(rows, "pull", target);
 
 	const changes = toPull(rows);
 	if (changes.length === 0) {
-		say("Nothing to pull: local already matches Key Vault.");
-		return;
-	}
-	const overwrites = changes.filter((row) => row.status === "changed");
-	const admins = changes.find((row) => row.entry.delivery === "file");
-	if (admins?.remote !== undefined) {
-		await showAdminsDiff(admins.local, admins.remote, [
-			adminsFile(target),
-			`${vault.vault}/admins-yaml`,
-		]);
-	}
-	if (overwrites.length > 0) {
-		const ok = await confirm({
-			message: `Overwrite ${overwrites.length} local value(s) with ${target}'s? Local edits you haven't pushed are lost.`,
-			default: false,
-		});
-		if (!ok) throw new Stop("Stopped. Nothing was written.");
+		say("Nothing to pull from Key Vault: local already matches.");
+	} else {
+		for (const row of changes) {
+			if (isFile(row.entry) && row.remote !== undefined) {
+				await showDiff(row.local, row.remote, [
+					localFile(row.entry, target),
+					`${vault.vault}/${row.entry.vault}`,
+				]);
+			}
+		}
+		const overwrites = changes.filter((row) => row.status === "changed");
+		if (overwrites.length > 0) {
+			const ok = await confirm({
+				message: `Overwrite ${overwrites.length} local value(s) with ${target}'s? Local edits you haven't pushed are lost.`,
+				default: false,
+			});
+			if (!ok) throw new Stop("Stopped. Nothing was written.");
+		}
+		const env = new Map<string, string>();
+		const written = new Set<string>();
+		for (const row of changes) {
+			if (row.remote === undefined) continue;
+			if (isFile(row.entry)) {
+				writePrivate(localFile(row.entry, target), row.remote);
+				written.add(localFile(row.entry, target));
+			} else if (row.entry.env) env.set(row.entry.env, row.remote);
+		}
+		if (env.size > 0) {
+			writePrivate(envPath, setEnvValues(envText ?? newEnvFile(target), env));
+			written.add(envPath);
+		}
+		say(`Pulled ${changes.length} secret(s) into ${[...written].join(", ")}.`);
 	}
 
-	const env = new Map<string, string>();
-	for (const row of changes) {
-		if (row.remote === undefined) continue;
-		if (row.entry.delivery === "file") writePrivate(adminsFile(target), row.remote);
-		else if (row.entry.env) env.set(row.entry.env, row.remote);
-	}
-	if (env.size > 0) writePrivate(envPath, setEnvValues(envText ?? newEnvFile(target), env));
-	say(
-		`Pulled ${changes.length} secret(s) into ${envPath}${admins ? ` and ${adminsFile(target)}` : ""}.`,
-	);
-	say(`Edit them there, then run: just secrets-push ${target}`);
+	if (scope === "all") await pullShare(target);
+	say();
+	say(`Edit what you need, then run: just ${scope === "all" ? "push" : "secrets-push"} ${target}`);
+	if (scope === "all") say(`For Terraform: just tf-plan ${target}`);
 }
 
-async function push(target: RegisterTarget, entries: readonly SecretEntry[]): Promise<void> {
+async function push(
+	target: RegisterTarget,
+	entries: readonly SecretEntry[],
+	scope: Scope,
+): Promise<void> {
 	const vault = VAULTS[target];
 	const envPath = envFile(target);
 	const envText = readText(envPath);
-	if (envText === undefined)
-		throw new Stop(`Missing ${envPath}. Run just secrets-pull ${target} first.`);
+	if (envText === undefined) {
+		throw new Stop(
+			`Missing ${envPath}. Run just ${scope === "all" ? "pull" : "secrets-pull"} ${target} first.`,
+		);
+	}
 	assertRegisterEnv(target, pixelEnvOf(envText));
-	const local = localValues(entries, envText, readText(adminsFile(target)));
+	const local = localValues(entries, envText, localFiles(entries, target));
 
 	const others = otherEnvFiles(target).flatMap((file) => {
 		const text = readText(file);
@@ -245,14 +346,17 @@ async function push(target: RegisterTarget, entries: readonly SecretEntry[]): Pr
 		say(`Nothing to push: ${vault.vault} already matches.`);
 		return;
 	}
-	const admins = changes.find((row) => row.entry.delivery === "file");
-	if (admins?.local !== undefined) {
-		await showAdminsDiff(admins.remote, admins.local, [
-			`${vault.vault}/admins-yaml`,
-			adminsFile(target),
+	for (const row of changes) {
+		if (!isFile(row.entry) || row.local === undefined) continue;
+		await showDiff(row.remote, row.local, [
+			`${vault.vault}/${row.entry.vault}`,
+			localFile(row.entry, target),
 		]);
-		await checkAdmins(target, admins.local);
-		say(`${adminsFile(target)} is valid with ${target}'s members.yaml.`);
+		if (row.entry.vault === "admins-yaml") {
+			await checkAdmins(target, row.entry, row.local);
+			say(`${localFile(row.entry, target)} is valid with ${target}'s members.yaml.`);
+		}
+		if (row.entry.vault === "terraform-tfvars") checkTfvars(target, row.local);
 	}
 
 	const ok = await confirm({
@@ -299,11 +403,17 @@ async function push(target: RegisterTarget, entries: readonly SecretEntry[]): Pr
 		);
 	}
 	say(`Pushed ${done.join(", ")} to ${vault.vault}.`);
+
+	if (changing.some((e) => e.group === "tooling")) {
+		say(
+			`The shared tfvars changed. Nothing is applied yet: run just tf-plan ${target}, then apply.`,
+		);
+	}
+	if (!changing.some((e) => e.group === "app")) return;
 	say(
-		"If this env's terraform.tfvars has write_secrets = true, update it too, or the next apply that bumps secrets_version puts the old values back.",
+		"If this env's tfvars set write_secrets = true, update secrets.auto.tfvars too, or the next apply that bumps secrets_version puts the old values back.",
 	);
 	say();
-
 	say(`${vault.app} reads secrets when it starts, so it keeps the old values until it restarts.`);
 	const restart = await confirm({
 		message: `Restart ${vault.app} now (just restart ${target})?`,
@@ -314,15 +424,16 @@ async function push(target: RegisterTarget, entries: readonly SecretEntry[]): Pr
 		return;
 	}
 	const result = spawnSync("just", ["restart", target], { stdio: "inherit" });
-	if (result.status !== 0)
+	if (result.status !== 0) {
 		throw new Stop(`just restart ${target} failed. Run it again, or restart from the portal.`);
+	}
 }
 
 async function main(): Promise<void> {
-	const { target, mode } = parseArgs(process.argv.slice(2));
-	const entries = syncedSecrets(loadSecretsManifest());
-	if (mode === "pull") await pull(target, entries);
-	else await push(target, entries);
+	const { target, mode, scope } = parseArgs(process.argv.slice(2));
+	const entries = syncedSecrets(loadSecretsManifest(), scope);
+	if (mode === "pull") await pull(target, entries, scope);
+	else await push(target, entries, scope);
 }
 
 try {

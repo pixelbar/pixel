@@ -197,6 +197,18 @@ command-access env:
 ha-devices env:
     @just discord-env {{env}} scripts/ha-devices.ts
 
+# Pulls terraform-tfvars into infra/envs/<env>/terraform.tfvars, the app secrets (as
+# secrets-pull), and read-only mirrors of members.yaml, devices.yaml and announcement-routes.yaml.
+# Pull everything for an env (tfvars, secrets, share config) to edit, plan or sync: `just pull dev|prod`
+pull env:
+    pnpm exec tsx scripts/secrets-sync.ts {{env}} pull --all
+
+# Diffs against the live vault and pushes on a yes. Refuses tfvars that hold a secret or
+# are for the other env. The share mirrors never go back up (Pixel writes those).
+# Push an env's tfvars and app secrets after showing the diff: `just push dev|prod`
+push env:
+    pnpm exec tsx scripts/secrets-sync.ts {{env}} push --all
+
 # Which secrets: the `app` group in infra/secrets.manifest.yaml. Never prints a value.
 # Asks before overwriting a local edit. Needs az login. See docs/runbook.md#secrets.
 # Pull an env's Key Vault secrets into .env.<env> + config/admins.<env>.yaml to edit them
