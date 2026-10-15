@@ -331,6 +331,8 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
 
+**The list of secrets** lives in [`infra/secrets.manifest.yaml`](../infra/secrets.manifest.yaml) ([ADR 0015](adr/0015-secrets-manifest.md)): Key Vault name, environment variable, what turns it on. Names only, never values. `just validate-secrets` checks it and prints the list. Terraform builds the vault's secrets and the Container App's secret environment variables from it, and `just check` fails if `src/config.ts`, `.env.example`, the Terraform variables or these docs disagree with it. To add a secret: add an entry to the manifest, its ephemeral and sensitive Terraform variable (module, `envs/dev`, `envs/prod`) and write-only entry in `infra/modules/pixel/secrets.tf`, the setting in `src/config.ts`, `.env.example` and the architecture config table, and a row in the table above; the test names anything you miss.
+
 **Rotate the Discord bot token** (the old one stops working the moment you reset it, so expect a short outage):
 
 1. Discord Developer Portal → the right application (dev or prod!) → **Bot** → **Reset Token**. Copy it once; it isn't shown again.
@@ -387,7 +389,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml) ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)).
 
-**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`, `.github/path-filters.yml`.
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`, `.github/path-filters.yml`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`.
 
 **Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`, `.github/path-filters.yml`.
 

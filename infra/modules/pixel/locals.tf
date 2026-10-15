@@ -15,15 +15,28 @@ locals {
   # image, so the mount must make that user the owner.
   azure_file_mount_options = "uid=1000,gid=1000,dir_mode=0775,file_mode=0664,nobrl,mfsymlinks,cache=none"
 
-  kv_secret_names = toset(concat(
-    ["discord-token", "admins-yaml"],
-    var.home_assistant_url != null ? ["home-assistant-token"] : [],
-    var.mastodon_instance != null ? ["mastodon-access-token"] : [],
-    var.spacestate_api_url != null ? ["spacestate-user", "spacestate-token"] : [],
-    var.sentry_enabled ? ["sentry-dsn"] : [],
-    var.tailscale_enabled ? ["tailscale-auth-key"] : [],
-    var.container_registry_server != null ? ["ghcr-pull-token"] : [],
-  ))
+  # Which secrets exist, what they are called in Key Vault and which environment variable
+  # carries each one live in infra/secrets.manifest.yaml (ADR 0015), not here. This file
+  # only says when each feature applies. A feature the manifest names but this map doesn't
+  # fails the plan, and scripts/secrets-manifest.test.ts catches it earlier.
+  secrets_manifest = yamldecode(file("${path.module}/../../secrets.manifest.yaml"))
+
+  secret_features = {
+    always             = true
+    home-assistant     = var.home_assistant_url != null
+    mastodon           = var.mastodon_instance != null
+    spacestate         = var.spacestate_api_url != null
+    sentry             = var.sentry_enabled
+    tailscale          = var.tailscale_enabled
+    container-registry = var.container_registry_server != null
+  }
+
+  enabled_secrets = [
+    for s in local.secrets_manifest.secrets : s
+    if local.secret_features[s.feature]
+  ]
+
+  kv_secret_names = toset([for s in local.enabled_secrets : s.vault])
 
   # URIs only. Terraform never reads the secret values into state.
   key_vault_secret_ids = {
@@ -54,13 +67,12 @@ locals {
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
   )
 
-  pixel_secret_env = merge(
-    { DISCORD_TOKEN = "discord-token" },
-    var.home_assistant_url != null ? { HOME_ASSISTANT_TOKEN = "home-assistant-token" } : {},
-    var.mastodon_instance != null ? { MASTODON_ACCESS_TOKEN = "mastodon-access-token" } : {},
-    var.spacestate_api_url != null ? { SPACESTATE_USER = "spacestate-user", SPACESTATE_TOKEN = "spacestate-token" } : {},
-    var.sentry_enabled ? { SENTRY_DSN = "sentry-dsn" } : {},
-  )
+  # Environment variable => Key Vault secret name, for what the Pixel container reads from its
+  # environment. The Tailscale sidecar and the registry login keep their own wiring.
+  pixel_secret_env = {
+    for s in local.enabled_secrets : s.env => s.vault
+    if s.delivery == "env"
+  }
 }
 
 data "azurerm_resource_group" "this" {

@@ -93,6 +93,10 @@ tf-apply env:
 validate-config:
     pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
+# Validate infra/secrets.manifest.yaml (names only; no Azure login, no values)
+validate-secrets:
+    pnpm exec tsx scripts/validate-secrets.ts
+
 # Load `.env.dev` or `.env.prod` for a Discord laptop script. just dotenv-load
 # would otherwise let `.env` win over Node `--env-file`. Dev falls back to `.env`.
 [private]

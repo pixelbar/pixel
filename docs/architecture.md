@@ -568,3 +568,4 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 
 | 0012 | Prod environment (`infra/envs/prod`) and approved CD to `pixel-prod` (same digest, no rebuild) | accepted (merge promotion superseded by 0013, registration by 0014) |
 | 0013 | Release workflow cuts versions and promotes prod + the docs site; merges to `main` do not roll `pixel-prod` | accepted (registration superseded by 0014) |
 | 0014 | Release registers prod slash commands; `pixel-github-prod` may read only `discord-token` | accepted |
+| 0015 | Secrets manifest (`infra/secrets.manifest.yaml`) is the one list of Key Vault secrets; Terraform reads it and a test fails on drift | accepted |

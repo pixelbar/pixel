@@ -19,6 +19,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- Secrets: `infra/secrets.manifest.yaml` is now the one list of the secrets Pixel keeps in Azure Key Vault (names, environment variables, what turns each on; never values). Terraform derives its Key Vault secrets and the Container App's secret environment variables from it, with the same result as before, and a test fails if `config.ts`, `.env.example`, the Terraform variables or the docs disagree with it. `just validate-secrets` checks the file and lists the secrets. This is groundwork for a Key Vault sync tool ([ADR 0015](docs/adr/0015-secrets-manifest.md)). Nothing to apply or redeploy.
 - Website: the `/feedback` card now says that your message and username may be made public, so you shouldn't include anything private.
 - `/feedback` now says, in its description and its reply, that your message and username may be made public, and the reply links the privacy notice. `/help` links the privacy notice on the website (`https://pixelbar.nl/pixel/privacy`) instead of GitHub. Run `just register dev` / `just register prod` after deploying so Discord shows the new `/feedback` description.
 

@@ -22,6 +22,14 @@ check:
   - ".nvmrc"
   - ".github/workflows/ci.yml"
   - ".github/path-filters.yml"
+  # scripts/secrets-manifest.test.ts checks these against infra/secrets.manifest.yaml (ADR 0015).
+  - "infra/secrets.manifest.yaml"
+  - "infra/modules/pixel/*.tf"
+  - "infra/envs/*/*.tf"
+  - ".env.example"
+  - "docs/runbook.md"
+  - "docs/architecture.md"
+  - "docs/infra.md"
 
 image:
   - "src/**"
