@@ -13,67 +13,15 @@ import {
 	type HomeDeviceTier,
 	loadHomeDevices,
 } from "../src/services/home-devices.ts";
+import type { Target } from "./envs.ts";
 import type { InventoryEntry } from "./ha-inventory.ts";
-import type { RegisterTarget } from "./register-env.ts";
 
-/** Where each env's `devices.yaml` lives: the Azure Files share Pixel mounts at `/app/persist`. */
-export type Remote = { account: string; share: string; path: string };
-
-export const REMOTES: Record<RegisterTarget, Remote> = {
-	dev: { account: "pixeldevdata", share: "pixel", path: `home-assistant/${DEVICES_FILE}` },
-	prod: { account: "pixelproddata", share: "pixel", path: `home-assistant/${DEVICES_FILE}` },
-};
+/** Where `devices.yaml` sits on an env's file share (Pixel mounts it at `/app/persist`). */
+export const DEVICES_PATH = `home-assistant/${DEVICES_FILE}`;
 
 /** The local copy of an env's remote file. Gitignored, like every devices file. */
-export function mirrorDir(target: RegisterTarget): string {
+export function mirrorDir(target: Target): string {
 	return join("config", "home-assistant", target);
-}
-
-const AZ_COMMON = [
-	"--auth-mode",
-	"login",
-	"--enable-file-backup-request-intent",
-	"--only-show-errors",
-];
-
-export function azDownloadArgs(remote: Remote, dest: string): string[] {
-	return [
-		"storage",
-		"file",
-		"download",
-		...AZ_COMMON,
-		"--account-name",
-		remote.account,
-		"--share-name",
-		remote.share,
-		"--path",
-		remote.path,
-		"--dest",
-		dest,
-		"--no-progress",
-		"--output",
-		"none",
-	];
-}
-
-export function azUploadArgs(remote: Remote, source: string): string[] {
-	return [
-		"storage",
-		"file",
-		"upload",
-		...AZ_COMMON,
-		"--account-name",
-		remote.account,
-		"--share-name",
-		remote.share,
-		"--path",
-		remote.path,
-		"--source",
-		source,
-		"--no-progress",
-		"--output",
-		"none",
-	];
 }
 
 /**
@@ -179,7 +127,7 @@ export function tiersFor(kind: HomeKind): HomeDeviceTier[] {
  */
 export function actionChoices(
 	kind: HomeKind,
-	target: RegisterTarget,
+	target: Target,
 ): { name: string; checked: boolean }[] {
 	if (kind.name === "door" && target === "dev") return [];
 	return kind.actions.map((action) => ({ name: action.name, checked: kind.name !== "door" }));

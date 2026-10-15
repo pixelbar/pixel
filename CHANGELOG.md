@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
 
+### Changed
+
+- Laptop tooling now shares one definition of each environment ([#116](https://github.com/pixelbar/pixel/issues/116)). `scripts/envs.ts` holds every Azure name (subscription, resource group, Container App, Key Vault, file share), the env file and the guards, and `just pull`/`push`, `secrets-pull`/`push`, `ha-devices`, `register`, `command-access`, `restart`, `deploy` and `tf-apply` all take them from there. New `just env dev|prod` shows where an environment lives. `just --list` is grouped (develop, environments, config, terraform, release, docs). `just deploy dev` replaces `just deploy-dev`, which still works for now; `just deploy prod` refuses because prod ships from the Release workflow. Discord tools load their env file in TypeScript rather than through a bash helper, still dropping anything `just` loaded from `.env`.
+
 ## [0.15.0] - 2026-10-15
 
 ### Added
