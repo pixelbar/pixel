@@ -165,6 +165,7 @@ export default defineConfig({
 							text: "0014 · Release registers commands",
 							link: "/maintainers/adr/0014-release-registers-commands",
 						},
+						{ text: "0015 · Secrets manifest", link: "/maintainers/adr/0015-secrets-manifest" },
 					],
 				},
 			],

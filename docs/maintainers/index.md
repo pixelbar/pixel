@@ -36,6 +36,7 @@ Architecture decision records, newest last.
 | [0012](./adr/0012-prod-environment) | Prod environment and approved CD. |
 | [0013](./adr/0013-release-workflow) | Releases cut versions and promote prod. |
 | [0014](./adr/0014-release-registers-commands) | Releases register prod slash commands. |
+| [0015](./adr/0015-secrets-manifest) | One manifest lists every Key Vault secret. |
 
 ## Working on the site
 
