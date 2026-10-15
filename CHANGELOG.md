@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/spacestate`: Sentry now shows the request and response of each call to the space state API. A failed call carries them as a `spacestate_api` context on the error, and every call (successful ones too) puts them on the command's trace: the address, the state sent, the HTTP status, the content type and length, a short capped copy of the body, the outcome and how long it took. The user and token are shown as `[redacted]` and request headers are never sent. Nothing changes without a Sentry DSN.
+
 ## [0.16.0] - 2026-10-15
 
 ### Added

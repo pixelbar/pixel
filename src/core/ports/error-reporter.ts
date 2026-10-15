@@ -37,6 +37,13 @@ export type ErrorReporter = {
 	 * with errors and kept briefly. Keep `data` to IDs and short labels.
 	 */
 	breadcrumb(category: string, message: string, data?: Record<string, string | number>): void;
+	/**
+	 * Attaches structured data about an exchange with an outside service (what was
+	 * sent, what came back) to the current command, so it shows on any error reported
+	 * meanwhile and on the command's trace. The caller has already removed secrets
+	 * and capped sizes. Reporters that can't attach leave this out.
+	 */
+	attach?(source: string, data: Record<string, unknown>): void;
 };
 
 export const nullErrorReporter: ErrorReporter = {
