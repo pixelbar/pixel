@@ -18,7 +18,15 @@ Maintainers set Pixel's secrets in Key Vault by pasting values into gitignored `
 
 ## Consequences
 
-- Terraform's `write_secrets` path still works and still owns the `infra` secrets. If an environment's `terraform.tfvars` keeps `write_secrets = true` with app values in it, a later apply that bumps `secrets_version` puts those values back, so keep the tfvars up to date or turn `write_secrets` off once the vault is seeded.
+- Terraform's `write_secrets` path still works and still owns the `infra` secrets. If an environment keeps `write_secrets = true` with app values in its tfvars (now `secrets.auto.tfvars`, see the addendum), a later apply that bumps `secrets_version` puts those values back, so keep them up to date or turn `write_secrets` off once the vault is seeded.
 - A maintainer needs Key Vault Secrets Officer on the vault (Secrets User is enough to pull), and the same storage access as `just ha-devices` for the `members.yaml` check.
 - The local files hold real secrets. They are gitignored and written with mode `0600`; don't copy them anywhere else.
-- Coding agents don't run `just secrets-push prod` (AGENTS.md: no prod secrets).
+- Coding agents don't run `just secrets-push prod` or `just push prod` (AGENTS.md: no prod secrets).
+
+## Addendum: `just pull` / `just push` and the shared tfvars
+
+Each stack's `terraform.tfvars` lived only on the laptop of whoever last applied, so nobody else could plan or apply. It is now the Key Vault secret `terraform-tfvars` in that environment's vault, in a new manifest group, `tooling` (delivery `tool`): read and written only by the laptop tools. Terraform skips the group, so the Container App never references it.
+
+- **`just pull dev|prod`** pulls the tfvars, the app secrets, and read-only mirrors of the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml`. **`just push dev|prod`** pushes the tfvars and the app secrets, with the same diff, approve, re-check and read-back as above. The mirrors never go back up: Pixel and `just ha-devices` stay their only writers.
+- **The tfvars hold settings, never secrets.** A push refuses one that sets a variable the stack marks `sensitive`, sets one it doesn't declare, or names the other environment's vault or storage account. Secret inputs go in `secrets.auto.tfvars`, which Terraform auto-loads and which never leaves the laptop. So the tfvars diff is shown in full.
+- Pushing the tfvars changes nothing on Azure by itself. Plan and apply stay separate steps (and prod stays maintainer-only).

@@ -25,7 +25,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Closing-time](#closing-time)
 - [Mastodon](#mastodon)
 - [Space state](#space-state)
-- [Secrets](#secrets) ([sync with Key Vault](#sync-secrets-with-key-vault))
+- [Secrets](#secrets) ([sync with Key Vault](#sync-secrets-with-key-vault), [pull and push an environment](#pull-and-push-an-environment))
 - [Deploys](#deploys)
 - [CI and CD](#ci-and-cd)
 - [Changelog and versions](#changelog-and-versions)
@@ -388,9 +388,35 @@ These local files are gitignored and written readable only by you. **You need:**
 
 **Guards:** it refuses an env file whose `PIXEL_ENV` is for the other bot, and a Discord token that's also in another bot's file (`.env.dev` or `.env` for prod; `.env.prod` for dev). Never copy the Pixel Dev or Mini token into `.env.prod`.
 
-**If `terraform.tfvars` has `write_secrets = true`** with app values in it, the next apply that bumps `secrets_version` writes those values back over the vault. Keep the tfvars up to date, or set `write_secrets = false` once the vault is seeded and use the sync from then on.
+**If the stack has `write_secrets = true`** with app values in `secrets.auto.tfvars`, the next apply that bumps `secrets_version` writes those values back over the vault. Keep that file up to date, or set `write_secrets = false` once the vault is seeded and use the sync from then on.
 
 **A new app secret:** add it to the manifest first (above). Once the stack has it, put the value in `.env.<env>` under its environment variable and `just secrets-push <env>`; it shows as `+` new in Key Vault.
+
+### Pull and push an environment
+
+`just pull dev|prod` brings down everything you need to work on an environment from another laptop: plan and apply Terraform, change a secret, or look at its config. `just push dev|prod` sends back what you changed.
+
+| What | Local file | Remote | `just push` |
+| --- | --- | --- | --- |
+| Stack settings | `infra/envs/<env>/terraform.tfvars` | Key Vault secret `terraform-tfvars` (the `tooling` group) | Yes |
+| App secrets | `.env.<env>`, `config/admins.<env>.yaml` | Key Vault (as `just secrets-pull`, above) | Yes |
+| `members.yaml` | `config/<env>/members.yaml` | File share | Never: Pixel writes it (`/admin`) |
+| `devices.yaml` | `config/home-assistant/<env>/devices.yaml` | File share | Never: use `just ha-devices` |
+| `announcement-routes.yaml` | `config/<env>/announcement-routes.yaml` | File share (`data/`) | Never: `/admin announcements` |
+
+All of them are gitignored. The share files are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
+
+**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. Its diff is shown in full.
+
+**Change Terraform settings:**
+
+1. `just pull prod`.
+2. Edit `infra/envs/prod/terraform.tfvars`.
+3. `just tf-plan prod` and read the plan.
+4. `just push prod` so the next person starts from your settings. It says nothing is applied yet.
+5. Apply (`PIXEL_APPLY_PROD=1 just tf-apply prod` for prod, maintainers only).
+
+**First time for an environment:** if Key Vault has no `terraform-tfvars` yet, `just pull` says so (`!` only local). Whoever has the working `terraform.tfvars` moves any secret inputs out of it into `secrets.auto.tfvars`, then runs `just push <env>` to share it.
 
 ## Deploys
 

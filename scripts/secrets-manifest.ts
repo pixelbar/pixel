@@ -21,8 +21,8 @@ const featureName = z.string().regex(/^[a-z][a-z0-9-]*$/, {
 });
 const description = z.string().trim().min(1).max(200);
 
-export const GROUPS = ["app", "infra"] as const;
-export const DELIVERIES = ["env", "file", "sidecar-env", "registry"] as const;
+export const GROUPS = ["app", "infra", "tooling"] as const;
+export const DELIVERIES = ["env", "file", "sidecar-env", "registry", "tool"] as const;
 
 const entrySchema = z.strictObject({
 	vault: vaultName,
@@ -100,6 +100,10 @@ export function parseSecretsManifest(source: string, file = MANIFEST_FILE): Secr
 		if (secret.group === "app" && !(secret.delivery === "env" || secret.delivery === "file")) {
 			problems.push(`${label} is in the app group but is delivered as ${secret.delivery}`);
 		}
+		// Only the laptop tools read tooling secrets; Terraform skips the group entirely.
+		if ((secret.group === "tooling") !== (secret.delivery === "tool")) {
+			problems.push(`${label}: the tooling group and the tool delivery go together`);
+		}
 	}
 	if (!("always" in features)) problems.push(`the feature "always" must be declared`);
 
@@ -122,12 +126,19 @@ export function loadSecretsManifest(file = MANIFEST_FILE): SecretsManifest {
 	return parseSecretsManifest(source, file);
 }
 
+/** The secrets Terraform knows about: everything but the tooling group. */
+export function terraformSecrets(manifest: SecretsManifest): SecretEntry[] {
+	return manifest.secrets.filter((s) => s.group !== "tooling");
+}
+
 /** The secrets a stack needs, given which features it turns on. `always` is implied. */
 export function enabledSecrets(
 	manifest: SecretsManifest,
 	features: ReadonlySet<string>,
 ): SecretEntry[] {
-	return manifest.secrets.filter((s) => s.feature === "always" || features.has(s.feature));
+	return terraformSecrets(manifest).filter(
+		(s) => s.feature === "always" || features.has(s.feature),
+	);
 }
 
 /** Environment variable → Key Vault name, for the secrets the app reads from its environment. */

@@ -7,6 +7,7 @@ import {
 	MANIFEST_FILE,
 	parseSecretsManifest,
 	SecretsManifestError,
+	terraformSecrets,
 } from "./secrets-manifest.ts";
 
 const read = (file: string) => readFileSync(file, "utf8");
@@ -130,6 +131,15 @@ describe("parseSecretsManifest", () => {
 		);
 	});
 
+	it("keeps the tooling group and the tool delivery together", () => {
+		expect(rejection(BASE.replace("group: infra", "group: tooling"))).toContain(
+			'"tailscale-auth-key": the tooling group and the tool delivery go together',
+		);
+		expect(
+			rejection(BASE.replace("delivery: sidecar-env\n    env: TS_AUTHKEY", "delivery: tool")),
+		).toContain('"tailscale-auth-key": the tooling group and the tool delivery go together');
+	});
+
 	it("collects every problem at once", () => {
 		const source = BASE.replace("vault: admins-yaml", "vault: discord-token").replace(
 			"feature: mastodon",
@@ -206,8 +216,20 @@ describe("the real manifest", () => {
 
 	it("lists every secret Terraform can write, and nothing else", () => {
 		expect(writeMap.map((w) => w.vault).sort()).toEqual(
-			manifest.secrets.map((s) => s.vault).sort(),
+			terraformSecrets(manifest)
+				.map((s) => s.vault)
+				.sort(),
 		);
+	});
+
+	it("keeps the tooling group out of Terraform", () => {
+		expect(localsTf).toMatch(/if s\.group != "tooling" && local\.secret_features\[s\.feature\]/);
+		for (const s of manifest.secrets.filter((s) => s.group === "tooling")) {
+			expect(writeMap.map((w) => w.vault)).not.toContain(s.vault);
+			expect(enabledSecrets(manifest, new Set(Object.keys(manifest.features)))).not.toContainEqual(
+				s,
+			);
+		}
 	});
 
 	it("has an ephemeral, sensitive Terraform variable for every secret, in the module and both stacks", () => {
