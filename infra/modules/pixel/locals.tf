@@ -40,6 +40,10 @@ locals {
 
   kv_secret_names = toset([for s in local.enabled_secrets : s.vault])
 
+  # The only secrets Terraform writes (write_secrets). The app group is written by
+  # just secrets-push / just push alone (ADR 0017); Terraform only references it.
+  kv_infra_secret_names = toset([for s in local.enabled_secrets : s.vault if s.group == "infra"])
+
   # URIs only. Terraform never reads the secret values into state.
   key_vault_secret_ids = {
     for name in local.kv_secret_names :

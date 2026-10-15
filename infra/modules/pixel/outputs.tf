@@ -13,7 +13,7 @@ output "container_app_environment_name" {
 
 output "key_vault_name" {
   value       = azurerm_key_vault.this.name
-  description = "Secret values are write-only Terraform inputs (write_secrets) or az / the portal. Never stored in state."
+  description = "App secret values come from just secrets-push; infra ones from write-only Terraform inputs (write_secrets) or az. Never stored in state."
 }
 
 output "key_vault_uri" {
@@ -22,7 +22,7 @@ output "key_vault_uri" {
 
 output "key_vault_secret_names" {
   value       = sort(tolist(local.kv_secret_names))
-  description = "Secrets the Container App reads. write_secrets writes them from ephemeral inputs; otherwise create each name before the app can start."
+  description = "Secrets the Container App reads. Push the app ones with just secrets-push; write_secrets writes only tailscale-auth-key and ghcr-pull-token. Each must exist before the app can start."
 }
 
 output "data_storage_account_name" {

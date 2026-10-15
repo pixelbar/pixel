@@ -224,7 +224,7 @@ resource "azurerm_container_app" "this" {
   depends_on = [
     azurerm_role_assignment.kv_secrets_app,
     azurerm_container_app_environment_storage.persist,
-    azurerm_key_vault_secret.managed,
+    azurerm_key_vault_secret.infra,
   ]
 }
 
@@ -407,6 +407,6 @@ resource "azurerm_container_app" "managed" {
   depends_on = [
     azurerm_role_assignment.kv_secrets_app,
     azurerm_container_app_environment_storage.persist,
-    azurerm_key_vault_secret.managed,
+    azurerm_key_vault_secret.infra,
   ]
 }

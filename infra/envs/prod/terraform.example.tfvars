@@ -35,11 +35,11 @@ discord_guild_id = "100000000000000002"
 sentry_enabled    = false
 tailscale_enabled = false
 
-# Leave false here. Real apply: write_secrets = true plus the values below in
-# gitignored secrets.auto.tfvars, never in terraform.tfvars (just push refuses it).
-# Never paste the Pixel Dev token.
-# write_secrets    = true
-# secrets_version  = 1
-# discord_token    = "..."
-# admins_yaml_file = "../../../config/admins.yaml"
-# sentry_dsn       = "..."
+# App secrets (discord-token, admins-yaml, sentry-dsn, ...) are never Terraform
+# inputs: set them with just secrets-push prod (a maintainer, never an agent).
+# write_secrets writes only the infra group, from gitignored secrets.auto.tfvars,
+# never terraform.tfvars (just push refuses it). Leave it false here.
+# write_secrets               = true
+# secrets_version             = 1
+# tailscale_auth_key          = "..."
+# container_registry_password = "..."
