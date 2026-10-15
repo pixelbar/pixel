@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-15
+
 ### Added
 
 - `just secrets-pull dev|prod` and `just secrets-push dev|prod`: sync an environment's app secrets (the `app` group in `infra/secrets.manifest.yaml`) between its Key Vault and `.env.<env>` / `config/admins.<env>.yaml`. A push reads the live vault, shows what would change by name and length (never a value; `admins.yaml` as a diff, checked against that env's `members.yaml`), pushes on a yes only if the vault hasn't changed meanwhile, reads it back, and offers to restart. `just restart dev|prod` restarts the Container App so it reads its secrets again. Needs Key Vault Secrets Officer. See the runbook's "Sync secrets with Key Vault" and [ADR 0016](docs/adr/0016-secrets-sync.md).
@@ -190,7 +192,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/pixelbar/pixel/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/pixelbar/pixel/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/pixelbar/pixel/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/pixelbar/pixel/compare/v0.11.0...v0.12.0
