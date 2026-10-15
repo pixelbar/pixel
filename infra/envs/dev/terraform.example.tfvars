@@ -38,6 +38,7 @@ discord_guild_id = "100000000000000002"
 # /spacestate (set the space open or closed). Set the matching Key Vault
 # secrets spacestate-user and spacestate-token as well, or leave all unset (off).
 # spacestate_api_url = "https://space.example/api/state"
+# spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
 sentry_enabled    = false
 tailscale_enabled = false
@@ -52,6 +53,7 @@ tailscale_enabled = false
 # mastodon_access_token = "..."
 # spacestate_user       = "..."
 # spacestate_token      = "..."
+# spacestate_additional_headers = "{\"X-Example\": \"...\"}"
 # sentry_dsn           = "..."
 # tailscale_auth_key   = "..."
 # container_registry_password = "..."

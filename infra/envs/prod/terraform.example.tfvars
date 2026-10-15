@@ -27,6 +27,7 @@ discord_guild_id = "100000000000000002"
 # mastodon_instance  = "https://mastodon.example"
 # /spacestate: also needs Key Vault secrets spacestate-user and spacestate-token.
 # spacestate_api_url = "https://space.example/api/state"
+# spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
 # Lets the Release workflow read discord-token (only) and register slash
 # commands (ADR 0014). az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv

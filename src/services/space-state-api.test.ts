@@ -40,6 +40,20 @@ describe("HttpSpaceStateApi.set", () => {
 		expect(init?.method).toBe("POST");
 	});
 
+	it("sends the extra headers, but can't override accept", async () => {
+		const fetch = respond("SUCCESS");
+		await new HttpSpaceStateApi({
+			url: URL_,
+			user: USER,
+			token: TOKEN,
+			headers: { "X-Example": "value-1", Accept: "text/html", accept: "x" },
+			fetch,
+		}).set("open");
+		const headers = new Headers(fetch.mock.calls[0]?.[1]?.headers);
+		expect(headers.get("x-example")).toBe("value-1");
+		expect(headers.get("accept")).toBe("text/plain");
+	});
+
 	it("never follows a redirect, because the token is in the URL", async () => {
 		const fetch = respond("SUCCESS");
 		await api(fetch).set("open");

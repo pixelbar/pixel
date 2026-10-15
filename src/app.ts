@@ -131,6 +131,7 @@ export function buildCore(
 				url: config.spaceStateApi.url,
 				user: config.spaceStateApi.user,
 				token: config.spaceStateApi.token,
+				headers: config.spaceStateApi.headers,
 				...(options.fetch ? { fetch: options.fetch } : {}),
 			})
 		: undefined;

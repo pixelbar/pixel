@@ -448,6 +448,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `SPACESTATE_API_URL`          |        | Optional, with the user and token. The API `/spacestate` calls to set the space open or closed (http or https). Not a secret |
 | `SPACESTATE_USER`             | yes    | Optional, with the address and token. Sent as `user` to that API. Key Vault `spacestate-user` when hosted |
 | `SPACESTATE_TOKEN`            | yes    | Optional, with the address and user. Sent as `token` to that API. A secret. All three unset means `/spacestate` says it isn't set up |
+| `SPACESTATE_ADDITIONAL_HEADERS` | yes  | Optional. A JSON object of extra headers for that call, such as `{"X-Example": "value"}`. A secret. Key Vault `spacestate-additional-headers` when hosted |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
 | `SENTRY_TRACES_SAMPLE_RATE`   |        | Default `1`. How many traces Sentry keeps (`0`–`1`). Needs `SENTRY_DSN`. Errors are always kept. |

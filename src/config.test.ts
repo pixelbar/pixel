@@ -360,7 +360,7 @@ describe("space state API settings", () => {
 				SPACESTATE_USER: ` ${USER} `,
 				SPACESTATE_TOKEN: ` ${TOKEN} `,
 			}).spaceStateApi,
-		).toEqual({ url: URL_, user: USER, token: TOKEN });
+		).toEqual({ url: URL_, user: USER, token: TOKEN, headers: {} });
 	});
 
 	it.each([
@@ -379,6 +379,40 @@ describe("space state API settings", () => {
 		}
 		expect(message).toMatch(/SPACESTATE_API_URL, SPACESTATE_USER and SPACESTATE_TOKEN together/);
 		for (const value of [URL_, USER, TOKEN]) expect(message).not.toContain(value);
+	});
+
+	it("reads the extra headers, and defaults to none", () => {
+		expect(loadConfig({ ...VALID, ...ALL }).spaceStateApi?.headers).toEqual({});
+		expect(
+			loadConfig({
+				...VALID,
+				...ALL,
+				SPACESTATE_ADDITIONAL_HEADERS: ' {"X-Example": " value-1 "} ',
+			}).spaceStateApi?.headers,
+		).toEqual({ "X-Example": "value-1" });
+		expect(
+			loadConfig({ ...VALID, ...ALL, SPACESTATE_ADDITIONAL_HEADERS: "" }).spaceStateApi?.headers,
+		).toEqual({});
+	});
+
+	it.each([
+		"not json",
+		"[]",
+		"{}",
+		'"x"',
+		'{"X-A": 1}',
+		'{"X-A": ""}',
+		'{"bad name": "v"}',
+		'{"X-A": "a\\nb"}',
+	])("rejects the extra headers %j without echoing them", (headers) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...ALL, SPACESTATE_ADDITIONAL_HEADERS: headers });
+		} catch (error) {
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/SPACESTATE_ADDITIONAL_HEADERS/);
+		expect(message).not.toContain(headers);
 	});
 
 	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the address %j", (url) => {
