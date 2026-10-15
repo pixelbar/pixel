@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import { expect, describe as group, it } from "vitest";
 import { loadSecretsManifest, type SecretEntry } from "./secrets-manifest.ts";
@@ -9,7 +10,10 @@ import {
 	describe,
 	envFile,
 	envValue,
+	isFile,
 	isNotFound,
+	isShareNotFound,
+	localFile,
 	localName,
 	localValues,
 	newEnvFile,
@@ -17,8 +21,14 @@ import {
 	parseShown,
 	pixelEnvOf,
 	reusedDiscordToken,
+	secretTfvarsFile,
 	setEnvValues,
+	shareFiles,
+	stackVariables,
 	syncedSecrets,
+	tfvarsFile,
+	tfvarsKeys,
+	tfvarsProblems,
 	toPull,
 	toPush,
 	VAULTS,
@@ -44,6 +54,25 @@ group("syncedSecrets", () => {
 		expect(names).not.toContain("ghcr-pull-token");
 		expect(entries.every((e) => e.group === "app")).toBe(true);
 	});
+
+	it("adds the stack's tfvars only for just pull / push", () => {
+		const all = syncedSecrets(loadSecretsManifest(), "all");
+		const tfvars = all.find((e) => e.vault === "terraform-tfvars");
+		expect(tfvars?.group).toBe("tooling");
+		expect(all.map((e) => e.vault)).not.toContain("tailscale-auth-key");
+		expect(entries.map((e) => e.vault)).not.toContain("terraform-tfvars");
+		if (!tfvars) throw new Error("no tfvars");
+		expect(isFile(tfvars)).toBe(true);
+		expect(localFile(tfvars, "prod")).toBe("infra/envs/prod/terraform.tfvars");
+		expect(localName(tfvars, "dev")).toBe("infra/envs/dev/terraform.tfvars");
+		expect(azSetArgs(VAULTS.dev, tfvars, "/tmp/x")).toContain("text/x-hcl");
+	});
+
+	it("has no local file for a secret it doesn't know", () => {
+		expect(() => localFile({ ...byName("admins-yaml"), vault: "other-file" }, "dev")).toThrow(
+			"other-file has no local file",
+		);
+	});
 });
 
 group("paths", () => {
@@ -68,7 +97,7 @@ group("paths", () => {
 group("localValues", () => {
 	it("reads env secrets by their variable and admins from the file, skipping empty ones", () => {
 		const env = `# comment\nDISCORD_TOKEN=${FAKE_TOKEN}\nSENTRY_DSN=\nPIXEL_ENV=dev\n`;
-		const values = localValues(entries, env, "admins: []\n");
+		const values = localValues(entries, env, new Map([["admins-yaml", "admins: []\n"]]));
 		expect(values.get("discord-token")).toBe(FAKE_TOKEN);
 		expect(values.get("admins-yaml")).toBe("admins: []\n");
 		expect(values.has("sentry-dsn")).toBe(false);
@@ -76,7 +105,7 @@ group("localValues", () => {
 	});
 
 	it("is empty when there are no local files", () => {
-		expect(localValues(entries, undefined, undefined).size).toBe(0);
+		expect(localValues(entries, undefined, new Map()).size).toBe(0);
 	});
 });
 
@@ -267,5 +296,99 @@ group("az", () => {
 	it("parses the shown value, including multi-line YAML", () => {
 		expect(parseShown(JSON.stringify("admins:\n  - ids: []\n"))).toBe("admins:\n  - ids: []\n");
 		expect(() => parseShown("null")).toThrow("isn't text");
+	});
+});
+
+group("tfvars", () => {
+	const variables = stackVariables(`variable "prefix" {
+  type    = string
+  default = "pixel"
+}
+
+variable "key_vault_name" {
+  type = string
+}
+
+variable "data_storage_account_name" {
+  type = string
+}
+
+variable "discord_token" {
+  type      = string
+  default   = null
+  sensitive = true
+  ephemeral = true
+}
+`);
+
+	it("reads a stack's variables and which are secret", () => {
+		expect([...variables.all].sort()).toEqual([
+			"data_storage_account_name",
+			"discord_token",
+			"key_vault_name",
+			"prefix",
+		]);
+		expect([...variables.sensitive]).toEqual(["discord_token"]);
+	});
+
+	it("reads the real stacks' variables, with the Discord token as a secret", () => {
+		for (const env of ["dev", "prod"] as const) {
+			const real = stackVariables(readFileSync(`infra/envs/${env}/variables.tf`, "utf8"));
+			expect(real.sensitive.has("discord_token")).toBe(true);
+			expect(real.sensitive.has("discord_app_id")).toBe(false);
+			expect(real.all.has("discord_app_id")).toBe(true);
+		}
+	});
+
+	it("reads the top-level keys, not indented or commented ones", () => {
+		expect(
+			tfvarsKeys('prefix = "pixel"\n# discord_token = "x"\nmap = {\n  inner = 1\n}\n'),
+		).toEqual(["prefix", "map"]);
+	});
+
+	it("accepts the env's own settings", () => {
+		const text =
+			'prefix = "pixel"\nkey_vault_name = "pixel-dev-kv"\ndata_storage_account_name = "pixeldevdata"\n';
+		expect(tfvarsProblems(text, "dev", variables)).toEqual([]);
+	});
+
+	it("refuses secrets, unknown variables and the other env's names, naming keys only", () => {
+		const text = [
+			`discord_token = "${FAKE_TOKEN}"`,
+			'typo_name = "x"',
+			'key_vault_name = "pixel-dev-kv"',
+			'data_storage_account_name = "pixeldevdata"',
+		].join("\n");
+		const problems = tfvarsProblems(text, "prod", variables);
+		expect(problems).toEqual([
+			"infra/envs/prod/terraform.tfvars sets discord_token, which is a secret. Move it to infra/envs/prod/secrets.auto.tfvars.",
+			"infra/envs/prod/terraform.tfvars sets typo_name, which infra/envs/prod doesn't declare.",
+			'infra/envs/prod/terraform.tfvars says key_vault_name = "pixel-dev-kv", but prod is pixel-prod-kv.',
+			'infra/envs/prod/terraform.tfvars says data_storage_account_name = "pixeldevdata", but prod is pixelproddata.',
+		]);
+		expect(problems.join("\n")).not.toContain(FAKE_TOKEN);
+	});
+
+	it("keeps secret inputs in an auto-loaded file next to it", () => {
+		expect(tfvarsFile("dev")).toBe("infra/envs/dev/terraform.tfvars");
+		expect(secretTfvarsFile("dev")).toBe("infra/envs/dev/secrets.auto.tfvars");
+	});
+});
+
+group("share files", () => {
+	it("mirrors the share's config files under config/, never next to the real ones", () => {
+		expect(shareFiles("prod")).toEqual([
+			{ path: "members.yaml", mirror: "config/prod/members.yaml" },
+			{ path: "home-assistant/devices.yaml", mirror: "config/home-assistant/prod/devices.yaml" },
+			{ path: "data/announcement-routes.yaml", mirror: "config/prod/announcement-routes.yaml" },
+		]);
+	});
+
+	it("tells a missing file from other failures", () => {
+		expect(
+			isShareNotFound("ERROR: The specified resource does not exist. ErrorCode: ResourceNotFound"),
+		).toBe(true);
+		expect(isShareNotFound("ERROR: ParentNotFound")).toBe(true);
+		expect(isShareNotFound("ERROR: AuthorizationPermissionMismatch")).toBe(false);
 	});
 });

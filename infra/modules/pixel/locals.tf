@@ -31,9 +31,11 @@ locals {
     container-registry = var.container_registry_server != null
   }
 
+  # The tooling group (terraform-tfvars) is for the laptop tools only: never a Container App
+  # secret, never written by Terraform.
   enabled_secrets = [
     for s in local.secrets_manifest.secrets : s
-    if local.secret_features[s.feature]
+    if s.group != "tooling" && local.secret_features[s.feature]
   ]
 
   kv_secret_names = toset([for s in local.enabled_secrets : s.vault])
