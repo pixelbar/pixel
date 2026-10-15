@@ -410,10 +410,6 @@ async function push(
 		);
 	}
 	if (!changing.some((e) => e.group === "app")) return;
-	say(
-		"If this env's tfvars set write_secrets = true, update secrets.auto.tfvars too, or the next apply that bumps secrets_version puts the old values back.",
-	);
-	say();
 	say(`${vault.app} reads secrets when it starts, so it keeps the old values until it restarts.`);
 	const restart = await confirm({
 		message: `Restart ${vault.app} now (just restart ${target})?`,

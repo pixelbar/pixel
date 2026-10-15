@@ -27,7 +27,8 @@ resource "azurerm_role_assignment" "files_applyer" {
 }
 
 # The Release workflow's GitHub identity may read discord-token, and only that
-# secret, so it can register slash commands after a roll (ADR 0014).
+# secret, so it can register slash commands after a roll (ADR 0014). just secrets-push
+# creates discord-token (ADR 0017); push it before the first apply that sets this.
 resource "azurerm_role_assignment" "kv_discord_token_register" {
   count = var.github_register_principal_id != null ? 1 : 0
 
@@ -35,6 +36,4 @@ resource "azurerm_role_assignment" "kv_discord_token_register" {
   role_definition_name             = "Key Vault Secrets User"
   principal_id                     = var.github_register_principal_id
   skip_service_principal_aad_check = true
-
-  depends_on = [azurerm_key_vault_secret.managed]
 }

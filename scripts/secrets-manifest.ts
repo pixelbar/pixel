@@ -131,6 +131,14 @@ export function terraformSecrets(manifest: SecretsManifest): SecretEntry[] {
 	return manifest.secrets.filter((s) => s.group !== "tooling");
 }
 
+/**
+ * The secrets Terraform may write (write_secrets): the infra group only. The app group is
+ * written by just secrets-push / just push alone (ADR 0017).
+ */
+export function terraformWrittenSecrets(manifest: SecretsManifest): SecretEntry[] {
+	return manifest.secrets.filter((s) => s.group === "infra");
+}
+
 /** The secrets a stack needs, given which features it turns on. `always` is implied. */
 export function enabledSecrets(
 	manifest: SecretsManifest,

@@ -1,6 +1,6 @@
 # 0016. A laptop tool syncs app secrets with Key Vault
 
-* Status: accepted
+* Status: accepted (Terraform's part narrowed by [ADR 0017](0017-one-writer-for-app-secrets.md))
 * Date: 2026-10-15
 
 ## Context
@@ -18,7 +18,7 @@ Maintainers set Pixel's secrets in Key Vault by pasting values into gitignored `
 
 ## Consequences
 
-- Terraform's `write_secrets` path still works and still owns the `infra` secrets. If an environment keeps `write_secrets = true` with app values in its tfvars (now `secrets.auto.tfvars`, see the addendum), a later apply that bumps `secrets_version` puts those values back, so keep them up to date or turn `write_secrets` off once the vault is seeded.
+- Terraform's `write_secrets` path owns only the `infra` secrets. It used to write app values too, which collided with this tool; since [ADR 0017](0017-one-writer-for-app-secrets.md) this tool is the only writer of the `app` group.
 - A maintainer needs Key Vault Secrets Officer on the vault (Secrets User is enough to pull), and the same storage access as `just ha-devices` for the `members.yaml` check.
 - The local files hold real secrets. They are gitignored and written with mode `0600`; don't copy them anywhere else.
 - Coding agents don't run `just secrets-push prod` or `just push prod` (AGENTS.md: no prod secrets).

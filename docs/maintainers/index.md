@@ -38,6 +38,7 @@ Architecture decision records, newest last.
 | [0014](./adr/0014-release-registers-commands) | Releases register prod slash commands. |
 | [0015](./adr/0015-secrets-manifest) | One manifest lists every Key Vault secret. |
 | [0016](./adr/0016-secrets-sync) | `just pull` / `just push` (and `secrets-pull` / `secrets-push`) sync tfvars and app secrets between Key Vault and the laptop. |
+| [0017](./adr/0017-one-writer-for-app-secrets) | Only the sync tool writes app secrets; Terraform writes just the infra group. |
 
 ## Working on the site
 

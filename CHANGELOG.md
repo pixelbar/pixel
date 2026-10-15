@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
 
+### Changed
+
+- `just secrets-push` / `just push` are now the only writers of the app secrets in Key Vault (Discord token, `admins.yaml`, Home Assistant, Mastodon, space state, Sentry). Terraform's `write_secrets` writes only `tailscale-auth-key` and `ghcr-pull-token`, and the app-secret Terraform inputs (`discord_token`, `admins_yaml_file`, `sentry_dsn`, `spacestate_user` and the rest) are gone, so turning on a feature no longer makes an apply demand or collide with secrets the sync tool set. Push an app secret before the apply that turns its feature on. The next `just tf-plan dev|prod` drops the app secrets Terraform had written from state ("will no longer be managed by Terraform, but will not be destroyed"); nothing leaves Key Vault. Delete the app-secret lines from any `secrets.auto.tfvars`. See [ADR 0017](docs/adr/0017-one-writer-for-app-secrets.md).
+
 ## [0.15.0] - 2026-10-15
 
 ### Added
