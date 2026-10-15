@@ -59,6 +59,7 @@ const deps = () => ({
 	feedback: nullFeedbackSink,
 	reporter: nullErrorReporter,
 	spaceStatus,
+	spaceState: undefined,
 	announcer: new Announcer({ logger: silentLogger, reporter: nullErrorReporter }),
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
 	channelPosts: new ChannelPosts(),
@@ -99,6 +100,7 @@ describe("buildFeatures", () => {
 			"info",
 			"ping",
 			"schedule",
+			"spacestate",
 			"status",
 			"whoami",
 		]);

@@ -24,6 +24,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
 - [Mastodon](#mastodon)
+- [Space state](#space-state)
 - [Secrets](#secrets)
 - [Deploys](#deploys)
 - [CI and CD](#ci-and-cd)
@@ -298,6 +299,24 @@ Pixel can toot announcements to a configured Mastodon account. It is **outbound 
 
 The token is a secret. Never put an instance URL or handle in the code; never put the token in a chat, an issue or a log.
 
+## Space state
+
+Members with the `spacestate` capability can set the space open or closed with `/spacestate set state:open|close`. Pixel POSTs to the space's state API with the user and token, and expects `SUCCESS` back.
+
+**Turn it on** (local `.env`, or the Container App env plus Key Vault for the user and token):
+
+1. Set `SPACESTATE_API_URL` to the API address, and `SPACESTATE_USER` and `SPACESTATE_TOKEN` to the credentials it expects. Set all three or none: setting only some stops startup.
+2. On Azure, set `spacestate_api_url` in the environment's `terraform.tfvars`, and create the Key Vault secrets `spacestate-user` and `spacestate-token` (with `write_secrets = true` and the `spacestate_user` / `spacestate_token` inputs, or with `az keyvault secret set`). The app reads them as `SPACESTATE_USER` and `SPACESTATE_TOKEN`.
+3. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
+4. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
+5. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
+
+**Turn it off:** unset all three variables (on Azure, unset `spacestate_api_url`). The command stays but says it isn't set up. To stop one person, revoke their capability.
+
+**If it fails:** the person is told nothing changed, and Sentry gets an event tagged `spacestate` with a message such as "did not accept the change" (the API answered something other than `SUCCESS`), "responded with HTTP 403" (wrong user or token) or "request failed" (unreachable). The message never has the URL, the token or the API's answer. Check the credentials first. Pixel never retries.
+
+The user and token are in the URL's query string, so treat anything that could hold the whole URL (a proxy log, a copy of the settings) as a secret.
+
 ## Secrets
 
 Every secret lives in the secret store for its environment (a local `.env` for development, Key Vault `pixel-dev-kv` in Azure `dev`) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
@@ -307,6 +326,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | `DISCORD_TOKEN` | Discord Developer Portal; Key Vault `discord-token` | It may have leaked, someone with access leaves, or on a schedule |
 | `HOME_ASSISTANT_TOKEN` | A long-lived token in HA; Key Vault `home-assistant-token` | It may have leaked, or the Pixel user changes |
 | `MASTODON_ACCESS_TOKEN` | Instance Development app (`write:statuses`); Key Vault `mastodon-access-token` when hosted | It may have leaked, the app is rotated, or you move instance |
+| `SPACESTATE_USER`, `SPACESTATE_TOKEN` | Whoever runs the space state API; Key Vault `spacestate-user` and `spacestate-token` when hosted | They may have leaked, or the API's credentials change |
 | `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
@@ -329,6 +349,12 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. On the instance: Preferences → Development → the Pixel application → regenerate or create a new application with **`write:statuses` only**. Copy the access token once.
 2. Put it in the secret store as `MASTODON_ACCESS_TOKEN`, and restart Pixel.
 3. The next space open or close should appear on the configured account. If Sentry shows `announcer:mastodon` with HTTP 401, the token is wrong or revoked.
+
+**Rotate the space state credentials:**
+
+1. Get the new user and token from whoever runs the API.
+2. Put them in the secret store as `SPACESTATE_USER` and `SPACESTATE_TOKEN`, and restart Pixel.
+3. Run `/spacestate set` with the state the space is already in. If Sentry shows `spacestate` with HTTP 401 or 403, the credentials are wrong.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 

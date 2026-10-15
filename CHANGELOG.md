@@ -11,6 +11,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- `/spacestate set state:open|close`: members with the new `spacestate` capability can set the space open or closed from Discord. Pixel POSTs to the space's state API (`SPACESTATE_API_URL`, with the user and token from `SPACESTATE_USER` and `SPACESTATE_TOKEN`, which are Key Vault secrets `spacestate-user` and `spacestate-token` on Azure) and tells the person nothing changed if the API doesn't answer `SUCCESS`. The three settings go together or not at all; without them the command says it isn't set up. Grant the capability with `/admin capabilities grant`, and run `just register dev` / `just register prod` after deploying to add the command. Terraform gets a `spacestate_api_url` variable and the two write-only secrets.
 - Website: each command on the commands page has a Copy button for its name. Public and private replies, and the capabilities a command needs, now look different from each other, and a tooltip explains each one when you hover over, tap or tab to it. Home Assistant and Scheduled posts sit under Members.
 - Website: every command, admin ones included, is now a card of its own in the commands page's outline, with a link you can share (such as `/commands#ha-set`). Links opened straight to a heading no longer land under the top bar.
 - Privacy notice ([`docs/privacy.md`](docs/privacy.md)) linked from `/help`, with log and Sentry retention and the access/deletion process in the runbook ([#7](https://github.com/pixelbar/pixel/issues/7)).

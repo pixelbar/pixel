@@ -50,6 +50,10 @@ const envSchema = z
 		// Same for CPU profiles of those traces. Empty uses the default (1).
 		SENTRY_PROFILE_SESSION_SAMPLE_RATE: sampleRate,
 		SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
+		// All three unset means `/spacestate` is off. Setting only some is a mistake, so it stops startup.
+		SPACESTATE_API_URL: optional(z.url({ protocol: /^https?$/ })),
+		SPACESTATE_USER: optional(z.string().trim().min(1).max(100)),
+		SPACESTATE_TOKEN: optional(z.string().trim().min(1)),
 
 		DISCORD_TOKEN: z.string().min(1),
 		DISCORD_APP_ID: snowflake,
@@ -95,7 +99,17 @@ const envSchema = z
 	.refine((e) => (e.MASTODON_INSTANCE === undefined) === (e.MASTODON_ACCESS_TOKEN === undefined), {
 		path: ["MASTODON_INSTANCE"],
 		error: "set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither",
-	});
+	})
+	.refine(
+		(e) =>
+			[e.SPACESTATE_API_URL, e.SPACESTATE_USER, e.SPACESTATE_TOKEN].every((v) => v === undefined) ||
+			[e.SPACESTATE_API_URL, e.SPACESTATE_USER, e.SPACESTATE_TOKEN].every((v) => v !== undefined),
+		{
+			path: ["SPACESTATE_API_URL"],
+			error:
+				"set SPACESTATE_API_URL, SPACESTATE_USER and SPACESTATE_TOKEN together, or none of them",
+		},
+	);
 
 export type Config = {
 	env: "local" | "dev" | "prod";
@@ -126,6 +140,12 @@ export type Config = {
 	/** How many of those traces get a CPU profile (0–1). Default 1. Unused without a DSN. */
 	sentryProfileSessionSampleRate: number;
 	spaceApiUrl: string;
+	/**
+	 * The API `/spacestate` calls to set the space open or closed: its address, and the
+	 * user and token it is called with. The user and token come from Key Vault when hosted
+	 * and the token is a secret. Undefined means `/spacestate` is off.
+	 */
+	spaceStateApi: { url: string; user: string; token: string } | undefined;
 	discord: {
 		token: string;
 		appId: string;
@@ -208,6 +228,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		sentryTracesSampleRate: e.SENTRY_TRACES_SAMPLE_RATE ?? 1,
 		sentryProfileSessionSampleRate: e.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,
 		spaceApiUrl: e.SPACEAPI_URL,
+		spaceStateApi:
+			e.SPACESTATE_API_URL !== undefined &&
+			e.SPACESTATE_USER !== undefined &&
+			e.SPACESTATE_TOKEN !== undefined
+				? { url: e.SPACESTATE_API_URL, user: e.SPACESTATE_USER, token: e.SPACESTATE_TOKEN }
+				: undefined,
 		discord: {
 			token: e.DISCORD_TOKEN,
 			appId: e.DISCORD_APP_ID,

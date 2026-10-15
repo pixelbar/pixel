@@ -2,6 +2,7 @@ import type { CapabilityDefinition } from "../core/capabilities.ts";
 import { homeCapabilities } from "../core/home-access.ts";
 import { HOME_KINDS } from "../core/home-kinds/index.ts";
 import { SCHEDULE_CAPABILITY } from "./schedules/index.ts";
+import { SPACESTATE_CAPABILITY } from "./spacestate/index.ts";
 
 /**
  * Every capability that exists. Admins can only grant names listed here, and a
@@ -17,4 +18,5 @@ import { SCHEDULE_CAPABILITY } from "./schedules/index.ts";
 export const CAPABILITIES: readonly CapabilityDefinition[] = [
 	...homeCapabilities(HOME_KINDS),
 	SCHEDULE_CAPABILITY,
+	SPACESTATE_CAPABILITY,
 ];

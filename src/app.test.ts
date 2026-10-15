@@ -9,6 +9,7 @@ import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
+import { SPACESTATE_CAPABILITY } from "./features/spacestate/index.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
 
 /** End-to-end through the real wiring: access files → identity → dispatcher → features. */
@@ -49,6 +50,7 @@ describe("buildCore", () => {
 			sentryTracesSampleRate: 1,
 			sentryProfileSessionSampleRate: 1,
 			spaceApiUrl: "https://spaceapi.example/",
+			spaceStateApi: undefined,
 			discord: {
 				token: "x",
 				appId: "100000000000000010",
@@ -347,13 +349,17 @@ describe("buildCore", () => {
 
 	describe("capabilities", () => {
 		// Every command's capability must be registered, so the tests add theirs to the ones features need.
-		const DOOR = [{ name: "door", description: "Open the door" }, SCHEDULE_CAPABILITY];
+		const DOOR = [
+			{ name: "door", description: "Open the door" },
+			SCHEDULE_CAPABILITY,
+			SPACESTATE_CAPABILITY,
+		];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
 
 		it("refuses to build when a command needs a capability that isn't registered", () => {
 			expect(() =>
 				buildCore(config, silentLogger, nullErrorReporter, { capabilities: [] }),
-			).toThrow(/Unknown capability required by command "schedule"/);
+			).toThrow(/Unknown capability required by command "(schedule|spacestate)"/);
 		});
 
 		it("registers the Home Assistant capabilities, so admins can grant them", async () => {
@@ -364,6 +370,7 @@ describe("buildCore", () => {
 				"ha-switches",
 				"ha-doors",
 				"schedule-posts",
+				"spacestate",
 			]);
 			const listed = await core.dispatcher.dispatch({
 				actor: actor({ userId: IDS.admin }),
@@ -386,6 +393,63 @@ describe("buildCore", () => {
 			});
 			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
+		});
+
+		describe("/spacestate", () => {
+			const spaceStateApi = { url: "https://space.example/state", user: "pixel", token: "tok" };
+			const setState = (core: ReturnType<typeof buildCore>, userId: string, state: string) =>
+				core.dispatcher.dispatch({
+					actor: actor({ userId }),
+					command: "spacestate",
+					subcommand: "set",
+					args: { state },
+				});
+			const grant = (core: ReturnType<typeof buildCore>) =>
+				core.dispatcher.dispatch({
+					actor: actor({ userId: IDS.admin }),
+					command: "admin",
+					subgroup: "capabilities",
+					subcommand: "grant",
+					args: { user: IDS.member, capability: "spacestate" },
+					users: { user: person },
+				});
+
+			it("calls the configured API, only once an admin has granted the capability", async () => {
+				const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("SUCCESS"));
+				const core = buildCore({ ...config, spaceStateApi }, silentLogger, nullErrorReporter, {
+					fetch,
+				});
+
+				// A member without the capability, and an admin without it, are refused.
+				for (const userId of [IDS.member, IDS.admin]) {
+					expect((await setState(core, userId, "close")).reply.text).toBe(MESSAGES.deniedTier);
+				}
+				expect(fetch).not.toHaveBeenCalled();
+
+				await grant(core);
+				const result = await setState(core, IDS.member, "close");
+				expect(result.reply.text).toContain("**closed**");
+				expect(fetch).toHaveBeenCalledOnce();
+				const sent = new URL(String(fetch.mock.calls[0]?.[0]));
+				expect(sent.origin + sent.pathname).toBe("https://space.example/state");
+				expect(Object.fromEntries(sent.searchParams)).toEqual({
+					user: "pixel",
+					token: "tok",
+					state: "closed",
+				});
+				expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+
+				// Admins still can't use it without holding the capability themselves.
+				expect((await setState(core, IDS.admin, "open")).reply.text).toBe(MESSAGES.deniedTier);
+			});
+
+			it("says it isn't set up when there is no API configured", async () => {
+				const core = buildCore(config, silentLogger, nullErrorReporter);
+				await grant(core);
+				const result = await setState(core, IDS.member, "open");
+				expect(result.reply.text).toMatch(/isn't set up/);
+				expect(result.private).toBe(true);
+			});
 		});
 
 		it("DMs the person on grant and revoke, and not when nothing changes", async () => {
