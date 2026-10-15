@@ -227,7 +227,7 @@ just tf-apply dev    # only when told; does not roll the running image
 
 The first apply after #73 **moves** the Container App address (`azurerm_container_app.this` → `this[0]`). That is not a replace and does not change the running image. Plan should say "has moved", not destroy/create.
 
-After apply, Discord still will not answer until Key Vault secrets exist (`write_secrets` or `az`), `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
+After apply, Discord still will not answer until Key Vault secrets exist (app secrets with `just secrets-push dev`; Terraform never writes them, [ADR 0017](adr/0017-one-writer-for-app-secrets.md)), `members.yaml` is on the share, an image exists, commands are registered, and nothing else is using that bot token.
 
 **On `dev`, the image is owned by `just deploy-dev`, not by apply** ([#73](https://github.com/pixelbar/pixel/issues/73), [ADR 0010](adr/0010-ghcr-cd.md)). First create uses `container_image` (default `:main`). After that, Terraform **ignores** the Pixel container image on the **dev** app only. A later `just tf-apply dev` still updates vault, volume, env and the replica pin; it does **not** roll the bot back to a stale SHA in gitignored `terraform.tfvars`. Do not apply Terraform from CD to "fix" that drift. Do not bump `container_image` expecting a **dev** apply to change what is running.
 
@@ -308,8 +308,8 @@ Members with the `spacestate` capability can set the space open or closed with `
 **Turn it on** (local `.env`, or the Container App env plus Key Vault for the user and token):
 
 1. Set `SPACESTATE_API_URL` to the API address, and `SPACESTATE_USER` and `SPACESTATE_TOKEN` to the credentials it expects. Set all three or none: setting only some stops startup.
-2. On Azure, set `spacestate_api_url` in the environment's `terraform.tfvars`, and create the Key Vault secrets `spacestate-user` and `spacestate-token` (with `write_secrets = true` and the `spacestate_user` / `spacestate_token` inputs, or with `az keyvault secret set`). The app reads them as `SPACESTATE_USER` and `SPACESTATE_TOKEN`.
-3. Optional: if the API needs extra request headers, set `SPACESTATE_ADDITIONAL_HEADERS` to a JSON object such as `{"X-Example": "value"}`. It is a secret so the values stay out of the public repository. On Azure, set `spacestate_additional_headers_enabled = true` and create the Key Vault secret `spacestate-additional-headers` (`just secrets-push`, or the `spacestate_additional_headers` input).
+2. On Azure, first put `SPACESTATE_USER` and `SPACESTATE_TOKEN` in `.env.<env>` and `just secrets-push <env>`, which creates the Key Vault secrets `spacestate-user` and `spacestate-token`. Then set `spacestate_api_url` in the environment's `terraform.tfvars` and apply. Terraform only references the two secrets; it never writes them.
+3. Optional: if the API needs extra request headers, set `SPACESTATE_ADDITIONAL_HEADERS` to a JSON object such as `{"X-Example": "value"}`. It is a secret so the values stay out of the public repository. On Azure, push it with `just secrets-push <env>` (Key Vault secret `spacestate-additional-headers`) first, then set `spacestate_additional_headers_enabled = true` and apply.
 4. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
 5. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
 6. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
@@ -367,11 +367,11 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 **If a secret leaked:** rotate it first, then work out where it leaked from. Check the logs and Sentry for the time window. A leaked Discord token lets someone act as the bot in your server, so treat it as urgent.
 
-**Azure:** "put it in the secret store" means `just secrets-push dev` (or `prod`), below, which also offers the restart. Terraform can still write the values from gitignored `terraform.tfvars` with `write_secrets = true` (not stored in state). Never commit secret values.
+**Azure:** "put it in the secret store" means `just secrets-push dev` (or `prod`), below, which also offers the restart. It is the only thing that writes app secrets; Terraform's `write_secrets` writes only the Tailscale key and the registry token ([ADR 0017](adr/0017-one-writer-for-app-secrets.md)). Never commit secret values.
 
 ### Sync secrets with Key Vault
 
-`just secrets-pull` and `just secrets-push` keep an environment's **app** secrets (the `app` group in the manifest: Discord token, `admins.yaml`, Home Assistant, Mastodon, space state, Sentry) in step between its Key Vault and your laptop ([ADR 0016](adr/0016-secrets-sync.md)). The Tailscale key and the registry token are `infra` secrets: Terraform owns them and the tool never touches them.
+`just secrets-pull` and `just secrets-push` keep an environment's **app** secrets (the `app` group in the manifest: Discord token, `admins.yaml`, Home Assistant, Mastodon, space state, Sentry) in step between its Key Vault and your laptop ([ADR 0016](adr/0016-secrets-sync.md)). It is their **only** writer: Terraform references them from the Container App but never writes them ([ADR 0017](adr/0017-one-writer-for-app-secrets.md)). The Tailscale key and the registry token are `infra` secrets: Terraform owns them (`write_secrets`) and the tool never touches them.
 
 | Env | Key Vault | Local env secrets | Local `admins.yaml` | Container App |
 | --- | --- | --- | --- | --- |
@@ -391,9 +391,11 @@ These local files are gitignored and written readable only by you. **You need:**
 
 **Guards:** it refuses an env file whose `PIXEL_ENV` is for the other bot, and a Discord token that's also in another bot's file (`.env.dev` or `.env` for prod; `.env.prod` for dev). Never copy the Pixel Dev or Mini token into `.env.prod`.
 
-**If the stack has `write_secrets = true`** with app values in `secrets.auto.tfvars`, the next apply that bumps `secrets_version` writes those values back over the vault. Keep that file up to date, or set `write_secrets = false` once the vault is seeded and use the sync from then on.
+**Old `secrets.auto.tfvars`:** Terraform no longer has app-secret inputs (`discord_token`, `admins_yaml_file`, `sentry_dsn`, `spacestate_user`, …). If your file still sets them, Terraform warns about undeclared variables; delete those lines. Only `tailscale_auth_key` and `container_registry_password` belong there now.
 
-**A new app secret:** add it to the manifest first (above). Once the stack has it, put the value in `.env.<env>` under its environment variable and `just secrets-push <env>`; it shows as `+` new in Key Vault.
+**The first plan after ADR 0017** shows each app secret Terraform had written as "will no longer be managed by Terraform, but will not be destroyed", and any Tailscale or registry secret as "has moved to" `azurerm_key_vault_secret.infra`. That is expected: the secrets stay in Key Vault. If the plan **destroys** an `azurerm_key_vault_secret`, stop and ask (with `write_secrets = false`, Terraform removes the infra secrets it wrote, as it always did).
+
+**A new app secret, or a feature that needs one:** add it to the manifest first (above). Put the value in `.env.<env>` under its environment variable and `just secrets-push <env>` (it shows as `+` new in Key Vault), **then** turn the feature on in the tfvars and apply. The apply only references the secret, so it doesn't need the value.
 
 ### Pull and push an environment
 
@@ -409,7 +411,7 @@ These local files are gitignored and written readable only by you. **You need:**
 
 All of them are gitignored. The share files are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
 
-**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
+**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`tailscale_auth_key`, `container_registry_password`: anything the stack's `variables.tf` marks `sensitive`; app secrets are not Terraform inputs at all) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
 
 **Change Terraform settings:**
 
@@ -662,7 +664,7 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 
 **Bootstrap state:** the storage account `pixelbartfstate` has versioning and 14-day soft delete. Restore a previous `terraform.tfstate` blob if remote state is damaged. If bootstrap was never migrated off the laptop, that local file is the backup — migrate it.
 
-**Azure app (`dev`):** recreate with `just tf-apply dev` after bootstrap exists (the resource group is already there). Restore Key Vault secret values from wherever you keep them (they are not in Terraform state; re-apply with `write_secrets` or `az keyvault secret set`). Restore `members.yaml` / HA files / `schedules.yaml` from Azure Backup of the file share (14 days) or a copy you kept. Practise this in `dev`. Prod is the same layout in `pixel-prod` ([`infra/envs/prod/README.md`](../infra/envs/prod/README.md)).
+**Azure app (`dev`):** recreate with `just tf-apply dev` after bootstrap exists (the resource group is already there). Restore Key Vault secret values from wherever you keep them (they are not in Terraform state; app secrets with `just secrets-push dev` from your `.env.dev`, the Tailscale key and registry token with `write_secrets` or `az keyvault secret set`). Restore `members.yaml` / HA files / `schedules.yaml` from Azure Backup of the file share (14 days) or a copy you kept. Practise this in `dev`. Prod is the same layout in `pixel-prod` ([`infra/envs/prod/README.md`](../infra/envs/prod/README.md)).
 
 ## Keeping this up to date
 

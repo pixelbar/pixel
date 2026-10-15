@@ -119,7 +119,7 @@ variable "spacestate_api_url" {
 variable "write_secrets" {
   type        = bool
   default     = false
-  description = "If true, write ephemeral secret inputs into Key Vault (not stored in state). Leave false in terraform.example.tfvars so CI plan cannot clobber a real vault."
+  description = "If true, write the infra-group secrets (tailscale-auth-key, ghcr-pull-token) into Key Vault from ephemeral inputs (not stored in state). Never the app group: just secrets-push owns those (ADR 0017). Leave false in the example tfvars so a CI plan cannot clobber a real vault."
 }
 
 variable "secrets_version" {
@@ -128,80 +128,10 @@ variable "secrets_version" {
   description = "Bump to rotate write-only Key Vault secret values. Not a secret."
 }
 
-variable "discord_token" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "DISCORD_TOKEN. Used when write_secrets is true. Gitignored tfvars or TF_VAR_discord_token. Never stored in state."
-}
-
-variable "admins_yaml" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "Contents of admins.yaml. Used when write_secrets is true and admins_yaml_file is unset."
-}
-
-variable "admins_yaml_file" {
-  type        = string
-  default     = null
-  description = "Path to admins.yaml (gitignored). Contents are passed write-only into Key Vault; the path is not a secret."
-}
-
-variable "home_assistant_token" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "HOME_ASSISTANT_TOKEN. Required when write_secrets is true and home_assistant_url is set."
-}
-
-variable "mastodon_access_token" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "MASTODON_ACCESS_TOKEN. Required when write_secrets is true and mastodon_instance is set."
-}
-
-variable "spacestate_user" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "SPACESTATE_USER. Required when write_secrets is true and spacestate_api_url is set."
-}
-
-variable "spacestate_token" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "SPACESTATE_TOKEN. Required when write_secrets is true and spacestate_api_url is set."
-}
-
-variable "spacestate_additional_headers" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "SPACESTATE_ADDITIONAL_HEADERS: a JSON object of extra headers for the space state API. Required when write_secrets is true and spacestate_additional_headers_enabled is true."
-}
-
 variable "spacestate_additional_headers_enabled" {
   type        = bool
   default     = false
   description = "If true (and spacestate_api_url is set), the app reads the extra headers from Key Vault secret spacestate-additional-headers."
-}
-
-variable "sentry_dsn" {
-  type        = string
-  ephemeral   = true
-  sensitive   = true
-  default     = null
-  description = "SENTRY_DSN. Required when write_secrets is true and sentry_enabled is true."
 }
 
 variable "tailscale_auth_key" {

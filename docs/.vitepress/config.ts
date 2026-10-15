@@ -167,6 +167,10 @@ export default defineConfig({
 						},
 						{ text: "0015 · Secrets manifest", link: "/maintainers/adr/0015-secrets-manifest" },
 						{ text: "0016 · Secrets sync", link: "/maintainers/adr/0016-secrets-sync" },
+						{
+							text: "0017 · One writer for app secrets",
+							link: "/maintainers/adr/0017-one-writer-for-app-secrets",
+						},
 					],
 				},
 			],

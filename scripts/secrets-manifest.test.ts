@@ -8,6 +8,7 @@ import {
 	parseSecretsManifest,
 	SecretsManifestError,
 	terraformSecrets,
+	terraformWrittenSecrets,
 } from "./secrets-manifest.ts";
 
 const read = (file: string) => readFileSync(file, "utf8");
@@ -216,10 +217,29 @@ describe("the real manifest", () => {
 
 	it("lists every secret Terraform can write, and nothing else", () => {
 		expect(writeMap.map((w) => w.vault).sort()).toEqual(
-			terraformSecrets(manifest)
+			terraformWrittenSecrets(manifest)
 				.map((s) => s.vault)
 				.sort(),
 		);
+	});
+
+	it("never lets Terraform write the app group, which just secrets-push owns", () => {
+		expect(localsTf).toMatch(
+			/kv_infra_secret_names = toset\(\[for s in local\.enabled_secrets : s\.vault if s\.group == "infra"\]\)/,
+		);
+		expect(secretsTf).toMatch(/for_each = var\.write_secrets \? local\.kv_infra_secret_names :/);
+		for (const s of manifest.secrets.filter((s) => s.group === "app")) {
+			expect(writeMap.map((w) => w.vault)).not.toContain(s.vault);
+		}
+		// The old all-secrets resource leaves state without deleting anything from Key Vault.
+		expect(secretsTf).toMatch(
+			/removed \{\s*from = azurerm_key_vault_secret\.managed\s*lifecycle \{\s*destroy = false\s*\}/,
+		);
+	});
+
+	it("still references every enabled secret from the Container App, app group included", () => {
+		expect(terraformSecrets(manifest).some((s) => s.group === "app")).toBe(true);
+		expect(localsTf).toMatch(/for name in local\.kv_secret_names :/);
 	});
 
 	it("keeps the tooling group out of Terraform", () => {
