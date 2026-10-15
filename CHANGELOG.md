@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-15
+
 ### Added
 
 - `/spacestate`: Sentry now shows the request and response of each call to the space state API. A failed call carries them as a `spacestate_api` context on the error, and every call (successful ones too) puts them on the command's trace: the address, the state sent, the HTTP status, the content type and length, a short capped copy of the body, the outcome and how long it took. The user and token are shown as `[redacted]` and request headers are never sent. Nothing changes without a Sentry DSN.
@@ -204,7 +206,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/pixelbar/pixel/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/pixelbar/pixel/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/pixelbar/pixel/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/pixelbar/pixel/compare/v0.13.0...v0.14.0
