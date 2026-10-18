@@ -402,7 +402,7 @@ The message **body** is a file (`PIXEL_CLOSING_TIME_FILE`, default `data/closing
   - **Runtime metrics** (`nodeRuntimeMetricsIntegration`) send CPU, memory, event-loop delay and uptime every 30 seconds.
   - **Profiling** (`@sentry/profiling-node`) attaches a CPU profile to sampled traces (`profileLifecycle: "trace"`). `profileSessionSampleRate` comes from `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default `1`). The native integration is left out when the rate is `0`.
   - Errors are not sampled (`sampleRate` is `1`).
-  - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
+  - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend`, `beforeSendSpan`, `beforeBreadcrumb` and `beforeSendLog` scrub everything sent (`observability/scrub.ts`): anything that looks like a bot or Home Assistant token, and the interaction token in Discord's `/interactions/<id>/<token>` and `/webhooks/<id>/<token>` paths, which HTTP spans and breadcrumbs record for every reply (`url.full`, `url.path`) and which can post as the bot for 15 minutes. Spans are streamed (`traceLifecycle: "stream"`, pinned), so every span passes through `beforeSendSpan`.
   - Releases are tagged with the git SHA (`PIXEL_VERSION`). Source maps upload from CD, the Release workflow, and `just sentry-release`. Those jobs **fail closed** if `SENTRY_ORG`, `SENTRY_PROJECT`, or `SENTRY_AUTH_TOKEN` is missing.
   - `environment` is `local`, `dev` or `prod`.
 - **Logs:** everything is logged through the one pino logger (`observability/logger.ts`, no `console`), and each line goes to **three** places:

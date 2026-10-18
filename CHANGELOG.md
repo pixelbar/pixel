@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Sentry: traces no longer carry Discord interaction tokens. Every reply to a command goes to a Discord URL with the interaction token in its path, and the request's span (`url.full`, `url.path`) and `http` breadcrumb kept it, so anyone with access to the Sentry project could post as the bot for 15 minutes after each command. Spans now go through the same scrubbing as errors, breadcrumbs and logs, and the token in `/interactions/<id>/<token>` and `/webhooks/<id>/<token>` paths is shown as `[redacted]`. The scrubbing also no longer skips an object that appears twice in what is sent, and keeps an error's message and stack (scrubbed) instead of dropping them.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
