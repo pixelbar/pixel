@@ -396,7 +396,12 @@ describe("buildCore", () => {
 		});
 
 		describe("/spacestate", () => {
-			const spaceStateApi = { url: "https://space.example/state", user: "pixel", token: "tok" };
+			const spaceStateApi = {
+				url: "https://space.example/state",
+				user: "pixel",
+				token: "tok",
+				headers: {},
+			};
 			const setState = (core: ReturnType<typeof buildCore>, userId: string, state: string) =>
 				core.dispatcher.dispatch({
 					actor: actor({ userId }),
@@ -441,6 +446,28 @@ describe("buildCore", () => {
 
 				// Admins still can't use it without holding the capability themselves.
 				expect((await setState(core, IDS.admin, "open")).reply.text).toBe(MESSAGES.deniedTier);
+			});
+
+			it("shows the request and response to the reporter, with the user and token redacted", async () => {
+				const attach = vi.fn();
+				const reporter = { ...nullErrorReporter, attach };
+				const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("SUCCESS"));
+				const core = buildCore({ ...config, spaceStateApi }, silentLogger, reporter, { fetch });
+				await grant(core);
+				await setState(core, IDS.member, "open");
+
+				expect(attach).toHaveBeenCalledOnce();
+				expect(attach).toHaveBeenCalledWith(
+					"spacestate_api",
+					expect.objectContaining({
+						request: expect.objectContaining({
+							url: "https://space.example/state",
+						}),
+						response: expect.objectContaining({ status: 200, body: "SUCCESS" }),
+						outcome: "success",
+					}),
+				);
+				expect(JSON.stringify(attach.mock.calls)).not.toMatch(/tok(?!en)|user=pixel/);
 			});
 
 			it("says it isn't set up when there is no API configured", async () => {

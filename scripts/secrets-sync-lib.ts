@@ -208,7 +208,7 @@ export function newEnvFile(target: Target): string {
 	].join("\n");
 }
 
-/** `PIXEL_ENV` as an env file sets it, for `assertRegisterEnv`. */
+/** `PIXEL_ENV` as an env file sets it, for `assertPixelEnv`. */
 export function pixelEnvOf(envText: string | undefined): "local" | "dev" | "prod" {
 	const value = envText === undefined ? undefined : parseEnv(envText).PIXEL_ENV;
 	return value === "dev" || value === "prod" ? value : "local";
@@ -308,6 +308,19 @@ export function stackVariables(variablesTf: string): { all: Set<string>; sensiti
 /** `name = "value"` for a top-level string setting, if the file sets one. */
 function tfvarsString(text: string, key: string): string | undefined {
 	return text.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"))?.[1];
+}
+
+/**
+ * A tfvars file as it may be shown: the value of every sensitive variable is hidden,
+ * commented-out ones included, so a diff never prints a secret even when the file
+ * (wrongly) holds one.
+ */
+export function redactTfvars(text: string, sensitive: ReadonlySet<string>): string {
+	return text.replace(
+		/^(\s*#?\s*)([a-z_][a-z0-9_]*)(\s*=\s*)(.*)$/gm,
+		(line, lead: string, key: string, eq: string) =>
+			sensitive.has(key) ? `${lead}${key}${eq}(secret, hidden)` : line,
+	);
 }
 
 /**

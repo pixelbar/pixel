@@ -9,13 +9,31 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
-### Added
+### Fixed
 
-- `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
+- `/spacestate`: the Sentry context for a failed call now says why the network failed (`errorCause`, such as `ENOTFOUND`, `ECONNREFUSED` or `UNEXPECTED_REDIRECT`), and shows the address without its query. Sentry was replacing the old redacted address with `[Filtered]`.
 
 ### Changed
 
 - Laptop tooling now shares one definition of each environment ([#116](https://github.com/pixelbar/pixel/issues/116)). `scripts/envs.ts` holds every Azure name (subscription, resource group, Container App, Key Vault, file share), the env file and the guards, and `just pull`/`push`, `secrets-pull`/`push`, `ha-devices`, `register`, `command-access`, `restart`, `deploy` and `tf-apply` all take them from there. New `just env dev|prod` shows where an environment lives. `just --list` is grouped (develop, environments, config, terraform, release, docs). `just deploy dev` replaces `just deploy-dev`, which still works for now; `just deploy prod` refuses because prod ships from the Release workflow. Discord tools load their env file in TypeScript rather than through a bash helper, still dropping anything `just` loaded from `.env`.
+
+## [0.17.0] - 2026-10-15
+
+### Added
+
+- `/spacestate`: Sentry now shows the request and response of each call to the space state API. A failed call carries them as a `spacestate_api` context on the error, and every call (successful ones too) puts them on the command's trace: the address, the state sent, the HTTP status, the content type and length, a short capped copy of the body, the outcome and how long it took. The user and token are shown as `[redacted]` and request headers are never sent. Nothing changes without a Sentry DSN.
+
+## [0.16.0] - 2026-10-15
+
+### Added
+
+- `/spacestate`: optional `SPACESTATE_ADDITIONAL_HEADERS` (a JSON object of header names to values, sent with the state call), for headers the API needs on that call. It is a secret so the values stay out of the public repository: Key Vault `spacestate-additional-headers` on Azure, switched on by the new `spacestate_additional_headers_enabled` Terraform variable. Unset, nothing changes.
+
+- `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
+
+### Fixed
+
+- `just push` no longer prints a `terraform.tfvars` that holds secrets: it checks the file before showing its diff, and the diff (in `just pull` too) hides the value of every sensitive Terraform variable, commented-out ones included. Before, a tfvars with a token in it was shown in full and only then refused (nothing was pushed). If you saw that output, clear your terminal's scrollback and consider rotating what it showed.
 
 ## [0.15.0] - 2026-10-15
 
@@ -70,22 +88,17 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `just register and `just command-access` take `dev` or `prod` so they cannot mix Pixel Dev and production Discord tokens. Use `just register prod` with `.env.prod` (`PIXEL_ENV=prod`); `just deploy-dev` calls `just register dev`.
 - CI/CD runs each expensive job only when its inputs change ([`dorny/paths-filter`](https://github.com/dorny/paths-filter) + [`.github/path-filters.yml`](.github/path-filters.yml)): `just check` for app/scripts/config paths, Docker/GHCR when the image would change (including test-only `src/` edits), and the docs workflow for `docs/` (Biome + site build). Docs, changelog and infra-only changes no longer run app CI or publish an image.
+- Merges to `main` no longer roll `pixel-prod` or publish the docs site. A maintainer runs the **Release** workflow on `main` to cut the version from Unreleased, tag `vX.Y.Z`, create a GitHub Release, publish that image, roll `pixel-prod` after Environment `prod` approval, and publish the VitePress site to GitHub Pages.
 
 ### Removed
 
 - `inventory.yaml` and everything behind it: Pixel no longer writes a list of what Home Assistant has, so the hourly sync, the `PIXEL_HOME_SYNC_MINUTES` setting, and the "N known, synced X ago" line in `/admin status` and the inventory line in `/admin reload` are gone. `just ha-devices` reads Home Assistant live when you add devices. Remove `PIXEL_HOME_SYNC_MINUTES` from your env if you set it (it is ignored), and delete any leftover `home-assistant/inventory.yaml` from the dev and prod file shares (harmless either way).
 
-## [0.10.2] - 2026-10-13
-
-### Changed
-
-- Merges to `main` no longer roll `pixel-prod` or publish the docs site. A maintainer runs the **Release** workflow on `main` to cut the version from Unreleased, tag `vX.Y.Z`, create a GitHub Release, publish that image, roll `pixel-prod` after Environment `prod` approval, and publish the VitePress site to GitHub Pages.
-
 ### Fixed
 
 - Terraform plan jobs skip Azure login unless `infra/` Terraform files change, so README or `justfile` edits do not refresh Key Vault secrets. GitHub’s identity is not Secrets User (ADR 0012); that refresh is a 403.
 
-## [0.10.1] - 2026-10-12
+## [0.11.0] - 2026-10-13
 
 ### Added
 
@@ -100,6 +113,18 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Fixed
 
 - `/ha list` now pluralises its groups when there is more than one device ("Lights · 2", "Switches · 2", not "Light · 2" or "Switchs") (PIXEL-4).
+
+## [0.10.2] - 2026-10-13
+
+### Changed
+
+- `/feedback` now shows people the message as it was sent, in its private reply (PIXEL-M).
+
+## [0.10.1] - 2026-10-12
+
+### Changed
+
+- `/info` with no topic now lists the topics in a private reply, so the menu no longer clutters the channel. Answers to a topic stay public (PIXEL-K).
 
 ## [0.10.0] - 2026-10-12
 
@@ -200,7 +225,9 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/pixelbar/pixel/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/pixelbar/pixel/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/pixelbar/pixel/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/pixelbar/pixel/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/pixelbar/pixel/compare/v0.12.0...v0.13.0

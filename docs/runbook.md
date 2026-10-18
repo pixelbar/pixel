@@ -309,13 +309,16 @@ Members with the `spacestate` capability can set the space open or closed with `
 
 1. Set `SPACESTATE_API_URL` to the API address, and `SPACESTATE_USER` and `SPACESTATE_TOKEN` to the credentials it expects. Set all three or none: setting only some stops startup.
 2. On Azure, set `spacestate_api_url` in the environment's `terraform.tfvars`, and create the Key Vault secrets `spacestate-user` and `spacestate-token` (with `write_secrets = true` and the `spacestate_user` / `spacestate_token` inputs, or with `az keyvault secret set`). The app reads them as `SPACESTATE_USER` and `SPACESTATE_TOKEN`.
-3. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
-4. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
-5. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
+3. Optional: if the API needs extra request headers, set `SPACESTATE_ADDITIONAL_HEADERS` to a JSON object such as `{"X-Example": "value"}`. It is a secret so the values stay out of the public repository. On Azure, set `spacestate_additional_headers_enabled = true` and create the Key Vault secret `spacestate-additional-headers` (`just secrets-push`, or the `spacestate_additional_headers` input).
+4. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
+5. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
+6. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
 
 **Turn it off:** unset all three variables (on Azure, unset `spacestate_api_url`). The command stays but says it isn't set up. To stop one person, revoke their capability.
 
 **If it fails:** the person is told nothing changed, and Sentry gets an event tagged `spacestate` with a message such as "did not accept the change" (the API answered something other than `SUCCESS`), "responded with HTTP 403" (wrong user or token) or "request failed" (unreachable). The message never has the URL, the token or the API's answer. Check the credentials first. Pixel never retries.
+
+**See the request and response:** in Sentry, a failed `/spacestate set` event has a `spacestate_api` section (Contexts), and every call, successful or not, has the same fields as `spacestate_api.*` attributes on the `spacestate` command's trace. They hold the address without its query (the user and token are never shown), the state sent, the HTTP status, content type and length, the response body (control characters removed, cut to 1,024 characters, and left out entirely when over the 4 KiB cap or unreadable), the outcome (`success`, `rejected`, `http-error`, `too-large`, `unreadable` or `network-error`) and how long it took. For a `network-error` they also name why when the underlying error says (`errorCause`: a code such as `ENOTFOUND` or `ECONNREFUSED`, or `UNEXPECTED_REDIRECT` when the API answered with a redirect, which Pixel refuses because the token is in the URL). Request headers, including `SPACESTATE_ADDITIONAL_HEADERS`, are never sent. Without a Sentry DSN nothing is collected.
 
 The user and token are in the URL's query string, so treat anything that could hold the whole URL (a proxy log, a copy of the settings) as a secret.
 
@@ -406,7 +409,7 @@ These local files are gitignored and written readable only by you. **You need:**
 
 All of them are gitignored. The share files are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
 
-**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. Its diff is shown in full.
+**`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`discord_token`, `tailscale_auth_key`, `container_registry_password`, … anything the stack's `variables.tf` marks `sensitive`) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
 
 **Change Terraform settings:**
 

@@ -13,6 +13,43 @@ const optional = <T extends z.ZodType>(schema: T) =>
 /** 0 drops everything, 1 keeps it all. Empty means the default. */
 const sampleRate = optional(z.coerce.number().min(0).max(1));
 
+/**
+ * Extra headers for the space state API, as a JSON object of header name to value. The values
+ * are secrets (they can carry values that must stay private), so the errors here never echo them.
+ */
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const extraHeaders = z.string().transform((raw, ctx) => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		parsed = undefined;
+	}
+	const entries =
+		typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+			? Object.entries(parsed)
+			: undefined;
+	const valid =
+		entries !== undefined &&
+		entries.length > 0 &&
+		entries.every(
+			([name, value]) =>
+				HEADER_NAME.test(name) &&
+				typeof value === "string" &&
+				value.trim() !== "" &&
+				!/[\r\n\0]/.test(value),
+		);
+	if (!valid) {
+		ctx.issues.push({
+			code: "custom",
+			message: 'must be a JSON object of header names to values, like {"X-Example": "value"}',
+			input: undefined,
+		});
+		return z.NEVER;
+	}
+	return Object.fromEntries(entries.map(([name, value]) => [name, String(value).trim()]));
+});
+
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
 const pixelRuntime = z.enum(["local", "cloud"]).default("local");
 
@@ -54,6 +91,8 @@ const envSchema = z
 		SPACESTATE_API_URL: optional(z.url({ protocol: /^https?$/ })),
 		SPACESTATE_USER: optional(z.string().trim().min(1).max(100)),
 		SPACESTATE_TOKEN: optional(z.string().trim().min(1)),
+		// Optional, and only used when the three above are set.
+		SPACESTATE_ADDITIONAL_HEADERS: optional(extraHeaders),
 
 		DISCORD_TOKEN: z.string().min(1),
 		DISCORD_APP_ID: snowflake,
@@ -143,9 +182,13 @@ export type Config = {
 	/**
 	 * The API `/spacestate` calls to set the space open or closed: its address, and the
 	 * user and token it is called with. The user and token come from Key Vault when hosted
-	 * and the token is a secret. Undefined means `/spacestate` is off.
+	 * and the token is a secret. `headers` are extra request headers (such as one that tells the
+	 * API which address the call comes from); their values are secret too. Undefined means
+	 * `/spacestate` is off.
 	 */
-	spaceStateApi: { url: string; user: string; token: string } | undefined;
+	spaceStateApi:
+		| { url: string; user: string; token: string; headers: Record<string, string> }
+		| undefined;
 	discord: {
 		token: string;
 		appId: string;
@@ -232,7 +275,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			e.SPACESTATE_API_URL !== undefined &&
 			e.SPACESTATE_USER !== undefined &&
 			e.SPACESTATE_TOKEN !== undefined
-				? { url: e.SPACESTATE_API_URL, user: e.SPACESTATE_USER, token: e.SPACESTATE_TOKEN }
+				? {
+						url: e.SPACESTATE_API_URL,
+						user: e.SPACESTATE_USER,
+						token: e.SPACESTATE_TOKEN,
+						headers: e.SPACESTATE_ADDITIONAL_HEADERS ?? {},
+					}
 				: undefined,
 		discord: {
 			token: e.DISCORD_TOKEN,

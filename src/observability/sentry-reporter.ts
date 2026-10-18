@@ -17,6 +17,20 @@ function sentryUser(actor: ErrorReportActor) {
 	};
 }
 
+/** `{ a: { b: 1 } }` under `x` becomes `{ "x.a.b": 1 }`: span attributes are flat and primitive. */
+function flatAttributes(
+	prefix: string,
+	value: unknown,
+	out: Record<string, string | number | boolean> = {},
+): Record<string, string | number | boolean> {
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+		out[prefix] = value;
+	} else if (value !== null && typeof value === "object") {
+		for (const [key, item] of Object.entries(value)) flatAttributes(`${prefix}.${key}`, item, out);
+	}
+	return out;
+}
+
 export function createSentryReporter(): ErrorReporter {
 	return {
 		capture(error, { command, feature, principal }) {
@@ -52,6 +66,13 @@ export function createSentryReporter(): ErrorReporter {
 		},
 		breadcrumb(category, message, data) {
 			Sentry.addBreadcrumb({ category, message, level: "info", ...(data ? { data } : {}) });
+		},
+		attach(source, data) {
+			// A context shows as its own section on any error reported while this command runs
+			// (the isolation scope follows the work); the span attributes put the same facts on
+			// the command's trace, which is where a successful call shows.
+			Sentry.setContext(source, data);
+			Sentry.getActiveSpan()?.setAttributes(flatAttributes(source, data));
 		},
 	};
 }

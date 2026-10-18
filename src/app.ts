@@ -49,7 +49,6 @@ export type Core = {
 	home: Home;
 	/** The devices Pixel may touch in Home Assistant. Empty when Home Assistant isn't set up. */
 	homeDevices: HomeDeviceStore;
-	/** Everything Home Assistant has, written to a file for people to read. Never an allow-list. */
 	/** Emergency switches for kinds of device, such as doors (`/admin doors`). */
 	switches: KindSwitch;
 	registry: CommandRegistry;
@@ -131,6 +130,9 @@ export function buildCore(
 				url: config.spaceStateApi.url,
 				user: config.spaceStateApi.user,
 				token: config.spaceStateApi.token,
+				headers: config.spaceStateApi.headers,
+				// Sentry shows the request and response; the user and token are redacted first.
+				observe: (exchange) => reporter.attach?.("spacestate_api", { ...exchange }),
 				...(options.fetch ? { fetch: options.fetch } : {}),
 			})
 		: undefined;

@@ -182,6 +182,20 @@ variable "spacestate_token" {
   description = "SPACESTATE_TOKEN. Required when write_secrets is true and spacestate_api_url is set."
 }
 
+variable "spacestate_additional_headers" {
+  type        = string
+  ephemeral   = true
+  sensitive   = true
+  default     = null
+  description = "SPACESTATE_ADDITIONAL_HEADERS: a JSON object of extra headers for the space state API. Required when write_secrets is true and spacestate_additional_headers_enabled is true."
+}
+
+variable "spacestate_additional_headers_enabled" {
+  type        = bool
+  default     = false
+  description = "If true (and spacestate_api_url is set), the app reads the extra headers from Key Vault secret spacestate-additional-headers."
+}
+
 variable "sentry_dsn" {
   type        = string
   ephemeral   = true
