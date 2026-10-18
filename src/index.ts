@@ -11,7 +11,7 @@ import { loadBuildInfo } from "./observability/build-info.ts";
 import { startHealthServer } from "./observability/health.ts";
 import {
 	type Heartbeat,
-	monitorSlug,
+	planHeartbeat,
 	sentryCheckIn,
 	startHeartbeat,
 } from "./observability/heartbeat.ts";
@@ -126,14 +126,17 @@ async function main(): Promise<void> {
 	startMastodonPublisher({ mastodon: config.mastodon, announcer, logger });
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
-	// hang, the host going down). Only with Sentry set up.
-	if (config.sentryDsn && config.heartbeatMinutes > 0) {
+	// hang, the host going down). Only with Sentry set up, and never from a laptop.
+	const heartbeatPlan = planHeartbeat(config);
+	if ("monitorSlug" in heartbeatPlan) {
 		heartbeat = startHeartbeat({
-			intervalMs: config.heartbeatMinutes * 60_000,
+			intervalMs: heartbeatPlan.intervalMinutes * 60_000,
 			isHealthy: () => discord.isReady(),
-			checkIn: sentryCheckIn(monitorSlug(config.env), config.heartbeatMinutes),
+			checkIn: sentryCheckIn(heartbeatPlan.monitorSlug, heartbeatPlan.intervalMinutes),
 			logger,
 		});
+	} else {
+		logger.info({ event: "heartbeat.off", reason: heartbeatPlan.off }, "heartbeat is off");
 	}
 	spaceStatus.start();
 
