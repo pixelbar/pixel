@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/spacestate`: the Sentry context for a failed call now says why the network failed (`errorCause`, such as `ENOTFOUND`, `ECONNREFUSED` or `UNEXPECTED_REDIRECT`), and shows the address without its query. Sentry was replacing the old redacted address with `[Filtered]`.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
