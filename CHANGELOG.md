@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Bot status: a run that had no online post of its own (stopped within the first few seconds, or its online post failed) no longer edits the newest online post to "offline" when it shuts down. During a deploy that post is the new version's, so the channel said Pixel was offline while it was running. It now says offline in a new post and leaves other runs' posts alone, and a run that is shutting down no longer posts "online" afterwards.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
