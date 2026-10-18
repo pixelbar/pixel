@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- CD on `main` no longer loses an image: runs queue instead of cancelling each other, and each one publishes when an image path changed since the last green CD run, not just since the previous push. Before, a docs-only merge right after a code merge cancelled that merge's publish and then skipped its own, so the code merge never got a GHCR image or a Sentry release.
+- The Release workflow runs `just check` on the commit it releases and publishes no image, deploys nothing to prod and leaves the docs site alone unless it passes. CI never runs on the bump commit and CI on `main` can be cancelled or red, so before this nothing tested what reached prod.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

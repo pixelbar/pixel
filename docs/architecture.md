@@ -481,7 +481,7 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 - **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path (`tailscale_enabled`); `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Both URL and token or neither. Sidecar is userspace (no TUN). LAN MagicDNS through it is remaining work for #43.
 - **Cost (rough):** always-on `dev` is about €40–55/month West Europe without Tailscale, plus about €15 with the sidecar. Not a quote.
 - **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with allowlists in [`.github/path-filters.yml`](../.github/path-filters.yml) decides which expensive jobs run: **check** (`just check` + `just build`) when app/scripts/config/tooling paths change; **Docker smoke** when image inputs change (`src/` including tests, `content/`, Dockerfile, lockfile, …). Jobs always start so required GitHub checks stay green when that job is not needed. [`changelog.yml`](../.github/workflows/changelog.yml) still runs on every PR. [`docs.yml`](../.github/workflows/docs.yml) Biome-lints and builds the site when `docs/` changes. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` only when `infra/`, that workflow, or the `justfile` change, then `terraform plan` on each env via GitHub Environment `dev` / `prod` OIDC **only if `infra/` Terraform files changed** (markdown does not). Missing `ARM_*` **fails closed**. No apply on merge. GitHub is not Key Vault Secrets User, so a secret refresh would 403 (ADR 0012). Actions are pinned to commit SHAs.
-- **CD:** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register dev` + Sentry release). Production slash commands: the Release's `register-prod` job (fallback `just register prod`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only, and only when an **image** path changed: publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). **No Azure login and no `pixel-prod` update** on merge. [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`workflow_dispatch` on `main`) cuts the version, publishes `:vX.Y.Z`, Environment `prod` approval rolls `pixel-prod` (`az`, min=max=1, no Terraform apply), a second approval runs `register-prod` (reads only `discord-token` from `pixel-prod-kv`), and publishes GitHub Pages. See [ADR 0010](adr/0010-ghcr-cd.md), [ADR 0012](adr/0012-prod-environment.md) and [ADR 0013](adr/0013-release-workflow.md).
+- **CD:** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register dev` + Sentry release). Production slash commands: the Release's `register-prod` job (fallback `just register prod`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only, and only when an **image** path changed since the last green CD run (not just since the previous push): publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). CD runs queue and are never cancelled, so a quick docs-only merge cannot cut short the publish before it. **No Azure login and no `pixel-prod` update** on merge. [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`workflow_dispatch` on `main`) cuts the version, runs `just check` on the bump commit (CI never runs on it), publishes `:vX.Y.Z` only if that passes, Environment `prod` approval rolls `pixel-prod` (`az`, min=max=1, no Terraform apply), a second approval runs `register-prod` (reads only `discord-token` from `pixel-prod-kv`), and publishes GitHub Pages. See [ADR 0010](adr/0010-ghcr-cd.md), [ADR 0012](adr/0012-prod-environment.md) and [ADR 0013](adr/0013-release-workflow.md).
 
 ### CI and CD pipelines
 
@@ -516,7 +516,8 @@ Merge to `main`:
 flowchart TD
   main[Push to main]
   main --> ci[Same CI path filter as PRs]
-  main --> imagep{"image path?"}
+  main --> queue[CD runs queue, never cancel]
+  queue --> imagep{"image path since last green CD run?"}
   imagep -->|yes| pub["CD: GHCR SHA and :main"]
   pub --> maps[Sentry source maps]
   imagep -->|no| nocd[Skip GHCR and Sentry]
@@ -530,13 +531,14 @@ flowchart TD
   human[Actions Release on main]
   human --> bump[just bump commit]
   bump --> tag[Tag vX.Y.Z and GitHub Release]
-  tag --> img["Rebuild GHCR :sha, :vX.Y.Z, :main"]
+  tag --> check[just check on the bump commit]
+  check --> img["Rebuild GHCR :sha, :vX.Y.Z, :main"]
   img --> sentry[Sentry maps environment prod]
   img --> approve[Environment prod approval]
   approve --> roll[az containerapp update pixel-prod]
   roll --> approve2[Environment prod approval]
   approve2 --> register[Register prod slash commands]
-  tag --> pages[VitePress to GitHub Pages]
+  check --> pages[VitePress to GitHub Pages]
 ```
 
 ## Adding a platform (later)
