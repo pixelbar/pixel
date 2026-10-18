@@ -75,7 +75,9 @@ export type DispatchHooks = {
 	/**
 	 * Called with the command's placeholder after access and argument checks
 	 * pass, before the handler runs. Adapters show it immediately and later
-	 * replace it with the result.
+	 * replace it with the result. If it throws, the handler doesn't run and
+	 * `dispatch` rejects with that error, unlogged and unreported: it's the
+	 * platform's failure, so the adapter decides how to log and report it.
 	 */
 	onPending?: (pending: DispatchResult) => Promise<void>;
 };
@@ -287,14 +289,17 @@ export class Dispatcher {
 				"command executed",
 			);
 
+		let showingPending = false;
 		try {
 			const valid = validateArgs(definition, args, users, channels);
 			if (definition.placeholder && hooks.onPending) {
 				const { placeholder } = definition;
+				showingPending = true;
 				await hooks.onPending({
 					reply: placeholder,
 					private: placeholder.private ?? definition.private ?? false,
 				});
+				showingPending = false;
 			}
 			const run = () =>
 				definition.handler({
@@ -312,6 +317,8 @@ export class Dispatcher {
 			executed("ok");
 			return { reply, private: reply.private ?? definition.private ?? false };
 		} catch (error) {
+			// The adapter couldn't show the placeholder; see `DispatchHooks.onPending`.
+			if (showingPending) throw error;
 			if (error instanceof UserFacingError) {
 				executed("user_error");
 				return privateText(error.message);

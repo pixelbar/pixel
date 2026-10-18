@@ -539,9 +539,13 @@ Do not run `just bump` on a feature branch unless you are deliberately cutting a
 
 **Duplicate replies, "I don't know that command" for a command Discord lists, or Discord shows an error and then the action still happens**
 
-Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060 / 10062). Logs on either side show `discord.duplicate_handler`.
+Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060, "already acknowledged"). Logs on either side show `discord.duplicate_handler`.
 
 Find and stop the extra one: `docker ps` locally (leftover `just dev` or a worktree container), and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1. Retry the command after only one instance is left.
+
+**Discord says "The application did not respond"** (log `discord.slow_ack`, Sentry `SlowAcknowledgementError`)
+
+Pixel didn't acknowledge the command within Discord's 3 seconds (Discord 10062, "unknown interaction"). That is Pixel being slow, not a second instance. The log and the Sentry title name the command. Usual causes: the host is overloaded or the event loop was blocked, the network to Discord is slow, or a command that opens a form did slow work before showing it. One-offs after a restart or a Discord hiccup can be ignored. If it repeats for one command, open an issue with the command and the time.
 
 **SpaceAPI is down** (`/status` says "Couldn't check")
 

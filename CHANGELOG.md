@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Discord: when Discord refused a slow command's acknowledgement (its deferral), the failure is no longer also logged and sent to Sentry as an unhandled rejection with no user or command; it is handled once, by the adapter. A command whose "Checking…" placeholder couldn't be posted (`/status`, `/ha` and others) is no longer reported as a failed command: the handler still doesn't run, and the adapter logs it like any other refused acknowledgement.
+- Discord: only "already acknowledged" (40060) is logged as `discord.duplicate_handler` (a second Pixel on the token). "Unknown interaction" (10062) means Pixel didn't acknowledge within Discord's 3 seconds, so it is now logged as `discord.slow_ack` with the command and who ran it, and reported to Sentry as a `SlowAcknowledgementError` naming the command.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
