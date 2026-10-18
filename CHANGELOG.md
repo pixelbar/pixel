@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Commands with a form (`/schedule`, closing time): opening the form now takes a token from the per-person command rate limit (refused and logged as `command.rate_limited` like any command), and errors reported while the form is being prepared are tied to the person's Discord ID in Sentry, as they are while a command runs. Submitting the form still takes its own token.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
