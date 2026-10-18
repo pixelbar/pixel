@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/admin doors on|off`: the `home.kind_switched` log now names the admin like every other action (Discord ID, name and handle) and carries the command, so moderators can recognise who switched door control. Before, it had only the Discord ID. It is still logged once per switch.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
