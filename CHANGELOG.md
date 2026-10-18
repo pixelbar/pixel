@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/schedule`: `when` no longer guesses. Four digits after a date are read the same with or without a month name: a time (`14 nov 1900` is 19:00, `14 nov 2030` is 20:30, as `14-11 2030` already was), and a year only beside another time (`14 nov 2030 19:00`) or when no clock reads them (`14 nov 2099`). Months must be English names or their short forms (`sep`, `sept`, `september`), so words like `junk`, `decent` or `mars` are refused instead of read as June, December or March.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
