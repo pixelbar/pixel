@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/admin level set` and capability changes no longer write `members.yaml` when the file was hand-edited into a state that fails the startup cross-checks (an id in two entries, or an admin with no entry). Before, the file was saved but the in-memory view and the `access.changed` audit record were not, and the admin got a generic error. Now the change is refused with "The members file is invalid", and nothing is written.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

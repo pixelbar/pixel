@@ -81,9 +81,9 @@ Both files are loaded at startup into an in-memory view that is replaced as a wh
 
 **Changes go through the access store** (`core/ports/access-store.ts`, implemented by `services/access-store.ts`). One change at a time it:
 
-1. re-reads `members.yaml`, so edits made by hand aren't lost, and refuses if it has become invalid,
+1. re-reads `members.yaml`, so edits made by hand aren't lost, and refuses if it has become invalid (the same checks as at startup, including an id in two entries or an admin with no entry),
 2. edits the YAML document, so comments, order and quoting survive (IDs are written as quoted strings),
-3. re-validates the result and writes it to a temp file next to the original, then flushes it to disk,
+3. re-validates the result, builds the new view, and writes it to a temp file next to the original, then flushes it to disk,
 4. checks the file wasn't edited in the meantime, keeps the old one as `members.yaml.bak`, and renames the temp file over the original (atomic),
 5. only then swaps the in-memory view and records the change.
 
