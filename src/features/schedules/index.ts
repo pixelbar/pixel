@@ -92,7 +92,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	};
 	const whenOption: CommandOption = {
 		name: "when",
-		description: "When to post (Europe/Amsterdam), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
+		description: `When to post (${zone}), e.g. wed 1900, 14 oct 19:00, tomorrow 9am`,
 		type: "string",
 		required: true,
 	};
@@ -267,8 +267,28 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		throw new UserFacingError(CANT_EDIT);
 	}
 
-	/** Apply optional `when` / `repeat` / `days` on top of what's already stored. */
+	/**
+	 * Apply optional `when` / `repeat` / `days` on top of what's already stored. Refuses a
+	 * change that would leave nothing to post (a one-off whose start has passed).
+	 */
 	function editTiming(
+		schedule: Schedule,
+		args: CommandContext["args"],
+	): {
+		start: LocalDateTime;
+		recurrence: Recurrence;
+	} {
+		const change = parseEditTiming(schedule, args);
+		const edited = { ...schedule, start: formatLocal(change.start), recurrence: change.recurrence };
+		if (!nextRun(edited, zone, now())) {
+			throw new UserFacingError(
+				"That would leave it with nothing to post: a one-off needs a time that's still to come. Add `when` with the new time.",
+			);
+		}
+		return change;
+	}
+
+	function parseEditTiming(
 		schedule: Schedule,
 		args: CommandContext["args"],
 	): {
@@ -361,11 +381,17 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				: { start: parseLocal(schedule.start) as LocalDateTime, recurrence: schedule.recurrence };
 		const post = editedPost(schedule.post, ctx.args);
 		const name = typeof ctx.args.name === "string" ? cleanName(ctx.args.name) : schedule.name;
+		const start = formatLocal(timingChange.start);
+		const retimed =
+			start !== schedule.start ||
+			JSON.stringify(timingChange.recurrence) !== JSON.stringify(schedule.recurrence);
 		const updated = deps.store.update(schedule.id, {
 			post,
-			start: formatLocal(timingChange.start),
+			start,
 			recurrence: timingChange.recurrence,
 			name,
+			// New timing counts from now, like resume: nothing it "missed" before the edit goes out.
+			...(retimed ? { lastRunAt: fromNow(schedule, now()) } : {}),
 		});
 		if (!updated) refuseEdit(ctx);
 		ctx.logger.info(
@@ -596,18 +622,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 						};
 					}),
 					manage("resume", "Start a paused schedule again", (schedule, ctx) => {
+						// Counts from the same instant as the lastRunAt saved below, so it's the post it will make.
+						const next = nextRun(schedule, zone, now());
+						if (!next) {
+							throw new UserFacingError(
+								`${label(schedule)} has nothing left to post: its time passed. \`/schedule delete\` removes it.`,
+							);
+						}
 						// From now on: nothing missed while it was paused is posted.
-						const from =
-							schedule.lastRunAt && new Date(schedule.lastRunAt) > now()
-								? schedule.lastRunAt
-								: now().toISOString();
-						const updated = deps.store.update(schedule.id, { paused: false, lastRunAt: from });
+						deps.store.update(schedule.id, { paused: false, lastRunAt: fromNow(schedule, now()) });
 						ctx.logger.info({ event: "schedule.resumed", id: schedule.id }, "resumed a schedule");
-						const next = updated ? nextRun(updated, zone, now()) : undefined;
 						return {
-							text: next
-								? `Resumed ${label(schedule)}. Next post: ${describeWhen(toLocal(next, zone))}.`
-								: `Resumed ${label(schedule)}, but it has no more posts to make.`,
+							text: `Resumed ${label(schedule)}. Next post: ${describeWhen(toLocal(next, zone))}.`,
 							private: true,
 						};
 					}),
@@ -710,6 +736,13 @@ function suggestSchedules(schedules: readonly Schedule[], typed: string): Sugges
 		.filter((s) => key === "" || s.id.includes(key) || s.name.toLowerCase().includes(key))
 		.slice(0, 25)
 		.map((s) => ({ name: `${s.name} (${s.id})${s.paused ? " · paused" : ""}`, value: s.id }));
+}
+
+/** `lastRunAt` for a schedule that should only post from `now` on (the stored one if later). */
+function fromNow(schedule: Schedule, now: Date): string {
+	return schedule.lastRunAt && new Date(schedule.lastRunAt) > now
+		? schedule.lastRunAt
+		: now.toISOString();
 }
 
 /** When a schedule posts next from `now` on, if ever. */

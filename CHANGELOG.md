@@ -9,6 +9,12 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/schedule edit`: changing `when`, `repeat` or `days` now counts from the edit. Before, a weekly post that last went out on Monday and was moved to Thursday at 19:20 could post straight away for that Thursday 19:00, while the reply said next week.
+- `/schedule edit` refuses to turn a repeat into a one-off whose start has passed (add a new `when`), and `/schedule resume` refuses a one-off whose time passed while it was paused (it says to delete it). Both used to keep a schedule that could never post.
+- `/schedule` `when` option: its description names the configured `PIXEL_TIMEZONE` instead of always saying Europe/Amsterdam. Re-register the commands (`just register`) for a zone other than Europe/Amsterdam to see it.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

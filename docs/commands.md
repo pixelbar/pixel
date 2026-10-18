@@ -119,7 +119,7 @@ Every scheduled post, with where and when it goes out next.
 
 <PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.' }">
 
-Changes one of your own scheduled posts before it goes out: its content, and optionally when and how often.
+Changes one of your own scheduled posts before it goes out: its content, and optionally when and how often. A new time or repeat counts from now, so nothing it would have posted before the edit goes out late. Turning a repeat into a one-off needs a new `when`.
 
 </PxCommand>
 
@@ -137,7 +137,7 @@ Stops a schedule from posting until it's resumed.
 
 <PxCommand :level="4" sig="/schedule resume schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
 
-Starts a paused schedule again. Nothing missed while paused is posted.
+Starts a paused schedule again. Nothing missed while paused is posted. A one-off whose time passed while it was paused can't be resumed: delete it.
 
 </PxCommand>
 

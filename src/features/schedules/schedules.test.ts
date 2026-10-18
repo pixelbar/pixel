@@ -41,6 +41,8 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 	const store = new ScheduleStore({ logger: silentLogger });
 	const posts = new ChannelPosts();
 	const posted: ChannelPost[] = [];
+	// The feature's clock; tests move it with `clock.now = ...`.
+	const clock = { now: NOW };
 	const poster = {
 		check: vi.fn(async (): Promise<ChannelCheck> => options.check ?? { ok: true, name: "general" }),
 		post: vi.fn(async (_id: string, post: ChannelPost) => {
@@ -56,10 +58,10 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 		posts,
 		timezone: AMS,
 		stillAllowed: async () => true,
-		interpolator: createInterpolator({ timezone: AMS, now: () => NOW }),
+		interpolator: createInterpolator({ timezone: AMS, now: () => clock.now }),
 		logger,
 		reporter: nullErrorReporter,
-		now: () => NOW,
+		now: () => clock.now,
 	});
 	const registry = new CommandRegistry({
 		capabilities: new CapabilityRegistry([SCHEDULE_CAPABILITY]),
@@ -131,11 +133,19 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 			subcommand,
 			args,
 		});
+	/** One check by the background runner at the clock's time, as `start()` does. */
+	const tick = async () => {
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		stop?.();
+	};
 	return {
 		store,
 		posts,
 		poster,
 		posted,
+		clock,
+		tick,
 		feature,
 		run,
 		message,
@@ -509,12 +519,29 @@ describe("managing schedules", () => {
 		});
 	});
 
-	it("says a one-off that's already gone has no more posts when resumed", async () => {
+	it("won't resume a one-off whose time passed while paused, and says how to delete it", async () => {
 		const ctx = setup();
-		await ctx.message({});
+		await ctx.message({ name: "Pizza" });
 		const id = ctx.store.all()[0]?.id as string;
-		ctx.store.update(id, { lastRunAt: "2026-10-14T17:00:00.000Z", paused: true });
-		expect((await ctx.run("resume", { schedule: id })).reply.text).toContain("no more posts");
+		await ctx.run("pause", { schedule: id });
+		ctx.clock.now = new Date("2026-10-15T08:00:00Z");
+		const result = await ctx.run("resume", { schedule: id });
+		expect(result.reply.text).toBe(
+			`**Pizza** (\`${id}\`) has nothing left to post: its time passed. \`/schedule delete\` removes it.`,
+		);
+		expect(ctx.store.get(id)).toMatchObject({ paused: true, lastRunAt: null });
+	});
+
+	it("resumes a repeat from now on, so nothing missed while paused goes out late", async () => {
+		const ctx = setup();
+		await ctx.message({ when: "mon 19:00", repeat: "weekly" });
+		const id = ctx.store.all()[0]?.id as string;
+		await ctx.run("pause", { schedule: id });
+		ctx.clock.now = new Date("2026-10-12T17:20:00Z"); // Mon 19:20, 20 minutes after it was due
+		const result = await ctx.run("resume", { schedule: id });
+		expect(result.reply.text).toContain("Next post: Mon 19 Oct 2026, 19:00");
+		await ctx.tick();
+		expect(ctx.posted).toEqual([]);
 	});
 
 	it("shows names people chose as plain text, not formatting", async () => {
@@ -538,6 +565,28 @@ describe("when is free-form text", () => {
 		expect(when).toMatchObject({ type: "string", required: true });
 		expect(when && "suggest" in when ? when.suggest : undefined).toBeUndefined();
 		expect(when && "choices" in when ? when.choices : undefined).toBeUndefined();
+	});
+
+	it("names the configured zone in its description, not a fixed one", () => {
+		const feature = createSchedulesFeature({
+			store: new ScheduleStore({ logger: silentLogger }),
+			posts: new ChannelPosts(),
+			timezone: "America/New_York",
+			stillAllowed: async () => true,
+			interpolator: createInterpolator({ timezone: "America/New_York", now: () => NOW }),
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+		});
+		const cmd = feature.commands?.[0];
+		if (!cmd || !isGroup(cmd)) throw new Error("expected a command group");
+		const descriptions = cmd.subcommands.flatMap((s) =>
+			isSubgroup(s) ? [] : (s.options ?? []).filter((o) => o.name === "when"),
+		);
+		expect(descriptions.map((o) => o.description)).toEqual([
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
+		]);
 	});
 
 	it("confirms the interpreted time in the space's zone", async () => {
@@ -645,6 +694,74 @@ describe("/schedule edit", () => {
 		expect(text(result.reply.embeds?.[0])).toContain(
 			"occurs once at 20:00, then repeats every Thursday",
 		);
+	});
+
+	// A weekly Monday 19:00 post that last went out on Monday 12 October.
+	async function ranMonday() {
+		const ctx = setup();
+		await ctx.message({ name: "Weekly", when: "mon 19:00", repeat: "weekly" });
+		const id = ctx.store.all()[0]?.id as string;
+		ctx.store.update(id, { lastRunAt: "2026-10-12T17:00:00.000Z" });
+		return { ...ctx, id };
+	}
+
+	it.each<{ change: string; args: Record<string, string>; at: string; next: string }>([
+		{
+			change: "days",
+			args: { days: "thu" },
+			at: "2026-10-15T17:20:00Z", // Thu 15 Oct 19:20, 20 minutes after a Thursday post would have been
+			next: "Thu 22 Oct 2026, 19:00",
+		},
+		{
+			change: "repeat",
+			args: { repeat: "monthly" },
+			at: "2026-11-12T18:20:00Z", // Thu 12 Nov 19:20, 20 minutes after a monthly post on the 12th
+			next: "Sat 12 Dec 2026, 19:00",
+		},
+	])(
+		"counts new $change from the edit, so it doesn't post straight away",
+		async ({ args, at, next }) => {
+			const ctx = await ranMonday();
+			ctx.clock.now = new Date(at);
+			const result = await ctx.run("edit", { schedule: ctx.id, ...args });
+			expect(text(result.reply.embeds?.[0])).toContain(`• ${next}`);
+			expect(ctx.store.get(ctx.id)?.lastRunAt).toBe(new Date(at).toISOString());
+			await ctx.tick();
+			expect(ctx.posted).toEqual([]);
+		},
+	);
+
+	it("leaves when it last ran alone when the timing doesn't change", async () => {
+		const ctx = await ranMonday();
+		ctx.clock.now = new Date("2026-10-15T17:20:00Z");
+		await ctx.run("edit", { schedule: ctx.id, text: "New text" });
+		await ctx.run("edit", { schedule: ctx.id, repeat: "weekly", days: "mon" });
+		expect(ctx.store.get(ctx.id)).toMatchObject({
+			lastRunAt: "2026-10-12T17:00:00.000Z",
+			post: { text: "New text" },
+		});
+	});
+
+	it("refuses to turn a repeat into a one-off whose time has passed, before the form opens", async () => {
+		const ctx = await ranMonday();
+		ctx.clock.now = new Date("2026-10-15T17:20:00Z");
+		const refusal =
+			"That would leave it with nothing to post: a one-off needs a time that's still to come. Add `when` with the new time.";
+		expect(await ctx.form("edit", { schedule: ctx.id, repeat: "once" })).toMatchObject({
+			ready: false,
+			refuse: { reply: { text: refusal } },
+		});
+		const result = await ctx.run("edit", { schedule: ctx.id, repeat: "once", text: "Last one" });
+		expect(result.reply.text).toBe(refusal);
+		expect(ctx.store.get(ctx.id)).toMatchObject({
+			recurrence: { kind: "weekly" },
+			post: { text: "Pizza night tonight!" },
+		});
+		await ctx.run("edit", { schedule: ctx.id, repeat: "once", when: "fri 19:00" });
+		expect(ctx.store.get(ctx.id)).toMatchObject({
+			start: "2026-10-16T19:00",
+			recurrence: { kind: "once" },
+		});
 	});
 
 	it("refuses someone else's schedule, an unknown id, and a one-off that already posted, without leaking", async () => {
