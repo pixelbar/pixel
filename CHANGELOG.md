@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Home Assistant: a call cut off by a dropped connection now says it can't reach Home Assistant, instead of being logged as an unexpected failure and sent to Sentry as "Object captured as exception".
+- Home Assistant: if Pixel can't reach Home Assistant at startup, it now says so within about 15 seconds (`home.connect_failed` in the logs, once to Sentry) and keeps trying in the background, waiting longer each time up to a minute. Before, it retried every second forever without a word, and the login and devices checks never ran. When it does connect, it logs `home.ready` and runs those checks.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

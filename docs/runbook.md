@@ -554,7 +554,7 @@ Discord and the rest of Pixel keep working. Check the instance is up, the token 
 **Home Assistant is unreachable** (`/admin status` shows not connected or off; `/ha` says it can't reach it)
 
 1. `/admin status` shows why. "Off: the token was refused" means the token was revoked or replaced: make a new one (see [Secrets](#secrets)). Not connected means it can't reach the HA URL: check HA is up and the network or tunnel between them.
-2. Pixel keeps reconnecting by itself, never queues an action and never retries one, so nothing will fire late when it's back.
+2. Pixel keeps reconnecting by itself, never queues an action and never retries one, so nothing will fire late when it's back. If it couldn't reach HA at startup, the logs say `home.connect_failed` once and it keeps trying (waiting up to a minute between attempts); `home.ready` means it got through.
 3. After fixing it, `/admin reload` re-checks the connection.
 
 **Someone has the wrong access**

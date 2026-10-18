@@ -29,9 +29,16 @@ import type { Logger } from "../../core/logger.ts";
  * a slow or absent Home Assistant never holds up the bot, and every call is a
  * single attempt: if the connection is down the call fails at once.
  *
+ * Until the first connection, Pixel retries itself, waiting longer each time: the
+ * library's own endless retry says nothing and never gives up, so a Home Assistant
+ * that is down at startup would go unnoticed. Once connected, the library
+ * reconnects by itself after a drop.
+ *
  * The library throws numbers (connection errors) and plain `{ code, message }`
- * objects (Home Assistant's own errors), not `Error`s. They are translated here
- * into safe messages, and never include the token or the address.
+ * objects (Home Assistant's own errors), not `Error`s, and rejects calls in flight
+ * when the socket drops with a whole failed result (`{ type: "result", success:
+ * false, error: { code: 3, ... } }`). They are translated here into safe messages,
+ * and never include the token or the address.
  */
 
 export type HomeAssistantOptions = {
@@ -40,6 +47,10 @@ export type HomeAssistantOptions = {
 	/** A long-lived access token. A secret: never logged or put in a message. */
 	token: string;
 	logger: Logger;
+	/** How long one connection attempt may take, the login included. For tests. */
+	attemptTimeoutMs?: number;
+	/** The wait before the first retry, doubled each time up to `max`. For tests. */
+	retryMs?: { first: number; max: number };
 };
 
 type Phase = "connecting" | "connected" | "reconnecting" | "off";
@@ -70,6 +81,15 @@ type AreaNames = {
 /** Why the login can't work, in words that name no secret. */
 const REFUSED = "Home Assistant refused the token, so it needs replacing";
 
+/** The library opens the socket within 10 s; this also bounds the login after it. */
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 15_000;
+const DEFAULT_RETRY_MS = { first: 1_000, max: 60_000 };
+
+/** A connection attempt that took too long, such as a server that never answers the login. */
+class ConnectTimeout extends Error {
+	override name = "ConnectTimeout";
+}
+
 export class HomeAssistantBackend implements HomeBackend {
 	readonly #url: string;
 	readonly #token: string;
@@ -79,13 +99,30 @@ export class HomeAssistantBackend implements HomeBackend {
 	#offReason = "";
 	#adminToken: boolean | undefined;
 	#attempt: Promise<void> | undefined;
-	/** Settles once the first attempt has either connected or given up. */
+	readonly #attemptTimeoutMs: number;
+	readonly #retryMs: { first: number; max: number };
+	/** Failed attempts since the last connection, which sets the next wait. */
+	#failures = 0;
+	#retryTimer: ReturnType<typeof setTimeout> | undefined;
+	#closed = false;
+	#markConnected: () => void = () => {};
+	/**
+	 * Settles once the first attempt has connected, been refused or failed, within
+	 * about `attemptTimeoutMs`. After a failure it keeps trying in the background.
+	 */
 	readonly settled: Promise<void>;
+	/** Settles the first time it connects. Never rejects, and stays pending if it never connects. */
+	readonly connected: Promise<void>;
 
-	constructor({ url, token, logger }: HomeAssistantOptions) {
+	constructor({ url, token, logger, attemptTimeoutMs, retryMs }: HomeAssistantOptions) {
 		this.#url = url.replace(/\/+$/, "");
 		this.#token = token;
 		this.#logger = logger.child({ component: "home-assistant" });
+		this.#attemptTimeoutMs = attemptTimeoutMs ?? DEFAULT_ATTEMPT_TIMEOUT_MS;
+		this.#retryMs = retryMs ?? DEFAULT_RETRY_MS;
+		this.connected = new Promise((resolve) => {
+			this.#markConnected = resolve;
+		});
 		this.settled = this.#connect();
 	}
 
@@ -201,6 +238,9 @@ export class HomeAssistantBackend implements HomeBackend {
 
 	/** Stops reconnecting and closes the socket. For shutdown. */
 	close(): void {
+		this.#closed = true;
+		clearTimeout(this.#retryTimer);
+		this.#retryTimer = undefined;
 		this.#connection?.close();
 	}
 
@@ -215,11 +255,15 @@ export class HomeAssistantBackend implements HomeBackend {
 	async #tryConnect(): Promise<void> {
 		this.#phase = "connecting";
 		try {
-			// With infinite retries this only ever rejects when the token is refused.
-			const connection = await createConnection({
-				auth: createLongLivedTokenAuth(this.#url, this.#token),
-				setupRetry: -1,
-			});
+			const connection = await this.#open();
+			if (this.#closed) {
+				connection.close();
+				return;
+			}
+			if (this.#failures > 0) {
+				this.#logger.info({ event: "home.ready" }, "connected to Home Assistant");
+			}
+			this.#failures = 0;
 			this.#connection?.close();
 			this.#connection = connection;
 			connection.addEventListener("ready", () => {
@@ -236,13 +280,70 @@ export class HomeAssistantBackend implements HomeBackend {
 			});
 			this.#phase = "connected";
 			await this.#identify();
+			this.#markConnected();
 		} catch (error) {
+			if (this.#closed) return;
+			if (isUnreachable(error)) {
+				this.#retryLater(error);
+				return;
+			}
 			this.#logger.error(
 				{ event: "home.connect_failed", why: describeFailure(error) },
 				"couldn't connect to Home Assistant",
 			);
 			this.#turnOff(reasonFor(error));
 		}
+	}
+
+	/**
+	 * One attempt, bounded in time: the library retries nothing here (`setupRetry: 0`)
+	 * and only times out opening the socket, not the login after it. A connection that
+	 * turns up after the time limit is closed.
+	 */
+	async #open(): Promise<Connection> {
+		const pending = createConnection({
+			auth: createLongLivedTokenAuth(this.#url, this.#token),
+			setupRetry: 0,
+		});
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<never>((_, reject) => {
+			timer = setTimeout(() => reject(new ConnectTimeout()), this.#attemptTimeoutMs);
+		});
+		try {
+			return await Promise.race([pending, timeout]);
+		} catch (error) {
+			if (error instanceof ConnectTimeout) {
+				pending.then(
+					(late) => late.close(),
+					() => {},
+				);
+			}
+			throw error;
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	/** Home Assistant can't be reached yet: say so once, then try again, waiting longer each time. */
+	#retryLater(error: unknown): void {
+		const waitMs = Math.min(this.#retryMs.first * 2 ** this.#failures, this.#retryMs.max);
+		if (this.#failures === 0) {
+			this.#logger.warn(
+				{ event: "home.connect_failed", why: describeFailure(error), retryInMs: waitMs },
+				"couldn't connect to Home Assistant, will keep trying",
+			);
+		} else {
+			this.#logger.debug(
+				{ event: "home.connect_retry", why: describeFailure(error), retryInMs: waitMs },
+				"still can't connect to Home Assistant",
+			);
+		}
+		this.#failures += 1;
+		this.#retryTimer = setTimeout(() => {
+			this.#retryTimer = undefined;
+			void this.#connect();
+		}, waitMs);
+		this.#retryTimer.unref();
 	}
 
 	/** Asks who the token belongs to, so an admin's token can be flagged. Failure isn't fatal. */
@@ -279,7 +380,7 @@ export class HomeAssistantBackend implements HomeBackend {
 	/** Turns what the library throws into something safe, or lets a real bug through. */
 	#translate(error: unknown): unknown {
 		const translated = translateError(error);
-		if (translated instanceof HomeUnavailableError && error === ERR_INVALID_AUTH) {
+		if (translated instanceof HomeUnavailableError && unwrap(error) === ERR_INVALID_AUTH) {
 			this.#turnOff(REFUSED);
 		}
 		return translated;
@@ -288,19 +389,41 @@ export class HomeAssistantBackend implements HomeBackend {
 
 /**
  * The library throws a number for a connection problem and `{ code, message }` for
- * Home Assistant's own errors. Anything else is a bug, and is returned as it is.
+ * Home Assistant's own errors, either bare or wrapped in a failed result. Anything
+ * else is a bug, and is returned as it is.
  */
 export function translateError(error: unknown): unknown {
-	if (typeof error === "number") return new HomeUnavailableError(HOME_MESSAGES.unreachable);
-	if (isHaError(error)) return new HomeRequestError(HOME_MESSAGES.refused, error.code);
+	const failure = unwrap(error);
+	if (typeof failure === "number") return new HomeUnavailableError(HOME_MESSAGES.unreachable);
+	if (isHaError(failure)) return new HomeRequestError(HOME_MESSAGES.refused, failure.code);
 	return error;
 }
 
+/**
+ * When the socket drops, the library rejects calls in flight with a whole failed
+ * result, `{ type: "result", success: false, error: { code: 3, message } }`. Its own
+ * codes are numbers (a connection problem); Home Assistant's are strings. This
+ * returns what is inside, so it reads like the bare forms.
+ */
+function unwrap(error: unknown): unknown {
+	if (!isRecord(error) || error.type !== "result" || error.success !== false) return error;
+	const inner = error.error;
+	if (isRecord(inner) && typeof inner.code === "number") return inner.code;
+	return inner;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
 function isHaError(error: unknown): error is { code: string } {
+	return isRecord(error) && typeof error.code === "string";
+}
+
+/** Worth trying again: Home Assistant didn't answer, as opposed to refusing or a bad address. */
+function isUnreachable(error: unknown): boolean {
 	return (
-		typeof error === "object" &&
-		error !== null &&
-		typeof (error as { code?: unknown }).code === "string"
+		error === ERR_CANNOT_CONNECT || error === ERR_CONNECTION_LOST || error instanceof ConnectTimeout
 	);
 }
 
@@ -322,8 +445,9 @@ function reasonFor(error: unknown): string {
 
 /** A short, safe description of a failure for logs: a code or a type, never a message that could hold a secret. */
 function describeFailure(error: unknown): string {
-	if (typeof error === "number") return `connection error ${error}`;
-	if (isHaError(error)) return error.code;
+	const failure = unwrap(error);
+	if (typeof failure === "number") return `connection error ${failure}`;
+	if (isHaError(failure)) return failure.code;
 	return error instanceof Error ? error.name : "unknown";
 }
 

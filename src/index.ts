@@ -93,11 +93,21 @@ async function main(): Promise<void> {
 	let homeAssistant: HomeAssistantBackend | undefined;
 	const homeAssistantSettled = () => homeAssistant?.settled ?? Promise.resolve();
 	if (config.homeAssistant) {
-		homeAssistant = new HomeAssistantBackend({ ...config.homeAssistant, logger });
-		home.attach(homeAssistant);
-		homeAssistant.settled
+		const backend = new HomeAssistantBackend({ ...config.homeAssistant, logger });
+		homeAssistant = backend;
+		home.attach(backend);
+		backend.settled
 			.then(async () => {
-				await home.check();
+				if ((await home.check()).kind === "connecting") {
+					// The first attempt couldn't reach it. It keeps trying in the background: say so
+					// once, then check the login and the devices when it does connect.
+					reporter.captureBackground(
+						new Error("Couldn't connect to Home Assistant at startup. Still trying."),
+						"home-assistant",
+					);
+					await backend.connected;
+					await home.check();
+				}
 				// A typo in the devices file shows up as a warning, never a failure.
 				const missing = await findMissingDevices(homeDevices.view, home);
 				if (missing && missing.length > 0) {

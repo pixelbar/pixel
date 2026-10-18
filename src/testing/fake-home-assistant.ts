@@ -64,6 +64,8 @@ export type FakeHomeAssistant = {
 	failIdentity(fail: boolean): void;
 	/** Answer this service with an error (domain.service → HA error code). */
 	failService(key: string, code: string): void;
+	/** Never answer this service (domain.service), so the call is still in flight when the connection drops. */
+	hangService(key: string): void;
 	/** Cut every connection but keep serving, so the client has to reconnect. */
 	dropConnections(): void;
 	connectionCount(): number;
@@ -85,6 +87,7 @@ export async function startFakeHomeAssistant(
 	let entityRegistryFails: string | undefined;
 	let areaRegistryFails: string | undefined;
 	const failing = new Map<string, string>();
+	const hanging = new Set<string>();
 	const calls: FakeServiceCall[] = [];
 	const sockets = new Set<WebSocket>();
 	let wss: WebSocketServer | undefined;
@@ -174,6 +177,7 @@ export async function startFakeHomeAssistant(
 						target: msg.target,
 						serviceData: msg.service_data,
 					});
+					if (hanging.has(`${msg.domain}.${msg.service}`)) return;
 					const code = failing.get(`${msg.domain}.${msg.service}`);
 					return code ? fail(code) : reply({ context: { id: "ctx" } });
 				}
@@ -240,6 +244,9 @@ export async function startFakeHomeAssistant(
 		},
 		failService: (key, code) => {
 			failing.set(key, code);
+		},
+		hangService: (key) => {
+			hanging.add(key);
 		},
 		dropConnections,
 		connectionCount: () => sockets.size,
