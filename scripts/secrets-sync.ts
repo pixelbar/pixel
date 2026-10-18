@@ -66,6 +66,7 @@ import {
 	parseShown,
 	pixelEnvOf,
 	type Row,
+	redactTfvars,
 	reusedDiscordToken,
 	setEnvValues,
 	shareFiles,
@@ -204,14 +205,24 @@ async function checkAdmins(
 	);
 }
 
+function variablesOf(target: RegisterTarget) {
+	return stackVariables(readFileSync(`infra/envs/${target}/variables.tf`, "utf8"));
+}
+
 /** Refuses a tfvars file that's for the other env, sets an unknown variable or holds a secret. */
 function checkTfvars(target: RegisterTarget, text: string): void {
-	const problems = tfvarsProblems(
-		text,
-		target,
-		stackVariables(readFileSync(`infra/envs/${target}/variables.tf`, "utf8")),
-	);
+	const problems = tfvarsProblems(text, target, variablesOf(target));
 	if (problems.length > 0) throw new Stop(`${problems.join("\n")}\nNothing was pushed.`);
+}
+
+/** A file secret's text as it may be shown in a diff: never a tfvars secret value. */
+function shown(
+	entry: SecretEntry,
+	target: RegisterTarget,
+	text: string | undefined,
+): string | undefined {
+	if (text === undefined || entry.vault !== "terraform-tfvars") return text;
+	return redactTfvars(text, variablesOf(target).sensitive);
 }
 
 function summary(rows: readonly Row[], mode: Mode, target: RegisterTarget): void {
@@ -273,10 +284,11 @@ async function pull(
 	} else {
 		for (const row of changes) {
 			if (isFile(row.entry) && row.remote !== undefined) {
-				await showDiff(row.local, row.remote, [
-					localFile(row.entry, target),
-					`${vault.vault}/${row.entry.vault}`,
-				]);
+				await showDiff(
+					shown(row.entry, target, row.local),
+					shown(row.entry, target, row.remote) ?? "",
+					[localFile(row.entry, target), `${vault.vault}/${row.entry.vault}`],
+				);
 			}
 		}
 		const overwrites = changes.filter((row) => row.status === "changed");
@@ -348,15 +360,17 @@ async function push(
 	}
 	for (const row of changes) {
 		if (!isFile(row.entry) || row.local === undefined) continue;
-		await showDiff(row.remote, row.local, [
-			`${vault.vault}/${row.entry.vault}`,
-			localFile(row.entry, target),
-		]);
+		// Check before showing anything: a tfvars that holds a secret stops here.
+		if (row.entry.vault === "terraform-tfvars") checkTfvars(target, row.local);
+		await showDiff(
+			shown(row.entry, target, row.remote),
+			shown(row.entry, target, row.local) ?? "",
+			[`${vault.vault}/${row.entry.vault}`, localFile(row.entry, target)],
+		);
 		if (row.entry.vault === "admins-yaml") {
 			await checkAdmins(target, row.entry, row.local);
 			say(`${localFile(row.entry, target)} is valid with ${target}'s members.yaml.`);
 		}
-		if (row.entry.vault === "terraform-tfvars") checkTfvars(target, row.local);
 	}
 
 	const ok = await confirm({

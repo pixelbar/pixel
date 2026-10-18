@@ -23,6 +23,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `just pull dev|prod` and `just push dev|prod`: everything needed to work on an environment from any laptop. Each stack's `terraform.tfvars` is now shared as the Key Vault secret `terraform-tfvars` (a new `tooling` group in the secrets manifest that Terraform and the Container App never see). `just pull` also mirrors the share's `members.yaml`, `devices.yaml` and `announcement-routes.yaml` read-only. `just push` sends back the tfvars and app secrets, and refuses a tfvars that holds a secret, sets an undeclared variable or is for the other environment: secret Terraform inputs go in gitignored `secrets.auto.tfvars`. See the runbook's "Pull and push an environment". The first maintainer with a working tfvars runs `just push <env>` once to share it.
 
+### Fixed
+
+- `just push` no longer prints a `terraform.tfvars` that holds secrets: it checks the file before showing its diff, and the diff (in `just pull` too) hides the value of every sensitive Terraform variable, commented-out ones included. Before, a tfvars with a token in it was shown in full and only then refused (nothing was pushed). If you saw that output, clear your terminal's scrollback and consider rotating what it showed.
+
 ## [0.15.0] - 2026-10-15
 
 ### Added
