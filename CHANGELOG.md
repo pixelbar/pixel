@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- The Discord DM sent when a capability is granted or revoked now really has mentions turned off. It was sent with `allowedMentions`, a field the Discord API ignores, instead of `allowed_mentions`.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

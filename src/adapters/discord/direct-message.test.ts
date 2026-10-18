@@ -69,7 +69,7 @@ describe("sendDirectMessage", () => {
 			{ route: Routes.userChannels(), body: { recipient_id: IDS.member } },
 			{
 				route: Routes.channelMessages(CHANNEL),
-				body: { content: TEXT, allowedMentions: { parse: [] } },
+				body: { content: TEXT, allowed_mentions: { parse: [] } },
 			},
 		]);
 	});
