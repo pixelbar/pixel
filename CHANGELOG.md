@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `/schedule`: a schedule deleted, paused or edited while another one due at the same time was posting no longer goes out as it was. Pixel reads each schedule again right before posting it.
+- `/schedule`: a message or poll that `{{tokens}}` would push past Discord's length limits (2000 characters for a message, 300 for a question, 55 for an answer) is now refused when it's created or edited, instead of failing at every occurrence. One that still comes out too long when it's posted is cut to fit and logged as `schedule.clipped`.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

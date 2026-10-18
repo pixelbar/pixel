@@ -34,6 +34,7 @@ import {
 	type Schedule,
 	type ScheduleStore,
 } from "../../services/schedules.ts";
+import { checkFilledLength } from "./limits.ts";
 import { runDue } from "./runner.ts";
 
 /** Lets someone schedule messages and polls. Granted with `/admin capabilities`. */
@@ -189,6 +190,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		fallbackName: string,
 	): Promise<Reply> {
 		const { start, recurrence } = timing(ctx.args);
+		checkFilledLength(post, { start, recurrence }, zone, now(), deps.interpolator);
 		const channel = await checkChannel(ctx, post);
 		const name = cleanName(typeof ctx.args.name === "string" ? ctx.args.name : fallbackName);
 		const schedule = deps.store.add({
@@ -360,6 +362,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				? editTiming(schedule, ctx.args)
 				: { start: parseLocal(schedule.start) as LocalDateTime, recurrence: schedule.recurrence };
 		const post = editedPost(schedule.post, ctx.args);
+		checkFilledLength(post, timingChange, zone, now(), deps.interpolator);
 		const name = typeof ctx.args.name === "string" ? cleanName(ctx.args.name) : schedule.name;
 		const updated = deps.store.update(schedule.id, {
 			post,
