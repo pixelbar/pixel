@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Sentry errors from the Docker image now show the TypeScript source. The image ran Node with `--enable-source-maps`, which rewrote stack frames to `src/*.ts` before Sentry saw them, so the source maps uploaded for `/app/dist` never matched and issues had no source context. Node now runs without it and Sentry applies the uploaded maps. Stack traces in the container logs and log files now show the compiled `dist/*.js` lines.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

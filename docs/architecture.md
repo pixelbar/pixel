@@ -404,6 +404,7 @@ The message **body** is a file (`PIXEL_CLOSING_TIME_FILE`, default `data/closing
   - Errors are not sampled (`sampleRate` is `1`).
   - All `dataCollection` categories are off, including stack-frame local variables, and `includeServerName` is false. `beforeSend` and `beforeBreadcrumb` scrub anything that looks like a bot token.
   - Releases are tagged with the git SHA (`PIXEL_VERSION`). Source maps upload from CD, the Release workflow, and `just sentry-release`. Those jobs **fail closed** if `SENTRY_ORG`, `SENTRY_PROJECT`, or `SENTRY_AUTH_TOKEN` is missing.
+  - **Source maps are applied by Sentry, not by Node.** They are uploaded for the compiled files under `/app/dist`, and the image runs `node` **without** `--enable-source-maps`: that flag rewrites stack frames to `src/*.ts` before Sentry sees them, which matches none of the uploaded maps (and `src/` isn't in the image), so Sentry would show no source. Sentry maps the `dist/*.js` frames back to TypeScript with source context. Stack traces in the console and the log files stay on `dist/*.js` lines.
   - `environment` is `local`, `dev` or `prod`.
 - **Logs:** everything is logged through the one pino logger (`observability/logger.ts`, no `console`), and each line goes to **three** places:
   - **The console:** JSON, or readable with pino-pretty when `PIXEL_ENV=local`.
