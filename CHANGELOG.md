@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- Mastodon: a response from the instance is now read only up to the 64 KiB limit. A larger body (declared or streamed without a length) is cancelled instead of buffered in full or left open.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added
