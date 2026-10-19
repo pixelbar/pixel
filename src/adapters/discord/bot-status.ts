@@ -156,35 +156,28 @@ export function createBotStatusPublisher(
 		id: BOT_STATUS_PUBLISHER_ID,
 		async publish(announcement) {
 			if (announcement.kind !== "bot.status") return;
-			if (announcement.phase === "down" && ownId) {
+			if (announcement.phase === "down") {
 				// During a deploy the new version is already online (with a newer post) when the
-				// old one goes offline, so only touch the post this run made.
+				// old one goes offline, so only ever touch the post this run made.
 				const id = ownId;
 				ownId = undefined;
-				const updated = await edit(id, offlinePost(announcement));
+				const updated = id ? await edit(id, offlinePost(announcement)) : false;
 				try {
-					if (store?.load() === id) remember(undefined);
+					if (id && store?.load() === id) remember(undefined);
 				} catch {
 					// An unreadable record isn't worth failing over.
 				}
+				// No post of this run's to update (it never said online, or that post failed or was
+				// deleted): say it in a new post. Other posts still saying online aren't this run's:
+				// a newer run that's live, or one that crashed, which the next start corrects.
 				if (!updated) await channel.send(offlinePost(announcement));
 				return;
 			}
-			const online = await onlinePosts();
-			if (announcement.phase === "up") {
-				// Anything still saying online belongs to a run that never said goodbye.
-				for (const stale of online) await edit(stale.id, crashedPost(stale.timestamp));
-				const sent = await channel.send(onlinePost(announcement));
-				ownId = sent.id;
-				remember(sent.id);
-				return;
-			}
-			const [current, ...older] = online;
-			const updated = current ? await edit(current.id, offlinePost(announcement)) : false;
-			for (const stale of older) await edit(stale.id, crashedPost(stale.timestamp));
-			remember(undefined);
-			// Nothing to update (the online post failed or was deleted): say it in a new post.
-			if (!updated) await channel.send(offlinePost(announcement));
+			// Anything still saying online belongs to a run that never said goodbye.
+			for (const stale of await onlinePosts()) await edit(stale.id, crashedPost(stale.timestamp));
+			const sent = await channel.send(onlinePost(announcement));
+			ownId = sent.id;
+			remember(sent.id);
 		},
 	};
 }
