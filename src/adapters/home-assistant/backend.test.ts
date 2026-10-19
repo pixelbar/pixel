@@ -1,11 +1,13 @@
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
+import { WebSocketServer } from "ws";
 import { HomeRequestError, HomeUnavailableError } from "../../core/home.ts";
 import type { Logger } from "../../core/logger.ts";
 import {
 	type FakeHomeAssistant,
 	startFakeHomeAssistant,
 } from "../../testing/fake-home-assistant.ts";
-import { HomeAssistantBackend, translateError } from "./backend.ts";
+import { HomeAssistantBackend, type HomeAssistantOptions, translateError } from "./backend.ts";
 
 const TOKEN = "a-very-secret-long-lived-token-value";
 
@@ -29,8 +31,13 @@ async function fake(options: Parameters<typeof startFakeHomeAssistant>[0] = {}) 
 	open.push(server);
 	return server;
 }
-function backendFor(server: FakeHomeAssistant, token = TOKEN, url = server.url) {
-	const backend = new HomeAssistantBackend({ url, token, logger: logger() });
+function backendFor(
+	server: FakeHomeAssistant,
+	token = TOKEN,
+	url = server.url,
+	more: Partial<HomeAssistantOptions> = {},
+) {
+	const backend = new HomeAssistantBackend({ url, token, logger: logger(), ...more });
 	open.push({ stop: () => backend.close() });
 	return backend;
 }
@@ -108,24 +115,100 @@ describe("connecting", () => {
 		expect(await backend.check()).toMatchObject({ kind: "connected" });
 	});
 
-	it("keeps trying while Home Assistant is unreachable, without ever blocking, and connects when it appears", async () => {
+	it("settles and says so when Home Assistant is unreachable at first, then keeps trying and connects when it appears", async () => {
 		const server = await fake();
 		const { port } = server;
 		await server.stop();
-		const backend = backendFor(server, TOKEN, `http://127.0.0.1:${port}`);
-		let settled = false;
-		void backend.settled.then(() => {
-			settled = true;
+		const backend = backendFor(server, TOKEN, `http://127.0.0.1:${port}`, {
+			retryMs: { first: 100, max: 200 },
 		});
-		await new Promise((r) => setTimeout(r, 600));
-		expect(settled).toBe(false);
+		let connected = false;
+		void backend.connected.then(() => {
+			connected = true;
+		});
+		await backend.settled;
 		expect(backend.status()).toEqual({ kind: "connecting" });
+		const failed = logs.filter((l) => l.obj.event === "home.connect_failed");
+		expect(failed).toEqual([
+			expect.objectContaining({
+				level: "warn",
+				obj: expect.objectContaining({ why: "connection error 1" }),
+			}),
+		]);
 		await expect(backend.getStates(["light.x"])).rejects.toBeInstanceOf(HomeUnavailableError);
 
+		// Still trying, quietly: one warning, not one per attempt.
+		await waitFor(() => logs.some((l) => l.obj.event === "home.connect_retry"));
+		expect(connected).toBe(false);
+		expect(logs.filter((l) => l.obj.event === "home.connect_failed")).toHaveLength(1);
+
 		await server.start();
-		await backend.settled;
-		expect(backend.status().kind).toBe("connected");
+		await backend.connected;
+		expect(backend.status()).toMatchObject({ kind: "connected", adminToken: false });
+		expect(logs.some((l) => l.obj.event === "home.ready")).toBe(true);
 	}, 20_000);
+
+	it("waits longer between each attempt, up to a limit", async () => {
+		const server = await fake();
+		const { port } = server;
+		await server.stop();
+		const backend = backendFor(server, TOKEN, `http://127.0.0.1:${port}`, {
+			retryMs: { first: 10, max: 40 },
+		});
+		await waitFor(() => logs.filter((l) => l.obj.event === "home.connect_retry").length >= 4);
+		backend.close();
+		const waits = logs
+			.filter((l) => l.obj.event === "home.connect_failed" || l.obj.event === "home.connect_retry")
+			.map((l) => l.obj.retryInMs);
+		expect(waits.slice(0, 5)).toEqual([10, 20, 40, 40, 40]);
+	}, 20_000);
+
+	it("gives up on an attempt that takes too long, such as a login that is never answered", async () => {
+		const silent = new WebSocketServer({ port: 0, path: "/api/websocket" });
+		open.push({
+			stop: () =>
+				new Promise<void>((resolve) => {
+					for (const client of silent.clients) client.terminate();
+					silent.close(() => resolve());
+				}),
+		});
+		await new Promise<void>((resolve) => silent.once("listening", () => resolve()));
+		const { port } = silent.address() as AddressInfo;
+		const backend = new HomeAssistantBackend({
+			url: `http://127.0.0.1:${port}`,
+			token: TOKEN,
+			logger: logger(),
+			attemptTimeoutMs: 200,
+			retryMs: { first: 60_000, max: 60_000 },
+		});
+		open.push({ stop: () => backend.close() });
+		await backend.settled;
+		expect(backend.status()).toEqual({ kind: "connecting" });
+		expect(logs.find((l) => l.obj.event === "home.connect_failed")?.obj.why).toBe("ConnectTimeout");
+	});
+
+	it("stops trying when closed", async () => {
+		const server = await fake();
+		const { port } = server;
+		await server.stop();
+		const backend = backendFor(server, TOKEN, `http://127.0.0.1:${port}`, {
+			retryMs: { first: 50, max: 50 },
+		});
+		await backend.settled;
+		backend.close();
+		await server.start();
+		await new Promise((r) => setTimeout(r, 300));
+		expect(server.connectionCount()).toBe(0);
+		expect(backend.status()).toEqual({ kind: "connecting" });
+	});
+
+	it("goes off, rather than retrying, when the address can't work", async () => {
+		const server = await fake();
+		const backend = backendFor(server, TOKEN, "not a url");
+		await backend.settled;
+		expect(backend.status()).toMatchObject({ kind: "off" });
+		expect(logs.find((l) => l.obj.event === "home.connect_failed")?.level).toBe("error");
+	});
 
 	it("re-checking while connected asks again who the token belongs to", async () => {
 		const server = await fake({ isAdmin: false });
@@ -322,6 +405,21 @@ describe("when the connection drops", () => {
 		expect((await backend.getStates(["light.a"])).size).toBe(1);
 	}, 20_000);
 
+	it("fails a call that was in flight as unreachable, not as an unknown failure", async () => {
+		const server = await fake();
+		server.hangService("lock.unlock");
+		const backend = backendFor(server);
+		await backend.settled;
+		const call = backend
+			.callService({ domain: "lock", service: "unlock", entityId: "lock.front_door" })
+			.catch((e: unknown) => e);
+		await waitFor(() => server.calls.length === 1);
+		server.dropConnections();
+		const error = await call;
+		expect(error).toBeInstanceOf(HomeUnavailableError);
+		expect((error as Error).message).toBe("I can't reach Home Assistant right now.");
+	}, 20_000);
+
 	it("goes off if the token is refused when it comes back", async () => {
 		const server = await fake({ token: "first-token-value" });
 		const backend = backendFor(server, "first-token-value");
@@ -376,6 +474,36 @@ describe("translateError", () => {
 		expect(error).toBeInstanceOf(HomeRequestError);
 		expect((error as HomeRequestError).code).toBe("not_found");
 		expect((error as Error).message).not.toContain("explode");
+	});
+
+	it("treats a call cut off by a dropped connection as unreachable", () => {
+		// What the library rejects calls in flight with when the socket closes.
+		const lost = {
+			type: "result",
+			success: false,
+			error: { code: 3, message: "Connection lost" },
+		};
+		const error = translateError(lost);
+		expect(error).toBeInstanceOf(HomeUnavailableError);
+		expect((error as Error).message).toBe("I can't reach Home Assistant right now.");
+	});
+
+	it("treats Home Assistant's own error inside a failed result as a refusal, keeping the code", () => {
+		const error = translateError({
+			type: "result",
+			success: false,
+			error: { code: "unauthorized", message: "token abc123 can't do that" },
+		});
+		expect(error).toBeInstanceOf(HomeRequestError);
+		expect((error as HomeRequestError).code).toBe("unauthorized");
+		expect((error as Error).message).not.toContain("abc123");
+	});
+
+	it("lets a failed result it doesn't understand through as it is", () => {
+		const odd = { type: "result", success: false, error: "nope" };
+		expect(translateError(odd)).toBe(odd);
+		const ok = { type: "result", success: true, error: { code: 3 } };
+		expect(translateError(ok)).toBe(ok);
 	});
 
 	it("lets a real bug through as it is", () => {
