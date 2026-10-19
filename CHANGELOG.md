@@ -12,6 +12,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Fixed
 
 - `/spacestate`: the Sentry context for a failed call now says why the network failed (`errorCause`, such as `ENOTFOUND`, `ECONNREFUSED` or `UNEXPECTED_REDIRECT`), and shows the address without its query. Sentry was replacing the old redacted address with `[Filtered]`.
+- `/schedule`: a schedule deleted, paused or edited while another one due at the same time was posting no longer goes out as it was. Pixel reads each schedule again right before posting it.
+- `/schedule`: a message or poll that `{{tokens}}` would push past Discord's length limits (2000 characters for a message, 300 for a question, 55 for an answer) is now refused when it's created or edited, instead of failing at every occurrence. One that still comes out too long when it's posted is cut to fit and logged as `schedule.clipped`.
 - `/schedule edit`: changing `when`, `repeat` or `days` now counts from the edit. Before, a weekly post that last went out on Monday and was moved to Thursday at 19:20 could post straight away for that Thursday 19:00, while the reply said next week.
 - `/schedule edit` refuses to turn a repeat into a one-off whose start has passed (add a new `when`), and `/schedule resume` refuses a one-off whose time passed while it was paused (it says to delete it). Both used to keep a schedule that could never post.
 - `/schedule` `when` option: its description names the configured `PIXEL_TIMEZONE` instead of always saying Europe/Amsterdam. Re-register the commands (`just register`) for a zone other than Europe/Amsterdam to see it.

@@ -428,6 +428,38 @@ describe("/schedule poll", () => {
 	it("needs a question", async () => {
 		expect((await setup().poll({ question: " " })).reply.text).toMatch(/question can't be empty/);
 	});
+
+	it("refuses an answer that only goes over the limit once its tokens are filled", async () => {
+		// "{{date}}" (8) becomes "14 October 2026" (15): 49 as typed, 56 when posted.
+		const { poll, store } = setup();
+		const result = await poll({ answers: `Yes\n${"x".repeat(41)}{{date}}` });
+		expect(result.reply.text).toMatch(/answer would be over Discord's 55-character limit/);
+		expect(store.all()).toEqual([]);
+	});
+});
+
+describe("tokens and Discord's length limits", () => {
+	const tooLong = `${"x".repeat(1986)}{{date}}`;
+
+	it("refuses a message that tokens would push over 2000 characters, and saves nothing", async () => {
+		const { message, store } = setup();
+		const result = await message({ text: tooLong });
+		expect(result.reply.text).toMatch(
+			/tokens filled in, the message would be over Discord's 2000-character limit/,
+		);
+		expect(result.reply.text).not.toContain("xxxx");
+		expect(store.all()).toEqual([]);
+		expect((await message({ text: `${"x".repeat(1985)}{{date}}` })).reply.text).toHaveLength(2000);
+	});
+
+	it("refuses an edit that tokens would push over the limit, and keeps the old text", async () => {
+		const { message, run, store } = setup();
+		await message();
+		const id = store.all()[0]?.id as string;
+		const result = await run("edit", { schedule: id, text: tooLong });
+		expect(result.reply.text).toMatch(/2000-character limit/);
+		expect(store.get(id)?.post).toMatchObject({ text: "Pizza night tonight!" });
+	});
 });
 
 describe("parseAnswers", () => {
