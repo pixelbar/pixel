@@ -50,16 +50,16 @@ export class KindSwitch {
 		return !this.#off.has(kind);
 	}
 
-	/** Switches a kind on or off, records who did it, and saves it. Never throws. */
+	/**
+	 * Switches a kind on or off, records who did it in the file, and saves it. Never
+	 * throws. The caller logs the change (`home.kind_switched`) with `actorLogFields()`,
+	 * since only it knows who the person is.
+	 */
 	set(kind: string, on: boolean, by: string): KindSwitchSet {
 		const changed = this.isOn(kind) !== on;
 		if (on) this.#off.delete(kind);
 		else this.#off.add(kind);
 		const saved = this.#save(by);
-		this.#logger.warn(
-			{ event: "home.kind_switched", kind, on, changed, saved, by },
-			on ? `control of ${kind}s switched on` : `control of ${kind}s switched off`,
-		);
 		return { changed, saved };
 	}
 

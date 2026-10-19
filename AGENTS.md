@@ -17,7 +17,7 @@ Build **the core, the Discord adapter, and the Mastodon publisher (outbound only
 - TypeScript on Node.js LTS, ESM only. All user-facing text is in English.
 - Tiers: `guest` < `friend` < `member` < `admin`. `friend` and `member` are both paid memberships. Everyone else is a guest.
 - Tiers come from two gitignored YAML files: `config/admins.yaml` and `config/members.yaml`.
-- Every command goes through one dispatcher: resolve identity, check rate limit, check access, then run the handler.
+- Every command goes through one dispatcher: check rate limit, resolve identity, check access, then run the handler. Opening a command's form (`prepareForm`) takes a rate-limit token and checks access first too.
 - Sentry handles errors, pino writes logs, and `just` runs local tasks.
 
 ## Commands

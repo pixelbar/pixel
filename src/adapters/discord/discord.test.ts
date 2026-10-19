@@ -428,6 +428,63 @@ describe("respond", () => {
 		);
 	});
 
+	describe("when Discord refuses the acknowledgement", () => {
+		const expired = Object.assign(new Error("Unknown interaction"), { code: 10062 });
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		// Captured before fake timers replace it.
+		const realSetImmediate = setImmediate;
+		beforeEach(() => {
+			unhandled.length = 0;
+			process.on("unhandledRejection", onUnhandled);
+		});
+		afterEach(() => {
+			process.off("unhandledRejection", onUnhandled);
+		});
+
+		it("rejects once with a failed deferral, never as an unhandled rejection", async () => {
+			// A plain function: a vi.fn would itself handle the promise it returns.
+			let deferrals = 0;
+			const i = {
+				...fakeInteraction(),
+				deferReply: () => {
+					deferrals++;
+					return Promise.reject(expired);
+				},
+			};
+			const done = respond(i, {
+				defaultPrivate: false,
+				deferAfterMs: 1500,
+				work: delayed(publicResult, 3000),
+			});
+			const outcome = done.catch((error: unknown) => error);
+			await vi.advanceTimersByTimeAsync(1600);
+			// Let Node look for unhandled rejections while the work is still running.
+			await new Promise<void>((resolve) => realSetImmediate(resolve));
+			expect(deferrals).toBe(1);
+			expect(unhandled).toEqual([]);
+			await vi.advanceTimersByTimeAsync(1400);
+			expect(await outcome).toBe(expired);
+			expect(i.editReply).not.toHaveBeenCalled();
+		});
+
+		it("rejects with a failed placeholder", async () => {
+			const i = fakeInteraction();
+			i.reply.mockImplementation(async () => Promise.reject(expired));
+			await expect(
+				respond(i, {
+					defaultPrivate: false,
+					deferAfterMs: 1500,
+					work: async (showPending) => {
+						await showPending({ reply: { text: "Checking…" }, private: false });
+						return publicResult;
+					},
+				}),
+			).rejects.toBe(expired);
+			expect(i.editReply).not.toHaveBeenCalled();
+		});
+	});
+
 	describe("with a placeholder", () => {
 		const checking: DispatchResult = {
 			reply: { embeds: [{ title: "Checking…" }] },
