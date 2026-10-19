@@ -497,6 +497,8 @@ flowchart TD
   pub --> maps[Sentry source maps]
   maps --> mark[Remember these inputs as published]
   imagep -->|yes| nocd[Skip GHCR and Sentry]
+  main --> clogp{"CHANGELOG.md changed?"}
+  clogp -->|yes| clogm["Changelog merge: merge main into open PRs, push if only CHANGELOG conflicts and it's safe"]
   main --> note[Does not roll pixel-prod]
 ```
 
@@ -515,6 +517,7 @@ flowchart TD
   roll --> approve2[Environment prod approval]
   approve2 --> register[Register prod slash commands]
   tag --> pages[VitePress to GitHub Pages]
+  bump --> clogm[Changelog merge into open PRs]
 ```
 
 ## Changelog and versions
@@ -522,6 +525,15 @@ flowchart TD
 User-facing and operator-facing changes are recorded in [`CHANGELOG.md`](../CHANGELOG.md), in [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format. The version people see in `/ping` and the online post is `package.json` (plus the git SHA the image was built from).
 
 **On every pull request** that users or operators would notice (commands, behaviour, config, deploy, monitoring, this runbook): add a short bullet under `## [Unreleased]` in the right category (`Added`, `Changed`, `Fixed`, …). CI fails the PR if `CHANGELOG.md` is untouched. Pure chores (typos, CI-only, no user or operator impact) may use the `skip-changelog` label instead; adding or removing that label re-runs the check. Create the label on the repo once if it does not exist yet.
+
+**Changelog conflicts.** Two PRs that both add entries conflict in `CHANGELOG.md` once one merges, and after a release every open PR does. Keeping both sides is almost always right, so:
+
+- **On GitHub,** [`.github/workflows/changelog-merge.yml`](../.github/workflows/changelog-merge.yml) runs whenever `main`'s `CHANGELOG.md` changes (and after each Release). For every open PR from this repo that edits it, it merges `main` in. If `CHANGELOG.md` is the only conflict and it's safe, it pushes the merge commit and comments on the PR. If it isn't safe, it comments once, saying why, and changes nothing. Fork PRs and PRs with other conflicts are left alone. The run's summary lists each PR's outcome.
+- **On your laptop,** in a merge or rebase that stopped on `CHANGELOG.md`: `just changelog-merge`. To have git do it by itself in this clone: `just changelog-merge-driver` (undo with `git config --unset merge.changelog.driver`).
+
+"Safe" means [`scripts/changelog-merge.ts`](../scripts/changelog-merge.ts) can do it without guessing. The branch's new `[Unreleased]` entries go at the end of their section (no section is ever added twice), and an entry both sides added is kept once. After a release, the branch's entries go into the new, empty `[Unreleased]`. It refuses, and leaves the conflict to you, when both sides changed the same entry, when the branch changed an entry that has since been released, when either side has a section twice, an unknown `###` heading or text that isn't a list entry, or when both sides changed the released versions, the intro or the links.
+
+Setting it up: pushes made with `GITHUB_TOKEN` don't start CI, and can't bring workflow changes from `main` into a branch. So create a GitHub App on the org with **Contents**, **Pull requests** and **Workflows**: read and write, install it on `pixelbar/pixel`, then set the repository variable `CHANGELOG_BOT_CLIENT_ID` (its client ID) and the secret `CHANGELOG_BOT_PRIVATE_KEY` (a private key). Until then the workflow pushes with `GITHUB_TOKEN`. Its comment then says CI hasn't run (push again, or close and reopen the PR), and a merge that brings in workflow changes is refused.
 
 **To cut a version** (move Unreleased into a dated section and bump `package.json`):
 

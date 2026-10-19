@@ -57,6 +57,19 @@ ci-inputs filter:
 check-changelog *args:
     node scripts/check-changelog.ts {{args}}
 
+# In a merge or rebase that stopped on CHANGELOG.md: keep both sides' [Unreleased]
+# entries when that is clearly right, and stage the file. Says why when it won't.
+changelog-merge:
+    node scripts/merge-changelog.ts --git
+
+# Let git do `just changelog-merge` by itself whenever CHANGELOG.md conflicts
+# (this clone only; nothing is committed). Undo: git config --unset merge.changelog.driver
+changelog-merge-driver:
+    git config merge.changelog.name "Keep both sides' CHANGELOG [Unreleased] entries"
+    git config merge.changelog.driver "node scripts/merge-changelog.ts %O %A %B"
+    grep -qxF 'CHANGELOG.md merge=changelog' "$(git rev-parse --git-path info/attributes)" 2>/dev/null || \
+        echo 'CHANGELOG.md merge=changelog' >> "$(git rev-parse --git-path info/attributes)"
+
 # Cut [Unreleased] into a dated version and bump package.json.
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.
 # `--commit` also creates the release commit and tag (used by the Release workflow).

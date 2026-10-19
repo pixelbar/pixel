@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- CHANGELOG conflicts resolve themselves when that is safe. When `main`'s `CHANGELOG.md` changes (and after each Release), a new workflow merges `main` into every open PR from this repo that edits it. If `CHANGELOG.md` is the only conflict, it keeps both sides' `[Unreleased]` entries, pushes the merge and comments on the PR. It never adds a section twice, puts entries into the new `[Unreleased]` after a release, and comments with the reason instead when both sides changed the same entry or the file isn't plain Keep a Changelog. Locally, `just changelog-merge` does the same in a stopped merge or rebase, and `just changelog-merge-driver` makes git do it by itself. For CI to run on those merges, a maintainer sets up a GitHub App (runbook: "Changelog conflicts").
+
 ### Changed
 
 - CI jobs run only when the files they depend on have not already passed. Each workflow's first job hashes the job's inputs (a list in `.github/path-filters.yml`, plus the workflow running it) and looks for a marker that an earlier run with exactly those files succeeded. So pushing only a CHANGELOG entry, re-pushing the same code, or opening a docs-only PR no longer runs `just check`, the Docker build, the docs site build or Terraform validate again. Skipped jobs no longer start a runner. Test-only changes no longer build or publish an image. CD publishes when the image inputs differ from the last publish, so a CD run cancelled by a newer merge no longer leaves code without a GHCR image. Terraform plan jobs that aren't needed never start, so they never wait on an Environment. The changelog gate no longer runs `pnpm install`. `just ci-inputs <list>` shows what a list matches; the runbook's "CI and CD" says how to force a rerun.

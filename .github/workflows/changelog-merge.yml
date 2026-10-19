@@ -1,0 +1,155 @@
+name: Changelog merge
+
+# When main's CHANGELOG.md moves, open PRs that also add entries usually
+# conflict there and nowhere else. This merges main into each such PR and,
+# when CHANGELOG.md is the only conflict and scripts/changelog-merge.ts can
+# keep both sides' [Unreleased] entries safely, pushes the merge commit to the
+# PR branch. Otherwise it leaves the branch alone; if the resolver refused, it
+# says why in one comment on the PR (updated in place, never repeated).
+#
+# Trust: only main's copy of the resolver runs. PR branches are merged with
+# git and never built, installed or executed. Fork PRs are skipped.
+#
+# Pushes made with GITHUB_TOKEN don't start other workflows, so CI would not
+# run on the merge commit, and GITHUB_TOKEN can't push a merge that brings in
+# workflow changes from main. A GitHub App fixes both: set the repository
+# variable CHANGELOG_BOT_CLIENT_ID and secret CHANGELOG_BOT_PRIVATE_KEY for an
+# App installed on this repo with Contents, Pull requests and Workflows write
+# (runbook: "Changelog conflicts"). Without it this falls back to GITHUB_TOKEN.
+
+on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
+  # The Release workflow's bump commit is pushed with GITHUB_TOKEN, which does
+  # not fire `push`. It empties [Unreleased], so most open PRs conflict.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer main makes an older run pointless.
+concurrency:
+  group: changelog-merge
+  cancel-in-progress: true
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+jobs:
+  resolve:
+    name: Resolve CHANGELOG conflicts in open PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Only for the fallback (no App): push to PR branches and comment on PRs.
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: App token
+        id: app
+        if: vars.CHANGELOG_BOT_CLIENT_ID != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.CHANGELOG_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.CHANGELOG_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      # main, and with it the resolver that runs. Credentials are kept so the
+      # PR worktrees below can push.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token || github.token }}
+
+      # No pnpm install: the resolver only uses Node built-ins.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Merge main into PRs and resolve CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          REPO: ${{ github.repository }}
+          WITH_APP: ${{ steps.app.outputs.token != '' }}
+        run: |
+          set -euo pipefail
+          resolver="${GITHUB_WORKSPACE}/scripts/merge-changelog.ts"
+          marker="<!-- changelog-merge -->"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          main="$(git rev-parse --short origin/main)"
+
+          # One comment per PR, edited in place.
+          comment() {
+            local number="$1" body="$2" id
+            body="${marker}"$'\n'"${body}"
+            id="$(gh api "repos/${REPO}/issues/${number}/comments" --paginate \
+              --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty")"
+            if [ -n "${id}" ]; then
+              gh api --method PATCH "repos/${REPO}/issues/comments/${id}" -f body="${body}" >/dev/null
+            else
+              gh api --method POST "repos/${REPO}/issues/${number}/comments" -f body="${body}" >/dev/null
+            fi
+          }
+
+          {
+            echo "### CHANGELOG conflicts against main (${main})"
+            echo
+            echo "| PR | Outcome |"
+            echo "| --- | --- |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          prs="$(gh pr list --repo "${REPO}" --base main --state open --limit 200 \
+            --json number,headRefName,isCrossRepository,files \
+            --jq '.[] | select(.isCrossRepository | not)
+                      | select(any(.files[]; .path == "CHANGELOG.md"))
+                      | "\(.number) \(.headRefName)"')"
+
+          while read -r number branch; do
+            [ -n "${number}" ] || continue
+            dir="${RUNNER_TEMP}/pr-${number}"
+            # The branch may be gone by now; that is not this run's problem.
+            if ! git fetch -q origin "+refs/heads/${branch}:refs/remotes/origin/${branch}" ||
+              ! git worktree add -q --detach "${dir}" "refs/remotes/origin/${branch}"; then
+              echo "| #${number} | Could not fetch the branch |" >> "${GITHUB_STEP_SUMMARY}"
+              continue
+            fi
+
+            if git -C "${dir}" merge -q --no-commit --no-ff origin/main >/dev/null 2>&1; then
+              outcome="No conflict"
+              git -C "${dir}" merge --abort 2>/dev/null || true
+            elif [ "$(git -C "${dir}" diff --name-only --diff-filter=U)" != "CHANGELOG.md" ]; then
+              outcome="Other files conflict too; left alone"
+              git -C "${dir}" merge --abort
+            elif reason="$(cd "${dir}" && node --no-warnings "${resolver}" --git 2>&1)"; then
+              git -C "${dir}" commit -q -m "Merge main into ${branch}, keeping both CHANGELOG entries"
+              if git -C "${dir}" push -q origin "HEAD:refs/heads/${branch}"; then
+                outcome="Resolved and pushed"
+                if [ "${WITH_APP}" = "true" ]; then
+                  ci="CI runs on it as usual."
+                else
+                  ci="GitHub doesn't start CI for this bot's pushes, so CI hasn't run on it: push again, or close and reopen the PR."
+                fi
+                comment "${number}" "Merged \`main\` (${main}) into this branch: \`CHANGELOG.md\` was the only conflict, and both sides' [Unreleased] entries are kept. Pull before pushing again. ${ci}" || true
+              else
+                # The branch moved meanwhile, or (without the App) main's
+                # merge brings in workflow changes GITHUB_TOKEN can't push.
+                outcome="Resolved, but the push was refused"
+              fi
+            else
+              outcome="Not safe to resolve: ${reason}"
+              git -C "${dir}" merge --abort
+              comment "${number}" "\`CHANGELOG.md\` conflicts with \`main\` (${main}) and can't be resolved automatically. ${reason}" || true
+            fi
+
+            git worktree remove --force "${dir}"
+            echo "| #${number} | ${outcome//|/\\|} |" >> "${GITHUB_STEP_SUMMARY}"
+            echo "#${number} (${branch}): ${outcome}"
+          done <<< "${prs}"
