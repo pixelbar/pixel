@@ -12,6 +12,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Fixed
 
 - `/spacestate`: the Sentry context for a failed call now says why the network failed (`errorCause`, such as `ENOTFOUND`, `ECONNREFUSED` or `UNEXPECTED_REDIRECT`), and shows the address without its query. Sentry was replacing the old redacted address with `[Filtered]`.
+- `/admin level set` and capability changes no longer write `members.yaml` when the file was hand-edited into a state that fails the startup cross-checks (an id in two entries, or an admin with no entry). Before, the file was saved but the in-memory view and the `access.changed` audit record were not, and the admin got a generic error. Now the change is refused with "The members file is invalid", and nothing is written.
 - `/schedule`: a schedule deleted, paused or edited while another one due at the same time was posting no longer goes out as it was. Pixel reads each schedule again right before posting it.
 - `/schedule`: a message or poll that `{{tokens}}` would push past Discord's length limits (2000 characters for a message, 300 for a question, 55 for an answer) is now refused when it's created or edited, instead of failing at every occurrence. One that still comes out too long when it's posted is cut to fit and logged as `schedule.clipped`.
 - `/schedule edit`: changing `when`, `repeat` or `days` now counts from the edit. Before, a weekly post that last went out on Monday and was moved to Thursday at 19:20 could post straight away for that Thursday 19:00, while the reply said next week.

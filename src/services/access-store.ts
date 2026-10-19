@@ -41,9 +41,10 @@ import {
 /**
  * The bot-managed members file. Every change goes through `apply`, which:
  *
- *  1. re-reads the file (so hand edits aren't lost) and checks it is valid,
+ *  1. re-reads the file (so hand edits aren't lost) and checks it is valid, together
+ *     with the admins (the same checks as at startup),
  *  2. edits the YAML document, so comments and order survive,
- *  3. re-validates the result, writes it to a temp file and fsyncs it,
+ *  3. re-validates the result, builds the new view, writes it to a temp file and fsyncs it,
  *  4. checks the file wasn't edited meanwhile, keeps the old one as `.bak`,
  *  5. renames the temp file over the original (atomic on a normal filesystem),
  *  6. only then swaps the in-memory view and writes the audit record.
@@ -233,12 +234,15 @@ export class FileAccessStore implements AccessStore {
 		const next = doc.toString({ flowCollectionPadding: false });
 		// Our own edit must produce a valid file. If it doesn't, that is a bug, not user error.
 		const nextEntries = parseMembers(next, file);
+		// Build the new view before writing, so a failing cross-file check can't leave the file
+		// changed while the view and the audit record are not.
+		const nextView = buildAccessConfig(this.#admins, nextEntries, this.#paths);
 
 		this.#writeFile(file, raw, next);
 
 		const updated = nextEntries.find((entry) => entry.ids.includes(ref));
 		const after = toRecord(updated as NonNullable<typeof updated>);
-		this.#view = buildAccessConfig(this.#admins, nextEntries, this.#paths);
+		this.#view = nextView;
 		this.#audit(change, by, before, after);
 		return { before, after };
 	}
@@ -262,7 +266,10 @@ export class FileAccessStore implements AccessStore {
 
 	#parseCurrent(raw: string, file: string) {
 		try {
-			return parseMembers(raw, file);
+			const entries = parseMembers(raw, file);
+			// The same cross-file checks as startup: an id in two entries, an admin with no entry.
+			buildAccessConfig(this.#admins, entries, this.#paths);
+			return entries;
 		} catch (error) {
 			if (!(error instanceof AccessConfigError)) throw error;
 			this.#logger.warn({ event: "access.file_invalid" }, error.message);
