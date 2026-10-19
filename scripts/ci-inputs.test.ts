@@ -123,6 +123,20 @@ describe(FILTERS, () => {
 		}
 	});
 
+	// These tests read them, so `just check` must run when they change.
+	it("puts the files this test reads in `check`", () => {
+		const check = new Set(list(".", "check"));
+		for (const file of [
+			"Dockerfile",
+			FILTERS,
+			".github/workflows/cd.yml",
+			".github/workflows/docs.yml",
+			".github/workflows/terraform.yml",
+		]) {
+			expect(check.has(file), `${file} is read by this test but not in the check list`).toBe(true);
+		}
+	});
+
 	it("puts everything the Dockerfile copies in from the repository in `image`", () => {
 		const image = new Set(list(".", "image"));
 		const copies = read("Dockerfile")

@@ -38,6 +38,12 @@ check:
   - "docs/runbook.md"
   - "docs/architecture.md"
   - "docs/infra.md"
+  # scripts/ci-inputs.test.ts checks these against the lists below (ci.yml is
+  # in every check hash already).
+  - "Dockerfile"
+  - ".github/workflows/cd.yml"
+  - ".github/workflows/docs.yml"
+  - ".github/workflows/terraform.yml"
 
 # What the Dockerfile copies. Tests are copied but never compiled into the image.
 image:
