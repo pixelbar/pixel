@@ -20,6 +20,7 @@ import {
 	otherEnvFiles,
 	parseShown,
 	pixelEnvOf,
+	redactTfvars,
 	reusedDiscordToken,
 	secretTfvarsFile,
 	setEnvValues,
@@ -367,6 +368,28 @@ variable "discord_token" {
 			'infra/envs/prod/terraform.tfvars says data_storage_account_name = "pixeldevdata", but prod is pixelproddata.',
 		]);
 		expect(problems.join("\n")).not.toContain(FAKE_TOKEN);
+	});
+
+	it("hides every sensitive value before a diff, commented ones too", () => {
+		const text = [
+			'prefix = "pixel"',
+			`discord_token = "${FAKE_TOKEN}"`,
+			`# discord_token = "${OTHER_TOKEN}"`,
+			`  discord_token="${FAKE_TOKEN}"`,
+			"# a comment about discord_token",
+		].join("\n");
+		const out = redactTfvars(text, variables.sensitive);
+		expect(out).toBe(
+			[
+				'prefix = "pixel"',
+				"discord_token = (secret, hidden)",
+				"# discord_token = (secret, hidden)",
+				"  discord_token=(secret, hidden)",
+				"# a comment about discord_token",
+			].join("\n"),
+		);
+		expect(out).not.toContain(FAKE_TOKEN);
+		expect(out).not.toContain(OTHER_TOKEN);
 	});
 
 	it("keeps secret inputs in an auto-loaded file next to it", () => {
