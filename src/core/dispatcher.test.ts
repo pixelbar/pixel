@@ -329,14 +329,40 @@ describe("Dispatcher", () => {
 			expect(onPending).not.toHaveBeenCalled();
 		});
 
-		it("turns a failure to show the placeholder into a reported internal error", async () => {
+		it("leaves a failure to show the placeholder to the adapter, without running the handler", async () => {
 			const handler = vi.fn(async () => ({ text: "x" }));
-			const { dispatcher, reporter } = setup([command({ name: "x", placeholder, handler })]);
+			const { dispatcher, reporter, entries } = setup([
+				command({ name: "x", placeholder, handler }),
+			]);
+			const error = Object.assign(new Error("Interaction has already been acknowledged."), {
+				code: 40060,
+			});
+			await expect(
+				dispatcher.dispatch(
+					{ actor: as(IDS.guest), command: "x", args: {} },
+					{ onPending: async () => Promise.reject(error) },
+				),
+			).rejects.toBe(error);
+			expect(handler).not.toHaveBeenCalled();
+			// Not a command failure: the adapter logs and reports it.
+			expect(reporter.capture).not.toHaveBeenCalled();
+			expect(entries.some((e) => e.obj.event === "command.failed")).toBe(false);
+		});
+
+		it("still reports a handler failure after the placeholder was shown", async () => {
+			const { dispatcher, reporter } = setup([
+				command({
+					name: "x",
+					placeholder,
+					handler: async () => {
+						throw new Error("boom");
+					},
+				}),
+			]);
 			const result = await dispatcher.dispatch(
 				{ actor: as(IDS.guest), command: "x", args: {} },
-				{ onPending: async () => Promise.reject(new Error("discord down")) },
+				{ onPending: async () => {} },
 			);
-			expect(handler).not.toHaveBeenCalled();
 			expect(result.reply.text).toBe(MESSAGES.internalError);
 			expect(reporter.capture).toHaveBeenCalled();
 		});
