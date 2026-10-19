@@ -1,5 +1,5 @@
-import { actorRef } from "../../core/access.ts";
-import type { SubgroupDefinition } from "../../core/command.ts";
+import { actorLogFields, actorRef } from "../../core/access.ts";
+import type { SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { KindSwitch } from "../../services/kind-switch.ts";
 
@@ -12,16 +12,29 @@ export function createDoorsSubgroup(deps: {
 	switches: Pick<KindSwitch, "set" | "isOn">;
 	reporter: Pick<ErrorReporter, "breadcrumb">;
 }): SubgroupDefinition {
-	const subcommand = (on: boolean) => ({
+	const subcommand = (on: boolean): SubcommandDefinition => ({
 		name: on ? "on" : "off",
 		description: on
 			? "Switch door control from Pixel back on"
 			: "Switch door control from Pixel off for everyone, at once",
-		access: { minTier: "admin" as const },
+		access: { minTier: "admin" },
 		private: true,
-		handler: async ({ principal }: { principal: Parameters<typeof actorRef>[0] }) => {
+		handler: async ({ principal, logger }) => {
 			const by = actorRef(principal);
 			const { changed, saved } = deps.switches.set("door", on, by);
+			// Logged here, on the command's logger, so it names the admin (ID plus names)
+			// and carries the command, like every other admin action.
+			logger.warn(
+				{
+					event: "home.kind_switched",
+					kind: "door",
+					on,
+					changed,
+					saved,
+					...actorLogFields(principal),
+				},
+				on ? "door control switched on" : "door control switched off",
+			);
 			deps.reporter.breadcrumb("home.kind_switched", `doors ${on ? "on" : "off"}`, { user: by });
 			const state = on ? "on" : "off";
 			const lines = [

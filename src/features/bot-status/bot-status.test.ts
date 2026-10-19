@@ -69,6 +69,29 @@ describe("bot status", () => {
 		});
 	});
 
+	it("never says online once it has started going offline", async () => {
+		const { status, announced } = setup();
+		await status.down("restarting or shutting down");
+		await status.up();
+		expect(announced.map((a) => a.kind === "bot.status" && a.phase)).toEqual(["down"]);
+	});
+
+	it("drops an online announcement whose checks were still running when going offline began", async () => {
+		let answer: (reading: { state: "open"; since: null; checkedAt: Date }) => void = () => {};
+		const slow = {
+			checkNow: () =>
+				new Promise<{ state: "open"; since: null; checkedAt: Date }>((resolve) => {
+					answer = resolve;
+				}),
+		};
+		const { status, announced } = setup({ kind: "unconfigured" }, slow);
+		const coming = status.up();
+		await status.down("restarting or shutting down");
+		answer({ state: "open", since: null, checkedAt: later });
+		await coming;
+		expect(announced.map((a) => a.kind === "bot.status" && a.phase)).toEqual(["down"]);
+	});
+
 	it("never throws, even when announcing fails", async () => {
 		const { status, announce } = setup();
 		announce.mockRejectedValueOnce(new Error("discord down"));

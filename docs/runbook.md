@@ -580,7 +580,7 @@ Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` 
   3. Decide: a bug in Pixel (open a GitHub issue, link the Sentry issue), a problem outside it (SpaceAPI, Home Assistant, Discord: see [Incidents](#incidents)), or noise (resolve or ignore it).
   4. If it's urgent and recent, roll back (see [Deploys](#deploys)).
 - **Read feedback:** Sentry → **User Feedback**. Each has the sender's Discord name and ID, so you can reply in Discord.
-- Errors from before a release can be filtered by the `release` tag, which is `PIXEL_VERSION` (the git SHA the image was built from). Source maps upload from `just sentry-release` / CD when `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` are set.
+- Errors from before a release can be filtered by the `release` tag, which is `PIXEL_VERSION` (the git SHA the image was built from). Source maps upload from `just sentry-release` / CD when `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` are set, and Sentry uses them to show the TypeScript source. Stack traces in the container logs and the log files point at the compiled `dist/*.js` lines instead: open the Sentry issue for the TypeScript line.
 
 ## Privacy requests
 
