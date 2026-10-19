@@ -190,6 +190,54 @@ describe("Dispatcher", () => {
 		expect(handler).toHaveBeenCalledTimes(2);
 	});
 
+	it("rate limits opening a form per user, before beforeForm runs", async () => {
+		const beforeForm = vi.fn(async () => ({ title: "ok" }));
+		const { dispatcher, entries } = setup([command({ name: "x", beforeForm })], { capacity: 1 });
+		const request = { command: "x", args: {} };
+		expect(await dispatcher.prepareForm({ ...request, actor: as(IDS.guest) })).toEqual({
+			ready: true,
+			title: "ok",
+		});
+		const limited = await dispatcher.prepareForm({ ...request, actor: as(IDS.guest) });
+		const other = await dispatcher.prepareForm({ ...request, actor: as(IDS.member) });
+		expect(limited).toEqual({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.rateLimited, private: true }, private: true },
+		});
+		expect(other.ready).toBe(true);
+		expect(beforeForm).toHaveBeenCalledTimes(2);
+		expect(entries).toContainEqual({
+			level: "warn",
+			obj: expect.objectContaining({
+				event: "command.rate_limited",
+				command: "x",
+				user: `discord:${IDS.guest}`,
+			}),
+		});
+	});
+
+	it("rate limits opening a form before resolving identity or checking access", async () => {
+		const { dispatcher, entries } = setup([command({ name: "x", access: { minTier: "admin" } })], {
+			capacity: 0,
+		});
+		const result = await dispatcher.prepareForm({ actor: as(IDS.guest), command: "x", args: {} });
+		expect(result).toMatchObject({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.rateLimited } },
+		});
+		expect(entries.some((e) => e.obj.event === "command.denied")).toBe(false);
+	});
+
+	it("charges opening a form and submitting it a token each", async () => {
+		const handler = vi.fn(async () => ({ text: "saved" }));
+		const { dispatcher } = setup([command({ name: "x", handler })], { capacity: 2 });
+		const request = { actor: as(IDS.guest), command: "x", args: {} };
+		expect((await dispatcher.prepareForm(request)).ready).toBe(true);
+		expect((await dispatcher.dispatch(request)).reply.text).toBe("saved");
+		expect((await dispatcher.prepareForm(request)).ready).toBe(false);
+		expect((await dispatcher.dispatch(request)).reply.text).toBe(MESSAGES.rateLimited);
+	});
+
 	describe("visibility", () => {
 		it("uses the command default", async () => {
 			const { dispatcher } = setup([command({ name: "p", private: true })]);
@@ -1321,6 +1369,88 @@ describe("tracing what runs to the person who ran it", () => {
 		expect(out).toEqual([{ name: "lamp", value: "lamp" }]);
 		expect(insideSuggest).toBe(true);
 		expect(seen).toEqual([{ command: "ha", feature: "feat", userId: IDS.member, tier: "member" }]);
+	});
+
+	it("runs beforeForm inside the person's context, so what it reports names them", async () => {
+		const { seen, withContext, isInside } = scoped();
+		let insideBeforeForm = false;
+		const dispatcher = build(
+			[
+				group({
+					name: "schedule",
+					subcommands: [
+						subcommand({
+							name: "add",
+							access: { minTier: "member" },
+							beforeForm: async () => {
+								insideBeforeForm = isInside();
+								return { title: "Wed 14 Oct 2026, 19:00" };
+							},
+						}),
+					],
+				}),
+			],
+			withContext,
+		);
+		const result = await dispatcher.prepareForm({
+			actor: as(IDS.member),
+			command: "schedule",
+			subcommand: "add",
+			args: {},
+		});
+		expect(result).toEqual({ ready: true, title: "Wed 14 Oct 2026, 19:00" });
+		expect(insideBeforeForm).toBe(true);
+		expect(seen).toEqual([
+			{ command: "schedule add", feature: "feat", userId: IDS.member, tier: "member" },
+		]);
+	});
+
+	it("doesn't open a context for a form that is refused before beforeForm", async () => {
+		const { seen, withContext } = scoped();
+		const beforeForm = vi.fn(async () => ({}));
+		const dispatcher = build(
+			[command({ name: "secret", access: { minTier: "admin" }, beforeForm })],
+			withContext,
+		);
+		const result = await dispatcher.prepareForm({
+			actor: as(IDS.guest),
+			command: "secret",
+			args: {},
+		});
+		expect(result.ready).toBe(false);
+		expect(beforeForm).not.toHaveBeenCalled();
+		expect(seen).toEqual([]);
+	});
+
+	it("still reports a failing beforeForm with the person, outside that context", async () => {
+		const { withContext } = scoped();
+		const capture = vi.fn<ErrorReporter["capture"]>();
+		const dispatcher = build(
+			[
+				command({
+					name: "boom",
+					beforeForm: async () => {
+						throw new Error("bug");
+					},
+				}),
+			],
+			withContext,
+			capture,
+		);
+		const result = await dispatcher.prepareForm({
+			actor: as(IDS.member),
+			command: "boom",
+			args: {},
+		});
+		expect(result).toMatchObject({
+			ready: false,
+			refuse: { reply: { text: MESSAGES.internalError } },
+		});
+		expect(capture.mock.calls[0]?.[1]).toMatchObject({
+			command: "boom",
+			feature: "feat",
+			principal: { userId: IDS.member },
+		});
 	});
 
 	it("still reports a failing command with the person, outside that context", async () => {

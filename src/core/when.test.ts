@@ -64,6 +64,34 @@ describe("parseWhen", () => {
 		expect(parsed("1960")).toBeUndefined();
 	});
 
+	it("reads four digits after a date as a time, and as a year only beside another time or when no clock reads them", () => {
+		// The same whether the date has a month name or not.
+		expect(parsed("14 nov 2030")).toBe("2026-11-14T20:30");
+		expect(parsed("14-11 2030")).toBe("2026-11-14T20:30");
+		expect(parsed("14 nov 1900")).toBe("2026-11-14T19:00");
+		expect(parsed("nov 14 1900")).toBe("2026-11-14T19:00");
+		// A year when another time is there too.
+		expect(parsed("14 nov 2030 19:00")).toBe("2030-11-14T19:00");
+		expect(parsed("14-11 2030 19:00")).toBe("2030-11-14T19:00");
+		expect(parsed("14 nov 2030 1900")).toBe("2030-11-14T19:00");
+		expect(parsed("14 nov 2027 7 pm")).toBe("2027-11-14T19:00");
+		// A year when it can't be a time.
+		expect(parsed("14 nov 2099")).toBe("2099-11-14T19:00");
+		expect(parsed("14-11 2099")).toBe("2099-11-14T19:00");
+		// An explicit past year is refused.
+		expect(parsed("14 nov 2025 19:00")).toBeUndefined();
+	});
+
+	it("knows month names and their short forms, and refuses other words that start like one", () => {
+		expect(parsed("14 sept 19:00")).toBe("2027-09-14T19:00");
+		expect(parsed("14 september 19:00")).toBe("2027-09-14T19:00");
+		expect(parsed("june 5")).toBe("2027-06-05T19:00");
+		expect(parsed("5 jul")).toBe("2027-07-05T19:00");
+		for (const nonsense of ["junk 5", "decent 3 19:00", "mars 3", "octopus 14", "novel 1 10"]) {
+			expect(parsed(nonsense)).toBeUndefined();
+		}
+	});
+
 	it("accepts its own canonical value, but only in the future", () => {
 		expect(parsed("2026-10-14T19:00")).toBe("2026-10-14T19:00");
 		expect(parsed("2026-10-01T19:00")).toBeUndefined();

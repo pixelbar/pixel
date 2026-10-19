@@ -131,15 +131,15 @@ export class Dispatcher {
 	}
 
 	/**
-	 * Whether to open a command's form. Access first, then non-form args, then
-	 * `beforeForm`. Returns a refusal instead of opening the form, so a long body
-	 * isn't typed against a bad option. `dispatch` checks everything again.
+	 * Whether to open a command's form. Rate limit first, then access, then
+	 * non-form args, then `beforeForm`. Returns a refusal instead of opening the
+	 * form, so a long body isn't typed against a bad option. `dispatch` checks
+	 * everything again, and takes its own token when the form is submitted.
 	 */
 	async prepareForm(request: DispatchRequest): Promise<FormPrep> {
 		const found = this.#lookup(request.command, request.subcommand, request.subgroup);
 		if (!found) return { ready: false, refuse: privateText(MESSAGES.unknownCommand) };
-		const refused = await this.precheck(request);
-		if (refused) return { ready: false, refuse: refused };
+		const { identity, rateLimiter, reporter } = this.#deps;
 		const { actor } = request;
 		const command = [request.command, request.subgroup, request.subcommand]
 			.filter((part) => part !== undefined)
@@ -149,20 +149,32 @@ export class Dispatcher {
 			platform: actor.platform,
 			...actorLogFields(actor),
 		});
+		// `beforeForm` is feature code, so opening a form costs a token like running a command.
+		if (!rateLimiter.tryTake(actorRef(actor))) {
+			log.warn({ event: "command.rate_limited" }, "rate limited");
+			return { ready: false, refuse: privateText(MESSAGES.rateLimited) };
+		}
+		const refused = await this.precheck(request);
+		if (refused) return { ready: false, refuse: refused };
 		try {
 			const valid = validateArgs(found.runnable, request.args, request.users, request.channels, {
 				skipMissingFormFields: true,
 			});
 			const beforeForm = found.runnable.beforeForm;
 			if (!beforeForm) return { ready: true };
-			const principal = await this.#deps.identity.resolve(actor);
-			const extra = await beforeForm({
-				args: valid.args,
-				users: valid.users,
-				channels: valid.channels,
-				principal,
-				logger: log,
-			});
+			const principal = await identity.resolve(actor);
+			const run = () =>
+				beforeForm({
+					args: valid.args,
+					users: valid.users,
+					channels: valid.channels,
+					principal,
+					logger: log,
+				});
+			// Like a handler, whatever is reported while it runs is traced to the person.
+			const extra = await (reporter.withContext
+				? reporter.withContext({ command, feature: found.feature, principal }, run)
+				: run());
 			return { ready: true, ...extra };
 		} catch (error) {
 			if (error instanceof UserFacingError) {
@@ -170,8 +182,8 @@ export class Dispatcher {
 				return { ready: false, refuse: privateText(error.message) };
 			}
 			log.error({ event: "command.form_failed", err: error }, "form checks failed");
-			const principal = await this.#deps.identity.resolve(actor);
-			this.#deps.reporter.capture(error, { command, feature: found.feature, principal });
+			const principal = await identity.resolve(actor);
+			reporter.capture(error, { command, feature: found.feature, principal });
 			return { ready: false, refuse: privateText(MESSAGES.internalError) };
 		}
 	}
@@ -180,7 +192,8 @@ export class Dispatcher {
 	 * Checks whether this person may run a command, without running it, so an adapter
 	 * doesn't open a form for someone who'd be refused. Returns the refusal to show,
 	 * or undefined. `dispatch` checks everything again, so this is only a courtesy.
-	 * Denials are logged the same way as `dispatch`.
+	 * Denials are logged the same way as `dispatch`. It takes no rate-limit token:
+	 * a caller that goes on to run feature code (`prepareForm`) takes one first.
 	 */
 	async precheck(
 		request: Pick<DispatchRequest, "actor" | "command" | "subgroup" | "subcommand">,

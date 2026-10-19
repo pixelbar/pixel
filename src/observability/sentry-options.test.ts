@@ -18,6 +18,9 @@ const options = sentryOptions(sentryCfg);
 // Shaped like a Discord token and a Home Assistant token, but not real ones.
 const discordToken = `${"A".repeat(26)}.${"B".repeat(6)}.${"C".repeat(38)}`;
 const haToken = `eyJ${"h".repeat(30)}.eyJ${"p".repeat(60)}.${"s".repeat(43)}`;
+// Shaped like a Discord interaction token and ID, but not real ones.
+const interactionToken = `aW50ZXJhY3Rpb246fake${"x".repeat(60)}`;
+const interactionId = "100000000000000099";
 
 describe("sentryOptions", () => {
 	it("passes on the DSN, environment and release", () => {
@@ -97,6 +100,29 @@ describe("sentryOptions", () => {
 			haToken,
 		);
 		expect(JSON.stringify(options.beforeBreadcrumb?.({ message: haToken }))).not.toContain(haToken);
+	});
+
+	it("scrubs spans, whose URLs can carry a Discord interaction token, before they are sent", () => {
+		// Spans are streamed (the default lifecycle), so `beforeSendSpan` sees every one.
+		expect(options.traceLifecycle).toBe("stream");
+		const scrubbed = options.beforeSendSpan?.({
+			trace_id: "t",
+			span_id: "s",
+			name: "POST discord.com",
+			start_timestamp: 0,
+			status: "ok",
+			is_segment: false,
+			attributes: {
+				"url.full": `https://discord.com/api/v10/interactions/${interactionId}/${interactionToken}/callback`,
+				"url.path": `/api/v10/webhooks/${interactionId}/${interactionToken}/messages/@original`,
+				"http.response.status_code": 204,
+			},
+		});
+		expect(JSON.stringify(scrubbed)).not.toContain(interactionToken);
+		expect(scrubbed?.attributes).toMatchObject({
+			"url.path": `/api/v10/webhooks/${interactionId}/[redacted]/messages/@original`,
+			"http.response.status_code": 204,
+		});
 	});
 });
 
@@ -190,5 +216,29 @@ describe("log lines reach Sentry", () => {
 		);
 		expect(types).toContain("log");
 		expect(types).not.toContain("event");
+	});
+
+	it("never sends a Discord interaction token from a traced request or its breadcrumb", async () => {
+		const path = `/api/v10/interactions/${interactionId}/${interactionToken}/callback`;
+		Sentry.startSpan({ name: "command" }, () => {
+			Sentry.startSpan(
+				{
+					name: `POST https://discord.com${path}`,
+					attributes: { "url.full": `https://discord.com${path}`, "url.path": path },
+				},
+				() => undefined,
+			);
+			Sentry.addBreadcrumb({ category: "http", data: { url: `https://discord.com${path}` } });
+			Sentry.captureMessage("after the request");
+		});
+		await Sentry.flush(1000);
+		const types = envelopes.flatMap((envelope) =>
+			(envelope[1] as [{ type: string }][]).map(([header]) => header.type),
+		);
+		expect(types).toEqual(expect.arrayContaining(["event", "span"]));
+		const text = JSON.stringify(envelopes);
+		expect(text).toContain("after the request");
+		expect(text).toContain(`/interactions/${interactionId}/[redacted]/callback`);
+		expect(text).not.toContain(interactionToken);
 	});
 });
