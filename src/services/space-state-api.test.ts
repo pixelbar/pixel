@@ -165,7 +165,7 @@ describe("HttpSpaceStateApi observe", () => {
 		expect(seen[0]).toMatchObject({
 			request: {
 				method: "POST",
-				url: `${URL_}?user=[redacted]&token=[redacted]&state=closed`,
+				url: URL_,
 				state: "closed",
 			},
 			response: { status: 200, contentType: "text/plain", contentLength: "7", body: "SUCCESS" },
@@ -205,6 +205,26 @@ describe("HttpSpaceStateApi observe", () => {
 		await thrown(instance.set("open"));
 		expect(seen[0]).toMatchObject({ outcome: "network-error", errorName: "TypeError" });
 		expect(seen[0]?.response).toBeUndefined();
+		expect(JSON.stringify(seen)).not.toContain(TOKEN);
+	});
+
+	it.each([
+		[new Error("unexpected redirect"), "UNEXPECTED_REDIRECT"],
+		[
+			Object.assign(new Error(`getaddrinfo ENOTFOUND space.example ${URL_}?token=${TOKEN}`), {
+				code: "ENOTFOUND",
+			}),
+			"ENOTFOUND",
+		],
+		[Object.assign(new Error("odd"), { code: `has spaces and ${TOKEN}` }), undefined],
+		[new Error(`connect failed ${URL_}?token=${TOKEN}`), undefined],
+	])("names why the network failed, only as a code: %#", async (cause, expected) => {
+		const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+			throw new TypeError("fetch failed", { cause });
+		});
+		const { instance, seen } = watched(fetch);
+		await thrown(instance.set("open"));
+		expect(seen[0]?.errorCause).toBe(expected);
 		expect(JSON.stringify(seen)).not.toContain(TOKEN);
 	});
 
