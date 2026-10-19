@@ -4,13 +4,27 @@ name: Docs site
 # build it. Publishing to GitHub Pages is the Release workflow (ADR 0013). This
 # workflow can still publish by hand (workflow_dispatch) if a maintainer needs
 # to republish without cutting a version. App CI does not run for docs-only
-# changes; lint lives here instead.
+# changes; lint lives here instead. On a PR the build is skipped when the
+# `docs` inputs (.github/path-filters.yml) already passed, such as after a
+# push that only adds a CHANGELOG entry.
 
 on:
   pull_request:
+    # The `docs` list in .github/path-filters.yml, plus what every input hash
+    # covers (scripts/ci-inputs.test.ts keeps these in step).
     paths:
       - "docs/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "biome.json"
+      - ".gitignore"
+      - ".nvmrc"
+      - "justfile"
       - ".github/workflows/docs.yml"
+      - ".github/path-filters.yml"
+      - ".github/actions/**"
+      - "scripts/ci-inputs.sh"
   workflow_dispatch:
 
 # Least privilege: building only needs to read the repo. The deploy job asks for
@@ -27,8 +41,28 @@ concurrency:
 # moved or compromised tag can't change what runs here.
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      docs: ${{ steps.docs.outputs.passed != 'true' }}
+      docs-key: ${{ steps.docs.outputs.key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/ci-inputs
+        id: docs
+        with:
+          filter: docs
+
   build:
     name: Build the site
+    needs: changes
+    # A publish always builds.
+    if: github.event_name != 'pull_request' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -75,6 +109,10 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/.vitepress/dist
+
+      - uses: ./.github/actions/ci-passed
+        with:
+          key: ${{ needs.changes.outputs.docs-key }}
 
   deploy:
     name: Publish to GitHub Pages

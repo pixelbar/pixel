@@ -43,13 +43,19 @@ typecheck:
     pnpm exec tsc --noEmit
 
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
-# GitHub runs this only when a check-path matches (.github/path-filters.yml).
+# GitHub skips it when the `check` inputs already passed (.github/path-filters.yml).
 check: lint typecheck coverage
+
+# The files a CI job depends on (a list in .github/path-filters.yml), and the
+# hash CI uses to skip the job when they already passed: just ci-inputs check
+ci-inputs filter:
+    bash scripts/ci-inputs.sh --list {{filter}}
+    @echo "hash (CI also adds the workflow file): $(bash scripts/ci-inputs.sh {{filter}})"
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
 # CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.
 check-changelog *args:
-    pnpm exec tsx scripts/check-changelog.ts {{args}}
+    node scripts/check-changelog.ts {{args}}
 
 # Cut [Unreleased] into a dated version and bump package.json.
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.

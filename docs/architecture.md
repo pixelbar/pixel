@@ -481,34 +481,38 @@ There is **no database**. Access, schedules and (planned) account linking are fi
 - **Terraform layout:** `infra/bootstrap` (state storage, GitHub OIDC, applied) then `infra/modules/pixel`, `infra/envs/dev` (#9) and `infra/envs/prod` (#12). Secret values never go into Terraform state; apply can take them as ephemeral write-only inputs. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. See [ADR 0008](adr/0008-terraform-bootstrap.md), [ADR 0009](adr/0009-container-apps-dev.md) and [ADR 0012](adr/0012-prod-environment.md). CD does **not** apply Terraform. After first create, **dev** apply ignores the Pixel container image; `just deploy-dev` / `az` updates it. Prod apply sets `container_image`. Coding agents must not apply prod (`PIXEL_APPLY_PROD=1` required).
 - **Home Assistant from Azure:** Tailscale sidecar into the space network is the preferred path (`tailscale_enabled`); `HOME_ASSISTANT_URL` can still be a Nabu Casa URL. Both URL and token or neither. Sidecar is userspace (no TUN). LAN MagicDNS through it is remaining work for #43.
 - **Cost (rough):** always-on `dev` is about €40–55/month West Europe without Tailscale, plus about €15 with the sidecar. Not a quote.
-- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with allowlists in [`.github/path-filters.yml`](../.github/path-filters.yml) decides which expensive jobs run: **check** (`just check` + `just build`) when app/scripts/config/tooling paths change; **Docker smoke** when image inputs change (`src/` including tests, `content/`, Dockerfile, lockfile, …). Jobs always start so required GitHub checks stay green when that job is not needed. [`changelog.yml`](../.github/workflows/changelog.yml) still runs on every PR. [`docs.yml`](../.github/workflows/docs.yml) Biome-lints and builds the site when `docs/` changes. [`terraform.yml`](../.github/workflows/terraform.yml) runs `just tf-validate` only when `infra/`, that workflow, or the `justfile` change, then `terraform plan` on each env via GitHub Environment `dev` / `prod` OIDC **only if `infra/` Terraform files changed** (markdown does not). Missing `ARM_*` **fails closed**. No apply on merge. GitHub is not Key Vault Secrets User, so a secret refresh would 403 (ADR 0012). Actions are pinned to commit SHAs.
-- **CD:** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register dev` + Sentry release). Production slash commands: the Release's `register-prod` job (fallback `just register prod`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only, and only when an **image** path changed since the last green CD run (not just since the previous push): publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). CD runs queue and are never cancelled, so a quick docs-only merge cannot cut short the publish before it. **No Azure login and no `pixel-prod` update** on merge. [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`workflow_dispatch` on `main`) runs `just check` on the `main` commit being released (CI on `main` may have been cancelled or red), cuts the version only if that passes, publishes `:vX.Y.Z`, Environment `prod` approval rolls `pixel-prod` (`az`, min=max=1, no Terraform apply), a second approval runs `register-prod` (reads only `discord-token` from `pixel-prod-kv`), and publishes GitHub Pages. See [ADR 0010](adr/0010-ghcr-cd.md), [ADR 0012](adr/0012-prod-environment.md) and [ADR 0013](adr/0013-release-workflow.md).
+- **CI (built):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every PR and on pushes to `main`. Each expensive job depends on a list of files in [`.github/path-filters.yml`](../.github/path-filters.yml) (plus the workflow running it): **check** (`just check` + `just build`) on app/scripts/config/tooling files; **Docker smoke** on what the Dockerfile copies (`src/` without tests, `content/`, Dockerfile, lockfile, tsconfigs). A cheap first job hashes those files ([`scripts/ci-inputs.sh`](../scripts/ci-inputs.sh)) and looks the hash up in a tiny Actions cache marker ([`.github/actions/ci-inputs`](../.github/actions/ci-inputs/action.yml)); the job runs only if that exact set of files has not passed before, and saves the marker when it succeeds ([`ci-passed`](../.github/actions/ci-passed/action.yml)). So a push that only adds a CHANGELOG entry, a re-push of the same code, or a docs-only PR (main's markers are visible to PRs) skips them, and a cancelled or failed run saves nothing and runs again. Skipped jobs never start a runner; GitHub shows them as passed. [`changelog.yml`](../.github/workflows/changelog.yml) still runs on every PR, without a `pnpm install` (Node runs the gate's TypeScript itself). [`docs.yml`](../.github/workflows/docs.yml) Biome-lints and builds the site when its `docs` inputs change and have not passed. [`terraform.yml`](../.github/workflows/terraform.yml) starts only when `infra/`, that workflow, the `justfile` or the gate change, skips everything if its `terraform` inputs already passed, and runs `terraform plan` on each env via GitHub Environment `dev` / `prod` OIDC **only if `infra/` Terraform files changed** (markdown does not); plan jobs that aren't needed never start, so they never wait on an Environment. Missing `ARM_*` **fails closed**. No apply on merge. GitHub is not Key Vault Secrets User, so a secret refresh would 403 (ADR 0012). Actions are pinned to commit SHAs. `just ci-inputs <list>` shows what a list matches.
+- **CD:** `just deploy-dev` for Azure `dev` (local GHCR push + `az` + `just register dev` + Sentry release). Production slash commands: the Release's `register-prod` job (fallback `just register prod`). [`.github/workflows/cd.yml`](../.github/workflows/cd.yml) on `main` only, and only when the **image** inputs differ from the last run that published (so a revert publishes again, and a run cancelled by a newer merge leaves the newer one to publish): publish with `GITHUB_TOKEN` (`packages: write` on that job) and upload Sentry source maps (fails closed if org/token are missing). CD runs queue and are never cancelled, so a quick docs-only merge cannot cut short the publish before it. **No Azure login and no `pixel-prod` update** on merge. [`.github/workflows/release.yml`](../.github/workflows/release.yml) (`workflow_dispatch` on `main`) runs `just check` on the `main` commit being released (CI on `main` may have been cancelled or red), cuts the version only if that passes, publishes `:vX.Y.Z`, Environment `prod` approval rolls `pixel-prod` (`az`, min=max=1, no Terraform apply), a second approval runs `register-prod` (reads only `discord-token` from `pixel-prod-kv`), and publishes GitHub Pages. See [ADR 0010](adr/0010-ghcr-cd.md), [ADR 0012](adr/0012-prod-environment.md) and [ADR 0013](adr/0013-release-workflow.md).
 
 ### CI and CD pipelines
 
-How a change moves through GitHub. Operator steps: [`runbook.md`](runbook.md). Hosting picture: [`infra.md`](infra.md). Path allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml).
+How a change moves through GitHub. Operator steps: [`runbook.md`](runbook.md). Hosting picture: [`infra.md`](infra.md). Job inputs: [`.github/path-filters.yml`](../.github/path-filters.yml).
 
 Pull request:
 
 ```mermaid
 flowchart TD
-  pr[Pull request]
-  pr --> clog[Changelog gate always]
-  pr --> docs{"docs/ changed?"}
-  docs -->|yes| site[Biome + docs site build]
-  docs -->|no| nosite[Docs site off]
+  pr[Pull request push]
+  pr --> clog[Changelog gate always, no install]
+  pr --> docs{"docs inputs in this push?"}
+  docs -->|yes| docsp{"docs inputs already passed?"}
+  docsp -->|no| site[Biome + docs site build]
+  docsp -->|yes| nosite[Skip site build]
+  docs -->|no| nodocs[Docs workflow off]
   pr --> tf{"infra/, justfile or terraform.yml?"}
-  tf -->|yes| tfval[just tf-validate]
+  tf -->|yes| tfp{"terraform inputs already passed?"}
+  tfp -->|no| tfval[just tf-validate]
   tfval --> tffiles{"infra Terraform files?"}
   tffiles -->|yes| azplan[Azure plan via Environment OIDC]
-  tffiles -->|no| noaz[Skip Azure plan]
+  tffiles -->|no| noaz[Plan jobs never start]
+  tfp -->|yes| notfrun[Skip validate and plans]
   tf -->|no| notf[Terraform workflow off]
-  pr --> checkp{"check path?"}
-  checkp -->|yes| check["just check + just build"]
-  checkp -->|no| nocheck[Skip just check]
-  pr --> imagep{"image path?"}
-  imagep -->|yes| docker[Docker image smoke]
-  imagep -->|no| nodocker[Skip Docker]
+  pr --> checkp{"check inputs already passed?"}
+  checkp -->|no| check["just check + just build"]
+  checkp -->|yes| nocheck[Skip just check]
+  pr --> imagep{"image inputs already passed?"}
+  imagep -->|no| docker[Docker image smoke]
+  imagep -->|yes| nodocker[Skip Docker]
 ```
 
 Merge to `main`:
@@ -516,12 +520,13 @@ Merge to `main`:
 ```mermaid
 flowchart TD
   main[Push to main]
-  main --> ci[Same CI path filter as PRs]
+  main --> ci["Same CI gates as PRs; what passes here PRs reuse"]
   main --> queue[CD runs queue, never cancel]
-  queue --> imagep{"image path since last green CD run?"}
-  imagep -->|yes| pub["CD: GHCR SHA and :main"]
+  queue --> imagep{"image inputs same as last publish?"}
+  imagep -->|no| pub["CD: GHCR SHA and :main"]
   pub --> maps[Sentry source maps]
-  imagep -->|no| nocd[Skip GHCR and Sentry]
+  maps --> mark[Remember these inputs as published]
+  imagep -->|yes| nocd[Skip GHCR and Sentry]
   main --> note[Does not roll pixel-prod]
 ```
 

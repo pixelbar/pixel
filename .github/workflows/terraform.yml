@@ -1,19 +1,31 @@
 name: Terraform
 
 # Only when the stack, this workflow, or the just recipe could change the result.
-# A feature PR that never touches those should not download Terraform.
+# A feature PR that never touches those should not download Terraform. Inside
+# a run, everything is skipped when the `terraform` inputs
+# (.github/path-filters.yml) already passed, and the Azure plans run only when
+# Terraform files under infra/ changed (markdown does not count). Skipped plan
+# jobs never start, so they never wait on an Environment.
 on:
   pull_request:
+    # The `terraform` list in .github/path-filters.yml, plus what every input
+    # hash covers (scripts/ci-inputs.test.ts keeps these in step).
     paths:
       - "infra/**"
       - "justfile"
       - ".github/workflows/terraform.yml"
+      - ".github/path-filters.yml"
+      - ".github/actions/**"
+      - "scripts/ci-inputs.sh"
   push:
     branches: [main]
     paths:
       - "infra/**"
       - "justfile"
       - ".github/workflows/terraform.yml"
+      - ".github/path-filters.yml"
+      - ".github/actions/**"
+      - "scripts/ci-inputs.sh"
 
 permissions:
   contents: read
@@ -23,8 +35,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      terraform: ${{ steps.terraform.outputs.passed != 'true' }}
+      terraform-key: ${{ steps.terraform.outputs.key }}
+      stack: ${{ steps.stack.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: ./.github/actions/ci-inputs
+        id: terraform
+        with:
+          filter: terraform
+
+      - name: Did Terraform files change?
+        id: stack
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # Markdown under infra/ does not change the stack. After prod apply,
+          # GitHub is not Key Vault Secrets User (ADR 0012); a secret refresh 403s.
+          if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo "No Terraform files in infra/. Skipping the Azure plans (they never apply)."
+          fi
+
   validate:
     name: Validate Terraform
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,7 +96,8 @@ jobs:
 
   plan-dev:
     name: Plan envs/dev
-    needs: validate
+    needs: [changes, validate]
+    if: needs.changes.outputs.stack == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: dev
@@ -55,35 +108,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-
-      - name: Skip Azure plan unless Terraform files changed
-        id: stack
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          # Markdown under infra/ does not change the stack. After prod apply,
-          # GitHub is not Key Vault Secrets User (ADR 0012); a secret refresh 403s.
-          if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
-            echo "No Terraform files in infra/. Skipping Azure plan (does not apply)."
-          fi
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        if: steps.stack.outputs.changed == 'true'
         with:
           terraform_version: 1.16.5
           terraform_wrapper: false
 
       - name: Require ARM_* on GitHub Environment dev
-        if: steps.stack.outputs.changed == 'true'
         env:
           ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
           ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
@@ -108,14 +139,12 @@ jobs:
           fi
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: steps.stack.outputs.changed == 'true'
         with:
           client-id: ${{ vars.ARM_CLIENT_ID }}
           tenant-id: ${{ vars.ARM_TENANT_ID }}
           subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
 
       - name: Plan infra/envs/dev
-        if: steps.stack.outputs.changed == 'true'
         working-directory: infra/envs/dev
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
@@ -126,7 +155,8 @@ jobs:
   # Missing ARM_* fails closed before azure/login. This job does not apply.
   plan-prod:
     name: Plan envs/prod
-    needs: validate
+    needs: [changes, validate]
+    if: needs.changes.outputs.stack == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: prod
@@ -137,35 +167,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-
-      - name: Skip Azure plan unless Terraform files changed
-        id: stack
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          set -euo pipefail
-          if [ -z "${BASE_SHA}" ] || [ "${BASE_SHA}" = "0000000000000000000000000000000000000000" ]; then
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          # Markdown under infra/ does not change the stack. The plan below skips
-          # refreshing (GitHub can't read prod's Key Vault secrets, ADR 0012).
-          if git diff --name-only "${BASE_SHA}" HEAD | grep -E '^infra/' | grep -vE '\.md$' | grep -q .; then
-            echo "changed=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "changed=false" >> "${GITHUB_OUTPUT}"
-            echo "No Terraform files in infra/. Skipping Azure plan (does not apply)."
-          fi
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        if: steps.stack.outputs.changed == 'true'
         with:
           terraform_version: 1.16.5
           terraform_wrapper: false
 
       - name: Require ARM_* on GitHub Environment prod
-        if: steps.stack.outputs.changed == 'true'
         env:
           ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
           ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
@@ -190,7 +198,6 @@ jobs:
           fi
 
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
-        if: steps.stack.outputs.changed == 'true'
         with:
           client-id: ${{ vars.ARM_CLIENT_ID }}
           tenant-id: ${{ vars.ARM_TENANT_ID }}
@@ -202,8 +209,27 @@ jobs:
       # shows those secrets being removed; it never applies. For the real picture, a
       # maintainer runs `just tf-plan prod`.
       - name: Plan infra/envs/prod
-        if: steps.stack.outputs.changed == 'true'
         working-directory: infra/envs/prod
         run: |
           terraform init -backend-config=backend.azurerm.example.hcl -input=false
           terraform plan -input=false -refresh=false -var-file=terraform.example.tfvars
+
+  # Remembers these inputs only when validate and every plan that had to run
+  # passed. A skipped plan (no Terraform change) is fine.
+  passed:
+    name: Remember Terraform passed
+    needs: [changes, validate, plan-dev, plan-prod]
+    if: >-
+      ${{ !cancelled() && needs.validate.result == 'success' &&
+      contains(fromJSON('["success","skipped"]'), needs.plan-dev.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.plan-prod.result) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/ci-passed
+        with:
+          key: ${{ needs.changes.outputs.terraform-key }}
