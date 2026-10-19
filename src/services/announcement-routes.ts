@@ -9,8 +9,7 @@ import type { Logger } from "../core/logger.ts";
  * Where the open/closed announcements go, as admins set it with `/admin
  * announcements`: a list of (style, channel) pairings, kept in a small file
  * (`data/announcement-routes.yaml`) so it survives a restart and a deploy. A channel
- * has at most one style. Channels from the environment (`DISCORD_ANNOUNCE_*`) are
- * not stored here: they are configuration, and this list adds to them.
+ * has at most one style.
  *
  * It only says what to post where; who may change it is decided by the dispatcher
  * (admins). If the file can't be read, announcements through it are simply off
