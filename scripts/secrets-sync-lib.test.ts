@@ -332,10 +332,12 @@ variable "discord_token" {
 		expect([...variables.sensitive]).toEqual(["discord_token"]);
 	});
 
-	it("reads the real stacks' variables, with the Discord token as a secret", () => {
+	it("reads the real stacks' variables, with the Tailscale key as a secret", () => {
 		for (const env of ["dev", "prod"] as const) {
 			const real = stackVariables(readFileSync(`infra/envs/${env}/variables.tf`, "utf8"));
-			expect(real.sensitive.has("discord_token")).toBe(true);
+			expect(real.sensitive.has("tailscale_auth_key")).toBe(true);
+			// App secrets are no longer Terraform inputs at all (ADR 0017).
+			expect(real.all.has("discord_token")).toBe(false);
 			expect(real.sensitive.has("discord_app_id")).toBe(false);
 			expect(real.all.has("discord_app_id")).toBe(true);
 		}
