@@ -1,10 +1,12 @@
 name: CD
 
-# Merges to `main` publish GHCR and upload Sentry maps when an image path
-# changed (dorny/paths-filter + .github/path-filters.yml). They do **not**
-# roll pixel-prod (ADR 0013): that is the Release workflow. Docs / changelog /
-# infra-only merges skip this pipeline. Azure `dev` stays a local build
-# (`just deploy-dev`). Never copy pixel-dev / Mini Discord tokens into prod.
+# Merges to `main` publish GHCR and upload Sentry maps when the image inputs
+# (the `image` list in .github/path-filters.yml plus this file) differ from
+# the last run that published. They do **not** roll pixel-prod (ADR 0013):
+# that is the Release workflow. Docs / changelog / test / infra-only merges
+# skip this pipeline. A run that didn't finish saves nothing, so the next one
+# publishes. Azure `dev` stays a local build (`just deploy-dev`).
+# Never copy pixel-dev / Mini Discord tokens into prod.
 # This workflow does not apply Terraform.
 
 on:
@@ -17,11 +19,10 @@ on:
 permissions:
   contents: read
 
-# Queue, never cancel: cancelling a run mid-publish (say, for a docs-only
-# merge right after it) left that commit with no GHCR image and no Sentry
-# release. GitHub still keeps only one pending run and replaces it with a
-# newer push, so the path filter below compares against the last green run,
-# not just the previous push, and a replaced run's changes are not lost.
+# Queue, never cancel, so a publish is never cut short halfway. GitHub still
+# keeps only one pending run and replaces it with a newer push; that is safe
+# because the `latest` lookup below compares against the last run that
+# published, not the previous push, so a replaced run's changes are not lost.
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
@@ -34,46 +35,24 @@ env:
 
 jobs:
   changes:
-    name: Path filter
+    name: What changed
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # actions: read lists earlier CD runs to find the last green one.
-    permissions:
-      contents: read
-      actions: read
     outputs:
-      image: ${{ steps.filter.outputs.image }}
+      image: ${{ steps.image.outputs.passed != 'true' }}
+      image-key: ${{ steps.image.outputs.key }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
 
-      # A run is green only if it published whatever needed publishing, so
-      # everything after its commit is still unpublished. Falls back to the
-      # previous push when there is no green run, or it is not in main's history.
-      - name: Last green CD commit
-        id: base
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          BEFORE: ${{ github.event.before }}
-        run: |
-          set -euo pipefail
-          last="$(gh api "repos/${REPO}/actions/workflows/cd.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].head_sha // empty' || true)"
-          if [ -n "${last}" ] && [ "${last}" != "${GITHUB_SHA}" ] && git merge-base --is-ancestor "${last}" HEAD; then
-            base="${last}"
-          else
-            base="${BEFORE}"
-          fi
-          echo "sha=${base}" >> "${GITHUB_OUTPUT}"
-          echo "Image paths are compared against ${base}."
-
-      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        id: filter
+      # latest, not exact: after a revert the older code must publish again,
+      # because `:main` has moved on since it was last published.
+      - uses: ./.github/actions/ci-inputs
+        id: image
         with:
-          base: ${{ steps.base.outputs.sha }}
-          filters: .github/path-filters.yml
+          filter: image
+          match: latest
 
   publish:
     name: Publish GHCR
@@ -161,7 +140,7 @@ jobs:
 
   sentry-release:
     name: Sentry release (source maps)
-    needs: publish
+    needs: [changes, publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -222,3 +201,8 @@ jobs:
           set_commits: auto
           ignore_missing: true
           disable_telemetry: true
+
+      # Last, so a run counts as published only with its image and its maps.
+      - uses: ./.github/actions/ci-passed
+        with:
+          key: ${{ needs.changes.outputs.image-key }}

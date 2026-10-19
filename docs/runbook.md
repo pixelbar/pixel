@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR when an image path changed. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR when the image inputs differ from the last publish. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
@@ -50,7 +50,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
 | **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
-| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when those jobs' path allowlists match. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when an image path changed. |
+| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when the files those jobs depend on have not already passed. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when the image inputs differ from the last publish. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
@@ -434,7 +434,7 @@ All of them are gitignored. The share files are **read-only mirrors**: edit the 
 **Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
 
 - **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register dev` against the Pixel Dev guild from `.env.dev` (or `.env`), then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
-- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That runs `just check` on the `main` commit (if it fails, nothing is tagged, published or deployed), cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when an image path changed since the last green CD run; they do not log in to Azure. CD runs queue rather than cancel each other, so a merge that failed or was skipped is picked up by the next one: if a SHA is missing from GHCR, fix the cause and re-run or merge again.
+- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That runs `just check` on the `main` commit (if it fails, nothing is tagged, published or deployed), cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when the image inputs differ from the last publish; they do not log in to Azure. CD runs queue rather than cancel each other, and a merge that failed or was skipped is picked up by the next one: if a SHA is missing from GHCR, fix the cause and re-run or merge again.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
 - Prod Azure login is GitHub Environment OIDC (`ARM_*` variables on Environment `prod`). `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and fails closed if they are missing.
 - Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply sets `container_image`; a later Release roll moves it again. Dev rollback is `az`, not a tfvars bump.
@@ -444,37 +444,45 @@ All of them are gitignored. The share files are **read-only mirrors**: edit the 
 
 ## CI and CD
 
-What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml) ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)).
+What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Job inputs: [`.github/path-filters.yml`](../.github/path-filters.yml).
 
-**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`, `.github/path-filters.yml`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`.
+Each expensive job runs only when the files it depends on are not a set that already passed. A first "What changed" job hashes them ([`scripts/ci-inputs.sh`](../scripts/ci-inputs.sh)) and looks for a marker in the Actions cache; the job saves one when it succeeds. So pushing only a CHANGELOG entry, re-pushing the same code, or a docs-only PR (PRs can see `main`'s markers) skips them. A skipped job never starts and GitHub shows it as passed. Every hash also covers the workflow running the job, `.github/path-filters.yml`, `scripts/ci-inputs.sh` and `.github/actions/`. To see what a list matches: `just ci-inputs check`.
 
-**Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`, `.github/path-filters.yml`.
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, root `*.ts` and `*.json` (`package.json`, tsconfigs, `biome.json`, `vitest.config.ts`), lockfile, `.nvmrc`, `.gitignore`, `justfile`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`, and the files `scripts/ci-inputs.test.ts` checks the lists against: `Dockerfile`, `cd.yml`, `docs.yml`, `terraform.yml`.
 
-**Docs** (`docs/`): Biome lint + VitePress build. Not app CI.
+**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without tests (`*.test.ts`, `src/testing/`), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`. CD publishes when these (and `cd.yml`) differ from the last run that published, so a revert publishes again. If a CD run was cancelled or failed, the next merge publishes.
 
-**Always on PRs:** the changelog gate. **Terraform:** workflow when `infra/`, that workflow, or the `justfile` change; Azure plan only when Terraform files under `infra/` changed (markdown does not).
+**Docs** (`docs/`, root `package.json` / lockfile, `biome.json`, `.gitignore`, `.nvmrc`, `justfile`): Biome lint + VitePress build. Not app CI.
+
+**Always on PRs:** the changelog gate (no `pnpm install`). **Terraform:** the workflow starts when `infra/`, that workflow, the `justfile` or the gate change; it skips if its inputs (`infra/` without markdown, `justfile`) already passed; Azure plans run only when Terraform files under `infra/` changed, and otherwise never start (so never wait on an Environment).
+
+**Forcing a rerun:** re-run the workflow after deleting the `ci-passed-…` cache under Actions → Caches, or change a file in the list. Markers are evicted after 7 days unused; then the job just runs again.
 
 Pull request:
 
 ```mermaid
 flowchart TD
-  pr[Pull request]
-  pr --> clog[Changelog gate always]
-  pr --> docs{"docs/ changed?"}
-  docs -->|yes| site[Biome + docs site build]
-  docs -->|no| nosite[Docs site off]
+  pr[Pull request push]
+  pr --> clog[Changelog gate always, no install]
+  pr --> docs{"docs inputs in this push?"}
+  docs -->|yes| docsp{"docs inputs already passed?"}
+  docsp -->|no| site[Biome + docs site build]
+  docsp -->|yes| nosite[Skip site build]
+  docs -->|no| nodocs[Docs workflow off]
   pr --> tf{"infra/, justfile or terraform.yml?"}
-  tf -->|yes| tfval[just tf-validate]
+  tf -->|yes| tfp{"terraform inputs already passed?"}
+  tfp -->|no| tfval[just tf-validate]
   tfval --> tffiles{"infra Terraform files?"}
   tffiles -->|yes| azplan[Azure plan via Environment OIDC]
-  tffiles -->|no| noaz[Skip Azure plan]
+  tffiles -->|no| noaz[Plan jobs never start]
+  tfp -->|yes| notfrun[Skip validate and plans]
   tf -->|no| notf[Terraform workflow off]
-  pr --> checkp{"check path?"}
-  checkp -->|yes| check["just check + just build"]
-  checkp -->|no| nocheck[Skip just check]
-  pr --> imagep{"image path?"}
-  imagep -->|yes| docker[Docker image smoke]
-  imagep -->|no| nodocker[Skip Docker]
+  pr --> checkp{"check inputs already passed?"}
+  checkp -->|no| check["just check + just build"]
+  checkp -->|yes| nocheck[Skip just check]
+  pr --> imagep{"image inputs already passed?"}
+  imagep -->|no| docker[Docker image smoke]
+  imagep -->|yes| nodocker[Skip Docker]
 ```
 
 Merge to `main`:
@@ -482,12 +490,13 @@ Merge to `main`:
 ```mermaid
 flowchart TD
   main[Push to main]
-  main --> ci[Same CI path filter as PRs]
+  main --> ci["Same CI gates as PRs; what passes here PRs reuse"]
   main --> queue[CD runs queue, never cancel]
-  queue --> imagep{"image path since last green CD run?"}
-  imagep -->|yes| pub["CD: GHCR SHA and :main"]
+  queue --> imagep{"image inputs same as last publish?"}
+  imagep -->|no| pub["CD: GHCR SHA and :main"]
   pub --> maps[Sentry source maps]
-  imagep -->|no| nocd[Skip GHCR and Sentry]
+  maps --> mark[Remember these inputs as published]
+  imagep -->|yes| nocd[Skip GHCR and Sentry]
   main --> note[Does not roll pixel-prod]
 ```
 
