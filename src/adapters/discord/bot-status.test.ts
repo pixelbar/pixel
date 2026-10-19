@@ -174,12 +174,25 @@ describe("the bot status publisher", () => {
 	});
 
 	it("edits that message when Pixel goes offline, and forgets it", async () => {
-		const { channel, sent, edits } = fakeChannel([onlineOwn("100")]);
-		const store = memoryStore("100");
-		await createBotStatusPublisher(channel, silentLogger, store).publish(down);
+		const { channel, sent, edits } = fakeChannel();
+		const store = memoryStore();
+		const publisher = createBotStatusPublisher(channel, silentLogger, store);
+		await publisher.publish(up);
+		sent.length = 0;
+		await publisher.publish(down);
 		expect(edits.map((e) => [e.id, embed(e.post)?.title])).toEqual([["100", BOT_OFFLINE_TITLE]]);
 		expect(sent).toEqual([]);
 		expect(store.get()).toBeUndefined();
+	});
+
+	it("leaves the remembered post alone when it's another run's", async () => {
+		const { channel } = fakeChannel();
+		const store = memoryStore();
+		const publisher = createBotStatusPublisher(channel, silentLogger, store);
+		await publisher.publish(up);
+		store.save("999"); // a newer run sharing the state file
+		await publisher.publish(down);
+		expect(store.get()).toBe("999");
 	});
 
 	it("corrects a post left saying online by a run that crashed, before posting the new one", async () => {
@@ -192,14 +205,30 @@ describe("the bot status publisher", () => {
 		expect(sent.map((s) => embed(s.post)?.title)).toEqual([BOT_ONLINE_TITLE]);
 	});
 
-	it("updates the newest online post when going offline, and corrects older ones", async () => {
+	it("never edits another run's post when this run has none of its own to update", async () => {
+		// This run never said online (it was stopped first, or its online post failed), and the
+		// deploy replacing it is already online with a newer post.
 		const older = new Date("2026-10-06T10:00:00Z");
-		const { channel, edits } = fakeChannel([onlineOwn("80", older), onlineOwn("90", started)]);
-		await createBotStatusPublisher(channel, silentLogger).publish(down);
-		expect(edits.map((e) => [e.id, embed(e.post)?.title])).toEqual([
-			["90", BOT_OFFLINE_TITLE],
-			["80", BOT_CRASHED_TITLE],
+		const { channel, sent, edits } = fakeChannel([
+			onlineOwn("80", older),
+			onlineOwn("90", new Date(started.getTime() + 60_000)),
 		]);
+		const store = memoryStore("90");
+		await createBotStatusPublisher(channel, silentLogger, store).publish(down);
+		expect(edits).toEqual([]);
+		expect(sent.map((s) => embed(s.post)?.title)).toEqual([BOT_OFFLINE_TITLE]);
+		expect(store.get()).toBe("90");
+	});
+
+	it("never edits another run's post when its own online post failed", async () => {
+		const { channel, sent, edits } = fakeChannel();
+		const publisher = createBotStatusPublisher(channel, silentLogger);
+		vi.mocked(channel.send).mockRejectedValueOnce(new Error("missing access"));
+		await expect(publisher.publish(up)).rejects.toThrow("missing access");
+		vi.mocked(channel.recentOwnPosts).mockResolvedValue([onlineOwn("999")]);
+		await publisher.publish(down);
+		expect(edits).toEqual([]);
+		expect(sent.map((s) => embed(s.post)?.title)).toEqual([BOT_OFFLINE_TITLE]);
 	});
 
 	it("going offline edits only its own post, even when a newer run is already online", async () => {
@@ -225,9 +254,14 @@ describe("the bot status publisher", () => {
 	});
 
 	it("posts the offline message on its own when the edit fails", async () => {
-		const { channel, sent } = fakeChannel([onlineOwn("100")]);
+		const { channel, sent, edits } = fakeChannel();
+		const publisher = createBotStatusPublisher(channel, silentLogger);
+		await publisher.publish(up);
+		sent.length = 0;
 		vi.mocked(channel.edit).mockRejectedValueOnce(new Error("deleted"));
-		await createBotStatusPublisher(channel, silentLogger).publish(down);
+		await publisher.publish(down);
+		expect(vi.mocked(channel.edit).mock.calls.map(([id]) => id)).toEqual(["100"]);
+		expect(edits).toEqual([]);
 		expect(sent.map((s) => embed(s.post)?.title)).toEqual([BOT_OFFLINE_TITLE]);
 	});
 
