@@ -5,7 +5,8 @@ coverage
 .env.dev
 .env.prod
 .env.*
-config/*.yaml
+config
+**/*.tmp
 data
 .git
 .claude

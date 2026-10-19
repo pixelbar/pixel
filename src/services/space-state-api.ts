@@ -48,7 +48,10 @@ export type SpaceStateOutcome =
 export type SpaceStateExchange = {
 	request: {
 		method: "POST";
-		/** The address with `user` and `token` shown as `[redacted]`. */
+		/**
+		 * The address without its query. The query is left out whole rather than redacted:
+		 * Sentry's own scrubbing replaces a URL that has `token=` in it with `[Filtered]`.
+		 */
 		url: string;
 		state: SettableSpaceState;
 	};
@@ -65,6 +68,12 @@ export type SpaceStateExchange = {
 	outcome: SpaceStateOutcome;
 	/** The error's name (never its message, which can carry the URL) when `outcome` is `network-error`. */
 	errorName?: string;
+	/**
+	 * Why the network failed, when the underlying error says: a code such as `ENOTFOUND`,
+	 * `ECONNREFUSED` or `UND_ERR_CONNECT_TIMEOUT`, or `UNEXPECTED_REDIRECT` when the API
+	 * answered with a redirect (refused, because the token is in the URL). Never a message.
+	 */
+	errorCause?: string;
 	durationMs: number;
 };
 
@@ -126,12 +135,12 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 		const startedAt = performance.now();
 		const request: SpaceStateExchange["request"] = {
 			method: "POST",
-			url: `${url.origin}${url.pathname}?user=[redacted]&token=[redacted]&state=${state}`,
+			url: `${url.origin}${url.pathname}`,
 			state,
 		};
 		const done = (
 			outcome: SpaceStateOutcome,
-			extra: Pick<SpaceStateExchange, "response" | "errorName"> = {},
+			extra: Pick<SpaceStateExchange, "response" | "errorName" | "errorCause"> = {},
 		) => this.#report({ request, outcome, ...extra, durationMs: performance.now() - startedAt });
 
 		let response: Response;
@@ -146,7 +155,11 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 		} catch (error) {
 			// No `cause`: a network error can carry the URL, and the URL holds the token.
 			const reason = error instanceof Error ? error.name : "unknown error";
-			done("network-error", { errorName: reason });
+			const errorCause = networkCause(error);
+			done("network-error", {
+				errorName: reason,
+				...(errorCause === undefined ? {} : { errorCause }),
+			});
 			throw new SpaceStateApiError(`Space state API request failed (${reason})`);
 		}
 
@@ -201,6 +214,19 @@ export class HttpSpaceStateApi implements SpaceStateApi {
 			// Watching the call must never change how it ends.
 		}
 	}
+}
+
+/**
+ * Why a failed `fetch` failed, as a fixed code that can't carry the URL: the cause's
+ * `code` when it has one, or `UNEXPECTED_REDIRECT` for the refused redirect. Anything else
+ * is left out, because a message can hold the address.
+ */
+function networkCause(error: unknown): string | undefined {
+	const cause = error instanceof Error ? error.cause : undefined;
+	if (!(cause instanceof Error)) return undefined;
+	if (cause.message === "unexpected redirect") return "UNEXPECTED_REDIRECT";
+	const code = (cause as { code?: unknown }).code;
+	return typeof code === "string" && /^[A-Z][A-Z0-9_]{2,40}$/.test(code) ? code : undefined;
 }
 
 /** The body as shown to operators: no control characters, cut to `OBSERVED_BODY_CHARS`. */
