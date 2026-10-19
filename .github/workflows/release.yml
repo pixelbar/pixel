@@ -2,8 +2,9 @@ name: Release
 
 # A maintainer cuts a production release from main (Actions → Release → Run
 # workflow). This workflow: cuts CHANGELOG [Unreleased] and bumps package.json
-# (Added → minor; Fixed/Changed → patch; never major before 1.0), tags vX.Y.Z,
-# opens a GitHub Release, publishes GHCR from that commit, uploads Sentry maps,
+# (Added → minor; Fixed/Changed → patch; never major before 1.0) once
+# `just check` passes on main, tags vX.Y.Z, opens a GitHub Release,
+# publishes GHCR from that commit, uploads Sentry maps,
 # publishes the VitePress docs site, then rolls pixel-prod after GitHub
 # Environment `prod` approval (ADR 0013) and registers prod slash commands
 # (ADR 0014). Merges to main do not roll prod.
@@ -27,8 +28,39 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
+  # CI on main may have been cancelled or red, so test the commit being
+  # released before anything is tagged. The bump commit on top of it only
+  # changes CHANGELOG.md and the package.json version (CI never runs on it).
+  check:
+    name: Lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck, test with coverage thresholds
+        run: just check
+
   bump:
     name: Version bump
+    needs: check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

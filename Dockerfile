@@ -35,4 +35,7 @@ COPY content ./content
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
 EXPOSE 8080
-CMD ["node", "--enable-source-maps", "--import", "./dist/instrument.js", "dist/index.js"]
+# No --enable-source-maps: Node would rewrite stack frames to src/*.ts (not in the
+# image) before Sentry sees them, so the maps uploaded for /app/dist would never
+# match. Sentry applies those maps; the logs show dist/*.js frames.
+CMD ["node", "--import", "./dist/instrument.js", "dist/index.js"]
