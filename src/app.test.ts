@@ -461,7 +461,7 @@ describe("buildCore", () => {
 					"spacestate_api",
 					expect.objectContaining({
 						request: expect.objectContaining({
-							url: "https://space.example/state?user=[redacted]&token=[redacted]&state=open",
+							url: "https://space.example/state",
 						}),
 						response: expect.objectContaining({ status: 200, body: "SUCCESS" }),
 						outcome: "success",
