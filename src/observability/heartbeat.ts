@@ -69,3 +69,24 @@ export function sentryCheckIn(monitorSlug: string, intervalMinutes: number): Che
 
 /** The monitor's name in Sentry, one per environment, so dev doesn't page about prod or the other way round. */
 export const monitorSlug = (env: string): string => `pixel-${env}`;
+
+/** The monitor the heartbeat checks in to, or why it doesn't run. */
+export type HeartbeatPlan =
+	| { monitorSlug: string; intervalMinutes: number }
+	| { off: "no-sentry" | "disabled" | "local" };
+
+/**
+ * Whether to run the heartbeat. Only a deployed environment gets one: laptops running
+ * `just dev` with a DSN would all share one `pixel-local` monitor, and every time someone
+ * stopped theirs the monitor would open an issue.
+ */
+export function planHeartbeat(config: {
+	env: string;
+	sentryDsn: string | undefined;
+	heartbeatMinutes: number;
+}): HeartbeatPlan {
+	if (!config.sentryDsn) return { off: "no-sentry" };
+	if (config.heartbeatMinutes <= 0) return { off: "disabled" };
+	if (config.env === "local") return { off: "local" };
+	return { monitorSlug: monitorSlug(config.env), intervalMinutes: config.heartbeatMinutes };
+}

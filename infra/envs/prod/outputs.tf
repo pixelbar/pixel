@@ -12,7 +12,7 @@ output "key_vault_name" {
 
 output "key_vault_secret_names" {
   value       = module.pixel.key_vault_secret_names
-  description = "Secrets the Container App reads. write_secrets writes them from ephemeral inputs; otherwise create each name before the app can start."
+  description = "Secrets the Container App reads. Push the app ones with just secrets-push; write_secrets writes only tailscale-auth-key and ghcr-pull-token. Each must exist before the app can start."
 }
 
 output "data_storage_account_name" {

@@ -2,7 +2,7 @@
 
 How the hosted pieces fit together (diagrams): [`docs/infra.md`](../docs/infra.md).
 
-Terraform for Pixel on Azure. There is **no database**. Secret *values* never go in state. They may be passed as ephemeral write-only apply inputs (`write_secrets`) or set with `az` / the portal.
+Terraform for Pixel on Azure. There is **no database**. Secret *values* never go in state. App secrets are written only by `just secrets-push` ([ADR 0017](../docs/adr/0017-one-writer-for-app-secrets.md)); the infra ones (`tailscale-auth-key`, `ghcr-pull-token`) may be passed as ephemeral write-only apply inputs (`write_secrets`) or set with `az`.
 
 | Path | What | Issue |
 | --- | --- | --- |

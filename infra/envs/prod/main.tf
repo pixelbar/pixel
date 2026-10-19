@@ -19,22 +19,13 @@ module "pixel" {
   home_assistant_url                    = var.home_assistant_url
   mastodon_instance                     = var.mastodon_instance
   spacestate_api_url                    = var.spacestate_api_url
+  spacestate_additional_headers_enabled = var.spacestate_additional_headers_enabled
   sentry_enabled                        = var.sentry_enabled
   tailscale_enabled                     = var.tailscale_enabled
   tailscale_image                       = var.tailscale_image
   purge_protection_enabled              = true
   write_secrets                         = var.write_secrets
   secrets_version                       = var.secrets_version
-  discord_token                         = var.discord_token
-  admins_yaml                           = var.admins_yaml
-  admins_yaml_file                      = var.admins_yaml_file
-  home_assistant_token                  = var.home_assistant_token
-  mastodon_access_token                 = var.mastodon_access_token
-  spacestate_user                       = var.spacestate_user
-  spacestate_token                      = var.spacestate_token
-  spacestate_additional_headers         = var.spacestate_additional_headers
-  spacestate_additional_headers_enabled = var.spacestate_additional_headers_enabled
-  sentry_dsn                            = var.sentry_dsn
   tailscale_auth_key                    = var.tailscale_auth_key
   github_register_principal_id          = var.github_register_principal_id
 }

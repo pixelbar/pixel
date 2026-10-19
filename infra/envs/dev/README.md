@@ -49,7 +49,7 @@ just tf-plan dev
 just tf-apply dev
 ```
 
-The Container App references Key Vault secrets by URI. Values are either **ephemeral apply inputs** (`write_secrets = true`, not stored in state) or set later with `az` / the portal. `terraform.example.tfvars` leaves `write_secrets` off so CI plan cannot clobber a real vault.
+The Container App references Key Vault secrets by URI. App secret values come from `just secrets-push dev` only ([ADR 0017](../../../docs/adr/0017-one-writer-for-app-secrets.md)); the Tailscale key and registry token are **ephemeral apply inputs** (`write_secrets = true`, not stored in state) or set with `az`. `terraform.example.tfvars` leaves `write_secrets` off so CI plan cannot clobber a real vault.
 
 `container_image` is the **first-create** pin for this **dev** stack only. After that, Terraform ignores the Pixel container image so a later apply cannot roll `just deploy dev` backward (#73). Change the running image with `just deploy dev` or `az containerapp update`, not a tfvars bump. Do not apply Terraform from CD to "fix" that drift. Prod (#12) apply will set `container_image` (no ignore on that resource).
 
@@ -57,31 +57,28 @@ Do not run Pixel locally against the same Discord token while this app is up.
 
 ## Secrets (Key Vault)
 
-**App secrets:** `just secrets-push dev` sets them in Key Vault directly. **For a write-only apply:** gitignored `secrets.auto.tfvars` (or `TF_VAR_discord_token`), never the shared `terraform.tfvars`. Values are write-only and are not stored in Terraform state.
+**App secrets** (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `sentry-dsn`): `just secrets-push dev` is their only writer ([ADR 0017](../../../docs/adr/0017-one-writer-for-app-secrets.md)). Terraform has no inputs for them. Push them **before** the apply that turns their feature on; the apply only references them.
+
+**Infra secrets** (`tailscale-auth-key`, `ghcr-pull-token`): Terraform writes them when `write_secrets = true`, from gitignored `secrets.auto.tfvars` (or `TF_VAR_*`), never the shared `terraform.tfvars`. Values are write-only and are not stored in Terraform state.
 
 ```hcl
-write_secrets    = true
-secrets_version  = 1
-discord_token    = "..."
-admins_yaml_file = "../../../config/admins.yaml"
+write_secrets               = true
+secrets_version             = 1
+tailscale_auth_key          = "..."   # when tailscale_enabled
+container_registry_password = "..."   # when container_registry_server is set
 ```
 
-Bump `secrets_version` to rotate. HA / Sentry / Tailscale use `home_assistant_token`, `sentry_dsn`, and `tailscale_auth_key` the same way when those features are on.
-
-**Without `write_secrets`:** create the names yourself, then apply again:
+Bump `secrets_version` to rotate them. **Without `write_secrets`:** set them yourself:
 
 ```sh
 vault=$(terraform -chdir=infra/envs/dev output -raw key_vault_name)
-
-az keyvault secret set --vault-name "$vault" --name discord-token --file -   # paste token, Ctrl-D
-az keyvault secret set --vault-name "$vault" --name admins-yaml --file config/admins.yaml
 # If GHCR is still private:
 # az keyvault secret set --vault-name "$vault" --name ghcr-pull-token --file -
 ```
 
 Never commit secret values. Never put them in `terraform.example.tfvars`.
 
-`admins.yaml` is mounted read-only at `/app/secrets/admins-yaml`. After changing it, bump `secrets_version` and re-apply, or set the secret with `az` and restart the Container App. Key Vault versions keep history. Azure Container Apps secret volumes also expose the other secrets as files in `/app/secrets/`; treat that directory as private.
+`admins.yaml` is mounted read-only at `/app/secrets/admins-yaml`. After changing it, `just secrets-push dev` and restart (the tool offers `just restart dev`). Key Vault versions keep history. Azure Container Apps secret volumes also expose the other secrets as files in `/app/secrets/`; treat that directory as private.
 
 ## Volume files (Azure Files)
 
@@ -126,7 +123,7 @@ Dev must not control the real doors. Use a test HA, or leave HA off.
 
 ## After apply, Discord still will not answer until
 
-1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `write_secrets` or `az`.
+1. Key Vault secrets exist (at least `discord-token` and `admins-yaml`), via `just secrets-push dev`.
 2. `members.yaml` (and HA files if used) are on the share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>`). If that GHCR package is still **private**, set `container_registry_server` / `container_registry_username` and create Key Vault `ghcr-pull-token` (a `read:packages` token; Azure otherwise gets 401).
 4. `just register dev` has been run against the Dev guild (or `just deploy dev` does it).

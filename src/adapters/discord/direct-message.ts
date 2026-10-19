@@ -43,8 +43,9 @@ export function describeDmFailure(error: unknown): string | undefined {
 export async function sendDirectMessage(rest: DmRest, userId: string, text: string): Promise<void> {
 	const opened = await rest.post(Routes.userChannels(), { body: { recipient_id: userId } });
 	const channelId = dmChannelId(opened);
+	// A raw REST body is sent as-is, so it needs the API's snake_case field name.
 	await rest.post(Routes.channelMessages(channelId), {
-		body: { content: text, allowedMentions: { parse: [] } },
+		body: { content: text, allowed_mentions: { parse: [] } },
 	});
 }
 

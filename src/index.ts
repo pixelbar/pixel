@@ -11,7 +11,7 @@ import { loadBuildInfo } from "./observability/build-info.ts";
 import { startHealthServer } from "./observability/health.ts";
 import {
 	type Heartbeat,
-	monitorSlug,
+	planHeartbeat,
 	sentryCheckIn,
 	startHeartbeat,
 } from "./observability/heartbeat.ts";
@@ -93,11 +93,21 @@ async function main(): Promise<void> {
 	let homeAssistant: HomeAssistantBackend | undefined;
 	const homeAssistantSettled = () => homeAssistant?.settled ?? Promise.resolve();
 	if (config.homeAssistant) {
-		homeAssistant = new HomeAssistantBackend({ ...config.homeAssistant, logger });
-		home.attach(homeAssistant);
-		homeAssistant.settled
+		const backend = new HomeAssistantBackend({ ...config.homeAssistant, logger });
+		homeAssistant = backend;
+		home.attach(backend);
+		backend.settled
 			.then(async () => {
-				await home.check();
+				if ((await home.check()).kind === "connecting") {
+					// The first attempt couldn't reach it. It keeps trying in the background: say so
+					// once, then check the login and the devices when it does connect.
+					reporter.captureBackground(
+						new Error("Couldn't connect to Home Assistant at startup. Still trying."),
+						"home-assistant",
+					);
+					await backend.connected;
+					await home.check();
+				}
 				// A typo in the devices file shows up as a warning, never a failure.
 				const missing = await findMissingDevices(homeDevices.view, home);
 				if (missing && missing.length > 0) {
@@ -116,14 +126,17 @@ async function main(): Promise<void> {
 	startMastodonPublisher({ mastodon: config.mastodon, announcer, logger });
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
-	// hang, the host going down). Only with Sentry set up.
-	if (config.sentryDsn && config.heartbeatMinutes > 0) {
+	// hang, the host going down). Only with Sentry set up, and never from a laptop.
+	const heartbeatPlan = planHeartbeat(config);
+	if ("monitorSlug" in heartbeatPlan) {
 		heartbeat = startHeartbeat({
-			intervalMs: config.heartbeatMinutes * 60_000,
+			intervalMs: heartbeatPlan.intervalMinutes * 60_000,
 			isHealthy: () => discord.isReady(),
-			checkIn: sentryCheckIn(monitorSlug(config.env), config.heartbeatMinutes),
+			checkIn: sentryCheckIn(heartbeatPlan.monitorSlug, heartbeatPlan.intervalMinutes),
 			logger,
 		});
+	} else {
+		logger.info({ event: "heartbeat.off", reason: heartbeatPlan.off }, "heartbeat is off");
 	}
 	spaceStatus.start();
 

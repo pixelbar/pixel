@@ -31,7 +31,7 @@ The app sets `PIXEL_RUNTIME=cloud` and `PIXEL_ENV=prod`. There is **no database*
 3. A **new** Discord application (not Pixel Dev). Invite it with scopes `bot` and `applications.commands`. Put that application ID and guild ID in gitignored `terraform.tfvars`. See [Adding Pixel to a Discord server](../../../docs/runbook.md#adding-pixel-to-a-discord-server).
 4. Azure CLI, signed in as someone who can write role assignments on `pixel-prod`.
 5. Terraform 1.11+ (`just tf-validate` uses 1.16.5, same as CI).
-6. `just pull prod` to get the shared `terraform.tfvars` (Key Vault `terraform-tfvars`). The very first time, copy `terraform.example.tfvars` to `terraform.tfvars` and `just push prod`. Secret values go in gitignored `secrets.auto.tfvars` with `write_secrets = true`, or in `TF_VAR_*` — never in `terraform.tfvars`, never from `pixel-dev-kv`.
+6. `just pull prod` to get the shared `terraform.tfvars` (Key Vault `terraform-tfvars`). The very first time, copy `terraform.example.tfvars` to `terraform.tfvars` and `just push prod`. App secret values go in `.env.prod` / `config/admins.prod.yaml` and reach Key Vault with `just secrets-push prod` (maintainers only). Infra secret inputs go in gitignored `secrets.auto.tfvars` with `write_secrets = true`, or in `TF_VAR_*`. Never in `terraform.tfvars`, never from `pixel-dev-kv`.
 
 ## Apply (maintainer only)
 
@@ -45,16 +45,20 @@ PIXEL_APPLY_PROD=1 just tf-apply prod
 
 ## Secrets (Key Vault)
 
-Same names as `dev`. Preferred local apply:
+Same names as `dev`. **App secrets** (`discord-token` for the production bot only, `admins-yaml` with the production list, `sentry-dsn`, `spacestate-user`, `spacestate-token`, …): `just secrets-push prod` is their only writer ([ADR 0017](../../../docs/adr/0017-one-writer-for-app-secrets.md)). Push them **before** the apply that turns their feature on. Coding agents never run it.
+
+**Infra secrets** (`tailscale-auth-key`, `ghcr-pull-token`), only when those features are on:
 
 ```hcl
-write_secrets    = true
-secrets_version  = 1
-discord_token    = "..."   # production bot only
-admins_yaml_file = "../../../config/admins.yaml"  # production list, not Dev
+write_secrets               = true
+secrets_version             = 1
+tailscale_auth_key          = "..."
+container_registry_password = "..."
 ```
 
-Or `az keyvault secret set --vault-name pixel-prod-kv --name discord-token --file -`. Never commit values.
+Never commit values.
+
+**The first plan after ADR 0017** lists the app secrets Terraform had written as "will no longer be managed by Terraform, but will not be destroyed". Nothing leaves Key Vault. If it plans to **destroy** an `azurerm_key_vault_secret`, stop.
 
 ## Volume files
 
@@ -67,7 +71,7 @@ az storage file upload --auth-mode login --account-name "$account" --share-name 
 
 ## After apply, Discord still will not answer until
 
-1. Key Vault secrets exist (`discord-token`, `admins-yaml`) for the **prod** bot.
+1. Key Vault secrets exist (`discord-token`, `admins-yaml`) for the **prod** bot (`just secrets-push prod`).
 2. `members.yaml` is on the prod share.
 3. The image exists (`ghcr.io/pixelbar/pixel:<sha>` from a Release, or the `:main` tag from CD).
 4. Commands are registered against the **prod** guild. A Release does this in its `register-prod` job once `github_register_principal_id` is set to `pixel-github-prod`'s principal ID (`az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv`) and applied; it can read `discord-token` and nothing else ([ADR 0014](../../../docs/adr/0014-release-registers-commands.md)). By hand: `just register prod` with `.env.prod`, never `.env` or `.env.dev`.
