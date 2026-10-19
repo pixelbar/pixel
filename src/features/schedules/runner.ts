@@ -4,12 +4,13 @@ import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import { nextOccurrence, parseLocal, toInstant } from "../../core/recurrence.ts";
 import type { Schedule, ScheduleStore } from "../../services/schedules.ts";
+import { clipToLimits } from "./limits.ts";
 
 /** A post up to this late (Pixel was down) still goes out; later than that it's skipped. */
 export const LATE_LIMIT_MS = 60 * 60_000;
 
 export type RunnerDeps = {
-	store: Pick<ScheduleStore, "all" | "update" | "remove" | "problem">;
+	store: Pick<ScheduleStore, "all" | "get" | "update" | "remove" | "problem">;
 	posts: Pick<ChannelPosts, "post" | "ready">;
 	timezone: string;
 	/** Fills `{{tokens}}` in the stored body at post time. */
@@ -52,13 +53,16 @@ export function dueOccurrence(
 /**
  * Handles every schedule that's due: posts it (once), skips it if it's more than an
  * hour late, and remembers the occurrence either way so nothing is posted twice. A
- * one-off is removed once handled. Never throws.
+ * one-off is removed once handled. Each schedule is read again just before it's
+ * handled and after every wait, so one deleted, paused or edited meanwhile (say while
+ * an earlier one was posting) is never posted as it was. Never throws.
  */
 export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 	if (deps.store.problem || !deps.posts.ready) return;
 	const log = deps.logger.child({ component: "schedules" });
-	for (const schedule of deps.store.all()) {
-		if (schedule.paused) continue;
+	for (const { id } of deps.store.all()) {
+		const schedule = deps.store.get(id);
+		if (!schedule || schedule.paused) continue;
 		const due = dueOccurrence(schedule, deps.timezone, now);
 		if (!due) continue;
 		const key = `${schedule.id}@${due.at.toISOString()}`;
@@ -86,12 +90,20 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 				);
 				continue;
 			} else {
-				await deps.posts.post(
-					schedule.channelId,
-					interpolateChannelPost(schedule.post, (text) =>
+				// Deleted, paused or edited while we waited: post what's there now, or nothing.
+				const current = deps.store.get(schedule.id);
+				if (!current || current.paused) continue;
+				if (dueOccurrence(current, deps.timezone, now)?.at.getTime() !== due.at.getTime()) continue;
+				const filled = clipToLimits(
+					interpolateChannelPost(current.post, (text) =>
 						deps.interpolator.interpolate(text, due.at),
 					),
 				);
+				if (filled.clipped) {
+					// Tokens made it longer than the platform allows. Never log the text itself.
+					log.warn({ event: "schedule.clipped", ...fields }, "filled post too long, clipped it");
+				}
+				await deps.posts.post(current.channelId, filled.post);
 				log.info(
 					{ event: "schedule.posted", ...fields, due: due.at.toISOString() },
 					"posted a scheduled post",

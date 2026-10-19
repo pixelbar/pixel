@@ -401,6 +401,33 @@ describe("safe writes", () => {
 		expect(existsSync(`${membersFile}.bak`)).toBe(false);
 	});
 
+	it.each([
+		[
+			"an id in two entries",
+			`members:\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: friend\n${ADMIN_ENTRY}`,
+		],
+		["an admin with no entry", `members:\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n`],
+	])("refuses a file that fails the cross-checks (%s), and changes nothing", async (_, broken) => {
+		const store = open();
+		writeFileSync(membersFile, broken);
+		const before = store.view;
+		for (const change of [
+			{ kind: "set-tier", id: NEW_ID, tier: "friend" },
+			{ kind: "set-tier", id: IDS.member, tier: "friend" },
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["back-door"] },
+		] as const) {
+			const error = await store.apply(change, by).catch((e: unknown) => e as Error);
+			expect(error).toBeInstanceOf(AccessStoreError);
+			expect((error as Error).message).toMatch(/invalid.*\/admin reload/s);
+			expect((error as Error).message).not.toContain(IDS.member);
+		}
+		expect(read()).toBe(broken);
+		expect(store.view).toBe(before);
+		expect(existsSync(`${membersFile}.bak`)).toBe(false);
+		expect(entries("access.changed")).toHaveLength(0);
+		expect(entries("access.file_invalid").length).toBeGreaterThan(0);
+	});
+
 	it("reports an unreadable file clearly, without its path", async () => {
 		const store = open();
 		rmSync(membersFile);
