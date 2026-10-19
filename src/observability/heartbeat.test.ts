@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { silentLogger } from "../core/logger.ts";
-import { monitorSlug, sentryCheckIn, startHeartbeat } from "./heartbeat.ts";
+import { monitorSlug, planHeartbeat, sentryCheckIn, startHeartbeat } from "./heartbeat.ts";
 import { sentryOptions } from "./sentry-options.ts";
 
 describe("startHeartbeat", () => {
@@ -87,6 +87,39 @@ describe("monitorSlug", () => {
 	it("is one monitor per environment", () => {
 		expect(monitorSlug("prod")).toBe("pixel-prod");
 		expect(monitorSlug("dev")).toBe("pixel-dev");
+	});
+});
+
+describe("planHeartbeat", () => {
+	const dsn = "https://public@sentry.example.com/1";
+
+	it("checks in to the environment's monitor in dev and prod", () => {
+		expect(planHeartbeat({ env: "dev", sentryDsn: dsn, heartbeatMinutes: 5 })).toEqual({
+			monitorSlug: "pixel-dev",
+			intervalMinutes: 5,
+		});
+		expect(planHeartbeat({ env: "prod", sentryDsn: dsn, heartbeatMinutes: 10 })).toEqual({
+			monitorSlug: "pixel-prod",
+			intervalMinutes: 10,
+		});
+	});
+
+	it("is off on a laptop, even with a DSN, so developers don't share a monitor that alerts when they stop", () => {
+		expect(planHeartbeat({ env: "local", sentryDsn: dsn, heartbeatMinutes: 5 })).toEqual({
+			off: "local",
+		});
+	});
+
+	it("is off without Sentry or when turned off", () => {
+		expect(planHeartbeat({ env: "prod", sentryDsn: undefined, heartbeatMinutes: 5 })).toEqual({
+			off: "no-sentry",
+		});
+		expect(planHeartbeat({ env: "prod", sentryDsn: "", heartbeatMinutes: 5 })).toEqual({
+			off: "no-sentry",
+		});
+		expect(planHeartbeat({ env: "prod", sentryDsn: dsn, heartbeatMinutes: 0 })).toEqual({
+			off: "disabled",
+		});
 	});
 });
 
