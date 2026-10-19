@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR when an image path changed. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR when the image inputs differ from the last publish. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
@@ -50,7 +50,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
 | **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy-dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
-| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when those jobs' path allowlists match. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when an image path changed. |
+| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when the files those jobs depend on have not already passed. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when the image inputs differ from the last publish. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
@@ -260,7 +260,7 @@ Members with the `schedule-posts` capability schedule messages and polls with `/
 After a deploy that adds `/schedule`, run **`just register dev`** or **`just register prod`** so Discord lists the commands, then grant the capability. No new environment variables: times use `PIXEL_TIMEZONE` (Europe/Amsterdam). The bot needs Send Messages in the target channel, and Send Polls if it will post polls.
 
 - **They live in `data/schedules.yaml`.** Back it up with the access files; deleting it deletes every schedule.
-- **Tokens** in the message, poll question or answers (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`) fill in when the post goes out, in `PIXEL_TIMEZONE`. A whole-day offset (`{{date+2}}`, `{{day+2}}`) is from the scheduled day, so a Monday post can say Wednesday. A name Pixel doesn't know is left as written. Don't put secrets in a scheduled post.
+- **Tokens** in the message, poll question or answers (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`) fill in when the post goes out, in `PIXEL_TIMEZONE`. A whole-day offset (`{{date+2}}`, `{{day+2}}`) is from the scheduled day, so a Monday post can say Wednesday. A name Pixel doesn't know is left as written. Discord's limits (2000 characters for a message, 300 for a poll question, 55 for an answer) count the filled text, so `/schedule` refuses a post its tokens would push over. `schedule.clipped` in the logs means one still came out too long and was cut to fit. Don't put secrets in a scheduled post.
 - **Change one before it posts:** `/schedule edit` (only the person who scheduled it). Without a schedule it lists theirs; with one it opens the same compose modal, prefilled. One-offs that already went out, and other people's schedules, get a generic refusal.
 - **Stop one now:** `/schedule pause` or `/schedule delete`. To stop someone's schedules, revoke their capability: each of theirs pauses the next time it's due.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
@@ -434,7 +434,7 @@ All of them are gitignored. The share files are **read-only mirrors**: edit the 
 **Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
 
 - **`dev`:** from this tree, `just deploy-dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register dev` against the Pixel Dev guild from `.env.dev` (or `.env`), then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. CI does not deploy pull requests (so a local SHA is not overwritten by another CI head).
-- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when an image path changed; they do not log in to Azure.
+- **`prod`:** not on merge. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That runs `just check` on the `main` commit (if it fails, nothing is tagged, published or deployed), cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when the image inputs differ from the last publish; they do not log in to Azure. CD runs queue rather than cancel each other, and a merge that failed or was skipped is picked up by the next one: if a SHA is missing from GHCR, fix the cause and re-run or merge again.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
 - Prod Azure login is GitHub Environment OIDC (`ARM_*` variables on Environment `prod`). `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and fails closed if they are missing.
 - Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy-dev` pinned. Prod apply sets `container_image`; a later Release roll moves it again. Dev rollback is `az`, not a tfvars bump.
@@ -444,37 +444,45 @@ All of them are gitignored. The share files are **read-only mirrors**: edit the 
 
 ## CI and CD
 
-What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Allowlists: [`.github/path-filters.yml`](../.github/path-filters.yml) ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)).
+What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Job inputs: [`.github/path-filters.yml`](../.github/path-filters.yml).
 
-**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, lockfile / `package.json`, tsconfigs, `biome.json`, `vitest.config.*`, `.nvmrc`, `justfile`, `.github/workflows/ci.yml`, `.github/path-filters.yml`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`.
+Each expensive job runs only when the files it depends on are not a set that already passed. A first "What changed" job hashes them ([`scripts/ci-inputs.sh`](../scripts/ci-inputs.sh)) and looks for a marker in the Actions cache; the job saves one when it succeeds. So pushing only a CHANGELOG entry, re-pushing the same code, or a docs-only PR (PRs can see `main`'s markers) skips them. A skipped job never starts and GitHub shows it as passed. Every hash also covers the workflow running the job, `.github/path-filters.yml`, `scripts/ci-inputs.sh` and `.github/actions/`. To see what a list matches: `just ci-inputs check`.
 
-**Image** (Docker smoke on PRs; GHCR + Sentry on `main`): `src/` (including tests), `content/`, Dockerfile, `.dockerignore`, lockfile / `package.json`, tsconfigs, `justfile`, `.github/workflows/ci.yml` and `cd.yml`, `.github/path-filters.yml`.
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, root `*.ts` and `*.json` (`package.json`, tsconfigs, `biome.json`, `vitest.config.ts`), lockfile, `.nvmrc`, `.gitignore`, `justfile`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`, and the files `scripts/ci-inputs.test.ts` checks the lists against: `Dockerfile`, `cd.yml`, `docs.yml`, `terraform.yml`.
 
-**Docs** (`docs/`): Biome lint + VitePress build. Not app CI.
+**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without tests (`*.test.ts`, `src/testing/`), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`. CD publishes when these (and `cd.yml`) differ from the last run that published, so a revert publishes again. If a CD run was cancelled or failed, the next merge publishes.
 
-**Always on PRs:** the changelog gate. **Terraform:** workflow when `infra/`, that workflow, or the `justfile` change; Azure plan only when Terraform files under `infra/` changed (markdown does not).
+**Docs** (`docs/`, root `package.json` / lockfile, `biome.json`, `.gitignore`, `.nvmrc`, `justfile`): Biome lint + VitePress build. Not app CI.
+
+**Always on PRs:** the changelog gate (no `pnpm install`). **Terraform:** the workflow starts when `infra/`, that workflow, the `justfile` or the gate change; it skips if its inputs (`infra/` without markdown, `justfile`) already passed; Azure plans run only when Terraform files under `infra/` changed, and otherwise never start (so never wait on an Environment).
+
+**Forcing a rerun:** re-run the workflow after deleting the `ci-passed-…` cache under Actions → Caches, or change a file in the list. Markers are evicted after 7 days unused; then the job just runs again.
 
 Pull request:
 
 ```mermaid
 flowchart TD
-  pr[Pull request]
-  pr --> clog[Changelog gate always]
-  pr --> docs{"docs/ changed?"}
-  docs -->|yes| site[Biome + docs site build]
-  docs -->|no| nosite[Docs site off]
+  pr[Pull request push]
+  pr --> clog[Changelog gate always, no install]
+  pr --> docs{"docs inputs in this push?"}
+  docs -->|yes| docsp{"docs inputs already passed?"}
+  docsp -->|no| site[Biome + docs site build]
+  docsp -->|yes| nosite[Skip site build]
+  docs -->|no| nodocs[Docs workflow off]
   pr --> tf{"infra/, justfile or terraform.yml?"}
-  tf -->|yes| tfval[just tf-validate]
+  tf -->|yes| tfp{"terraform inputs already passed?"}
+  tfp -->|no| tfval[just tf-validate]
   tfval --> tffiles{"infra Terraform files?"}
   tffiles -->|yes| azplan[Azure plan via Environment OIDC]
-  tffiles -->|no| noaz[Skip Azure plan]
+  tffiles -->|no| noaz[Plan jobs never start]
+  tfp -->|yes| notfrun[Skip validate and plans]
   tf -->|no| notf[Terraform workflow off]
-  pr --> checkp{"check path?"}
-  checkp -->|yes| check["just check + just build"]
-  checkp -->|no| nocheck[Skip just check]
-  pr --> imagep{"image path?"}
-  imagep -->|yes| docker[Docker image smoke]
-  imagep -->|no| nodocker[Skip Docker]
+  pr --> checkp{"check inputs already passed?"}
+  checkp -->|no| check["just check + just build"]
+  checkp -->|yes| nocheck[Skip just check]
+  pr --> imagep{"image inputs already passed?"}
+  imagep -->|no| docker[Docker image smoke]
+  imagep -->|yes| nodocker[Skip Docker]
 ```
 
 Merge to `main`:
@@ -482,11 +490,15 @@ Merge to `main`:
 ```mermaid
 flowchart TD
   main[Push to main]
-  main --> ci[Same CI path filter as PRs]
-  main --> imagep{"image path?"}
-  imagep -->|yes| pub["CD: GHCR SHA and :main"]
+  main --> ci["Same CI gates as PRs; what passes here PRs reuse"]
+  main --> queue[CD runs queue, never cancel]
+  queue --> imagep{"image inputs same as last publish?"}
+  imagep -->|no| pub["CD: GHCR SHA and :main"]
   pub --> maps[Sentry source maps]
-  imagep -->|no| nocd[Skip GHCR and Sentry]
+  maps --> mark[Remember these inputs as published]
+  imagep -->|yes| nocd[Skip GHCR and Sentry]
+  main --> clogp{"CHANGELOG.md changed?"}
+  clogp -->|yes| clogm["Changelog merge: merge main into open PRs, push if only CHANGELOG conflicts and it's safe"]
   main --> note[Does not roll pixel-prod]
 ```
 
@@ -495,7 +507,8 @@ Release ([ADR 0013](adr/0013-release-workflow.md)): GitHub → Actions → **Rel
 ```mermaid
 flowchart TD
   human[Actions Release on main]
-  human --> bump[just bump commit]
+  human --> check[just check on main HEAD]
+  check --> bump[just bump commit]
   bump --> tag[Tag vX.Y.Z and GitHub Release]
   tag --> img["Rebuild GHCR :sha, :vX.Y.Z, :main"]
   img --> sentry[Sentry maps environment prod]
@@ -504,6 +517,7 @@ flowchart TD
   roll --> approve2[Environment prod approval]
   approve2 --> register[Register prod slash commands]
   tag --> pages[VitePress to GitHub Pages]
+  bump --> clogm[Changelog merge into open PRs]
 ```
 
 ## Changelog and versions
@@ -511,6 +525,15 @@ flowchart TD
 User-facing and operator-facing changes are recorded in [`CHANGELOG.md`](../CHANGELOG.md), in [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) format. The version people see in `/ping` and the online post is `package.json` (plus the git SHA the image was built from).
 
 **On every pull request** that users or operators would notice (commands, behaviour, config, deploy, monitoring, this runbook): add a short bullet under `## [Unreleased]` in the right category (`Added`, `Changed`, `Fixed`, …). CI fails the PR if `CHANGELOG.md` is untouched. Pure chores (typos, CI-only, no user or operator impact) may use the `skip-changelog` label instead; adding or removing that label re-runs the check. Create the label on the repo once if it does not exist yet.
+
+**Changelog conflicts.** Two PRs that both add entries conflict in `CHANGELOG.md` once one merges, and after a release every open PR does. Keeping both sides is almost always right, so:
+
+- **On GitHub,** [`.github/workflows/changelog-merge.yml`](../.github/workflows/changelog-merge.yml) runs whenever `main`'s `CHANGELOG.md` changes (and after each Release). For every open PR from this repo that edits it, it merges `main` in. If `CHANGELOG.md` is the only conflict and it's safe, it pushes the merge commit and comments on the PR. If it isn't safe, it comments once, saying why, and changes nothing. Fork PRs and PRs with other conflicts are left alone. The run's summary lists each PR's outcome.
+- **On your laptop,** in a merge or rebase that stopped on `CHANGELOG.md`: `just changelog-merge`. To have git do it by itself in this clone: `just changelog-merge-driver` (undo with `git config --unset merge.changelog.driver`).
+
+"Safe" means [`scripts/changelog-merge.ts`](../scripts/changelog-merge.ts) can do it without guessing. The branch's new `[Unreleased]` entries go at the end of their section (no section is ever added twice), and an entry both sides added is kept once (or left out, if `main` has already released it). After a release, the branch's entries go into the new, empty `[Unreleased]`. It refuses, and leaves the conflict to you, when both sides changed the same entry, when the branch changed an entry that has since been released, when either side has a section twice, an unknown `###` heading or text that isn't a list entry, or when both sides changed the released versions, the intro or the links.
+
+Setting it up: pushes made with `GITHUB_TOKEN` don't start CI, and can't bring workflow changes from `main` into a branch. So create a GitHub App on the org with **Contents**, **Pull requests** and **Workflows**: read and write, install it on `pixelbar/pixel`, then set the repository variable `CHANGELOG_BOT_CLIENT_ID` (its client ID) and the secret `CHANGELOG_BOT_PRIVATE_KEY` (a private key). Until then the workflow pushes with `GITHUB_TOKEN`. Its comment then says CI hasn't run (push again, or close and reopen the PR), and a merge that brings in workflow changes is refused.
 
 **To cut a version** (move Unreleased into a dated section and bump `package.json`):
 
@@ -521,7 +544,7 @@ just bump --commit   # also commits and tags vX.Y.Z
 
 `Added` is a minor bump (`0.1.0` → `0.2.0`). `Fixed`, `Changed` and the other Keep a Changelog types are a patch (`0.1.0` → `0.1.1`). Until 1.0 the major version is never bumped this way. Do not invent the version date; the recipe uses today's UTC date.
 
-**To ship that version to prod and the docs site:** GitHub → Actions → **Release** → Run workflow → branch `main`. The workflow runs the same `just bump --commit`, pushes the tag, opens a GitHub Release with the Unreleased notes, builds the image from that commit, waits on Environment `prod` to roll `pixel-prod`, waits on it again to register prod slash commands, and publishes GitHub Pages. If the previous version was never tagged, it also tags that parent commit so the changelog compare links work. The bump commit uses `GITHUB_TOKEN`, so it does **not** start CD. If Azure or Pages fails, use **Re-run failed jobs** on that run. `PIXEL_VERSION` in the image remains the git SHA.
+**To ship that version to prod and the docs site:** GitHub → Actions → **Release** → Run workflow → branch `main`. The workflow first runs `just check` on that `main` commit (CI on `main` can be cancelled or red, and the bump commit on top only changes `CHANGELOG.md` and the `package.json` version). If it passes, it runs the same `just bump --commit`, pushes the tag, opens a GitHub Release with the Unreleased notes, builds the image from that commit, waits on Environment `prod` to roll `pixel-prod`, waits on it again to register prod slash commands, and publishes GitHub Pages. If the previous version was never tagged, it also tags that parent commit so the changelog compare links work. The bump commit uses `GITHUB_TOKEN`, so it does **not** start CD. If Azure or Pages fails, use **Re-run failed jobs** on that run. If `just check` fails, nothing was tagged or shipped: fix `main` (or re-run if it was a flake) and run Release again. `PIXEL_VERSION` in the image remains the git SHA.
 
 Do not run `just bump` on a feature branch unless you are deliberately cutting a release there. Do not merge to `main` expecting prod or the docs site to move.
 
@@ -539,9 +562,13 @@ Do not run `just bump` on a feature branch unless you are deliberately cutting a
 
 **Duplicate replies, "I don't know that command" for a command Discord lists, or Discord shows an error and then the action still happens**
 
-Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060 / 10062). Logs on either side show `discord.duplicate_handler`.
+Two instances are connected with the same token. Discord's slash list comes from `just register`; each running Pixel answers from its own code. An older instance replies "I don't know that command" (or answers first); the newer one still does the work and then fails to ACK (Discord 40060, "already acknowledged"). Logs on either side show `discord.duplicate_handler`.
 
 Find and stop the extra one: `docker ps` locally (leftover `just dev` or a worktree container), and check that nobody has a copy on a laptop or another server. In Azure: `az containerapp replica list -g pixel-dev -n pixel-dev -o table` must show one replica (same for `pixel-prod` once it exists). Never fix this by raising limits. CD pins min=max=1. Retry the command after only one instance is left.
+
+**Discord says "The application did not respond"** (log `discord.slow_ack`, Sentry `SlowAcknowledgementError`)
+
+Pixel didn't acknowledge the command within Discord's 3 seconds (Discord 10062, "unknown interaction"). That is Pixel being slow, not a second instance. The log and the Sentry title name the command. Usual causes: the host is overloaded or the event loop was blocked, the network to Discord is slow, or a command that opens a form did slow work before showing it. One-offs after a restart or a Discord hiccup can be ignored. If it repeats for one command, open an issue with the command and the time.
 
 **SpaceAPI is down** (`/status` says "Couldn't check")
 
@@ -578,7 +605,7 @@ Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` 
   3. Decide: a bug in Pixel (open a GitHub issue, link the Sentry issue), a problem outside it (SpaceAPI, Home Assistant, Discord: see [Incidents](#incidents)), or noise (resolve or ignore it).
   4. If it's urgent and recent, roll back (see [Deploys](#deploys)).
 - **Read feedback:** Sentry → **User Feedback**. Each has the sender's Discord name and ID, so you can reply in Discord.
-- Errors from before a release can be filtered by the `release` tag, which is `PIXEL_VERSION` (the git SHA the image was built from). Source maps upload from `just sentry-release` / CD when `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` are set.
+- Errors from before a release can be filtered by the `release` tag, which is `PIXEL_VERSION` (the git SHA the image was built from). Source maps upload from `just sentry-release` / CD when `SENTRY_ORG`, `SENTRY_PROJECT`, and `SENTRY_AUTH_TOKEN` are set, and Sentry uses them to show the TypeScript source. Stack traces in the container logs and the log files point at the compiled `dist/*.js` lines instead: open the Sentry issue for the TypeScript line.
 
 ## Privacy requests
 

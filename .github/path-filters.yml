@@ -1,27 +1,35 @@
-# Which expensive CI/CD jobs run for a change.
-# Used by dorny/paths-filter in ci.yml and cd.yml.
+# What each CI/CD job depends on. A job runs only when the files its list
+# matches are not a set that already passed (scripts/ci-inputs.sh hashes them,
+# .github/actions/ci-inputs looks the hash up). So a push that only adds a
+# CHANGELOG entry, or a docs-only PR, does not run the app checks again.
 # Keep the pipeline diagrams in docs/architecture.md and docs/runbook.md in sync.
 #
-# check  → just check + just build
-# image  → Docker smoke (PR) / GHCR + Sentry (main)
-# src/** (including tests) is in both: a test-only change still checks and publishes.
+# Patterns are git glob pathspecs: `*` stays inside one directory, `**`
+# crosses them, a leading `!` excludes. Every hash also covers this file,
+# scripts/ci-inputs.sh, .github/actions/ and the workflow that runs the job,
+# so don't list those here. List what the job reads, nothing more.
+# `just ci-inputs <name>` prints what a list matches.
+#
+# check     → just check + just build (ci.yml)
+# image     → Docker smoke (ci.yml) and GHCR + Sentry (cd.yml)
+# docs      → Biome on docs/ + the VitePress build (docs.yml)
+# terraform → just tf-validate and the env plans (terraform.yml)
 
 check:
   - "src/**"
   - "scripts/**"
   - "content/**"
   - "config/**"
-  - "package.json"
+  # vitest.config.ts; Biome lints the rest.
+  - "*.ts"
+  # package.json, biome.json, tsconfig*.json
+  - "*.json"
   - "pnpm-lock.yaml"
   - "pnpm-workspace.yaml"
-  - "tsconfig.json"
-  - "tsconfig.*.json"
-  - "biome.json"
-  - "vitest.config.*"
   - "justfile"
   - ".nvmrc"
-  - ".github/workflows/ci.yml"
-  - ".github/path-filters.yml"
+  # Biome skips what git ignores.
+  - ".gitignore"
   # scripts/secrets-manifest.test.ts checks these against infra/secrets.manifest.yaml (ADR 0015).
   - "infra/secrets.manifest.yaml"
   - "infra/modules/pixel/*.tf"
@@ -30,18 +38,42 @@ check:
   - "docs/runbook.md"
   - "docs/architecture.md"
   - "docs/infra.md"
+  # scripts/ci-inputs.test.ts checks these against the lists below (ci.yml is
+  # in every check hash already).
+  - "Dockerfile"
+  - ".github/workflows/cd.yml"
+  - ".github/workflows/docs.yml"
+  - ".github/workflows/terraform.yml"
 
+# What the Dockerfile copies. Tests are copied but never compiled into the image.
 image:
   - "src/**"
+  - "!src/**/*.test.ts"
+  - "!src/testing/**"
   - "content/**"
   - "package.json"
   - "pnpm-lock.yaml"
   - "pnpm-workspace.yaml"
   - "tsconfig.json"
-  - "tsconfig.*.json"
+  - "tsconfig.build.json"
   - "Dockerfile"
   - ".dockerignore"
+
+# The site, plus the root package.json (its version is in the nav, and Biome
+# comes from the root install). docs.yml's paths trigger must list these too.
+docs:
+  - "docs/**"
+  - "package.json"
+  - "pnpm-lock.yaml"
+  - "pnpm-workspace.yaml"
+  - "biome.json"
+  - ".gitignore"
+  - ".nvmrc"
   - "justfile"
-  - ".github/workflows/ci.yml"
-  - ".github/workflows/cd.yml"
-  - ".github/path-filters.yml"
+
+# Markdown under infra/ does not change the stack. terraform.yml's paths
+# trigger must list these too.
+terraform:
+  - "infra/**"
+  - "!infra/**/*.md"
+  - "justfile"

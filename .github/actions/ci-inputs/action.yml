@@ -1,0 +1,105 @@
+name: CI inputs
+description: >-
+  Hash the files a job depends on (a list in .github/path-filters.yml plus the
+  workflow running it) and say whether that exact set already passed, so the
+  job can be skipped. Needs the repository checked out. After the job's work
+  succeeds, save the key with .github/actions/ci-passed.
+
+# Two ways to ask:
+#   exact  — has this set of inputs ever passed? Right for checks: the same
+#            files give the same result, so a CHANGELOG-only push, a re-push
+#            of the same code, or a docs-only PR (main's run is visible to
+#            PRs) is skipped. A cancelled or failed run saves nothing, so its
+#            inputs run again next time.
+#   latest — did the most recent pass have this set? Right for publishing:
+#            a revert to older code must publish again, because the `:main`
+#            image moved on since.
+# Markers are tiny Actions caches. A PR can read its own and main's, never
+# another PR's. An evicted marker only means the job runs again.
+
+inputs:
+  filter:
+    description: A list name in .github/path-filters.yml.
+    required: true
+  match:
+    description: exact or latest (see above).
+    required: false
+    default: exact
+
+outputs:
+  key:
+    description: The cache key to save with ci-passed once the job succeeds.
+    value: ${{ steps.hash.outputs.key }}
+  passed:
+    description: "'true' when these inputs already passed and the job can skip."
+    value: ${{ steps.decide.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Hash ${{ inputs.filter }} inputs
+      id: hash
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+        MATCH: ${{ inputs.match }}
+        REPOSITORY: ${{ github.repository }}
+        WORKFLOW_REF: ${{ github.workflow_ref }}
+        RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        # owner/repo/.github/workflows/ci.yml@refs/... → .github/workflows/ci.yml
+        workflow="${WORKFLOW_REF#"${REPOSITORY}/"}"
+        workflow="${workflow%%@*}"
+        hash="$(bash scripts/ci-inputs.sh "${FILTER}" "${workflow}")"
+        case "${MATCH}" in
+          exact)
+            prefix="ci-passed-${FILTER}-${hash}"
+            key="${prefix}"
+            ;;
+          latest)
+            prefix="ci-latest-${FILTER}-"
+            key="${prefix}${RUN}-${hash}"
+            ;;
+          *)
+            echo "::error::match must be exact or latest (got ${MATCH})."
+            exit 1
+            ;;
+        esac
+        echo "hash=${hash}" >> "${GITHUB_OUTPUT}"
+        echo "prefix=${prefix}" >> "${GITHUB_OUTPUT}"
+        echo "key=${key}" >> "${GITHUB_OUTPUT}"
+        echo "${FILTER} inputs (with ${workflow}): ${hash}"
+
+    - name: Look up ${{ inputs.filter }}
+      id: lookup
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .ci-passed
+        key: ${{ steps.hash.outputs.key }}
+        restore-keys: ${{ inputs.match == 'latest' && steps.hash.outputs.prefix || '' }}
+        lookup-only: true
+
+    - name: Decide
+      id: decide
+      shell: bash
+      env:
+        FILTER: ${{ inputs.filter }}
+        MATCH: ${{ inputs.match }}
+        HASH: ${{ steps.hash.outputs.hash }}
+        HIT: ${{ steps.lookup.outputs.cache-hit }}
+        MATCHED: ${{ steps.lookup.outputs.cache-matched-key }}
+      run: |
+        set -euo pipefail
+        passed=false
+        if [ "${MATCH}" = "exact" ] && [ "${HIT}" = "true" ]; then
+          passed=true
+        elif [ "${MATCH}" = "latest" ] && [ -n "${MATCHED}" ] && [ "${MATCHED%-"${HASH}"}" != "${MATCHED}" ]; then
+          passed=true
+        fi
+        echo "passed=${passed}" >> "${GITHUB_OUTPUT}"
+        if [ "${passed}" = "true" ]; then
+          echo "These ${FILTER} inputs already passed. Skipping."
+        else
+          echo "These ${FILTER} inputs have not passed yet. Running."
+        fi

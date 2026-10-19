@@ -1,0 +1,27 @@
+name: CI passed
+description: >-
+  Remember that a job's inputs passed (the key from .github/actions/ci-inputs),
+  so the next run with the same inputs skips it. Put it last in the job, so it
+  only runs when everything before it succeeded.
+
+inputs:
+  key:
+    description: The key output of ci-inputs.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write the marker
+      shell: bash
+      env:
+        KEY: ${{ inputs.key }}
+      run: |
+        mkdir -p .ci-passed
+        printf '%s\n' "${KEY}" > .ci-passed/key
+
+    # The path must be the same as in ci-inputs, or the lookup never matches.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .ci-passed
+        key: ${{ inputs.key }}

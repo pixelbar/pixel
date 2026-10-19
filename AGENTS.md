@@ -17,7 +17,7 @@ Build **the core, the Discord adapter, and the Mastodon publisher (outbound only
 - TypeScript on Node.js LTS, ESM only. All user-facing text is in English.
 - Tiers: `guest` < `friend` < `member` < `admin`. `friend` and `member` are both paid memberships. Everyone else is a guest.
 - Tiers come from two gitignored YAML files: `config/admins.yaml` and `config/members.yaml`.
-- Every command goes through one dispatcher: resolve identity, check rate limit, check access, then run the handler.
+- Every command goes through one dispatcher: check rate limit, resolve identity, check access, then run the handler. Opening a command's form (`prepareForm`) takes a rate-limit token and checks access first too.
 - Sentry handles errors, pino writes logs, and `just` runs local tasks.
 
 ## Commands
@@ -37,6 +37,7 @@ just secrets-pull dev # pull that env's app secrets from Key Vault into .env.dev
 just secrets-push dev # diff local app secrets against Key Vault and push on a yes (never prod from an agent)
 just restart dev      # restart that env's Container App so it reads its secrets again
 just check-changelog  # fail if this branch does not change CHANGELOG.md vs origin/main
+just changelog-merge  # in a stopped merge/rebase: keep both sides' CHANGELOG [Unreleased] entries when safe
 just bump             # cut [Unreleased] into a dated version and bump package.json
 just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
 just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)
