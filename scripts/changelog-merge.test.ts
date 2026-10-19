@@ -73,6 +73,18 @@ describe("mergeChangelogs", () => {
 		expect(merged(base, branch, main)).toBe(main);
 	});
 
+	it("doesn't add an entry main has already released", () => {
+		const released = `## [0.3.0] - 2026-02-01\n\n### Fixed\n\n- Base fix.\n- Same fix.\n  Two lines.\n\n${RELEASED}`;
+		const main = doc("", released);
+		const branch = doc(
+			"### Fixed\n\n- Base fix.\n- Same fix.\n  Two lines.\n\n### Added\n\n- New.",
+		);
+		expect(merged(base, branch, main)).toBe(doc("### Added\n\n- New.", released));
+		// Still adds an entry whose released twin is only similar.
+		const close = doc("### Fixed\n\n- Base fix.\n- Same fix.");
+		expect(merged(base, close, main)).toBe(doc("### Fixed\n\n- Same fix.", released));
+	});
+
 	it("keeps multi-line entries whole", () => {
 		const entry = "- Branch fix that wraps\n  onto a second line.\n\n  And a second paragraph.";
 		const branch = doc(`### Fixed\n\n- Base fix.\n${entry}`);

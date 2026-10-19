@@ -5,7 +5,8 @@
  * `branch` is the side being merged in (a PR), `main` the side it lands on.
  * The result is main's file with the branch's [Unreleased] changes applied:
  * entries it added go at the end of their section (a section is created in
- * the Keep a Changelog order if main has none), and entries it removed or
+ * the Keep a Changelog order if main has none; an entry main already has,
+ * in [Unreleased] or a released version, is not added again), and entries it removed or
  * reworded are removed only if main still has them unchanged. Anything else
  * (both sides edited the same entry, an entry that main has since released,
  * duplicated or unknown section headings, text that isn't a list entry, or
@@ -70,10 +71,13 @@ export function mergeChangelogs({ base, branch, main }: ChangelogMergeInput): Ch
 				onMain.splice(at, 1);
 			}
 		}
+		// An entry already in a released version (say the same change landed
+		// through another PR and was released since) is not unreleased again.
+		const shipped = releasedEntries(released);
 		for (const [section, entries] of br.sections) {
 			const before = b.sections.get(section) ?? [];
 			for (const entry of entries) {
-				if (before.includes(entry)) continue;
+				if (before.includes(entry) || shipped.has(entry)) continue;
 				const onMain = result.get(section) ?? [];
 				if (!onMain.includes(entry)) onMain.push(entry);
 				result.set(section, onMain);
@@ -141,6 +145,33 @@ export function parseSections(body: string): Sections {
 	}
 	flush();
 	return sections;
+}
+
+/** Every entry in the released versions, read like [Unreleased] but never refusing. */
+function releasedEntries(released: string): Set<string> {
+	const entries = new Set<string>();
+	let entry: string[] | undefined;
+	const flush = () => {
+		if (entry) {
+			while (entry.at(-1) === "") entry.pop();
+			entries.add(entry.join("\n"));
+		}
+		entry = undefined;
+	};
+	for (const line of released.split("\n")) {
+		if (ENTRY_START.test(line)) {
+			flush();
+			entry = [line.trimEnd()];
+		} else if (line.trim() === "") {
+			entry?.push("");
+		} else if (entry && /^\s/.test(line)) {
+			entry.push(line.trimEnd());
+		} else {
+			flush();
+		}
+	}
+	flush();
+	return entries;
 }
 
 function renderSections(sections: Sections): string {
