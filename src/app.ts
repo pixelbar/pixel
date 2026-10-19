@@ -49,7 +49,6 @@ export type Core = {
 	home: Home;
 	/** The devices Pixel may touch in Home Assistant. Empty when Home Assistant isn't set up. */
 	homeDevices: HomeDeviceStore;
-	/** Everything Home Assistant has, written to a file for people to read. Never an allow-list. */
 	/** Emergency switches for kinds of device, such as doors (`/admin doors`). */
 	switches: KindSwitch;
 	registry: CommandRegistry;

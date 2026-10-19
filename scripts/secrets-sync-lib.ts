@@ -312,6 +312,19 @@ function tfvarsString(text: string, key: string): string | undefined {
 }
 
 /**
+ * A tfvars file as it may be shown: the value of every sensitive variable is hidden,
+ * commented-out ones included, so a diff never prints a secret even when the file
+ * (wrongly) holds one.
+ */
+export function redactTfvars(text: string, sensitive: ReadonlySet<string>): string {
+	return text.replace(
+		/^(\s*#?\s*)([a-z_][a-z0-9_]*)(\s*=\s*)(.*)$/gm,
+		(line, lead: string, key: string, eq: string) =>
+			sensitive.has(key) ? `${lead}${key}${eq}(secret, hidden)` : line,
+	);
+}
+
+/**
  * What's wrong with a tfvars file before it's shared. It must belong to this env (its
  * vault and storage account), only set variables the stack declares, and hold no secret:
  * sensitive inputs go in `secrets.auto.tfvars`, which never leaves the laptop. Problems
