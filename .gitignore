@@ -16,6 +16,11 @@ config/*.yaml
 config/*.bak
 !config/*.example.yaml
 
+# half-written files from atomic writes (write `<file>.tmp`, then rename). A crash
+# in between leaves a full copy, e.g. config/members.yaml.<pid>.tmp,
+# config/admins.dev.yaml.tmp or infra/envs/*/terraform.tfvars.tmp
+*.tmp
+
 # the home device list describes the building — only the example is committed
 config/home-assistant/*.yaml
 !config/home-assistant/*.example.yaml
