@@ -22,9 +22,9 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | Logs | `pixel-dev-logs` / `pixel-prod-logs` | Container Apps diagnostics, 30 days |
 | CAE | `pixel-dev-cae` / `pixel-prod-cae` | Consumption, **no VNet** |
 | App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
-| Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy-dev`; `prod` by the Release workflow after approval |
+| Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy dev`; `prod` by the Release workflow after approval |
 
-**CD:** `just deploy-dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: the Release's `register-prod` job, after a second approval (fallback `just register prod`).
+**CD:** `just deploy dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: the Release's `register-prod` job, after a second approval (fallback `just register prod`).
 
 ## Diagrams
 
@@ -87,7 +87,7 @@ flowchart LR
     UAMIP --> KVP
     APPP --> FILESP
     APPP --> KVP
-    GHCR -->|just deploy-dev pulls SHA| APP
+    GHCR -->|just deploy dev pulls SHA| APP
     GHCR -->|Release after approval| APPP
   end
 
@@ -130,7 +130,7 @@ flowchart TB
 1. **Bootstrap** (hand-applied) created the three resource groups, state storage, and per-env GitHub identities. Env stacks deploy *into* those groups; they do not recreate them.
 2. **`infra/modules/pixel`** + **`infra/envs/dev`** created the vault, files share, CAE, app, backup, logs, and `pixel-dev-app`. Remote state is container `dev`. **`infra/envs/prod`** is the same module in `pixel-prod` (state container `prod`).
 3. **Secrets** are Key Vault names (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `sentry-dsn`). The Container App references **URIs + UAMI**. Only `just secrets-push` writes these app values ([ADR 0017](adr/0017-one-writer-for-app-secrets.md)); Terraform's ephemeral `write_secrets` inputs cover just the infra secrets `tailscale-auth-key` and `ghcr-pull-token`. Discord / HA / Sentry values do **not** belong in state. The Azure Files **account key** does (Container Apps can only mount SMB with the key).
-4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy-dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod apply sets `container_image`; a Release then rolls `pixel-prod` to the released SHA (same digest, no Terraform apply). Pin an explicit SHA (or `dev-dirty-*` on **dev** only), never `latest` alone.
+4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod apply sets `container_image`; a Release then rolls `pixel-prod` to the released SHA (same digest, no Terraform apply). Pin an explicit SHA (or `dev-dirty-*` on **dev** only), never `latest` alone.
 5. **Discord:** outbound gateway + REST. No FQDN. `/healthz` is process up; `/readyz` is Discord connected. Home Assistant is **not** on the probes (HA down must not restart the replica).
 6. **Home Assistant:** both URL and token, or neither. Live `dev` uses a Nabu Casa URL. The allow-list is `devices.yaml` on the share. A Tailscale sidecar is the preferred path ([#43](https://github.com/pixelbar/pixel/issues/43), [#74](https://github.com/pixelbar/pixel/issues/74)); the Terraform stub is **off** and is not enough to flip on as-is. Dev must not control the real doors.
 7. **Sentry:** the app reads `SENTRY_DSN` from Key Vault. Heartbeat monitor `pixel-<env>`. Source maps on `main` and on a Release use `SENTRY_AUTH_TOKEN` plus org/project variables.
@@ -156,7 +156,7 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | `devices.yaml` | gitignored `config/home-assistant/devices.yaml` | `/app/persist/home-assistant/` | humans; `/admin reload` |
 | HA token / URL | HA long-lived token (non-admin user) + plain URL | KV + env | humans |
 | `SENTRY_DSN` | Sentry project → KV | env | humans |
-| Image | GHCR (`just deploy-dev`, CD on `main`, or a Release) | Container App | `az containerapp update` |
+| Image | GHCR (`just deploy dev`, CD on `main`, or a Release) | Container App | `az containerapp update` |
 | `content/info/*.md` | git, `COPY` in the Dockerfile | image | next image |
 | `data/schedules.yaml` | created when someone uses `/schedule` | `/app/persist/data/` | Pixel; **not safe to delete** |
 | `data/announcement-routes.yaml` | `/admin announcements set` | `/app/persist/data/` | Pixel; missing → no open/closed announcements until an admin sets them |
@@ -168,7 +168,7 @@ How to seed the share and vault: [dev README](../infra/envs/dev/README.md).
 
 ## One replica, no public ingress
 
-Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy-dev` re-asserts that and refuses prod names / `PIXEL_ENV=prod`. The Release prod job re-asserts the same on `pixel-prod`.
+Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy dev` re-asserts that, and `just deploy prod` refuses (prod ships from the Release workflow). The Release prod job re-asserts the same on `pixel-prod`.
 
 Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
 
@@ -195,7 +195,7 @@ just tf-apply dev         # maintainer; first create / vault / volume (not the r
 # prod: PIXEL_APPLY_PROD=1 just tf-apply prod  (coding agents: do not)
 # seed Files: members.yaml + home-assistant/*.yaml  (not the example IDs)
 # seed KV app secrets: just secrets-push dev
-just deploy-dev           # this tree → GHCR SHA → pixel-dev, then just register dev
+just deploy dev           # this tree → GHCR SHA → pixel-dev, then just register dev
 ```
 
 Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply sets `container_image`; a Release then rolls the published SHA.

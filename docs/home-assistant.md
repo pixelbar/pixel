@@ -87,7 +87,7 @@ On Azure `dev`, put the token in Key Vault (`home-assistant-token`) and the URL 
 
 ```sh
 just validate-config
-just dev          # or just deploy-dev for Azure pixel-dev
+just dev          # or just deploy dev for Azure pixel-dev
 ```
 
 In Discord, `/admin status` should show **Connected** and `0 devices allowed`. If it warns that the token belongs to an admin, you signed in as the wrong HA user: delete that token, go back to step 2 as the non-admin user.

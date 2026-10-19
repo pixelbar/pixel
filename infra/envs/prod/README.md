@@ -81,7 +81,7 @@ Then: `az containerapp replica list -g pixel-prod -n pixel-prod -o table` must s
 
 ## What this is not
 
-- Not `just deploy-dev` (that recipe refuses prod names).
+- Not `just deploy` (it refuses prod: prod ships from the Release workflow).
 - Not a clone of `pixel-dev-kv` or the Pixel Dev Discord application.
 - Not stop-then-start during deploys (#11).
 - Not Postgres.

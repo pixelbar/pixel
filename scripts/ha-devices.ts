@@ -42,24 +42,23 @@ import { devicePicker } from "./device-picker.ts";
 import {
 	actionChoices,
 	appendDevices,
-	azDownloadArgs,
-	azUploadArgs,
 	checkName,
 	choiceLabel,
 	compareMirror,
+	DEVICES_PATH,
 	type DeviceChoice,
 	defaultDescription,
 	deviceChoices,
 	mirrorDir,
 	type NewDevice,
 	planChanges,
-	REMOTES,
 	removeDevices,
 	tiersFor,
 	validateDevices,
 } from "./ha-devices-lib.ts";
 import { buildInventory, type InventoryEntry } from "./ha-inventory.ts";
-import { assertRegisterEnv, parseRegisterTarget } from "./register-env.ts";
+import { azDownloadArgs, azUploadArgs, shareRemote } from "./share.ts";
+import { loadTarget } from "./target.ts";
 
 const run = promisify(execFile);
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -70,10 +69,9 @@ class Stop extends Error {
 
 const say = (text = "") => process.stdout.write(`${text}\n`);
 
-const target = parseRegisterTarget(process.argv.slice(2));
-const config = loadConfig();
-assertRegisterEnv(target, config.env);
-const remote = REMOTES[target];
+const { target, vars } = loadTarget(process.argv.slice(2), "just ha-devices dev|prod");
+const config = loadConfig(vars);
+const remote = shareRemote(target, DEVICES_PATH);
 const work = mkdtempSync(join(tmpdir(), "pixel-ha-devices-"));
 
 async function az(args: string[]): Promise<void> {

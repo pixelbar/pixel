@@ -7,40 +7,39 @@
  */
 import { join } from "node:path";
 import { parseEnv } from "node:util";
-import { mirrorDir, REMOTES } from "./ha-devices-lib.ts";
-import type { RegisterTarget } from "./register-env.ts";
+import { ENVS, type Target } from "./envs.ts";
+import { mirrorDir } from "./ha-devices-lib.ts";
 import type { SecretEntry, SecretsManifest } from "./secrets-manifest.ts";
 
 /** Where each env's secrets live on Azure, and the Container App that reads them. */
 export type Vault = { vault: string; resourceGroup: string; app: string };
 
-export const VAULTS: Record<RegisterTarget, Vault> = {
-	dev: { vault: "pixel-dev-kv", resourceGroup: "pixel-dev", app: "pixel-dev" },
-	prod: { vault: "pixel-prod-kv", resourceGroup: "pixel-prod", app: "pixel-prod" },
-};
+const vaultOf = ({ vault, resourceGroup, app }: Vault): Vault => ({ vault, resourceGroup, app });
+
+export const VAULTS: Record<Target, Vault> = { dev: vaultOf(ENVS.dev), prod: vaultOf(ENVS.prod) };
 
 /** The env file a target's env secrets are mirrored in. Same files as `just register`. */
-export function envFile(target: RegisterTarget): string {
-	return `.env.${target}`;
+export function envFile(target: Target): string {
+	return ENVS[target].envFile;
 }
 
 /** The local copy of a target's `admins-yaml` secret. Gitignored (`config/*.yaml`). */
-export function adminsFile(target: RegisterTarget): string {
+export function adminsFile(target: Target): string {
 	return join("config", `admins.${target}.yaml`);
 }
 
 /** The stack's settings, shared through the `terraform-tfvars` secret. Gitignored (`*.tfvars`). */
-export function tfvarsFile(target: RegisterTarget): string {
+export function tfvarsFile(target: Target): string {
 	return join("infra", "envs", target, "terraform.tfvars");
 }
 
 /** Where Terraform's write-only inputs go instead: auto-loaded, gitignored, never synced. */
-export function secretTfvarsFile(target: RegisterTarget): string {
+export function secretTfvarsFile(target: Target): string {
 	return join("infra", "envs", target, "secrets.auto.tfvars");
 }
 
 /** The local file behind each secret that is a whole file rather than one env variable. */
-const FILES: Record<string, (target: RegisterTarget) => string> = {
+const FILES: Record<string, (target: Target) => string> = {
 	"admins-yaml": adminsFile,
 	"terraform-tfvars": tfvarsFile,
 };
@@ -50,7 +49,7 @@ export function isFile(entry: SecretEntry): boolean {
 	return entry.delivery !== "env";
 }
 
-export function localFile(entry: SecretEntry, target: RegisterTarget): string {
+export function localFile(entry: SecretEntry, target: Target): string {
 	const file = FILES[entry.vault];
 	if (!file) throw new Error(`${entry.vault} has no local file`); // syncedSecrets only returns known ones
 	return file(target);
@@ -75,7 +74,7 @@ export function syncedSecrets(
 }
 
 /** Where a secret lives locally, for messages. */
-export function localName(entry: SecretEntry, target: RegisterTarget): string {
+export function localName(entry: SecretEntry, target: Target): string {
 	return isFile(entry) ? localFile(entry, target) : `${entry.env} in ${envFile(target)}`;
 }
 
@@ -141,7 +140,7 @@ const chars = (value: string | undefined) =>
  * One line per secret, never the value. `push` reads left to right as local → Key
  * Vault, `pull` as Key Vault → local.
  */
-export function describe(row: Row, direction: "push" | "pull", target: RegisterTarget): string {
+export function describe(row: Row, direction: "push" | "pull", target: Target): string {
 	const name = `${row.entry.vault} (${localName(row.entry, target)})`;
 	const [from, to] = direction === "push" ? [row.local, row.remote] : [row.remote, row.local];
 	switch (row.status) {
@@ -201,7 +200,7 @@ export function setEnvValues(text: string, updates: ReadonlyMap<string, string>)
 }
 
 /** The env file to start from when a pull finds none. */
-export function newEnvFile(target: RegisterTarget): string {
+export function newEnvFile(target: Target): string {
 	return [
 		`# ${envFile(target)}: written by just secrets-pull ${target}. Add the other settings from .env.example.`,
 		...(target === "prod" ? ["PIXEL_ENV=prod"] : ["PIXEL_ENV=dev"]),
@@ -209,7 +208,7 @@ export function newEnvFile(target: RegisterTarget): string {
 	].join("\n");
 }
 
-/** `PIXEL_ENV` as an env file sets it, for `assertRegisterEnv`. */
+/** `PIXEL_ENV` as an env file sets it, for `assertPixelEnv`. */
 export function pixelEnvOf(envText: string | undefined): "local" | "dev" | "prod" {
 	const value = envText === undefined ? undefined : parseEnv(envText).PIXEL_ENV;
 	return value === "dev" || value === "prod" ? value : "local";
@@ -219,7 +218,7 @@ export function pixelEnvOf(envText: string | undefined): "local" | "dev" | "prod
  * The other env files whose Discord token must never reach this target's vault: the
  * Pixel Dev and Mini bots must never run as prod, and prod's token never belongs on dev.
  */
-export function otherEnvFiles(target: RegisterTarget): string[] {
+export function otherEnvFiles(target: Target): string[] {
 	return target === "prod" ? [".env.dev", ".env"] : [".env.prod"];
 }
 
@@ -332,7 +331,7 @@ export function redactTfvars(text: string, sensitive: ReadonlySet<string>): stri
  */
 export function tfvarsProblems(
 	text: string,
-	target: RegisterTarget,
+	target: Target,
 	variables: { all: ReadonlySet<string>; sensitive: ReadonlySet<string> },
 ): string[] {
 	const problems: string[] = [];
@@ -353,9 +352,9 @@ export function tfvarsProblems(
 		);
 	}
 	const account = tfvarsString(text, "data_storage_account_name");
-	if (account !== undefined && account !== REMOTES[target].account) {
+	if (account !== undefined && account !== ENVS[target].storageAccount) {
 		problems.push(
-			`${file} says data_storage_account_name = "${account}", but ${target} is ${REMOTES[target].account}.`,
+			`${file} says data_storage_account_name = "${account}", but ${target} is ${ENVS[target].storageAccount}.`,
 		);
 	}
 	return problems;
@@ -367,7 +366,7 @@ export function tfvarsProblems(
  */
 export type ShareFile = { path: string; mirror: string };
 
-export function shareFiles(target: RegisterTarget): ShareFile[] {
+export function shareFiles(target: Target): ShareFile[] {
 	return [
 		{ path: "members.yaml", mirror: join("config", target, "members.yaml") },
 		{ path: "home-assistant/devices.yaml", mirror: join(mirrorDir(target), "devices.yaml") },

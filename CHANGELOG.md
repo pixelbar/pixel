@@ -43,6 +43,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - The Discord DM sent when a capability is granted or revoked now really has mentions turned off. It was sent with `allowedMentions`, a field the Discord API ignores, instead of `allowed_mentions`.
 - The Sentry heartbeat no longer runs when `PIXEL_ENV=local`. A laptop running `just dev` with a DSN used to check in to a shared `pixel-local` cron monitor, which opened an issue about ten minutes after anyone stopped it. Startup now logs `heartbeat.off` with the reason. `pixel-dev` and `pixel-prod` are unchanged.
 
+### Changed
+
+- Laptop tooling now shares one definition of each environment ([#116](https://github.com/pixelbar/pixel/issues/116)). `scripts/envs.ts` holds every Azure name (subscription, resource group, Container App, Key Vault, file share), the env file and the guards, and `just pull`/`push`, `secrets-pull`/`push`, `ha-devices`, `register`, `command-access`, `restart`, `deploy` and `tf-apply` all take them from there. New `just env dev|prod` shows where an environment lives. `just --list` is grouped (develop, environments, config, terraform, release, docs). `just deploy dev` replaces `just deploy-dev`, which still works for now; `just deploy prod` refuses because prod ships from the Release workflow. Discord tools load their env file in TypeScript rather than through a bash helper, still dropping anything `just` loaded from `.env`.
+
 ## [0.17.0] - 2026-10-15
 
 ### Added

@@ -10,7 +10,7 @@ Before making structural changes, read:
 
 ## Current scope: phase 1
 
-Build **the core, the Discord adapter, and the Mastodon publisher (outbound only)**. Do not add Telegram, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module, `dev` (`infra/envs/dev`, #9, live) and `prod` (`infra/envs/prod`, #12) are in repo. **Do not apply prod** (`just tf-apply prod` refuses unless `PIXEL_APPLY_PROD=1`) and do not write prod secrets. **CD:** `just deploy-dev` rolls Azure `dev`; merges to `main` publish GHCR only. Prod and the docs site ship from the Release workflow (`workflow_dispatch` on `main`, Environment `prod` for Azure). Never copy the Mini / Pixel Dev Discord token into prod. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, `docs/infra.md`, or `docs/runbook.md`.
+Build **the core, the Discord adapter, and the Mastodon publisher (outbound only)**. Do not add Telegram, a database or account linking unless a human asks for it. Design for them, but don't build them. **Terraform:** bootstrap (`infra/bootstrap`, #8) is applied; the Container Apps module, `dev` (`infra/envs/dev`, #9, live) and `prod` (`infra/envs/prod`, #12) are in repo. **Do not apply prod** (`just tf-apply prod` refuses unless `PIXEL_APPLY_PROD=1`) and do not write prod secrets. **CD:** `just deploy dev` rolls Azure `dev`; merges to `main` publish GHCR only. Prod and the docs site ship from the Release workflow (`workflow_dispatch` on `main`, Environment `prod` for Azure). Never copy the Mini / Pixel Dev Discord token into prod. Do **not** start Pixel locally on the same token while `pixel-dev` is up. Do **not** add Postgres or any database; access, schedules and planned linking are files. Do not treat old GitHub issues as ground truth if they disagree with this file, `docs/architecture.md` Deployment, `docs/infra.md`, or `docs/runbook.md`.
 
 ## Project at a glance
 
@@ -42,13 +42,14 @@ just bump             # cut [Unreleased] into a dated version and bump package.j
 just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
 just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)
 just tf-apply dev     # apply the dev stack — only when a maintainer says so
-just deploy-dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
+just deploy dev       # local GHCR push + Azure pixel-dev (never prod; do not also just dev on that token)
 just register dev     # slash commands on Pixel Dev / a test guild (.env.dev or .env)
 just register prod    # slash commands on the production guild (.env.prod, PIXEL_ENV=prod)
 just ha-devices dev   # pick HA devices and push them to that env's devices.yaml on Azure (also prod)
+just env dev          # where an env lives on Azure (names only); every laptop tool reads them from scripts/envs.ts
 ```
 
-If you need a new repeatable task, add a `just` recipe instead of documenting a raw command.
+If you need a new repeatable task, add a `just` recipe instead of documenting a raw command. A recipe or script that acts on `dev` or `prod` takes the env as an argument and gets everything about it from [`scripts/envs.ts`](scripts/envs.ts): Azure names, the env file and the guards (prod, subscription). TypeScript tools call `loadTarget` (`scripts/target.ts`); recipes `eval "$(pnpm exec tsx scripts/env.ts shell <env>)"`. Don't spell a subscription, resource group, vault or storage account anywhere else (a test checks the justfile).
 
 ## Layout
 
@@ -70,7 +71,7 @@ src/
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml (the scheduled posts)
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
-scripts/                # register-commands, validate-config, changelog check/bump
+scripts/                # envs (the one definition of dev/prod), register-commands, validate-config, changelog check/bump
 docs/                   # architecture, identity, infra, Home Assistant setup, ADRs, runbook;
                         #   also the VitePress website: see docs/AGENTS.md before changing it
 CHANGELOG.md            # Keep a Changelog 1.1.0; most PRs add an Unreleased entry
