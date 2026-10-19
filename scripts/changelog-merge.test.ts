@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { parseChangelog } from "./changelog.ts";
 import { mergeChangelogs, parseSections } from "./changelog-merge.ts";
 
 const HEAD = `# Changelog
@@ -186,10 +185,17 @@ describe("mergeChangelogs", () => {
 		});
 	});
 
-	it("keeps the real CHANGELOG.md's head, released versions and links byte for byte", () => {
-		const { preamble, rest, links } = parseChangelog(readFileSync("CHANGELOG.md", "utf8"));
+	// Shaped like the real CHANGELOG.md (not read from it: changelog-only
+	// pushes skip `just check`, so a test must not depend on that file).
+	it("keeps the head, released versions and links byte for byte", () => {
+		const head =
+			"# Changelog\n\nAll notable changes.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).\n\n";
+		const released =
+			"## [0.2.0] - 2026-02-02\n\n### Added\n\n- One.\n\n- Two, after a blank line.\n\n## [0.1.0] - 2026-01-01\n\n### Fixed\n\n- `code` and [a link](https://example.invalid).\n\n";
+		const links =
+			"[Unreleased]: https://example.invalid/compare/v0.2.0...HEAD\n[0.2.0]: https://example.invalid/compare/v0.1.0...v0.2.0\n[0.1.0]: https://example.invalid/releases/tag/v0.1.0\n";
 		const real = (unreleased: string) =>
-			`${preamble}## [Unreleased]\n\n${unreleased}${rest}${links}`;
+			`${head}## [Unreleased]\n\n${unreleased}${released}${links}`;
 		const text = merged(
 			real("### Fixed\n\n- Base.\n\n"),
 			real("### Fixed\n\n- Base.\n- Branch.\n\n"),
