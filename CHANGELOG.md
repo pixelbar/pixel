@@ -13,6 +13,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `/spacestate`: the Sentry context for a failed call now says why the network failed (`errorCause`, such as `ENOTFOUND`, `ECONNREFUSED` or `UNEXPECTED_REDIRECT`), and shows the address without its query. Sentry was replacing the old redacted address with `[Filtered]`.
 - Mastodon: a response from the instance is now read only up to the 64 KiB limit. A larger body (declared or streamed without a length) is cancelled instead of buffered in full or left open.
+- Commands with a form (`/schedule`, closing time): opening the form now takes a token from the per-person command rate limit (refused and logged as `command.rate_limited` like any command), and errors reported while the form is being prepared are tied to the person's Discord ID in Sentry, as they are while a command runs. Submitting the form still takes its own token.
+- `/schedule`: `when` no longer guesses. Four digits after a date are read the same with or without a month name: a time (`14 nov 1900` is 19:00, `14 nov 2030` is 20:30, as `14-11 2030` already was), and a year only beside another time (`14 nov 2030 19:00`) or when no clock reads them (`14 nov 2099`). Months must be English names or their short forms (`sep`, `sept`, `september`), so words like `junk`, `decent` or `mars` are refused instead of read as June, December or March.
 
 ## [0.17.0] - 2026-10-15
 
