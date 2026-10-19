@@ -72,10 +72,32 @@ export class MastodonClient implements MastodonStatusClient {
 	}
 }
 
-/** Read the body only to bound memory; never put it in an error (it is untrusted). */
+/**
+ * Drain the body so the connection can be reused, reading at most `maxBytes`:
+ * a body that is (or says it is) larger is cancelled instead of buffered.
+ * Never put it in an error (it is untrusted).
+ */
 async function discardBody(response: Response, maxBytes: number): Promise<void> {
+	const body = response.body;
+	if (!body) return;
 	const declared = Number(response.headers.get("content-length"));
-	if (declared > maxBytes) return;
-	const body = await response.text();
-	if (body.length > maxBytes) return;
+	if (declared > maxBytes) {
+		await body.cancel().catch(() => undefined);
+		return;
+	}
+	const reader = body.getReader();
+	let received = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) return;
+			received += value.byteLength;
+			if (received > maxBytes) {
+				await reader.cancel().catch(() => undefined);
+				return;
+			}
+		}
+	} finally {
+		reader.releaseLock();
+	}
 }

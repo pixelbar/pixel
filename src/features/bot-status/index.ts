@@ -15,7 +15,10 @@ export type BotStatusDeps = {
 };
 
 export type BotStatus = {
-	/** Says Pixel is online, with how it's doing. Call once Discord is ready. Never throws. */
+	/**
+	 * Says Pixel is online, with how it's doing. Call once Discord is ready. Does nothing once
+	 * `down` has been called. Never throws.
+	 */
 	up(): Promise<void>;
 	/** Says Pixel is going offline, and why. Call before disconnecting. Never throws. */
 	down(reason: string): Promise<void>;
@@ -44,19 +47,29 @@ export function createBotStatus(deps: BotStatusDeps): BotStatus {
 		}
 	};
 
+	// Once Pixel starts going offline it never says online again: `up` can still be waiting
+	// (for Home Assistant, or on its checks) when a shutdown begins.
+	let goingDown = false;
+
 	return {
 		async up() {
+			if (goingDown) return;
+			const list = await checks(deps);
+			if (goingDown) return;
+			// The announcer runs announcements in order, so a `down` after this point still
+			// comes after it, and finds this run's online post to update.
 			await announce({
 				kind: "bot.status",
 				phase: "up",
 				build: deps.build,
 				startedAt: deps.startedAt,
 				at: now(),
-				checks: await checks(deps),
+				checks: list,
 				text: `🟢 Pixel ${version} is online`,
 			});
 		},
 		async down(reason) {
+			goingDown = true;
 			await announce({
 				kind: "bot.status",
 				phase: "down",

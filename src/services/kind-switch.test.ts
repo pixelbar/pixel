@@ -28,7 +28,7 @@ describe("KindSwitch", () => {
 		expect(make().isOn("light")).toBe(true);
 	});
 
-	it("switches a kind off and on, saying whether it changed, and logs who did it", () => {
+	it("switches a kind off and on, saying whether it changed, and leaves logging the change to the caller", () => {
 		const { logger, warn } = logs();
 		const switches = make(logger);
 		expect(switches.set("door", false, "discord:1")).toEqual({ changed: true, saved: true });
@@ -37,15 +37,8 @@ describe("KindSwitch", () => {
 		expect(switches.set("door", false, "discord:1")).toEqual({ changed: false, saved: true });
 		expect(switches.set("door", true, "discord:2")).toEqual({ changed: true, saved: true });
 		expect(switches.isOn("door")).toBe(true);
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({
-				event: "home.kind_switched",
-				kind: "door",
-				on: false,
-				by: "discord:1",
-			}),
-			"control of doors switched off",
-		);
+		// The caller logs it with the actor's names (`/admin doors`), so it isn't logged twice.
+		expect(warn).not.toHaveBeenCalled();
 	});
 
 	it("remembers what's off across a restart, with who and when", () => {

@@ -38,6 +38,9 @@ export type RespondOptions = {
  * the public message is deleted and the result is sent as an ephemeral
  * follow-up. If it was private, the result stays private — never more visible
  * than intended.
+ *
+ * If Discord refuses an acknowledgement (e.g. the interaction expired or was
+ * already answered), the returned promise rejects with that error, once.
  */
 export async function respond(
 	interaction: Respondable,
@@ -46,7 +49,13 @@ export async function respond(
 	let acknowledged: Promise<unknown> | undefined;
 	let acknowledgedPrivate = defaultPrivate;
 	const timer = setTimeout(() => {
-		acknowledged = interaction.deferReply(defaultPrivate ? { flags: MessageFlags.Ephemeral } : {});
+		const deferral = interaction.deferReply(
+			defaultPrivate ? { flags: MessageFlags.Ephemeral } : {},
+		);
+		// Awaited below once the work is done, which is where a failure surfaces.
+		// Until then it must not count as unhandled while the work still runs.
+		deferral.catch(() => {});
+		acknowledged = deferral;
 	}, deferAfterMs);
 
 	const showPending: ShowPending = async (pending) => {
