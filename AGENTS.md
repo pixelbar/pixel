@@ -37,6 +37,7 @@ just secrets-pull dev # pull that env's app secrets from Key Vault into .env.dev
 just secrets-push dev # diff local app secrets against Key Vault and push on a yes (never prod from an agent)
 just restart dev      # restart that env's Container App so it reads its secrets again
 just check-changelog  # fail if this branch does not change CHANGELOG.md vs origin/main
+just changelog-merge  # in a stopped merge/rebase: keep both sides' CHANGELOG [Unreleased] entries when safe
 just bump             # cut [Unreleased] into a dated version and bump package.json
 just tf-validate      # terraform fmt -check and validate bootstrap + envs/dev
 just tf-plan dev      # plan the dev stack (needs Azure login; does not apply)

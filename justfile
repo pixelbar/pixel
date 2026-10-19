@@ -52,17 +52,42 @@ typecheck:
     pnpm exec tsc --noEmit
 
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
-# GitHub runs this only when a check-path matches (.github/path-filters.yml).
+# GitHub skips it when the `check` inputs already passed (.github/path-filters.yml).
 [group('develop')]
 [doc("Everything CI runs for the Node app: lint, types, tests with coverage thresholds")]
 check: lint typecheck coverage
+
+# The files a CI job depends on (a list in .github/path-filters.yml), and the
+# hash CI uses to skip the job when they already passed: just ci-inputs check
+[group('develop')]
+[doc("Show the files a CI job depends on and the hash CI uses to skip it: `just ci-inputs check`")]
+ci-inputs filter:
+    bash scripts/ci-inputs.sh --list {{filter}}
+    @echo "hash (CI also adds the workflow file): $(bash scripts/ci-inputs.sh {{filter}})"
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
 # CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.
 [group('release')]
 [doc("Fail unless this branch updates CHANGELOG.md vs the base (default origin/main)")]
 check-changelog *args:
-    pnpm exec tsx scripts/check-changelog.ts {{args}}
+    node scripts/check-changelog.ts {{args}}
+
+# In a merge or rebase that stopped on CHANGELOG.md: keep both sides' [Unreleased]
+# entries when that is clearly right, and stage the file. Says why when it won't.
+[group('release')]
+[doc("Resolve a CHANGELOG.md conflict by keeping both sides' [Unreleased] entries")]
+changelog-merge:
+    node scripts/merge-changelog.ts --git
+
+# Let git do `just changelog-merge` by itself whenever CHANGELOG.md conflicts
+# (this clone only; nothing is committed). Undo: git config --unset merge.changelog.driver
+[group('release')]
+[doc("Let git run `just changelog-merge` on CHANGELOG.md conflicts (this clone only)")]
+changelog-merge-driver:
+    git config merge.changelog.name "Keep both sides' CHANGELOG [Unreleased] entries"
+    git config merge.changelog.driver "node scripts/merge-changelog.ts %O %A %B"
+    grep -qxF 'CHANGELOG.md merge=changelog' "$(git rev-parse --git-path info/attributes)" 2>/dev/null || \
+        echo 'CHANGELOG.md merge=changelog' >> "$(git rev-parse --git-path info/attributes)"
 
 # Cut [Unreleased] into a dated version and bump package.json.
 # Added → minor; Fixed/Changed → patch. Never major before 1.0.

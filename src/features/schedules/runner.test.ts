@@ -266,6 +266,90 @@ describe("runDue", () => {
 		]);
 	});
 
+	describe("reads each schedule fresh, so a change made while another posts counts", () => {
+		async function twoDue(change: (store: ScheduleStore, second: string) => void) {
+			const ctx = setup();
+			ctx.store.add(sample({ post: { kind: "message", text: "First", mentions: false } }));
+			const second = ctx.store.add(
+				sample({ post: { kind: "message", text: "Second", mentions: false } }),
+			);
+			ctx.posts.post.mockImplementationOnce(async (channelId: string, post: ChannelPost) => {
+				ctx.posted.push([channelId, post]);
+				change(ctx.store, second.id);
+			});
+			await ctx.run(plus(10_000));
+			return { ...ctx, second };
+		}
+
+		it("doesn't post one deleted meanwhile", async () => {
+			const { posted, store } = await twoDue((store, id) => store.remove(id));
+			expect(posted.map(([, post]) => post)).toEqual([
+				{ kind: "message", text: "First", mentions: false },
+			]);
+			expect(store.all()).toHaveLength(1);
+		});
+
+		it("doesn't post one paused meanwhile, and leaves it paused and unrecorded", async () => {
+			const { posted, store, second } = await twoDue((store, id) =>
+				store.update(id, { paused: true }),
+			);
+			expect(posted).toHaveLength(1);
+			expect(store.get(second.id)).toMatchObject({ paused: true, lastRunAt: null });
+		});
+
+		it("posts the edited text of one edited meanwhile", async () => {
+			const { posted } = await twoDue((store, id) =>
+				store.update(id, { post: { kind: "message", text: "Edited", mentions: false } }),
+			);
+			expect(posted.map(([, post]) => post)).toEqual([
+				{ kind: "message", text: "First", mentions: false },
+				{ kind: "message", text: "Edited", mentions: false },
+			]);
+		});
+
+		it("doesn't post one moved to another time meanwhile", async () => {
+			const { posted, store, second } = await twoDue((store, id) =>
+				store.update(id, { start: "2026-10-15T19:00", recurrence: { kind: "once" } }),
+			);
+			expect(posted).toHaveLength(1);
+			expect(store.get(second.id)?.lastRunAt).toBeNull();
+		});
+
+		it("doesn't post one deleted or paused while checking its creator's access", async () => {
+			for (const change of [
+				(store: ScheduleStore, id: string) => store.remove(id),
+				(store: ScheduleStore, id: string) => store.update(id, { paused: true }),
+			]) {
+				const { store, posts, run, stillAllowed } = setup();
+				const s = store.add(sample());
+				stillAllowed.mockImplementationOnce(async () => {
+					change(store, s.id);
+					return true;
+				});
+				await run(plus(10_000));
+				expect(posts.post).not.toHaveBeenCalled();
+			}
+		});
+	});
+
+	it("clips a post that tokens made too long instead of failing, and logs no text", async () => {
+		const { store, posted, run, warn, error } = setup();
+		// Stored before the create-time check existed: "{{date}}" (8) fills to 15 characters.
+		store.add(
+			sample({ post: { kind: "message", text: `${"x".repeat(1990)}{{date}}`, mentions: false } }),
+		);
+		await run(plus(10_000));
+		const sent = posted[0]?.[1];
+		expect(sent?.kind === "message" && [...sent.text].length).toBe(2000);
+		expect(sent?.kind === "message" && sent.text.endsWith("…")).toBe(true);
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.clipped" }),
+			expect.any(String),
+		);
+		expect(error).not.toHaveBeenCalled();
+		expect(JSON.stringify(warn.mock.calls)).not.toContain("xxxx");
+	});
+
 	it("does nothing until Discord is ready, or while the file is broken", async () => {
 		const notReady = setup({ ready: false });
 		notReady.store.add(sample());
