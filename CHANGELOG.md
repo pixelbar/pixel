@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-19
+
 ### Added
 
 - CHANGELOG conflicts resolve themselves when that is safe. When `main`'s `CHANGELOG.md` changes (and after each Release), a new workflow merges `main` into every open PR from this repo that edits it. If `CHANGELOG.md` is the only conflict, it keeps both sides' `[Unreleased]` entries, pushes the merge and comments on the PR. It never adds a section twice, puts entries into the new `[Unreleased]` after a release, and comments with the reason instead when both sides changed the same entry or the file isn't plain Keep a Changelog. Locally, `just changelog-merge` does the same in a stopped merge or rebase, and `just changelog-merge-driver` makes git do it by itself. For CI to run on those merges, a maintainer sets up a GitHub App (runbook: "Changelog conflicts").
@@ -255,7 +257,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/pixelbar/pixel/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pixelbar/pixel/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/pixelbar/pixel/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/pixelbar/pixel/compare/v0.14.0...v0.15.0
