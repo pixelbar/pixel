@@ -64,7 +64,14 @@ export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 			// still starts it otherwise.
 			...(sentry.profileSessionSampleRate > 0 ? [nodeProfilingIntegration()] : []),
 		],
+		// Spans are streamed (the SDK default, pinned here because the scrubbing below
+		// depends on it): each span goes through `beforeSendSpan`, and there are no
+		// transaction events for `beforeSendTransaction` to see. Spans and breadcrumbs keep
+		// the path of outgoing requests, and Discord's interaction callback and webhook
+		// paths carry a token that can post as the bot, so they are scrubbed too.
+		traceLifecycle: "stream",
 		beforeSend: (event) => scrubDeep(event),
+		beforeSendSpan: (span) => scrubDeep(span),
 		beforeBreadcrumb: (breadcrumb) => scrubDeep(breadcrumb),
 		beforeSendLog: (log) => scrubDeep(log),
 	};
