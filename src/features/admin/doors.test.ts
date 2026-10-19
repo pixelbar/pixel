@@ -13,12 +13,14 @@ function setup(saveFails = false) {
 			return { ...result, saved: false };
 		});
 	const reporter = { breadcrumb: vi.fn() };
+	const warn = vi.fn();
+	const logger = { ...silentLogger, warn };
 	const group = createDoorsSubgroup({ switches, reporter });
 	const run = (name: "on" | "off") =>
 		(group.subcommands.find((s) => s.name === name) as SubcommandDefinition).handler(
-			context({ principal: principal("admin", { userId: IDS.admin }) }),
+			context({ principal: principal("admin", { userId: IDS.admin }), logger }),
 		);
-	return { switches, reporter, group, run };
+	return { switches, reporter, group, run, warn };
 }
 
 describe("/admin doors", () => {
@@ -48,9 +50,37 @@ describe("/admin doors", () => {
 		});
 	});
 
-	it("warns when the switch couldn't be saved", async () => {
-		const { run } = setup(true);
+	it("logs each switch on the command's logger, naming the admin", async () => {
+		const { run, warn } = setup();
+		await run("off");
+		expect(warn).toHaveBeenLastCalledWith(
+			{
+				event: "home.kind_switched",
+				kind: "door",
+				on: false,
+				changed: true,
+				saved: true,
+				user: `discord:${IDS.admin}`,
+				userName: "Test User",
+				userHandle: "test-user",
+			},
+			"door control switched off",
+		);
+		await run("on");
+		expect(warn).toHaveBeenLastCalledWith(
+			expect.objectContaining({ event: "home.kind_switched", on: true, changed: true }),
+			"door control switched on",
+		);
+		expect(warn).toHaveBeenCalledTimes(2);
+	});
+
+	it("warns when the switch couldn't be saved, and logs that it wasn't", async () => {
+		const { run, warn } = setup(true);
 		expect((await run("off")).text).toContain("only holds until Pixel restarts");
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "home.kind_switched", saved: false }),
+			"door control switched off",
+		);
 	});
 
 	it("shows the state for /admin status", () => {

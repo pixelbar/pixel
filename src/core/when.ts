@@ -19,12 +19,36 @@ import {
  *
  * Accepted: a day ("today", "tomorrow", "wed", "wednesday", "14 oct", "oct 14",
  * "14-10", "14-10-2026", "2026-10-14") and/or a time ("19", "19:00", "1900",
- * "19.30", "19u", "19u30", "7pm", "7:30pm"), in either order. A day without a
- * time is 19:00 (Pixelbar's usual evening). A time without a day is the next
- * time the clock hits it. Unparsed strings are refused, not guessed.
+ * "19.30", "19u", "19u30", "7pm", "7:30pm"), in either order. Months are
+ * English names or their short forms ("oct", "october", "sep", "sept"). Four
+ * digits right after a date ("14 oct 2027") are a year only when another time
+ * is there too ("14 oct 2027 19:00") or no clock reads them ("14 oct 2099");
+ * otherwise they are a time ("14 oct 1900" is 19:00). A day without a time is
+ * 19:00 (Pixelbar's usual evening). A time without a day is the next time the
+ * clock hits it. Unparsed strings are refused, not guessed.
  */
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH_NAMES = [
+	"january",
+	"february",
+	"march",
+	"april",
+	"may",
+	"june",
+	"july",
+	"august",
+	"september",
+	"october",
+	"november",
+	"december",
+];
+/** Month words to their number (1-12): full names and short forms, nothing that merely starts like one. */
+const MONTH_ALIASES: Record<string, number> = {
+	...Object.fromEntries(MONTHS.map((m, i) => [m, i + 1])),
+	...Object.fromEntries(MONTH_NAMES.map((m, i) => [m, i + 1])),
+	sept: 9,
+};
 const DAY_ALIASES: Record<string, Weekday> = {
 	mon: "mon",
 	monday: "mon",
@@ -184,16 +208,12 @@ function takeDay(tokens: string[], today: DayPart): DaySpec | "invalid" | undefi
 		const dmy = /^(\d{1,2})[-/](\d{1,2})(?:[-/](\d{4}))?$/.exec(token);
 		if (dmy) {
 			tokens.splice(i, 1);
-			const date = withYear(
-				today,
-				Number(dmy[2]),
-				Number(dmy[1]),
-				dmy[3] ? Number(dmy[3]) : undefined,
-			);
+			const year = dmy[3] ? Number(dmy[3]) : takeYear(tokens, i);
+			const date = withYear(today, Number(dmy[2]), Number(dmy[1]), year);
 			return date ? { kind: "date", date } : "invalid";
 		}
-		const month = MONTHS.indexOf(token.slice(0, 3));
-		if (month >= 0 && /^[a-z]+$/.test(token)) {
+		const month = MONTH_ALIASES[token];
+		if (month !== undefined) {
 			const before = tokens[i - 1];
 			const after = tokens[i + 1];
 			const dayToken =
@@ -205,15 +225,25 @@ function takeDay(tokens: string[], today: DayPart): DaySpec | "invalid" | undefi
 			if (!dayToken) return undefined;
 			const start = dayToken === before ? i - 1 : i;
 			tokens.splice(start, 2);
-			const year =
-				tokens[start] && /^\d{4}$/.test(tokens[start] as string)
-					? Number(tokens.splice(start, 1)[0])
-					: undefined;
-			const date = withYear(today, month + 1, Number(dayToken), year);
+			const date = withYear(today, month, Number(dayToken), takeYear(tokens, start));
 			return date ? { kind: "date", date } : "invalid";
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Removes and returns the year right after a date, at `at`. Four digits there
+ * are a year only when another token is the time or no clock reads them, so
+ * "14 nov 1900" is 19:00 and "14 nov 2030 19:00" is in 2030.
+ */
+function takeYear(tokens: string[], at: number): number | undefined {
+	const token = tokens[at];
+	if (token === undefined || !/^\d{4}$/.test(token)) return undefined;
+	const otherTime = tokens.some((t, j) => j !== at && readTime(t, tokens[j + 1]) !== undefined);
+	if (!otherTime && readTime(token, undefined) !== undefined) return undefined;
+	tokens.splice(at, 1);
+	return Number(token);
 }
 
 function valid(year: number, month: number, day: number): DayPart | undefined {
