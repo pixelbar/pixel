@@ -334,6 +334,18 @@ Without it, Pixel notices an open or close by polling SpaceAPI every 30 s and an
 4. Give the space state service that URL and the same secret, so it signs each call as ADR 0018 describes.
 5. Check: Pixel's log says `webhook.received` on the next open or close, followed by `spaceapi.changed` with `via: "push"`. Startup logs `webhook.off` when the secret isn't set.
 
+**Give the webhook a hostname** (optional; prod `pixel.pixelbar.nl`, dev e.g. `pixel-dev.pixelbar.nl`). Not required for it to work, but the hostname is easier to hand out and survives the Container App environment being recreated, which would change the generated address. It needs the webhook turned on (above). pixelbar.nl's DNS is at TransIP, so it takes two applies:
+
+1. Set `custom_domain = "pixel.pixelbar.nl"` in the environment's `terraform.tfvars`, `just push <env>`, plan and apply. Nothing is bound yet.
+2. `terraform -chdir=infra/envs/<env> output custom_domain_dns_records` prints two records. At TransIP (pixelbar.nl → DNS), add them, with the part before `.pixelbar.nl` as the name:
+   - **TXT** `asuid.pixel` with the `txt.value` (the environment's verification ID; it isn't a secret).
+   - **CNAME** `pixel` with the `cname.value` and a trailing dot (`pixel-prod.<random>.westeurope.azurecontainerapps.io.`).
+3. Wait until both resolve, for example `dig +short TXT asuid.pixel.pixelbar.nl` and `dig +short CNAME pixel.pixelbar.nl`. Applying before then fails, harmlessly.
+4. Set `bind_custom_domain = true`, `just push <env>`, plan and apply. The plan should add only a managed certificate and a custom domain. Issuing the certificate takes a few minutes.
+5. `spacestate_webhook_url` now says `https://pixel.pixelbar.nl/hooks/space-state`. Give the space state service that address. `curl -i https://pixel.pixelbar.nl/hooks/space-state` should answer `405` (only POST is allowed), with a valid certificate. The old address keeps working, so nothing breaks while the service changes over.
+
+Azure renews the certificate itself as long as the CNAME stays in place. Don't delete the TXT or CNAME record while the domain is bound. To remove the hostname, set `bind_custom_domain = false` and apply, then delete the records.
+
 **Locally:** set `SPACESTATE_WEBHOOK_SECRET` in `.env` and Pixel listens on `WEBHOOK_PORT` (default 8081). Try it with a signed call:
 
 ```sh

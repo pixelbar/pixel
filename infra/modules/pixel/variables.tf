@@ -209,6 +209,33 @@ variable "webhook_allowed_ip_ranges" {
   }
 }
 
+variable "custom_domain" {
+  type        = string
+  default     = null
+  description = "Optional. A hostname for the webhook ingress, such as pixel.pixelbar.nl (prod). Needs spacestate_webhook_enabled. Setting it only prints the DNS records to create (custom_domain_dns_records); bind_custom_domain binds it."
+
+  validation {
+    condition     = var.custom_domain == null || can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", var.custom_domain))
+    error_message = "custom_domain must be a lower-case hostname like pixel.pixelbar.nl, without a scheme or path."
+  }
+
+  validation {
+    condition     = var.custom_domain == null || var.spacestate_webhook_enabled
+    error_message = "custom_domain needs spacestate_webhook_enabled: without ingress there is nothing to bind it to."
+  }
+}
+
+variable "bind_custom_domain" {
+  type        = bool
+  default     = false
+  description = "Second apply of the custom domain: issue the managed certificate and bind custom_domain. Turn on only once the TXT and CNAME records from custom_domain_dns_records resolve, or the apply fails."
+
+  validation {
+    condition     = !var.bind_custom_domain || var.custom_domain != null
+    error_message = "bind_custom_domain needs custom_domain."
+  }
+}
+
 variable "tailscale_auth_key" {
   type        = string
   ephemeral   = true

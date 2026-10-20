@@ -43,6 +43,10 @@ discord_guild_id = "100000000000000002"
 # Vault secret spacestate-webhook-secret first. The URL is the spacestate_webhook_url output.
 # spacestate_webhook_enabled = true
 # webhook_allowed_ip_ranges  = ["203.0.113.7/32"]   # optional; empty lets anyone try (signed requests only)
+# A hostname for it, in two applies: set custom_domain and apply, create the records from
+# the custom_domain_dns_records output at TransIP, then set bind_custom_domain and apply.
+# custom_domain      = "pixel-dev.pixelbar.nl"
+# bind_custom_domain = true
 
 sentry_enabled    = false
 tailscale_enabled = false

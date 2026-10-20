@@ -146,6 +146,18 @@ variable "webhook_allowed_ip_ranges" {
   description = "Optional. CIDR ranges allowed to reach the webhook. Empty allows anyone; requests must still be signed."
 }
 
+variable "custom_domain" {
+  type        = string
+  default     = null
+  description = "Optional. A hostname for the webhook ingress, such as pixel.pixelbar.nl. Needs spacestate_webhook_enabled. Set it, apply, create the records from custom_domain_dns_records, then set bind_custom_domain."
+}
+
+variable "bind_custom_domain" {
+  type        = bool
+  default     = false
+  description = "Bind custom_domain with a managed certificate. Only once its DNS records resolve."
+}
+
 variable "tailscale_auth_key" {
   type        = string
   ephemeral   = true

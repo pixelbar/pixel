@@ -16,7 +16,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | Key Vault (RBAC, no secret values in state) | `pixel-dev-kv` |
 | Log Analytics (30-day retention; see [`docs/privacy.md`](../../../docs/privacy.md)) | `pixel-dev-logs` |
 | Container Apps environment | `pixel-dev-cae` |
-| Container App, min=max replicas **1**, no public ingress (unless `spacestate_webhook_enabled`: HTTPS to the webhook port only) | `pixel-dev` |
+| Container App, min=max replicas **1**, no public ingress (unless `spacestate_webhook_enabled`: HTTPS to the webhook port only, optionally on `custom_domain`) | `pixel-dev` |
 | Azure Files account + share `pixel` | `pixeldevdata` |
 | Daily file-share backup, 14-day keep | `pixel-dev-rsv` |
 
