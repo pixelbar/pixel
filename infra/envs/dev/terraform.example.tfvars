@@ -39,6 +39,11 @@ discord_guild_id = "100000000000000002"
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
+# The space state webhook: public HTTPS ingress to port 8081 only (ADR 0018). Push Key
+# Vault secret spacestate-webhook-secret first. The URL is the spacestate_webhook_url output.
+# spacestate_webhook_enabled = true
+# webhook_allowed_ip_ranges  = ["203.0.113.7/32"]   # optional; empty lets anyone try (signed requests only)
+
 sentry_enabled    = false
 tailscale_enabled = false
 

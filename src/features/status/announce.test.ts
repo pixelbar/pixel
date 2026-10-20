@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Announcement, SpaceSnapshot } from "../../core/announcement.ts";
 import { type Logger, silentLogger } from "../../core/logger.ts";
 import type { SpaceChange, SpaceReading } from "../../services/space-status.ts";
-import { READINGS_TO_CONFIRM, startSpaceAnnouncements } from "./announce.ts";
+import { PUSH_CONFIRM_MS, READINGS_TO_CONFIRM, startSpaceAnnouncements } from "./announce.ts";
 
 const INTERVAL = 30_000;
 const T0 = new Date("2026-10-03T12:00:00Z");
@@ -61,7 +61,8 @@ function setup(
 			await vi.advanceTimersByTimeAsync(0);
 		},
 		emit: (change: Partial<SpaceChange> & Pick<SpaceChange, "from" | "to">) => {
-			for (const listener of listeners) listener({ at: T0, previousSince: null, ...change });
+			for (const listener of listeners)
+				listener({ at: T0, previousSince: null, via: "poll", ...change });
 		},
 		advance: (ms: number) => vi.advanceTimersByTimeAsync(ms),
 	};
@@ -121,6 +122,35 @@ describe("announcing changes", () => {
 			openedAt: null,
 			text: "🟢 Pixelbar is now open",
 		});
+	});
+
+	it("confirms a change the webhook pointed out after a few seconds, not a whole interval", async () => {
+		expect(PUSH_CONFIRM_MS).toBeLessThan(INTERVAL);
+		const { announcer, set, emit, advance } = setup(reading("closed"));
+		await advance(0);
+
+		set(reading("open", T0));
+		emit({ from: "closed", to: "open", at: T0, via: "push" });
+		await advance(PUSH_CONFIRM_MS - 1);
+		expect(announcer.announce).not.toHaveBeenCalled();
+
+		await advance(1);
+		expect(announcer.announce).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ state: "open", at: T0 }),
+		);
+	});
+
+	it("announces nothing when the webhook says it flipped straight back", async () => {
+		const { announcer, set, emit, advance } = setup(reading("closed"));
+		await advance(0);
+
+		set(reading("open", T0));
+		emit({ from: "closed", to: "open", via: "push" });
+		await advance(PUSH_CONFIRM_MS / 2);
+		set(reading("closed"));
+		emit({ from: "open", to: "closed", via: "push" });
+		await advance(INTERVAL * 2);
+		expect(announcer.announce).not.toHaveBeenCalled();
 	});
 
 	it("says how long the space had been open when it closes", async () => {

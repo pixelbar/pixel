@@ -4,7 +4,7 @@ output "resource_group_name" {
 
 output "container_app_name" {
   value       = local.name_prefix
-  description = "Container App name (local.name_prefix). One replica, no public ingress. Not taken from the app resource object — that object is sensitive because of secret blocks."
+  description = "Container App name (local.name_prefix). One replica. Public ingress only when spacestate_webhook_enabled. Not taken from the app resource object — that object is sensitive because of secret blocks."
 }
 
 output "container_app_environment_name" {
@@ -44,4 +44,11 @@ output "managed_identity_client_id" {
 
 output "tailscale_enabled" {
   value = var.tailscale_enabled
+}
+
+output "spacestate_webhook_url" {
+  # Built from the environment's domain, like container_app_name, rather than read from
+  # the sensitive app object. External ingress is always <app>.<environment domain>.
+  value       = var.spacestate_webhook_enabled ? "https://${local.name_prefix}.${azurerm_container_app_environment.this.default_domain}/hooks/space-state" : null
+  description = "Where the space state service sends its webhook, or null when it is off. Give it this URL and the spacestate-webhook-secret value."
 }

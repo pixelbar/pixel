@@ -40,6 +40,7 @@ const access: AccessStore = {
 const spaceStatus: SpaceStatus = {
 	pollIntervalMs: 30_000,
 	checkNow: async () => ({ state: "open", since: null, checkedAt: new Date() }),
+	recheck: async () => ({ state: "open", since: null, checkedAt: new Date() }),
 	start() {},
 	stop() {},
 	onChange: () => () => {},

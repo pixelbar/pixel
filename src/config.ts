@@ -81,6 +81,8 @@ const envSchema = z
 			.default("Europe/Amsterdam")
 			.refine(isValidTimeZone, { error: "must be a time zone name like Europe/Amsterdam" }),
 		HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(8080),
+		// The public port: the space state webhook. Only listened on when the secret below is set.
+		WEBHOOK_PORT: z.coerce.number().int().min(0).max(65535).default(8081),
 		SENTRY_DSN: optional(z.url()),
 		// 0 drops every trace, 1 keeps them all. Empty uses the default (1).
 		SENTRY_TRACES_SAMPLE_RATE: sampleRate,
@@ -93,6 +95,10 @@ const envSchema = z
 		SPACESTATE_TOKEN: optional(z.string().trim().min(1)),
 		// Optional, and only used when the three above are set.
 		SPACESTATE_ADDITIONAL_HEADERS: optional(extraHeaders),
+		// Unset means no webhook: Pixel only polls. Shared with the space state service, which signs with it.
+		SPACESTATE_WEBHOOK_SECRET: optional(
+			z.string().trim().min(32, { error: "must be at least 32 characters" }).max(512),
+		),
 
 		DISCORD_TOKEN: z.string().min(1),
 		DISCORD_APP_ID: snowflake,
@@ -139,6 +145,10 @@ const envSchema = z
 		path: ["MASTODON_INSTANCE"],
 		error: "set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither",
 	})
+	.refine((e) => e.WEBHOOK_PORT === 0 || e.WEBHOOK_PORT !== e.HEALTH_PORT, {
+		path: ["WEBHOOK_PORT"],
+		error: "must differ from HEALTH_PORT: the webhook port is public, the health port is not",
+	})
 	.refine(
 		(e) =>
 			[e.SPACESTATE_API_URL, e.SPACESTATE_USER, e.SPACESTATE_TOKEN].every((v) => v === undefined) ||
@@ -173,6 +183,12 @@ export type Config = {
 	/** The time zone times are shown in, and that `{{date}}` tokens use. E.g. "Europe/Amsterdam". */
 	timezone: string;
 	healthPort: number;
+	/**
+	 * The space state webhook (`adapters/webhook`): the port it listens on, which is the only
+	 * one exposed to the internet, and the secret requests are signed with. A secret. Undefined
+	 * means off: nothing listens and Pixel only polls SpaceAPI.
+	 */
+	spaceStateWebhook: { port: number; secret: string } | undefined;
 	sentryDsn: string | undefined;
 	/** How many traces Sentry keeps (0–1). Default 1. Unused without a DSN. */
 	sentryTracesSampleRate: number;
@@ -267,6 +283,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		logDir: e.PIXEL_LOG_DIR === "" ? undefined : e.PIXEL_LOG_DIR,
 		timezone: e.PIXEL_TIMEZONE,
 		healthPort: e.HEALTH_PORT,
+		spaceStateWebhook:
+			e.SPACESTATE_WEBHOOK_SECRET !== undefined
+				? { port: e.WEBHOOK_PORT, secret: e.SPACESTATE_WEBHOOK_SECRET }
+				: undefined,
 		sentryDsn: e.SENTRY_DSN,
 		sentryTracesSampleRate: e.SENTRY_TRACES_SAMPLE_RATE ?? 1,
 		sentryProfileSessionSampleRate: e.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,

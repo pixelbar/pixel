@@ -134,6 +134,18 @@ variable "spacestate_additional_headers_enabled" {
   description = "If true (and spacestate_api_url is set), the app reads the extra headers from Key Vault secret spacestate-additional-headers."
 }
 
+variable "spacestate_webhook_enabled" {
+  type        = bool
+  default     = false
+  description = "If true, open public HTTPS ingress to the space state webhook and read its secret from Key Vault secret spacestate-webhook-secret (push it first)."
+}
+
+variable "webhook_allowed_ip_ranges" {
+  type        = list(string)
+  default     = []
+  description = "Optional. CIDR ranges allowed to reach the webhook. Empty allows anyone; requests must still be signed."
+}
+
 variable "tailscale_auth_key" {
   type        = string
   ephemeral   = true

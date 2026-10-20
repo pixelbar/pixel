@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Space state webhook: the space state service can call `POST /hooks/space-state` when the space opens or closes, and Pixel reads SpaceAPI straight away instead of waiting for the next 30-second poll. A change found this way is confirmed after 5 seconds, so open/closed announcements go out in about 5 seconds rather than 30–60. Polling carries on unchanged as the fallback. Requests must be signed with HMAC-SHA256 (`X-Spacestate-Timestamp`, `X-Spacestate-Signature`) using the new secret `SPACESTATE_WEBHOOK_SECRET` (Key Vault `spacestate-webhook-secret`), and an accepted one only makes Pixel read SpaceAPI again: nothing in it is trusted or logged. Pixel listens on its own port, `WEBHOOK_PORT` (default 8081), only when the secret is set. On Azure, the new `spacestate_webhook_enabled` Terraform variable turns on HTTPS ingress to that port alone (the health probes stay private), `webhook_allowed_ip_ranges` can limit who reaches it, and the `spacestate_webhook_url` output is the address to give the service. Sentry now traces only incoming webhook requests, so probes and internet scanners don't use the trace quota. See [ADR 0018](docs/adr/0018-space-state-webhook.md) and the runbook's "Instant updates: the space state webhook".
+
 ## [0.18.0] - 2026-10-19
 
 ### Added

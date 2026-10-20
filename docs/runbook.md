@@ -24,7 +24,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
 - [Mastodon](#mastodon)
-- [Space state](#space-state)
+- [Space state](#space-state) ([the webhook](#instant-updates-the-space-state-webhook))
 - [Secrets](#secrets) ([sync with Key Vault](#sync-secrets-with-key-vault), [pull and push an environment](#pull-and-push-an-environment))
 - [Deploys](#deploys)
 - [CI and CD](#ci-and-cd)
@@ -49,7 +49,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | --- | --- |
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
-| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
+| **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress unless the space state webhook is on) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
 | **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when the files those jobs depend on have not already passed. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when the image inputs differ from the last publish. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
@@ -322,6 +322,32 @@ Members with the `spacestate` capability can set the space open or closed with `
 
 The user and token are in the URL's query string, so treat anything that could hold the whole URL (a proxy log, a copy of the settings) as a secret.
 
+### Instant updates: the space state webhook
+
+Without it, Pixel notices an open or close by polling SpaceAPI every 30 s and announces it 30–60 s later. With it, the space state service ([`pixelbar/spacestate`](https://github.com/pixelbar/spacestate)) calls Pixel when the state changes, Pixel reads SpaceAPI straight away, and the announcement goes out about 5 s later. Polling carries on regardless, so if the webhook fails nothing breaks: announcements are just back to 30–60 s. Design: [ADR 0018](adr/0018-space-state-webhook.md).
+
+**Turn it on** (Azure):
+
+1. Make a secret of at least 32 characters, for example `openssl rand -hex 32`. Put it in `.env.<env>` as `SPACESTATE_WEBHOOK_SECRET` and `just secrets-push <env>`, which creates Key Vault `spacestate-webhook-secret`.
+2. In the environment's `terraform.tfvars` (`just pull <env>` first), set `spacestate_webhook_enabled = true`, and optionally `webhook_allowed_ip_ranges` to the space state service's outbound addresses. `just push <env>`, then `just tf-plan <env>`. The plan should show only an `ingress` block added to the Container App, the `WEBHOOK_PORT` setting and the `spacestate-webhook-secret` reference. A maintainer applies it (`just tf-apply dev`; prod needs `PIXEL_APPLY_PROD=1` and is never applied by an agent).
+3. Read the URL: `terraform -chdir=infra/envs/<env> output spacestate_webhook_url` (`https://pixel-<env>.<random>.westeurope.azurecontainerapps.io/hooks/space-state`).
+4. Give the space state service that URL and the same secret, so it signs each call as ADR 0018 describes.
+5. Check: Pixel's log says `webhook.received` on the next open or close, followed by `spaceapi.changed` with `via: "push"`. Startup logs `webhook.off` when the secret isn't set.
+
+**Locally:** set `SPACESTATE_WEBHOOK_SECRET` in `.env` and Pixel listens on `WEBHOOK_PORT` (default 8081). Try it with a signed call:
+
+```sh
+ts=$(date +%s); body='{"state":"open"}'
+sig=$(printf '%s' "$ts.$body" | openssl dgst -sha256 -hmac "$SPACESTATE_WEBHOOK_SECRET" | awk '{print $2}')
+curl -i -X POST localhost:8081/hooks/space-state -H "X-Spacestate-Timestamp: $ts" -H "X-Spacestate-Signature: sha256=$sig" -d "$body"
+```
+
+`202` means it was accepted (Pixel then reads SpaceAPI; the body itself is ignored). `401` means the signature, the secret or the clock is off: the log line `webhook.rejected` has the `reason` (`missing`, `malformed`, `stale` (more than 5 minutes off) or `bad-signature`).
+
+**Turn it off:** set `spacestate_webhook_enabled = false` and apply. Ingress goes away and Pixel goes back to polling only. In a hurry, clearing the secret on the service side does the same in practice: Pixel refuses every call and keeps polling.
+
+**If it seems not to work:** announcements still arriving 30–60 s late means the webhook isn't getting through. Look for `webhook.received` / `webhook.rejected` in the logs. No lines at all: the service isn't calling, or the address is wrong, or `webhook_allowed_ip_ranges` blocks it (Azure answers 403 itself). `bad-signature`: the two secrets differ. `stale`: a clock is wrong. If SpaceAPI is still served by the old setup rather than the new service, a webhook can arrive before SpaceAPI shows the change; the next poll catches it.
+
 ## Secrets
 
 Every secret lives in the secret store for its environment (a local `.env` for development, Key Vault `pixel-dev-kv` in Azure `dev`) and nowhere else. Pixel never logs them, and scrubs anything shaped like a Discord or Home Assistant token from logs and Sentry, but don't rely on that. After rotating, **restart Pixel**: secrets are read once at startup.
@@ -332,6 +358,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | `HOME_ASSISTANT_TOKEN` | A long-lived token in HA; Key Vault `home-assistant-token` | It may have leaked, or the Pixel user changes |
 | `MASTODON_ACCESS_TOKEN` | Instance Development app (`write:statuses`); Key Vault `mastodon-access-token` when hosted | It may have leaked, the app is rotated, or you move instance |
 | `SPACESTATE_USER`, `SPACESTATE_TOKEN` | Whoever runs the space state API; Key Vault `spacestate-user` and `spacestate-token` when hosted | They may have leaked, or the API's credentials change |
+| `SPACESTATE_WEBHOOK_SECRET` | Made by you (`openssl rand -hex 32`), shared with the space state service; Key Vault `spacestate-webhook-secret` when hosted | It may have leaked, or someone with access to either side leaves |
 | `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
@@ -362,6 +389,8 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. Get the new user and token from whoever runs the API.
 2. Put them in the secret store as `SPACESTATE_USER` and `SPACESTATE_TOKEN`, and restart Pixel.
 3. Run `/spacestate set` with the state the space is already in. If Sentry shows `spacestate` with HTTP 401 or 403, the credentials are wrong.
+
+**Rotate the webhook secret:** make a new one, `just secrets-push <env>` it (and restart), and set the same value on the space state service. Between the two, webhooks get `401` and Pixel polls as usual, so the order doesn't matter and nothing is lost but speed. Check for `webhook.received` on the next change.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 
@@ -596,7 +625,7 @@ Sentry gets errors (with the tags `command`, `feature`, `platform`, `tier` and t
 
 **Retention:** the [privacy notice](privacy.md) documents **30 days** for Sentry (same as Azure Log Analytics). 🚧 Apply that in the Sentry project (Settings → Security & Privacy / Data Retention). Terraform does not set Sentry retention.
 
-Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` (default 1: keep them all). Profiles use `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default 1). `/healthz` and `/readyz` are not traced.
+Errors are always sent (`sampleRate` 1). Traces use `SENTRY_TRACES_SAMPLE_RATE` (default 1: keep them all). Profiles use `SENTRY_PROFILE_SESSION_SAMPLE_RATE` (default 1). Only the webhook (`/hooks/...`) is traced among incoming requests: `/healthz`, `/readyz` and anything else that reaches the public webhook port are not.
 
 - **Where alerts go:** 🚧 not decided. Set up alert rules for new issues in prod, and write here who is notified and where (email, Discord channel).
 - **Pixel going quiet:** Pixel checks in with a Sentry cron monitor, `pixel-prod` or `pixel-dev` (Sentry → **Crons**), every 5 minutes while it's connected to Discord. If check-ins stop (a crash, a hang, the host down) or say it's disconnected, the monitor opens an issue within about ten minutes, and closes it by itself when Pixel is back. A laptop `just dev` (`PIXEL_ENV=local`) never checks in, even with a DSN, so stopping it doesn't alert anyone; if Sentry still lists an old `pixel-local` monitor, delete it. In the monitor's settings, set who is alerted. 🚧 Record here who that is.

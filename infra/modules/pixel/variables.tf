@@ -192,6 +192,23 @@ variable "spacestate_additional_headers_enabled" {
   description = "If true (and spacestate_api_url is set), the app reads SPACESTATE_ADDITIONAL_HEADERS from Key Vault secret spacestate-additional-headers."
 }
 
+variable "spacestate_webhook_enabled" {
+  type        = bool
+  default     = false
+  description = "If true, turn on public HTTPS ingress to the space state webhook (port 8081, /hooks/space-state) and read SPACESTATE_WEBHOOK_SECRET from Key Vault secret spacestate-webhook-secret. Push that secret first. The health probes stay private either way."
+}
+
+variable "webhook_allowed_ip_ranges" {
+  type        = list(string)
+  default     = []
+  description = "Optional. CIDR ranges allowed to reach the webhook ingress, such as the space state service's outbound addresses. Empty allows anyone: every request must still be signed with the webhook secret."
+
+  validation {
+    condition     = alltrue([for r in var.webhook_allowed_ip_ranges : can(cidrhost(r, 0))])
+    error_message = "webhook_allowed_ip_ranges must be CIDR ranges like 203.0.113.7/32."
+  }
+}
+
 variable "tailscale_auth_key" {
   type        = string
   ephemeral   = true

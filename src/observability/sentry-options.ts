@@ -11,13 +11,14 @@ import { scrubDeep } from "./scrub.ts";
 export const SENTRY_LOG_LEVELS = ["info", "warn", "error", "fatal"] as const;
 
 /**
- * Azure (and local) probes hit these. They aren't worth a Sentry trace, and they
- * must not be counted as request sessions: Pixel's session is the process, not
- * an HTTP request.
+ * Incoming requests that aren't worth a Sentry trace: everything but the webhooks
+ * (`/hooks/...`). That covers Azure's `/healthz` and `/readyz` probes, and whatever the
+ * internet tries against the public webhook port. None of them count as request
+ * sessions either: Pixel's session is the process, not an HTTP request.
  */
-export function isHealthProbe(urlPath: string): boolean {
+export function isUntracedRequest(urlPath: string): boolean {
 	const path = urlPath.split("?")[0] ?? urlPath;
-	return path === "/healthz" || path === "/readyz";
+	return !path.startsWith("/hooks/");
 }
 
 /**
@@ -27,8 +28,8 @@ export function isHealthProbe(urlPath: string): boolean {
  * secrets have been scrubbed from it.
  *
  * Tracing, process sessions, runtime metrics and CPU profiling are on: this is
- * a long-running Discord bot, not a request-scoped web app. Incoming `/healthz`
- * and `/readyz` probes are ignored. A missing DSN never reaches here.
+ * a long-running Discord bot, not a request-scoped web app. Of incoming requests,
+ * only the webhooks are traced. A missing DSN never reaches here.
  */
 export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 	return {
@@ -53,7 +54,7 @@ export function sentryOptions(sentry: SentryConfig): Sentry.NodeOptions {
 		profileLifecycle: "trace",
 		integrations: [
 			Sentry.httpIntegration({
-				ignoreIncomingRequests: isHealthProbe,
+				ignoreIncomingRequests: isUntracedRequest,
 				// Health probes would otherwise be one "session" each. Crash-free
 				// rate comes from processSessionIntegration (a default), not HTTP.
 				sessions: false,

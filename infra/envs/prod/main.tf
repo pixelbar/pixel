@@ -20,6 +20,8 @@ module "pixel" {
   mastodon_instance                     = var.mastodon_instance
   spacestate_api_url                    = var.spacestate_api_url
   spacestate_additional_headers_enabled = var.spacestate_additional_headers_enabled
+  spacestate_webhook_enabled            = var.spacestate_webhook_enabled
+  webhook_allowed_ip_ranges             = var.webhook_allowed_ip_ranges
   sentry_enabled                        = var.sentry_enabled
   tailscale_enabled                     = var.tailscale_enabled
   tailscale_image                       = var.tailscale_image

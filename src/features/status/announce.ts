@@ -7,6 +7,13 @@ import type { SpaceChange, SpaceReading, SpaceStatus } from "../../services/spac
 /** A change is announced once the new state has been seen on this many polls in a row. */
 export const READINGS_TO_CONFIRM = 2;
 
+/**
+ * How long to wait before confirming a change the webhook told us about. A webhook comes
+ * for every flip, so a switch flicked back sends another one, which resets the wait;
+ * there's no need to wait for a whole poll to rule that out.
+ */
+export const PUSH_CONFIRM_MS = 5_000;
+
 /** How many extra intervals to keep trying to confirm a change while SpaceAPI is unreachable. */
 const MAX_CONFIRM_RETRIES = 10;
 
@@ -29,6 +36,8 @@ export type SpaceAnnouncementsDeps = {
  * - **Only once it holds.** A change is announced after the new state has been
  *   seen on {@link READINGS_TO_CONFIRM} polls in a row. If it flips back before
  *   that, nothing is posted, so flicking the switch doesn't flood the channel.
+ *   A change the webhook pointed out is read again after {@link PUSH_CONFIRM_MS}
+ *   instead of a whole poll interval.
  * - **At most once.** A change is never announced twice, even if every
  *   publisher fails.
  * - At startup, publishers get the current state to correct stale posts
@@ -126,7 +135,8 @@ export function startSpaceAnnouncements({
 		lastChange = change;
 		confirmRetries = 0;
 		clearTimeout(settleTimer);
-		settleTimer = setTimeout(() => run("settle", settle), (READINGS_TO_CONFIRM - 1) * intervalMs);
+		const wait = change.via === "push" ? PUSH_CONFIRM_MS : (READINGS_TO_CONFIRM - 1) * intervalMs;
+		settleTimer = setTimeout(() => run("settle", settle), wait);
 	});
 
 	run("reconcile", reconcile);

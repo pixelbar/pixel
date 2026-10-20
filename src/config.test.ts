@@ -431,6 +431,48 @@ describe("space state API settings", () => {
 	});
 });
 
+describe("the space state webhook", () => {
+	const SECRET = "test-webhook-secret-not-a-real-one-0000";
+
+	it("is off without a secret", () => {
+		expect(loadConfig(VALID).spaceStateWebhook).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, SPACESTATE_WEBHOOK_SECRET: "" }).spaceStateWebhook,
+		).toBeUndefined();
+	});
+
+	it("listens on 8081 unless told otherwise", () => {
+		expect(loadConfig({ ...VALID, SPACESTATE_WEBHOOK_SECRET: SECRET }).spaceStateWebhook).toEqual({
+			port: 8081,
+			secret: SECRET,
+		});
+		expect(
+			loadConfig({ ...VALID, SPACESTATE_WEBHOOK_SECRET: SECRET, WEBHOOK_PORT: "9000" })
+				.spaceStateWebhook?.port,
+		).toBe(9000);
+	});
+
+	it("refuses a short secret without echoing it", () => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, SPACESTATE_WEBHOOK_SECRET: "too-short-secret" });
+		} catch (error) {
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/SPACESTATE_WEBHOOK_SECRET: must be at least 32 characters/);
+		expect(message).not.toContain("too-short-secret");
+	});
+
+	it("won't share the health port, which must stay private", () => {
+		expect(() => loadConfig({ ...VALID, WEBHOOK_PORT: "8080" })).toThrow(/WEBHOOK_PORT/);
+		expect(() => loadConfig({ ...VALID, WEBHOOK_PORT: "9000", HEALTH_PORT: "9000" })).toThrow(
+			/WEBHOOK_PORT/,
+		);
+		// 0 picks a free port each time, so both can be 0 (tests do this).
+		expect(() => loadConfig({ ...VALID, WEBHOOK_PORT: "0", HEALTH_PORT: "0" })).not.toThrow();
+	});
+});
+
 describe("Mastodon settings", () => {
 	const INSTANCE = "https://mastodon.example";
 	const TOKEN = "mastodon-test-token";

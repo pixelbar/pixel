@@ -18,7 +18,7 @@ Inside `pixel-prod` (already exists; not recreated):
 | Key Vault (RBAC, purge protection **on**) | `pixel-prod-kv` |
 | Log Analytics (30-day retention, pending #7) | `pixel-prod-logs` |
 | Container Apps environment | `pixel-prod-cae` |
-| Container App, min=max replicas **1**, no public ingress | `pixel-prod` |
+| Container App, min=max replicas **1**, no public ingress (unless `spacestate_webhook_enabled`: HTTPS to the webhook port only) | `pixel-prod` |
 | Azure Files account + share `pixel` | `pixelproddata` |
 | Daily file-share backup, 14-day keep | `pixel-prod-rsv` |
 

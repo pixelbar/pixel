@@ -16,7 +16,7 @@ Inside `pixel-dev` (already exists; not recreated):
 | Key Vault (RBAC, no secret values in state) | `pixel-dev-kv` |
 | Log Analytics (30-day retention; see [`docs/privacy.md`](../../../docs/privacy.md)) | `pixel-dev-logs` |
 | Container Apps environment | `pixel-dev-cae` |
-| Container App, min=max replicas **1**, no public ingress | `pixel-dev` |
+| Container App, min=max replicas **1**, no public ingress (unless `spacestate_webhook_enabled`: HTTPS to the webhook port only) | `pixel-dev` |
 | Azure Files account + share `pixel` | `pixeldevdata` |
 | Daily file-share backup, 14-day keep | `pixel-dev-rsv` |
 
@@ -57,7 +57,7 @@ Do not run Pixel locally against the same Discord token while this app is up.
 
 ## Secrets (Key Vault)
 
-**App secrets** (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `sentry-dsn`): `just secrets-push dev` is their only writer ([ADR 0017](../../../docs/adr/0017-one-writer-for-app-secrets.md)). Terraform has no inputs for them. Push them **before** the apply that turns their feature on; the apply only references them.
+**App secrets** (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `spacestate-webhook-secret`, `sentry-dsn`): `just secrets-push dev` is their only writer ([ADR 0017](../../../docs/adr/0017-one-writer-for-app-secrets.md)). Terraform has no inputs for them. Push them **before** the apply that turns their feature on; the apply only references them.
 
 **Infra secrets** (`tailscale-auth-key`, `ghcr-pull-token`): Terraform writes them when `write_secrets = true`, from gitignored `secrets.auto.tfvars` (or `TF_VAR_*`), never the shared `terraform.tfvars`. Values are write-only and are not stored in Terraform state.
 
