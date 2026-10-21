@@ -33,6 +33,7 @@ import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
+import { HttpRevbank } from "./services/revbank.ts";
 import { ScheduleStore } from "./services/schedules.ts";
 import { HttpSpaceStateApi } from "./services/space-state-api.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
@@ -184,6 +185,9 @@ export function buildCore(
 		reporter,
 		spaceStatus,
 		spaceState,
+		revbank: config.revbank
+			? new HttpRevbank({ ...config.revbank, ...(options.fetch ? { fetch: options.fetch } : {}) })
+			: undefined,
 		announcer,
 		calendar,
 		channelPosts,

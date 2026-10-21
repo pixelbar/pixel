@@ -672,3 +672,22 @@ If `members.yaml` is lost and there's no backup, Pixel won't start (it fails clo
 - **When Terraform lands:** search for `🚧` and replace each one with real steps, keeping the "Today" steps only where they still apply. Add the real environment names, links and the on-call contact to "Who and what".
 - **Every procedure should be followed once by someone other than its author, in dev,** before it's trusted. Fix whatever they trip over, and note the date here if you like.
 - **After an incident,** add what you learned: a missing step, a better check, a new entry under [Incidents](#incidents).
+
+
+## RevBank
+
+RevBank is optional and off unless both `REVBANK_API_URL` and `REVBANK_API_TOKEN` are set. The URL must be an HTTPS origin; loopback HTTP is allowed for local tests only. The token lives in Key Vault as `revbank-api-token` (app group). Set `revbank_api_url` in the environment's Terraform settings and push the app secret through `just secrets-push dev` before enabling it. Follow the existing reviewed production process for prod. Never put backup credentials or a backup mount in Pixel.
+
+Deploy the gateway from its separate private repository, following its runbook. It reads a local mirror of the existing backup and must not modify RevBank or its backup remote. Use a private network endpoint, HTTPS, explicit network ACLs and separate tokens/state for dev and prod. Dev uses fictional financial data only. This change does not deploy the gateway, configure Tailscale ACLs, grant capabilities or alter live secrets.
+
+After deployment, register commands with `just register dev` (production uses the Release workflow). Give a verified link manager the `revbank-link-admin` capability with `/admin capabilities grant` and add their immutable Discord ID to the gateway's separate manager allow-list. Both checks must pass; an admin tier alone grants no link-management permission.
+
+1. The owner uses `/revbank link nick:` and contacts a link manager in person.
+2. The manager verifies the account belongs to that person, uses `/revbank-manage review user:`, and checks the nickname and request ID.
+3. The manager uses `/revbank-manage approve user: request:` with that exact ID. Requests expire after 24 hours; an edited/replaced request needs a fresh review. Managers cannot approve themselves.
+4. The owner checks `/revbank status`, `/revbank balance` and `/revbank transactions`. Replies are private, sourced from the backup, and include its timestamp.
+5. `/revbank unlink` removes the owner's link and pending request. A manager can use `/revbank-manage reject user: request:` or `/revbank-manage revoke user:`. These commands do not change financial records.
+
+On unavailable data, check the gateway's backup freshness, parser compatibility and per-account reconciliation. Do not send raw logs or balances to Pixel logs, Sentry or public issues. If the API returns a conflict, review the request again; do not retry approvals automatically. Gateway denial may mean its independent allow-list is missing the manager. A renamed or recreated account requires a fresh verified link; never silently migrate it by nickname.
+
+Rotate the service token on both sides if compromised, restrict the network path and inspect the gateway's management audit. A gateway token authenticates Pixel, which asserts caller IDs; a compromised Pixel can impersonate linked callers. Unlinking removes access, not RevBank's original bookkeeping or Discord's copy of a response. Follow the private service's retention and restore instructions so revoked links are not resurrected.

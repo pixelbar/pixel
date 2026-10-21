@@ -8,6 +8,7 @@ import { CapabilityError } from "./core/capabilities.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
+import { REVBANK_LINK_ADMIN } from "./features/revbank/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { SPACESTATE_CAPABILITY } from "./features/spacestate/index.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
@@ -69,6 +70,36 @@ describe("buildCore", () => {
 	});
 
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+	it("wires private RevBank reads and gates link management independently of admin tier", async () => {
+		config.revbank = { url: "https://gateway.example", token: "x".repeat(32) };
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockResolvedValue(Response.json({ balanceCents: 850, updatedAt: "2026-10-21T10:00:00Z" }));
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const balance = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.guest }),
+			command: "revbank",
+			subcommand: "balance",
+			args: {},
+		});
+		expect(balance.private).toBe(true);
+		expect(balance.reply.text).toContain("€8.50");
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+			actor: `discord:${IDS.guest}`,
+		});
+		for (const userId of [IDS.guest, IDS.member, IDS.admin]) {
+			const denied = await dispatcher.dispatch({
+				actor: actor({ userId }),
+				command: "revbank-manage",
+				subcommand: "review",
+				args: { user: IDS.friend },
+				users: { user: { id: IDS.friend, displayName: "Example", isBot: false } },
+			});
+			expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+		}
+		expect(fetch).toHaveBeenCalledTimes(1);
+	});
 
 	it.each([
 		[IDS.admin, true],
@@ -352,6 +383,7 @@ describe("buildCore", () => {
 		const DOOR = [
 			{ name: "door", description: "Open the door" },
 			SCHEDULE_CAPABILITY,
+			REVBANK_LINK_ADMIN,
 			SPACESTATE_CAPABILITY,
 		];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
@@ -370,6 +402,7 @@ describe("buildCore", () => {
 				"ha-switches",
 				"ha-doors",
 				"schedule-posts",
+				"revbank-link-admin",
 				"spacestate",
 			]);
 			const listed = await core.dispatcher.dispatch({

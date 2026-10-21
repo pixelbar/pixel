@@ -158,3 +158,14 @@ variable "tailscale_image" {
   type    = string
   default = "ghcr.io/tailscale/tailscale:v1.86.5"
 }
+
+variable "revbank_api_url" {
+  type        = string
+  default     = null
+  description = "Optional HTTPS origin for the private RevBank gateway. REVBANK_API_TOKEN is supplied through Key Vault; no backup credentials are given to Pixel."
+
+  validation {
+    condition     = var.revbank_api_url == null || can(regex("^https://[^/?#@]+/?$", var.revbank_api_url))
+    error_message = "revbank_api_url must be an HTTPS origin or unset."
+  }
+}

@@ -51,3 +51,12 @@ Deletion removes you from Pixel's access lists and scheduled posts. Logs and Sen
 
 - [Identity and access](identity-and-access.md) (why Pixel stores IDs, and how authorisation works)
 - [Operations runbook](runbook.md#privacy-requests) (how operators handle a request)
+
+
+## Optional RevBank integration
+
+When configured, `/revbank` sends your Discord ID and requested action to a private RevBank gateway. A link request also sends the nickname you enter. The gateway stores pending requests (up to 24 hours), approved account links until unlinked/revoked, and a bounded management audit; its operator controls backup retention. Link managers verify ownership before approving a specific request. They can inspect link metadata but cannot use Pixel to read another person's financial history.
+
+Pixel displays your balance or last ten confirmed bookings in a private Discord reply and does not persist the financial response, nickname, or request body in its logs or Sentry. Standard command names, outcomes and caller identity are logged as described above. Discord receives the private reply and handles it under its own policy. The gateway removes raw terminal input, counterparties and free-form booking descriptions; catalogue labels may be shown.
+
+`/revbank unlink` removes the current link and pending request from the gateway. It does not delete RevBank's original financial records, old state backups, management audit entries or Discord's copy of replies. Contact the board for those requests. This optional integration needs the same operator/board review of retention as the rest of this notice.

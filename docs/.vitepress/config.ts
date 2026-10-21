@@ -171,6 +171,10 @@ export default defineConfig({
 							text: "0017 · One writer for app secrets",
 							link: "/maintainers/adr/0017-one-writer-for-app-secrets",
 						},
+						{
+							text: "0018 · Private RevBank gateway",
+							link: "/maintainers/adr/0018-private-revbank-gateway",
+						},
 					],
 				},
 			],

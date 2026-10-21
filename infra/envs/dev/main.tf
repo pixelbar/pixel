@@ -18,6 +18,7 @@ module "pixel" {
   discord_role_friend                   = var.discord_role_friend
   home_assistant_url                    = var.home_assistant_url
   mastodon_instance                     = var.mastodon_instance
+  revbank_api_url                       = var.revbank_api_url
   spacestate_api_url                    = var.spacestate_api_url
   spacestate_additional_headers_enabled = var.spacestate_additional_headers_enabled
   sentry_enabled                        = var.sentry_enabled

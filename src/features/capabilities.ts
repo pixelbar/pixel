@@ -1,6 +1,7 @@
 import type { CapabilityDefinition } from "../core/capabilities.ts";
 import { homeCapabilities } from "../core/home-access.ts";
 import { HOME_KINDS } from "../core/home-kinds/index.ts";
+import { REVBANK_LINK_ADMIN } from "./revbank/index.ts";
 import { SCHEDULE_CAPABILITY } from "./schedules/index.ts";
 import { SPACESTATE_CAPABILITY } from "./spacestate/index.ts";
 
@@ -18,5 +19,6 @@ import { SPACESTATE_CAPABILITY } from "./spacestate/index.ts";
 export const CAPABILITIES: readonly CapabilityDefinition[] = [
 	...homeCapabilities(HOME_KINDS),
 	SCHEDULE_CAPABILITY,
+	REVBANK_LINK_ADMIN,
 	SPACESTATE_CAPABILITY,
 ];

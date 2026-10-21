@@ -50,6 +50,21 @@ const extraHeaders = z.string().transform((raw, ctx) => {
 	return Object.fromEntries(entries.map(([name, value]) => [name, String(value).trim()]));
 });
 
+const revbankUrl = z.url({ protocol: /^https?$/ }).refine(
+	(value) => {
+		const url = new URL(value);
+		return (
+			!url.username &&
+			!url.password &&
+			!url.search &&
+			!url.hash &&
+			url.pathname === "/" &&
+			(url.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
+		);
+	},
+	{ error: "must be an HTTPS origin (HTTP is allowed only on loopback)" },
+);
+
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
 const pixelRuntime = z.enum(["local", "cloud"]).default("local");
 
@@ -94,6 +109,9 @@ const envSchema = z
 		// Optional, and only used when the three above are set.
 		SPACESTATE_ADDITIONAL_HEADERS: optional(extraHeaders),
 
+		REVBANK_API_URL: optional(revbankUrl),
+		REVBANK_API_TOKEN: optional(z.string().trim().min(32)),
+
 		DISCORD_TOKEN: z.string().min(1),
 		DISCORD_APP_ID: snowflake,
 		DISCORD_GUILD_ID: snowflake,
@@ -130,6 +148,10 @@ const envSchema = z
 				.map((part) => part.trim())
 				.filter((part) => part.length > 0);
 		}, z.array(z.enum(ANNOUNCEMENT_KINDS)).optional()),
+	})
+	.refine((e) => (e.REVBANK_API_URL === undefined) === (e.REVBANK_API_TOKEN === undefined), {
+		path: ["REVBANK_API_URL"],
+		error: "set both REVBANK_API_URL and REVBANK_API_TOKEN, or neither",
 	})
 	.refine((e) => (e.HOME_ASSISTANT_URL === undefined) === (e.HOME_ASSISTANT_TOKEN === undefined), {
 		path: ["HOME_ASSISTANT_URL"],
@@ -179,6 +201,7 @@ export type Config = {
 	/** How many of those traces get a CPU profile (0–1). Default 1. Unused without a DSN. */
 	sentryProfileSessionSampleRate: number;
 	spaceApiUrl: string;
+	revbank?: { url: string; token: string };
 	/**
 	 * The API `/spacestate` calls to set the space open or closed: its address, and the
 	 * user and token it is called with. The user and token come from Key Vault when hosted
@@ -271,6 +294,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		sentryTracesSampleRate: e.SENTRY_TRACES_SAMPLE_RATE ?? 1,
 		sentryProfileSessionSampleRate: e.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,
 		spaceApiUrl: e.SPACEAPI_URL,
+		revbank:
+			e.REVBANK_API_URL && e.REVBANK_API_TOKEN
+				? { url: e.REVBANK_API_URL, token: e.REVBANK_API_TOKEN }
+				: undefined,
 		spaceStateApi:
 			e.SPACESTATE_API_URL !== undefined &&
 			e.SPACESTATE_USER !== undefined &&

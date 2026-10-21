@@ -27,6 +27,7 @@ locals {
     mastodon           = var.mastodon_instance != null
     spacestate         = var.spacestate_api_url != null
     spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
+    revbank            = var.revbank_api_url != null
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null
@@ -69,6 +70,7 @@ locals {
     var.discord_announce_bot_channel_id != null ? { DISCORD_ANNOUNCE_BOT_CHANNEL_ID = var.discord_announce_bot_channel_id } : {},
     var.discord_role_member != null ? { DISCORD_ROLE_MEMBER = var.discord_role_member } : {},
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},
+    var.revbank_api_url != null ? { REVBANK_API_URL = var.revbank_api_url } : {},
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
