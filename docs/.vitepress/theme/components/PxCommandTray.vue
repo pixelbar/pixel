@@ -39,6 +39,14 @@ const props = withDefaults(
 );
 
 const COMMANDS: readonly Command[] = [
+	{
+		name: "/fishbot say",
+		description: "Try a classic Fishbot phrase (start typing for suggestions)",
+	},
+	{ name: "/fishbot trout", description: "Give someone a harmless slap with a large trout" },
+	{ name: "/fishbot feed", description: "Feed Fishbot hundreds and thousands" },
+	{ name: "/fishbot pet", description: "Give Fishbot a friendly stroke" },
+	{ name: "/fishbot cookie", description: "Sneak a cookie away from Fishbot" },
 	{ name: "/help", description: "List the commands you can use" },
 	{ name: "/status", description: "Is Pixelbar open right now?" },
 	{ name: "/events", description: "See what's coming up at Pixelbar" },

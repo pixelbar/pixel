@@ -95,6 +95,7 @@ describe("buildFeatures", () => {
 			"closing-time",
 			"events",
 			"feedback",
+			"fishbot",
 			"ha",
 			"help",
 			"info",

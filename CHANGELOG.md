@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/fishbot` brings a little QuakeNet nostalgia to Discord: classic call-and-response phrases with autocomplete, feeding and petting the fish, cookie theft, and a harmless trout slap using Discord's user picker. Available to everyone with the usual command rate limits and no pings. It only responds to slash commands; no chat-reading permissions or IRC-specific behaviour.
+
 ## [0.18.0] - 2026-10-19
 
 ### Added
