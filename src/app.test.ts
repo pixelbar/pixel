@@ -71,6 +71,32 @@ describe("buildCore", () => {
 
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+	it.each(
+		(["guest", "friend", "member", "admin"] as const).flatMap((tier) =>
+			["link", "status", "balance", "transactions", "unlink"].map((subcommand) => ({
+				tier,
+				subcommand,
+			})),
+		),
+	)("RevBank $subcommand requires friend tier: $tier", async ({ tier, subcommand }) => {
+		writeFileSync(
+			config.access.membersFile,
+			`${readFileSync(config.access.membersFile, "utf8")}  - ids: ["discord:${IDS.friend}"]\n    tier: friend\n`,
+		);
+		const fetch = vi.fn<typeof globalThis.fetch>();
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const result = await dispatcher.dispatch({
+			actor: actor({ userId: IDS[tier] }),
+			command: "revbank",
+			subcommand,
+			args: subcommand === "link" ? { nick: "Example" } : {},
+		});
+		expect(result.private).toBe(true);
+		expect(result.reply.text).toBe(
+			tier === "guest" ? MESSAGES.deniedTier : "RevBank isn't set up here.",
+		);
+		expect(fetch).not.toHaveBeenCalled();
+	});
 	it("wires private RevBank reads and gates link management independently of admin tier", async () => {
 		config.revbank = { url: "https://gateway.example", token: "x".repeat(32) };
 		const fetch = vi
@@ -79,7 +105,7 @@ describe("buildCore", () => {
 		const core = buildCore(config, silentLogger, nullErrorReporter, { fetch });
 		const { dispatcher } = core;
 		const balance = await dispatcher.dispatch({
-			actor: actor({ userId: IDS.guest }),
+			actor: actor({ userId: IDS.member }),
 			command: "revbank",
 			subcommand: "balance",
 			args: {},
@@ -87,7 +113,7 @@ describe("buildCore", () => {
 		expect(balance.private).toBe(true);
 		expect(balance.reply.text).toContain("€8.50");
 		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
-			actor: `discord:${IDS.guest}`,
+			actor: `discord:${IDS.member}`,
 		});
 		for (const userId of [IDS.guest, IDS.member, IDS.admin]) {
 			const denied = await dispatcher.dispatch({

@@ -20,13 +20,13 @@ The [commands](/commands) page has every command, who can use it and what it nee
 
 ## Your RevBank account
 
-When RevBank is enabled, Pixel can show your credits and latest bookings privately in Discord.
+When RevBank is enabled, friends, members and admins can check their credits and latest bookings privately in Discord.
 
 1. Select `/revbank link` and fill in your RevBank nickname in the **nick** field.
 2. Ask a link manager in the space to verify that the account is yours and approve your request.
 3. Use `/revbank balance` for your credits or `/revbank transactions` for your last ten bookings.
 
-`/revbank status` shows your link or pending request. You can remove it yourself with `/revbank unlink`. Linking a RevBank account works for guests too; it does not change your Pixel membership tier.
+`/revbank status` shows your link or pending request. You can remove it yourself with `/revbank unlink`. You need at least the Friend tier to use RevBank. Linking an account does not change your Pixel membership tier.
 
 [All RevBank commands](/commands#revbank) · [Privacy notice](/privacy#optional-revbank-integration)
 

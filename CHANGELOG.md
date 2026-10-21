@@ -13,7 +13,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
-- Optional private RevBank gateway integration: verified link requests, private balance and last-ten-booking commands, owner unlinking, and separately authorised `/revbank manage` commands. The website includes the account-linking guide and command reference. Pixel never reads the backup or persists financial responses.
+- Optional private RevBank gateway integration for friends, members and admins: verified link requests, private balance and last-ten-booking commands, owner unlinking, and separately authorised `/revbank manage` commands. The website includes the account-linking guide and command reference. Pixel never reads the backup or persists financial responses.
 
 - CHANGELOG conflicts resolve themselves when that is safe. When `main`'s `CHANGELOG.md` changes (and after each Release), a new workflow merges `main` into every open PR from this repo that edits it. If `CHANGELOG.md` is the only conflict, it keeps both sides' `[Unreleased]` entries, pushes the merge and comments on the PR. It never adds a section twice, puts entries into the new `[Unreleased]` after a release, and comments with the reason instead when both sides changed the same entry or the file isn't plain Keep a Changelog. Locally, `just changelog-merge` does the same in a stopped merge or rebase, and `just changelog-merge-driver` makes git do it by itself. For CI to run on those merges, a maintainer sets up a GitHub App (runbook: "Changelog conflicts").
 

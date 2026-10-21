@@ -590,7 +590,7 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 
 
 ## Personal RevBank access
 
-The optional RevBank integration reads personal balances and the last ten bookings through a separately hosted private gateway. Pixel never reads the Git backup itself. The gateway owns link requests, approvals, immutable Discord-ID bindings and financial-data filtering. All `/revbank` replies are private. Guests may request their own link; managing links requires the `revbank-link-admin` capability and independent authorisation in the gateway. No financial writes or local cache. See [ADR 0018](adr/0018-private-revbank-gateway.md) and the [runbook](runbook.md#revbank).
+The optional RevBank integration reads personal balances and the last ten bookings through a separately hosted private gateway. Pixel never reads the Git backup itself. The gateway owns link requests, approvals, immutable Discord-ID bindings and financial-data filtering. All `/revbank` replies are private. Friends, members and admins may request their own link; managing links requires the `revbank-link-admin` capability and independent authorisation in the gateway. No financial writes or local cache. See [ADR 0018](adr/0018-private-revbank-gateway.md) and the [runbook](runbook.md#revbank).
 
 ```mermaid
 flowchart LR

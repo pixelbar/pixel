@@ -54,7 +54,7 @@ export function createRevbankFeature(deps: {
 	): SubcommandDefinition => ({
 		name,
 		description,
-		access: { minTier: "guest" },
+		access: { minTier: "friend" },
 		private: true,
 		handler: run(action),
 	});
@@ -109,7 +109,7 @@ export function createRevbankFeature(deps: {
 			{
 				name: "revbank",
 				description: "Your private RevBank account",
-				access: { minTier: "guest" },
+				access: { minTier: "friend" },
 				subcommands: [
 					own("status", "Show your RevBank link or pending request", async (api, ctx) => ({
 						text: describe(await api.status(actorRef(ctx.principal))),

@@ -10,7 +10,7 @@ People want to read their own prepaid balance and bookings in Pixel. RevBank and
 
 Pixel calls a separately deployed private gateway. Only that gateway can read a local mirror of the backup. Pixel has no Git credentials, backup mount, account catalogue, or persisted financial data. The gateway's code and operations live in a separate private repository. Public code contains only the typed API port, HTTP client, commands and fictional fixtures.
 
-- Personal commands are available to guests: a RevBank account does not grant Pixel membership, and membership does not grant access to a RevBank account.
+- Personal commands require at least friend tier: friends, members and admins can use them, while guests cannot. A RevBank account does not grant Pixel membership, and membership does not grant access to a RevBank account.
 - The authenticated Discord actor is the only identity used for personal requests. There is no personal `user` or `nick` selector on balance/history requests. Replies and failures are private from the initial deferral onward.
 - A request carries a nickname, expires after 24 hours and receives a unique request ID. It reveals no account existence. A manager verifies ownership independently in person, then approves that exact request for the selected Discord user. Self-approval is refused by the gateway.
 - Link management requires the `revbank-link-admin` capability at member tier in Pixel **and** a separately maintained immutable-ID allow-list in the gateway. Managers can inspect pending/link metadata and approve, reject or revoke; they cannot read another person's balance. Approvals enforce one Discord identity per account. Unlinking is available to the owner without a manager.

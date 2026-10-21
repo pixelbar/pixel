@@ -46,6 +46,6 @@ Each device has its own minimum tier to be used. Seeing a device and its state n
 
 ## Your RevBank account
 
-You do not need a paid membership to link your own RevBank account. A link manager verifies and approves the link before Pixel can show your balance or bookings. Managing links requires the separate `revbank-link-admin` capability and service authorisation; it does not give access to another person's financial data.
+RevBank is available to friends, members and admins. Guests cannot use the RevBank commands. A link manager verifies and approves the link before Pixel can show your balance or bookings. Managing links requires the separate `revbank-link-admin` capability and service authorisation; it does not give access to another person's financial data.
 
 [Set up your account link](/guide/#your-revbank-account).

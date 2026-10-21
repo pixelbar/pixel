@@ -53,37 +53,41 @@ Sends a message to Pixel's maintainers, with your Discord name and ID so they ca
 
 </PxCommand>
 
+## Friends
+
+For friends, members and admins.
+
 ### RevBank
 
 Your credits and latest bookings, in private. [Link your account once](/guide/#your-revbank-account), then check it from Discord.
 
 <PxCommandTray query="/revbank" :selected="1" :rows="5" caption="Your RevBank commands, together in one place." />
 
-<PxCommand :level="4" sig="/revbank link" tier="guest" reply="private" :options="{ nick: 'Your RevBank nickname. Fill in this required field in Discord before sending the command.' }">
+<PxCommand :level="4" sig="/revbank link" tier="friend" reply="private" :options="{ nick: 'Your RevBank nickname. Fill in this required field in Discord before sending the command.' }">
 
 Requests a link to your RevBank account. A link manager verifies that the account is yours and approves the request.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/revbank status" tier="guest" reply="private">
+<PxCommand :level="4" sig="/revbank status" tier="friend" reply="private">
 
 Shows your linked account or pending request.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/revbank balance" tier="guest" reply="private">
+<PxCommand :level="4" sig="/revbank balance" tier="friend" reply="private">
 
 Your current balance in the latest available backup, with its date and time.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/revbank transactions" tier="guest" reply="private">
+<PxCommand :level="4" sig="/revbank transactions" tier="friend" reply="private">
 
 Your last ten confirmed bookings, including the amount and balance after each booking.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/revbank unlink" tier="guest" reply="private">
+<PxCommand :level="4" sig="/revbank unlink" tier="friend" reply="private">
 
 Removes your account link and any pending request.
 

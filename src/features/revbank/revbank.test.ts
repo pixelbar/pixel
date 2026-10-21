@@ -61,6 +61,10 @@ describe("RevBank commands", () => {
 		expect(feature.commands).toHaveLength(1);
 		const root = feature.commands?.[0];
 		if (!root || !isGroup(root)) throw new Error("Missing root");
+		expect(root.access).toEqual({ minTier: "friend" });
+		for (const command of root.subcommands) {
+			if (!isSubgroup(command)) expect(command.access).toEqual({ minTier: "friend" });
+		}
 		expect(root.subcommands.find((c) => c.name === "manage")?.access).toEqual({
 			minTier: "member",
 			capability: REVBANK_LINK_ADMIN.name,
