@@ -139,7 +139,7 @@ export function createRevbankFeature(deps: {
 					own("balance", "Show your balance from the latest usable backup", async (api, ctx) => {
 						const result = await api.balance(actorRef(ctx.principal));
 						return {
-							text: `Your RevBank balance: **${money(result.balanceCents)}**\nBackup: ${when(result.updatedAt, deps.timezone)}. Purchases since then may not be included.`,
+							text: `Your RevBank balance: **${money(result.balanceCents)}**\nBackup: ${when(result.updatedAt, deps.timezone)}.`,
 						};
 					}),
 					own("transactions", "Show your last ten confirmed bookings", async (api, ctx) => {
@@ -160,42 +160,42 @@ export function createRevbankFeature(deps: {
 							],
 						};
 					}),
-				],
-			},
-			{
-				name: "revbank-manage",
-				description: "Manage verified RevBank links, without viewing balances",
-				access: { minTier: "member", capability: REVBANK_LINK_ADMIN.name },
-				subcommands: [
-					manager(
-						"review",
-						"Review a person's link request before verifying ownership",
-						async (api, ctx) => ({
-							text: describe(await api.review(actorRef(ctx.principal), target(ctx))),
-						}),
-					),
-					manager(
-						"approve",
-						"Approve the exact request after verifying ownership in person",
-						async (api, ctx) => {
-							await api.decide(actorRef(ctx.principal), target(ctx), requestId(ctx), true);
-							return { text: "RevBank link approved." };
-						},
-						true,
-					),
-					manager(
-						"reject",
-						"Reject the exact link request",
-						async (api, ctx) => {
-							await api.decide(actorRef(ctx.principal), target(ctx), requestId(ctx), false);
-							return { text: "RevBank request rejected." };
-						},
-						true,
-					),
-					manager("revoke", "Remove a person's link and pending request", async (api, ctx) => {
-						await api.revoke(actorRef(ctx.principal), target(ctx));
-						return { text: "RevBank link and pending request revoked." };
-					}),
+					{
+						name: "manage",
+						description: "Manage verified RevBank links, without viewing balances",
+						access: { minTier: "member", capability: REVBANK_LINK_ADMIN.name },
+						subcommands: [
+							manager(
+								"review",
+								"Review a person's link request before verifying ownership",
+								async (api, ctx) => ({
+									text: describe(await api.review(actorRef(ctx.principal), target(ctx))),
+								}),
+							),
+							manager(
+								"approve",
+								"Approve the exact request after verifying ownership in person",
+								async (api, ctx) => {
+									await api.decide(actorRef(ctx.principal), target(ctx), requestId(ctx), true);
+									return { text: "RevBank link approved." };
+								},
+								true,
+							),
+							manager(
+								"reject",
+								"Reject the exact link request",
+								async (api, ctx) => {
+									await api.decide(actorRef(ctx.principal), target(ctx), requestId(ctx), false);
+									return { text: "RevBank request rejected." };
+								},
+								true,
+							),
+							manager("revoke", "Remove a person's link and pending request", async (api, ctx) => {
+								await api.revoke(actorRef(ctx.principal), target(ctx));
+								return { text: "RevBank link and pending request revoked." };
+							}),
+						],
+					},
 				],
 			},
 		],

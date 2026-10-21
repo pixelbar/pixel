@@ -29,9 +29,13 @@ const api = () => ({
 function setup(client: Revbank | undefined = api()) {
 	const feature = createRevbankFeature({ api: client, timezone: "UTC" });
 	const command = (name: string, management = false) => {
-		const group = feature.commands?.[management ? 1 : 0];
+		const group = feature.commands?.[0];
 		if (!group || !isGroup(group)) throw new Error("Missing group");
-		const command = group.subcommands.find((c) => c.name === name);
+		const manage = group.subcommands.find((c) => c.name === "manage");
+		if (!manage || !isSubgroup(manage)) throw new Error("Missing manage subgroup");
+		const command = (management ? manage.subcommands : group.subcommands).find(
+			(c) => c.name === name,
+		);
 		if (!command || isSubgroup(command)) throw new Error("Missing command");
 		return command;
 	};
@@ -49,11 +53,15 @@ describe("RevBank commands", () => {
 		for (const group of feature.commands ?? []) {
 			if (!isGroup(group)) throw new Error("Expected group");
 			for (const command of group.subcommands) {
-				if (isSubgroup(command)) throw new Error("Expected subcommand");
-				expect(command.private).toBe(true);
+				for (const runnable of isSubgroup(command) ? command.subcommands : [command]) {
+					expect(runnable.private).toBe(true);
+				}
 			}
 		}
-		expect(feature.commands?.[1]?.access).toEqual({
+		expect(feature.commands).toHaveLength(1);
+		const root = feature.commands?.[0];
+		if (!root || !isGroup(root)) throw new Error("Missing root");
+		expect(root.subcommands.find((c) => c.name === "manage")?.access).toEqual({
 			minTier: "member",
 			capability: REVBANK_LINK_ADMIN.name,
 		});
@@ -76,7 +84,9 @@ describe("RevBank commands", () => {
 		const { command } = setup(client);
 		await command("link").handler({ ...ctx(), args: { nick: "Example" } });
 		expect(client.request).toHaveBeenCalledWith(`discord:${IDS.member}`, "Example");
-		expect((await command("balance").handler(ctx())).text).toContain("€8.50");
+		expect((await command("balance").handler(ctx())).text).toBe(
+			"Your RevBank balance: **€8.50**\nBackup: 21 Oct 2026, 10:00.",
+		);
 		expect(
 			(await command("transactions").handler(ctx())).embeds?.[0]?.fields?.[0]?.value,
 		).toContain("Cola \\*test\\*");

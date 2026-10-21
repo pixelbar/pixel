@@ -682,11 +682,11 @@ Deploy the gateway from its separate private repository, following its runbook. 
 
 After deployment, register commands with `just register dev` (production uses the Release workflow). Give a verified link manager the `revbank-link-admin` capability with `/admin capabilities grant` and add their immutable Discord ID to the gateway's separate manager allow-list. Both checks must pass; an admin tier alone grants no link-management permission.
 
-1. The owner uses `/revbank link nick:` and contacts a link manager in person.
-2. The manager verifies the account belongs to that person, uses `/revbank-manage review user:`, and checks the nickname and request ID.
-3. The manager uses `/revbank-manage approve user: request:` with that exact ID. Requests expire after 24 hours; an edited/replaced request needs a fresh review. Managers cannot approve themselves.
+1. The owner selects `/revbank link`, fills in their RevBank nickname in Discord’s required **nick** field, and contacts a link manager in person.
+2. The manager verifies the account belongs to that person, uses `/revbank manage review user:`, and checks the nickname and request ID.
+3. The manager uses `/revbank manage approve user: request:` with that exact ID. Requests expire after 24 hours; an edited/replaced request needs a fresh review. Managers cannot approve themselves.
 4. The owner checks `/revbank status`, `/revbank balance` and `/revbank transactions`. Replies are private, sourced from the backup, and include its timestamp.
-5. `/revbank unlink` removes the owner's link and pending request. A manager can use `/revbank-manage reject user: request:` or `/revbank-manage revoke user:`. These commands do not change financial records.
+5. `/revbank unlink` removes the owner's link and pending request. A manager can use `/revbank manage reject user: request:` or `/revbank manage revoke user:`. These commands do not change financial records.
 
 On unavailable data, check the gateway's backup freshness, parser compatibility and per-account reconciliation. Do not send raw logs or balances to Pixel logs, Sentry or public issues. If the API returns a conflict, review the request again; do not retry approvals automatically. Gateway denial may mean its independent allow-list is missing the manager. A renamed or recreated account requires a fresh verified link; never silently migrate it by nickname.
 

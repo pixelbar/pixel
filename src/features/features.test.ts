@@ -100,7 +100,6 @@ describe("buildFeatures", () => {
 			"info",
 			"ping",
 			"revbank",
-			"revbank-manage",
 			"schedule",
 			"spacestate",
 			"status",

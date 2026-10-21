@@ -76,7 +76,8 @@ describe("buildCore", () => {
 		const fetch = vi
 			.fn<typeof globalThis.fetch>()
 			.mockResolvedValue(Response.json({ balanceCents: 850, updatedAt: "2026-10-21T10:00:00Z" }));
-		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const core = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const { dispatcher } = core;
 		const balance = await dispatcher.dispatch({
 			actor: actor({ userId: IDS.guest }),
 			command: "revbank",
@@ -91,7 +92,8 @@ describe("buildCore", () => {
 		for (const userId of [IDS.guest, IDS.member, IDS.admin]) {
 			const denied = await dispatcher.dispatch({
 				actor: actor({ userId }),
-				command: "revbank-manage",
+				command: "revbank",
+				subgroup: "manage",
 				subcommand: "review",
 				args: { user: IDS.friend },
 				users: { user: { id: IDS.friend, displayName: "Example", isBot: false } },
@@ -99,6 +101,30 @@ describe("buildCore", () => {
 			expect(denied.reply.text).toBe(MESSAGES.deniedTier);
 		}
 		expect(fetch).toHaveBeenCalledTimes(1);
+		await dispatcher.dispatch({
+			actor: actor({ userId: IDS.admin }),
+			command: "admin",
+			subgroup: "capabilities",
+			subcommand: "grant",
+			args: { user: IDS.member, capability: REVBANK_LINK_ADMIN.name },
+			users: { user: { id: IDS.member, displayName: "Example manager", isBot: false } },
+		});
+		fetch.mockResolvedValueOnce(Response.json({ state: "unlinked" }));
+		const allowed = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "revbank",
+			subgroup: "manage",
+			subcommand: "review",
+			args: { user: IDS.friend },
+			users: { user: { id: IDS.friend, displayName: "Example", isBot: false } },
+		});
+		expect(allowed.private).toBe(true);
+		expect(allowed.reply.text).toBe("No RevBank account is linked.");
+		expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+			actor: `discord:${IDS.member}`,
+			target: `discord:${IDS.friend}`,
+		});
+		expect(core.registry.all().map((c) => c.definition.name)).not.toContain("revbank-manage");
 	});
 
 	it.each([
