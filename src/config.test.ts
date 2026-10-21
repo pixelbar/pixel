@@ -585,6 +585,20 @@ describe("the bot status channel and build info", () => {
 });
 
 describe("RevBank configuration", () => {
+	it.each(["example.com", "not a URL", "https://[invalid", "https://gateway.example:invalid"])(
+		"reports malformed URL %s as a redacted ConfigError",
+		(url) => {
+			let caught: unknown;
+			try {
+				loadConfig({ ...VALID, REVBANK_API_URL: url, REVBANK_API_TOKEN: "x".repeat(32) });
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(ConfigError);
+			expect((caught as Error).message).toContain("REVBANK_API_URL");
+			expect((caught as Error).message).not.toContain(url);
+		},
+	);
 	it("is off by default and requires URL and token together", () => {
 		expect(loadConfig(VALID).revbank).toBeUndefined();
 		for (const partial of [

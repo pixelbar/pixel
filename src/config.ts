@@ -52,6 +52,7 @@ const extraHeaders = z.string().transform((raw, ctx) => {
 
 const revbankUrl = z.url({ protocol: /^https?$/ }).refine(
 	(value) => {
+		if (!URL.canParse(value)) return false;
 		const url = new URL(value);
 		return (
 			!url.username &&
