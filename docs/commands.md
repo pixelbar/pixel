@@ -53,6 +53,42 @@ Sends a message to Pixel's maintainers, with your Discord name and ID so they ca
 
 </PxCommand>
 
+### RevBank
+
+Your credits and latest bookings, in private. [Link your account once](/guide/#your-revbank-account), then check it from Discord.
+
+<PxCommandTray query="/revbank" :selected="1" :rows="5" caption="Your RevBank commands, together in one place." />
+
+<PxCommand :level="4" sig="/revbank link" tier="guest" reply="private" :options="{ nick: 'Your RevBank nickname. Fill in this required field in Discord before sending the command.' }">
+
+Requests a link to your RevBank account. A link manager verifies that the account is yours and approves the request.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank status" tier="guest" reply="private">
+
+Shows your linked account or pending request.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank balance" tier="guest" reply="private">
+
+Your current balance in the latest available backup, with its date and time.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank transactions" tier="guest" reply="private">
+
+Your last ten confirmed bookings, including the amount and balance after each booking.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank unlink" tier="guest" reply="private">
+
+Removes your account link and any pending request.
+
+</PxCommand>
+
 ## Members
 
 For paid members. Commands marked Friend also work with a friend membership.
@@ -60,6 +96,34 @@ For paid members. Commands marked Friend also work with a friend membership.
 <PxCommand sig="/closing-time" tier="member" reply="private">
 
 Posts the closing-time reminder in the closing-time channel. Pixel also posts it by itself when the space closes.
+
+</PxCommand>
+
+### RevBank link management
+
+For members with the `revbank-link-admin` capability who are also authorised by the RevBank service. Link managers verify account ownership and manage links; they do not gain access to other people's balances.
+
+<PxCommand :level="4" sig="/revbank manage review" tier="member" reply="private" :caps="['revbank-link-admin']" :options="{ user: 'Choose the person whose account link you want to review.' }">
+
+Shows a person's linked account or pending request, including its request ID.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank manage approve" tier="member" reply="private" :caps="['revbank-link-admin']" :options="{ user: 'Choose the person whose request you verified.', request: 'The request ID from the review.' }">
+
+Approves the reviewed request after verifying account ownership in person.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank manage reject" tier="member" reply="private" :caps="['revbank-link-admin']" :options="{ user: 'Choose the person whose request to reject.', request: 'The request ID from the review.' }">
+
+Rejects the reviewed request.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/revbank manage revoke" tier="member" reply="private" :caps="['revbank-link-admin']" :options="{ user: 'Choose the person whose link to remove.' }">
+
+Removes a person's link and pending request.
 
 </PxCommand>
 

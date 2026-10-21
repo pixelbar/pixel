@@ -13,9 +13,22 @@ A few you'll use most:
 - `/status`: is Pixelbar open right now, and for how long?
 - `/events`: what's coming up.
 - `/info`: short answers about Pixelbar. With no topic, it lists them.
+- `/revbank balance`: your credits, once your RevBank account is linked.
 - `/help`: the commands you can use. It only lists the ones your tier allows.
 
 The [commands](/commands) page has every command, who can use it and what it needs.
+
+## Your RevBank account
+
+When RevBank is enabled, Pixel can show your credits and latest bookings privately in Discord.
+
+1. Select `/revbank link` and fill in your RevBank nickname in the **nick** field.
+2. Ask a link manager in the space to verify that the account is yours and approve your request.
+3. Use `/revbank balance` for your credits or `/revbank transactions` for your last ten bookings.
+
+`/revbank status` shows your link or pending request. You can remove it yourself with `/revbank unlink`. Linking a RevBank account works for guests too; it does not change your Pixel membership tier.
+
+[All RevBank commands](/commands#revbank) · [Privacy notice](/privacy#optional-revbank-integration)
 
 ## Who sees the reply
 

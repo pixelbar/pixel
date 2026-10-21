@@ -28,6 +28,7 @@ A capability is a named permission for one person, for things that shouldn't rea
 | Capability | What it allows |
 | --- | --- |
 | `schedule-posts` | Schedule messages and polls in channels you can post in, with `/schedule`. |
+| `revbank-link-admin` | Review, approve and revoke account links with `/revbank manage`. Members only, with separate authorisation from the RevBank service. |
 | `spacestate` | Set the space open or closed, with `/spacestate set`. Members only. |
 | `ha-lights` | Change lights in Home Assistant, with `/ha set`. |
 | `ha-switches` | Change switches in Home Assistant, with `/ha set`. |
@@ -41,3 +42,10 @@ A capability is a named permission for one person, for things that shouldn't rea
 ## Home Assistant devices
 
 Each device has its own minimum tier to be used. Seeing a device and its state needs only that tier. Changing it needs the tier, plus `ha-admin` or the capability for that kind of device, plus an action that device allows.
+
+
+## Your RevBank account
+
+You do not need a paid membership to link your own RevBank account. A link manager verifies and approves the link before Pixel can show your balance or bookings. Managing links requires the separate `revbank-link-admin` capability and service authorisation; it does not give access to another person's financial data.
+
+[Set up your account link](/guide/#your-revbank-account).
