@@ -53,6 +53,40 @@ Sends a message to Pixel's maintainers, with your Discord name and ID so they ca
 
 </PxCommand>
 
+### Fishbot
+
+A little QuakeNet nostalgia. Pixel keeps the original Fishbot replies, including their old-school language. These commands answer publicly; help and unknown phrases are private. Pixel only answers slash commands and does not read the channel's conversation.
+
+<PxCommand :level="4" sig="/fishbot say [phrase:]" tier="guest" reply="public" autocomplete :options="{ '[phrase:]': 'A classic phrase, such as fish, hello fishbot, spoon or moo?. Start typing for suggestions; leave empty for private help.' }">
+
+Try a classic Fishbot phrase. Matching ignores case and extra spaces, but requires the whole phrase. Fish go m00!
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/fishbot trout user:" tier="guest" reply="public" :options="{ 'user:': 'Pick the person (or bot) to trout. Nobody gets pinged.' }">
+
+Slap someone around a bit with a large trout. Purely theatrical.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/fishbot feed" tier="guest" reply="public">
+
+Feed Fishbot hundreds and thousands.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/fishbot pet" tier="guest" reply="public">
+
+Give Fishbot a friendly stroke.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/fishbot cookie" tier="guest" reply="public">
+
+Sneak a cookie away from Fishbot.
+
+</PxCommand>
+
 ## Members
 
 For paid members. Commands marked Friend also work with a friend membership.

@@ -472,6 +472,8 @@ All of them are gitignored. The share files are **read-only mirrors**: edit the 
 
 **After a deploy that adds, removes or renames commands:** a Release registers prod and `just deploy dev` registers dev. Otherwise run `just register dev` or `just register prod` against that environment's guild. Topic changes to `/info` need it too.
 
+**Fishbot:** `/fishbot` needs only the existing slash-command permissions; leave privileged intents off. After registration, try `/fishbot say phrase:fish` (public reply: “fish go m00!” addressed to the caller) and `/fishbot say` (private help). The feature has no configuration or saved state. It uses the normal dispatcher rate limits and never listens to ordinary messages. Original replies are retained, including old-school insults; the reference is [sjdiego's Fishbot triggers](https://github.com/sjdiego/fishbot/blob/main/triggers.go). IRC actions render as italics. Channel lookup and the obsolete Outwar URL trigger are omitted.
+
 **Deploys must stop the old instance before starting the new one,** so two never answer at once. Expect a short gap while it restarts. Overlap during a revision swap is still #11.
 
 **Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
