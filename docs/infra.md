@@ -199,3 +199,10 @@ just deploy dev           # this tree → GHCR SHA → pixel-dev, then just regi
 ```
 
 Do not apply Terraform from CD. Do not copy `pixel-dev-kv` tokens into prod. After first create, **dev** apply ignores the Pixel container image (#73). Prod apply sets `container_image`; a Release then rolls the published SHA.
+
+
+## Optional RevBank gateway
+
+The private RevBank repository deploys a separate TypeScript/Node.js Container App into the **same resource group and Container Apps environment as Pixel**. Its API uses internal HTTPS ingress, so the Pixel container can reach it without public ingress or another Tailscale route. The gateway owns a private registry, managed identity, Key Vault and separate Azure Files shares for backup data and account links. Pixel receives only the API URL and token.
+
+The gateway's `just configure dev|prod` imports Pixel's environment settings and discovers the existing Container Apps environment. Its Terraform stacks use the existing remote state account/container with their own `revbank-api/foundation.tfstate` and `revbank-api/app.tfstate` keys. It does not manage the Pixel Container App or Pixel's Terraform state. The private repo documents `just provision`, `just secrets-push`, `just deploy`, rollback and production guards.

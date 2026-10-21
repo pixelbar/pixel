@@ -439,6 +439,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_CLOSING_TIME_FILE`     |        | Optional. Operator-authored closing-time body. Default `{PIXEL_DATA_DIR}/closing-time.md`. Missing or empty → built-in default. Not a secret |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
+| `REVBANK_API_URL` | | Optional HTTPS origin of the private RevBank gateway; both URL and token or neither |
+| `REVBANK_API_TOKEN` | | Secret bearer token for the private RevBank gateway; never backup Git credentials |
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. Where Pixel reaches Home Assistant (http or https). On Azure prefer the Tailscale sidecar address; a Nabu Casa URL still works |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `MASTODON_INSTANCE`           |        | Optional, with the token. Origin of the Mastodon instance (http or https). A path is stripped so only the origin is used. Never hard-coded |
@@ -582,4 +584,18 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 
 | 0014 | Release registers prod slash commands; `pixel-github-prod` may read only `discord-token` | accepted |
 | 0015 | Secrets manifest (`infra/secrets.manifest.yaml`) is the one list of Key Vault secrets; Terraform reads it and a test fails on drift | accepted |
 | 0016 | `just secrets-pull` / `just secrets-push` sync the manifest's app secrets between Key Vault and `.env.<env>`, diffing against the live vault before a push; `just pull` / `just push` add the shared `terraform-tfvars` and read-only share mirrors | accepted |
+| 0018 | Personal RevBank reads through a private gateway with independently approved account links | accepted |
 | 0017 | `just secrets-push` / `just push` are the only writers of the app secrets; Terraform's `write_secrets` writes only the infra group, and `removed` blocks drop the old app secrets from state without deleting them | accepted |
+
+
+## Personal RevBank access
+
+The optional RevBank integration reads personal balances and the last ten bookings through a separately hosted private gateway. Pixel never reads the Git backup itself. The gateway owns link requests, approvals, immutable Discord-ID bindings and financial-data filtering. All `/revbank` replies are private. Friends, members and admins may request their own link; managing links requires the `revbank-link-admin` capability and independent authorisation in the gateway. No financial writes or local cache. See [ADR 0018](adr/0018-private-revbank-gateway.md) and the [runbook](runbook.md#revbank).
+
+```mermaid
+flowchart LR
+  BACKUP[Private existing Git backup] -->|read-only mirror| GATEWAY[Private RevBank gateway]
+  PIXEL[Pixel] -->|HTTPS, service token, caller Discord ID| GATEWAY
+  GATEWAY -->|only caller's balance or bookings| PIXEL
+  PIXEL -->|private reply| DISCORD[Discord caller]
+```

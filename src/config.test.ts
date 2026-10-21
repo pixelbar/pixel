@@ -583,3 +583,60 @@ describe("the bot status channel and build info", () => {
 		expect(() => loadConfig({ ...VALID, PIXEL_GIT_SHA: "not a sha" })).toThrow(/PIXEL_GIT_SHA/);
 	});
 });
+
+describe("RevBank configuration", () => {
+	it.each(["example.com", "not a URL", "https://[invalid", "https://gateway.example:invalid"])(
+		"reports malformed URL %s as a redacted ConfigError",
+		(url) => {
+			let caught: unknown;
+			try {
+				loadConfig({ ...VALID, REVBANK_API_URL: url, REVBANK_API_TOKEN: "x".repeat(32) });
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(ConfigError);
+			expect((caught as Error).message).toContain("REVBANK_API_URL");
+			expect((caught as Error).message).not.toContain(url);
+		},
+	);
+	it("is off by default and requires URL and token together", () => {
+		expect(loadConfig(VALID).revbank).toBeUndefined();
+		for (const partial of [
+			{ REVBANK_API_URL: "https://gateway.example" },
+			{ REVBANK_API_TOKEN: "x".repeat(32) },
+		]) {
+			expect(() => loadConfig({ ...VALID, ...partial })).toThrow(/REVBANK_API_URL/);
+		}
+	});
+	it("only permits HTTPS origins or loopback HTTP, without credentials or a query", () => {
+		const token = "x".repeat(32);
+		for (const url of [
+			"https://gateway.example",
+			"http://127.0.0.1:8787",
+			"http://localhost:8787",
+			"http://[::1]:8787",
+		]) {
+			expect(
+				loadConfig({ ...VALID, REVBANK_API_URL: url, REVBANK_API_TOKEN: token }).revbank?.url,
+			).toBe(url);
+		}
+		for (const url of [
+			"http://gateway.example",
+			"https://user:password@gateway.example",
+			"https://gateway.example/data",
+			"https://gateway.example?token=secret",
+			"https://gateway.example#fragment",
+		]) {
+			expect(() =>
+				loadConfig({ ...VALID, REVBANK_API_URL: url, REVBANK_API_TOKEN: token }),
+			).toThrow(/REVBANK_API_URL/);
+		}
+		expect(() =>
+			loadConfig({
+				...VALID,
+				REVBANK_API_URL: "https://gateway.example",
+				REVBANK_API_TOKEN: "short",
+			}),
+		).toThrow(/REVBANK_API_TOKEN/);
+	});
+});

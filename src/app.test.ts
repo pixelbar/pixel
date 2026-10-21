@@ -8,6 +8,7 @@ import { CapabilityError } from "./core/capabilities.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
+import { REVBANK_LINK_ADMIN } from "./features/revbank/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { SPACESTATE_CAPABILITY } from "./features/spacestate/index.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
@@ -69,6 +70,88 @@ describe("buildCore", () => {
 	});
 
 	afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+	it.each(
+		(["guest", "friend", "member", "admin"] as const).flatMap((tier) =>
+			["link", "status", "balance", "transactions", "unlink"].map((subcommand) => ({
+				tier,
+				subcommand,
+			})),
+		),
+	)("RevBank $subcommand requires friend tier: $tier", async ({ tier, subcommand }) => {
+		writeFileSync(
+			config.access.membersFile,
+			`${readFileSync(config.access.membersFile, "utf8")}  - ids: ["discord:${IDS.friend}"]\n    tier: friend\n`,
+		);
+		const fetch = vi.fn<typeof globalThis.fetch>();
+		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const result = await dispatcher.dispatch({
+			actor: actor({ userId: IDS[tier] }),
+			command: "revbank",
+			subcommand,
+			args: subcommand === "link" ? { nick: "Example" } : {},
+		});
+		expect(result.private).toBe(true);
+		expect(result.reply.text).toBe(
+			tier === "guest" ? MESSAGES.deniedTier : "RevBank isn't set up here.",
+		);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+	it("wires private RevBank reads and gates link management independently of admin tier", async () => {
+		config.revbank = { url: "https://gateway.example", token: "x".repeat(32) };
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockResolvedValue(Response.json({ balanceCents: 850, updatedAt: "2026-10-21T10:00:00Z" }));
+		const core = buildCore(config, silentLogger, nullErrorReporter, { fetch });
+		const { dispatcher } = core;
+		const balance = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "revbank",
+			subcommand: "balance",
+			args: {},
+		});
+		expect(balance.private).toBe(true);
+		expect(balance.reply.text).toContain("€8.50");
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+			actor: `discord:${IDS.member}`,
+		});
+		for (const userId of [IDS.guest, IDS.member, IDS.admin]) {
+			const denied = await dispatcher.dispatch({
+				actor: actor({ userId }),
+				command: "revbank",
+				subgroup: "manage",
+				subcommand: "review",
+				args: { user: IDS.friend },
+				users: { user: { id: IDS.friend, displayName: "Example", isBot: false } },
+			});
+			expect(denied.reply.text).toBe(MESSAGES.deniedTier);
+		}
+		expect(fetch).toHaveBeenCalledTimes(1);
+		await dispatcher.dispatch({
+			actor: actor({ userId: IDS.admin }),
+			command: "admin",
+			subgroup: "capabilities",
+			subcommand: "grant",
+			args: { user: IDS.member, capability: REVBANK_LINK_ADMIN.name },
+			users: { user: { id: IDS.member, displayName: "Example manager", isBot: false } },
+		});
+		fetch.mockResolvedValueOnce(Response.json({ state: "unlinked" }));
+		const allowed = await dispatcher.dispatch({
+			actor: actor({ userId: IDS.member }),
+			command: "revbank",
+			subgroup: "manage",
+			subcommand: "review",
+			args: { user: IDS.friend },
+			users: { user: { id: IDS.friend, displayName: "Example", isBot: false } },
+		});
+		expect(allowed.private).toBe(true);
+		expect(allowed.reply.text).toBe("No RevBank account is linked.");
+		expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+			actor: `discord:${IDS.member}`,
+			target: `discord:${IDS.friend}`,
+		});
+		expect(core.registry.all().map((c) => c.definition.name)).not.toContain("revbank-manage");
+	});
 
 	it.each([
 		[IDS.admin, true],
@@ -352,6 +435,7 @@ describe("buildCore", () => {
 		const DOOR = [
 			{ name: "door", description: "Open the door" },
 			SCHEDULE_CAPABILITY,
+			REVBANK_LINK_ADMIN,
 			SPACESTATE_CAPABILITY,
 		];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
@@ -370,6 +454,7 @@ describe("buildCore", () => {
 				"ha-switches",
 				"ha-doors",
 				"schedule-posts",
+				"revbank-link-admin",
 				"spacestate",
 			]);
 			const listed = await core.dispatcher.dispatch({

@@ -10,6 +10,7 @@ import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
+import type { Revbank } from "../core/ports/revbank.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
@@ -25,6 +26,7 @@ import { createHelpFeature } from "./help/index.ts";
 import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
+import { createRevbankFeature } from "./revbank/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createSpaceStateFeature } from "./spacestate/index.ts";
 import { createStatusFeature } from "./status/index.ts";
@@ -32,6 +34,7 @@ import { createWhoamiFeature } from "./whoami/index.ts";
 
 export type FeatureDeps = {
 	version: string;
+	revbank?: Revbank;
 	runtime: "local" | "cloud";
 	startedAt: Date;
 	access: AccessStore;
@@ -88,6 +91,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),
 		createWhoamiFeature(),
+		createRevbankFeature({ api: deps.revbank, timezone: deps.timezone }),
 		createFeedbackFeature({ sink: deps.feedback }),
 		createSchedulesFeature({
 			store: deps.schedules,

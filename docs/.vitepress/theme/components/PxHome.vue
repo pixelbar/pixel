@@ -21,6 +21,12 @@ const features = [
 		link: "/commands#events",
 	},
 	{
+		eyebrow: "RevBank",
+		title: "Your credits, in private",
+		body: "Link your RevBank account once, then check your balance and latest bookings right in Discord.",
+		link: "/guide/#your-revbank-account",
+	},
+	{
 		eyebrow: "Info",
 		title: "How do I join?",
 		body: "/info gives short answers about Pixelbar: where it is, visiting, membership and the house rules.",

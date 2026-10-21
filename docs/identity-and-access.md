@@ -232,3 +232,8 @@ These are recorded so that phase 1 doesn't make them harder. Each will get an AD
   4. Both accounts are notified. `/unlink` from either side. Guests can't link (no entry to add to). Admins' Telegram IDs are added by hand in both files.
 - ~~**Database-backed grants**~~: done without a database (#25; #18 closed). Admin commands rewrite `members.yaml`.
 - **Freshness:** once tiers come from outside sources, re-verify a tier older than 24 hours before privileged commands, and reconcile every night.
+
+
+## RevBank links
+
+RevBank links are separate from membership and platform-account linking. The private gateway, not `members.yaml`, stores the approved mapping from an immutable Discord ID to a RevBank account. `/revbank` personal commands require at least friend tier but the gateway returns financial data only after independent ownership verification. `/revbank manage` requires member tier plus `revbank-link-admin`; the gateway separately checks its manager ID allow-list. Link managers have no financial-read override. See [ADR 0018](adr/0018-private-revbank-gateway.md).

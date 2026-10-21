@@ -30,7 +30,7 @@ const props = withDefaults(
 		caption?: string;
 	}>(),
 	{
-		queries: () => ["/status", "/ha", "/info", "/schedule", "/events"],
+		queries: () => ["/status", "/ha", "/revbank", "/info", "/schedule", "/events"],
 		rows: 5,
 		query: undefined,
 		selected: 0,
@@ -53,6 +53,11 @@ const COMMANDS: readonly Command[] = [
 		description:
 			"Send feedback to Pixel's maintainers. Your message and username may be made public",
 	},
+	{ name: "/revbank link", description: "Request a verified link to your RevBank account" },
+	{ name: "/revbank status", description: "Show your RevBank link or pending request" },
+	{ name: "/revbank balance", description: "Show your balance from the latest usable backup" },
+	{ name: "/revbank transactions", description: "Show your last ten confirmed bookings" },
+	{ name: "/revbank unlink", description: "Remove your link and any pending request" },
 	{ name: "/closing-time", description: "Post the closing-time reminder" },
 	{ name: "/ha list", description: "The devices you may use, and their state" },
 	{ name: "/ha status", description: "The live state of one device" },
