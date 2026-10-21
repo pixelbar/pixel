@@ -17,7 +17,7 @@ Pixel calls a separately deployed private gateway. Only that gateway can read a 
 - The gateway reads fixed filenames from one immutable Git commit. It never checks out or executes backup content. Account creation markers bind links to account incarnations, so a missing or recreated account fails closed. Unrecognised formats and account/log inconsistencies fail closed. Historic data is taken from confirmed booking records, not commit messages or Git diffs.
 - Only the last ten confirmed bookings are exposed. Labels come from recognised catalogue descriptions; other descriptions become generic credit/debit/adjustment labels. Raw terminal input, counterparties and free-form log content never cross the API.
 - Pixel stores no financial response. HTTP requests have an eight-second deadline, a streamed 16 KiB response cap, strict schemas, no redirects and no automatic retries. Errors contain fixed codes only. There is no financial/request-body logging.
-- The gateway is on the private network, reached through HTTPS and a dedicated bearer token. HTTP is allowed only for loopback testing. No public ingress or Tailscale Funnel. Dev must use a separate gateway, token and fictional backup.
+- The TypeScript gateway runs as a separate Azure Container App in Pixel’s existing Container Apps environment, with internal HTTPS ingress and a dedicated bearer token. Its private repository provides the deployment recipes and separate Terraform state keys. HTTP is allowed only for loopback testing. No public ingress or Tailscale Funnel. Dev must use a separate gateway, token and fictional backup.
 
 ## Consequences and limits
 
