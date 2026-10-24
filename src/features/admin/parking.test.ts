@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Args, SuggestContext } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { silentLogger } from "../../core/logger.ts";
+import { ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { type ParkingEntry, ParkingWindowStore } from "../../services/parking-windows.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
@@ -20,11 +21,18 @@ const utc = (time: string, day = 24) =>
 	new Date(`2026-10-${String(day).padStart(2, "0")}T${time}:00Z`);
 const RESET = utc("21:59");
 
-function setup(options: { spots?: ParkingSpotStore; windows?: ParkingWindowStore } = {}) {
+function setup(
+	options: {
+		spots?: ParkingSpotStore;
+		windows?: ParkingWindowStore;
+		bookings?: ParkingBookingStore;
+	} = {},
+) {
 	const spots = options.spots ?? new ParkingSpotStore({ logger: silentLogger });
 	const windows = options.windows ?? new ParkingWindowStore({ logger: silentLogger });
+	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
 	let now = NOW;
-	const group = createParkingSubgroup({ spots, windows, timezone: ZONE, now: () => now });
+	const group = createParkingSubgroup({ spots, windows, bookings, timezone: ZONE, now: () => now });
 	const sub = (name: string) => {
 		const found = group.subcommands.find((s) => s.name === name);
 		if (!found) throw new Error(`no ${name}`);
@@ -41,6 +49,7 @@ function setup(options: { spots?: ParkingSpotStore; windows?: ParkingWindowStore
 	return {
 		spots,
 		windows,
+		bookings,
 		group,
 		sub,
 		run,
@@ -71,6 +80,7 @@ describe("/admin parking", () => {
 			["status", "admin", true],
 			["open", "admin", true],
 			["close", "admin", true],
+			["free", "admin", true],
 			["add-spot", "admin", true],
 			["edit-spot", "admin", true],
 			["remove-spot", "admin", true],
@@ -381,6 +391,99 @@ describe("/admin parking", () => {
 			await fails(name, args).toThrow(UserFacingError);
 			await fails(name, args).toThrow(/parking is off/);
 		}
+	});
+});
+
+describe("/admin parking and bookings", () => {
+	const alice = { ref: "discord:100000000000000002", name: "Alice *A*" };
+	const book = (t: ReturnType<typeof setup>, spot: string, until: Date) =>
+		t.bookings.claim(alice, NOW, () => ({ spot, until }));
+
+	it("shows who's parked in status", async () => {
+		const t = withSpots();
+		book(t, "ours", utc("10:00"));
+		expect(await t.run("status")).toContain(
+			"**ours** (permanent): Next to the \\*gate\\*\n  open until 23:59 · taken by Alice \\*A\\* until about 12:00",
+		);
+	});
+
+	it("warns in status when the bookings file can't be read", async () => {
+		const bookings = Object.assign(new ParkingBookingStore({ logger: silentLogger }), {
+			problem: "bad",
+		});
+		expect(await setup({ bookings }).run("status")).toContain(
+			"No one can park: the bookings file is invalid (bad)",
+		);
+	});
+
+	it("frees a spot", async () => {
+		const t = withSpots();
+		book(t, "ours", utc("10:00"));
+		expect(await t.run("free", { spot: "ours" })).toBe(
+			"Ended Alice \\*A\\*'s booking: **ours** is free again.",
+		);
+		expect(t.bookings.all()).toEqual([]);
+		expect(await t.run("free", { spot: "ours" })).toBe("Nobody is parked in **ours**.");
+	});
+
+	it("refuses to cut into a booking unless told to evict", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		book(t, "neighbour-1", utc("14:00"));
+		await t
+			.fails("open", { spots: "neighbour-1", until: "15:00" })
+			.toThrow(
+				"Someone is parked in **neighbour-1** until about 16:00. Add `evict:True` to end their booking.",
+			);
+		await t.fails("close", { spots: "neighbour-1" }).toThrow(/Someone is parked/);
+		await t.fails("remove-spot", { spot: "neighbour-1" }).toThrow(/Someone is parked/);
+		expect(t.bookings.all()).toHaveLength(1);
+		expect(t.entries().windows).toHaveLength(1);
+
+		// A longer opening, or a description, doesn't cut into anything.
+		await t.run("open", { spots: "neighbour-1", until: "19:00" });
+		await t.run("edit-spot", { spot: "neighbour-1", description: "Here" });
+		expect(t.bookings.all()).toHaveLength(1);
+
+		expect(await t.run("close", { spots: "neighbour-1", evict: true })).toBe(
+			"**neighbour-1** closed for today.\nEnded Alice \\*A\\*'s booking in **neighbour-1**.",
+		);
+		expect(t.bookings.all()).toEqual([]);
+	});
+
+	it("ends the bookings it cuts into for every change, with evict", async () => {
+		for (const [name, args, spot] of [
+			["open", { spots: "neighbour-1", until: "11:00", evict: true }, "neighbour-1"],
+			["close", { spots: "ours", evict: true }, "ours"],
+			["remove-spot", { spot: "ours", evict: true }, "ours"],
+			["edit-spot", { spot: "ours", permanent: false, evict: true }, "ours"],
+		] as const) {
+			const t = withSpots();
+			await t.run("open", { spots: "neighbour-1" });
+			book(t, spot, utc("12:00"));
+			expect(await t.run(name, args)).toContain(`Ended Alice \\*A\\*'s booking in **${spot}**.`);
+			expect(t.bookings.all()).toEqual([]);
+		}
+	});
+
+	it("names every booking it would cut into", async () => {
+		const t = withSpots();
+		book(t, "ours", utc("12:00"));
+		t.bookings.claim({ ref: "discord:2", name: "B" }, NOW, () => ({
+			spot: "neighbour-1",
+			until: utc("12:00"),
+		}));
+		await t
+			.fails("remove-spot", { spot: "ours" })
+			.toThrow(
+				"Someone is parked in **ours** until about 14:00. Add `evict:True` to end their booking.",
+			);
+		await t.run("open", { spots: "neighbour-1" });
+		await t
+			.fails("close", { spots: "ours neighbour-1" })
+			.toThrow(
+				/\*\*ours\*\* until about 14:00, \*\*neighbour-1\*\* until about 14:00\. .*end those bookings/,
+			);
 	});
 });
 

@@ -1,4 +1,5 @@
 import { silentLogger } from "../core/logger.ts";
+import { ParkingBookingStore } from "../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../services/parking-spots.ts";
 import { ParkingWindowStore } from "../services/parking-windows.ts";
 
@@ -7,6 +8,7 @@ export function inMemoryParking() {
 	return {
 		spots: new ParkingSpotStore({ logger: silentLogger }),
 		windows: new ParkingWindowStore({ logger: silentLogger }),
+		bookings: new ParkingBookingStore({ logger: silentLogger }),
 		timezone: "Europe/Amsterdam",
 	};
 }
