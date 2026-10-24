@@ -6,6 +6,7 @@ import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
 import type { CapabilityNotifier } from "../../core/capability-notify.ts";
 import type { ChannelPosts } from "../../core/channel-posts.ts";
+import type { DirectMessages } from "../../core/direct-messages.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
@@ -68,6 +69,8 @@ export type DiscordAdapterDeps = {
 	roles: Pick<RoleMirror, "attach" | "check">;
 	/** Where this adapter plugs in DMs for capability grant/revoke once it's ready. */
 	capabilityNotify: Pick<CapabilityNotifier, "attach">;
+	/** Where this adapter plugs in DMs for features (parking reminders) once it's ready. */
+	directMessages: Pick<DirectMessages, "attach">;
 	/** Which Discord role each tier is mirrored to. Unset tiers aren't mirrored. */
 	roleMapping: RoleMapping;
 	/** Reports errors that escape the dispatcher (e.g. Discord API failures). */
@@ -205,7 +208,9 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			}),
 		);
 		await deps.roles.check();
-		deps.capabilityNotify.attach(new DiscordDirectMessenger(ready.rest));
+		const messenger = new DiscordDirectMessenger(ready.rest);
+		deps.capabilityNotify.attach(messenger);
+		deps.directMessages.attach(messenger);
 		try {
 			await registerPublishers(ready);
 		} catch (error) {
