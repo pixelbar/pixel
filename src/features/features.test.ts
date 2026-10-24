@@ -20,6 +20,7 @@ import { KindSwitch } from "../services/kind-switch.ts";
 import { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
+import { inMemoryParking } from "../testing/parking.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { CAPABILITIES } from "./capabilities.ts";
 import { createHelpFeature } from "./help/index.ts";
@@ -64,6 +65,8 @@ const deps = () => ({
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
 	channelPosts: new ChannelPosts(),
 	schedules: new ScheduleStore({ logger: silentLogger }),
+	parkingSpots: inMemoryParking().spots,
+	parkingWindows: inMemoryParking().windows,
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
@@ -107,6 +110,25 @@ describe("buildFeatures", () => {
 		]);
 	});
 
+	it("keeps every command within Discord's 4000-character limit", () => {
+		// Discord counts names, descriptions and choices across a command and everything in it.
+		type Sized = {
+			name: string;
+			description: string;
+			choices?: readonly string[];
+			options?: readonly Sized[];
+			subcommands?: readonly Sized[];
+		};
+		const size = (n: Sized): number =>
+			n.name.length +
+			n.description.length +
+			(n.choices ?? []).reduce((sum, c) => sum + 2 * c.length, 0) +
+			[...(n.options ?? []), ...(n.subcommands ?? [])].reduce((sum, o) => sum + size(o), 0);
+		for (const command of buildFeatures(deps()).flatMap((f) => f.commands ?? [])) {
+			expect(size(command as Sized), command.name).toBeLessThanOrEqual(4000);
+		}
+	});
+
 	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {
 		const registry = new CommandRegistry({ capabilities: new CapabilityRegistry(CAPABILITIES) });
 		for (const f of buildFeatures(deps())) registry.register(f);
@@ -121,6 +143,7 @@ describe("buildFeatures", () => {
 			["doors", "admin"],
 			["closing-time", "admin"],
 			["announcements", "admin"],
+			["parking", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -185,6 +208,7 @@ function adminSubcommand(
 		reporter: nullErrorReporter,
 		now: () => new Date(90 * 60_000),
 		closingTimeFile: "data/closing-time.md",
+		parking: inMemoryParking(),
 	}).commands?.[0];
 	const sub = admin?.subcommands?.find(
 		(s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name,
@@ -243,6 +267,7 @@ describe("admin", () => {
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter: { ...nullErrorReporter, captureBackground },
 			closingTimeFile: "data/closing-time.md",
+			parking: inMemoryParking(),
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");
 		if (!reload || isSubgroup(reload)) throw new Error("no /admin reload");

@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/admin parking` (admins only) manages Pixelbar's parking spots, the first part of assigning spots at the gate with `/park` (#150). `add-spot`, `edit-spot` and `remove-spot` keep the list of spots: **permanent** ones (our own, open every day until the reset) and **borrowed** ones (open only when an admin opens them). `open` opens borrowed spots for a while (`from` defaults to now, `until` to the reset, and a second `open` that day replaces the first) or lifts a permanent spot's closure; `close` ends a borrowed spot's opening for today or closes a permanent spot until a time. Nothing runs past the daily reset (23:59 by default). `settings` sets the reminder, grace period, reset and the durations `/park` will offer, and `status` shows it all. Spots and settings are saved in `data/parking-spots.yaml`, opening times in `data/parking-windows.yaml`; neither is safe to delete ([ADR 0018](docs/adr/0018-parking-files.md)). Run `just register dev` / `just register prod` after deploying.
+
 ## [0.19.1] - 2026-10-24
 
 ### Changed

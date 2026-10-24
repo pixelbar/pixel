@@ -14,6 +14,7 @@ import { createClosingTimeSubgroup } from "./closing-time.ts";
 import { createDoorsSubgroup, describeDoors } from "./doors.ts";
 import { describeHome, homeLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
+import { createParkingSubgroup, type ParkingAdminDeps } from "./parking.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
 export type AdminDeps = {
@@ -32,6 +33,8 @@ export type AdminDeps = {
 	now?: () => Date;
 	/** Persist path for the closing-time body (`PIXEL_DATA_DIR` / Azure Files). */
 	closingTimeFile: string;
+	/** Parking spots and opening times (`/admin parking`). */
+	parking: Omit<ParkingAdminDeps, "now">;
 };
 
 function describeCounts(counts: AccessStore["view"]["counts"]): string {
@@ -123,6 +126,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 					createDoorsSubgroup({ switches: deps.switches, reporter: deps.reporter }),
 					createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile }),
 					createAnnouncementsSubgroup({ routes: deps.announcementRoutes }),
+					createParkingSubgroup({ ...deps.parking, now }),
 				],
 			},
 		],

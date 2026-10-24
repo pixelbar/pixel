@@ -14,6 +14,8 @@ import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
+import type { ParkingSpotStore } from "../services/parking-spots.ts";
+import type { ParkingWindowStore } from "../services/parking-windows.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStateApi } from "../services/space-state-api.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
@@ -53,6 +55,10 @@ export type FeatureDeps = {
 	/** Where scheduled posts go, once the platform adapter is ready. */
 	channelPosts: ChannelPosts;
 	schedules: ScheduleStore;
+	/** Parking spots and settings (`data/parking-spots.yaml`). */
+	parkingSpots: ParkingSpotStore;
+	/** When parking spots are open or closed (`data/parking-windows.yaml`). */
+	parkingWindows: ParkingWindowStore;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -119,6 +125,11 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			switches: deps.switches,
 			reporter: deps.reporter,
 			closingTimeFile: deps.closingTime.file,
+			parking: {
+				spots: deps.parkingSpots,
+				windows: deps.parkingWindows,
+				timezone: deps.timezone,
+			},
 		}),
 	];
 }
