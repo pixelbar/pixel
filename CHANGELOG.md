@@ -15,6 +15,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - `/fishbot` brings a little QuakeNet nostalgia to Discord: classic call-and-response phrases with autocomplete, feeding and petting the fish, cookie theft, and a harmless trout slap using Discord's user picker. Available to everyone with the usual command rate limits and no pings. It only responds to slash commands; no chat-reading permissions or IRC-specific behaviour.
 
+### Changed
+
+- The website's landing page opens with the logo's entrance from the launch video: the pixels fly in and snap together, the mark lights up with a burst of sparks, then it glows as before. It plays once when it comes into view, and stays still with reduced motion.
+
 ## [0.18.0] - 2026-10-19
 
 ### Added

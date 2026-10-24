@@ -47,6 +47,7 @@ docs/
       shiki.ts              # code colours from the spectrum
       components/Px*.vue    # landing page, mark, command card, tier badge, status, mermaid
       components/pixel-mark.ts  # the mark as pixel-art paths (generated from the logo)
+      components/pixel-mark-intro.ts  # the hero's entrance animation, drawn from pixel-mark.ts
 ```
 
 ## The design system
@@ -61,7 +62,8 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 - **Motion is short and stepped** (`--step`, 80ms `steps(2)`). Respect `prefers-reduced-motion`.
 - **Colour is never the only signal.** States and tiers always carry a word.
 - **The logo has two versions.** Dark uses the original (`public/pixel-mark.png`, `-96.png`) on its black `--void` tile. Light uses the pixel-art mark printed on paper (`public/pixel-mark-light.svg`, `.png`, `-96.png`): a white star centre (`--mark-core`), the orbits in the `--mark-*` colours, no glow. Don't recolour, redraw or crop either by hand.
-- **`<PxMark>`** draws the mark from `pixel-mark.ts` with the `--mark-*` tokens, so it follows the theme: neon with a glow in dark, graphic-strength colours without glow in light. `animated` (the hero) adds stepped motion: a shine runs round the orbits, particles twinkle and, in dark, the star breathes. Reduced motion turns it all off. The `--mark-*` light values are for artwork only (3:1), never for text.
+- **`<PxMark>`** draws the mark from `pixel-mark.ts` with the `--mark-*` tokens, so it follows the theme: neon with a glow in dark, graphic-strength colours without glow in light. `animated` adds stepped motion: a shine runs round the orbits, particles twinkle and, in dark, the star breathes. Reduced motion turns it all off.
+- **`<PxMarkIntro>`** (the hero) is the launch video's entrance: the mark's pixels fly in and snap together on the grid, it lights up with a burst of `--spectrum-*` sparks, then it carries on like `<PxMark animated>`. It plays once, the first time it scrolls into view, and pauses off screen. It glows only in dark and follows the theme switch. Reduced motion shows the finished mark, still. The animation is plain TypeScript in `pixel-mark-intro.ts`, started on mount (it needs the browser); the sparks fly a little past the mark, so don't clip its box. The `--mark-*` light values are for artwork only (3:1), never for text.
 - **`pixel-mark.ts` is generated** by tracing the logo onto a 64 × 64 grid. Don't hand-edit its paths; if the logo changes, regenerate it and the light assets together.
 - **Fonts are self-hosted** through `@fontsource` (Pixelify Sans, IBM Plex Sans, IBM Plex Mono). Don't add Google Fonts or other third-party requests: visitors' browsers shouldn't contact anyone else (GDPR).
 - **No AI tropes:** no blue-purple gradients, emoji cards or left-border cards.
@@ -78,7 +80,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 ## Markdown and components
 
 - **Pages are Vue templates.** `{{` in prose and code spans is escaped for you (`markdown/escape-mustache.ts`). Inside raw HTML you write yourself, use `<code v-pre>`.
-- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxCommandTray`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
+- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxCommandTray`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMarkIntro`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
 - **Custom containers** (`::: tip`, `::: info`, `::: warning`, `::: danger`) are styled as Pixel callouts. Use at most one per section.
 - **Mermaid** fences render through `<PxMermaid>` in the theme's colours. Mermaid only loads on pages that have a diagram.
 - **Links:** link between site pages with root paths (`/commands`, `/guide/tiers`). In the maintainer docs, relative links to files outside `docs/` become GitHub links at build time (`markdown/repo-links.ts`). Relative links between `docs/*.md` files are pointed at where the site serves them, so `privacy.md` from a maintainer doc still reaches `/privacy`.
