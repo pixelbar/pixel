@@ -5,7 +5,7 @@ name: CD
 # the last run that published. They do **not** roll pixel-prod (ADR 0013):
 # that is the Release workflow. Docs / changelog / test / infra-only merges
 # skip this pipeline. A run that didn't finish saves nothing, so the next one
-# publishes. Azure `dev` stays a local build (`just deploy-dev`).
+# publishes. Azure `dev` is a local build (`just deploy dev`) or the Deploy dev workflow.
 # Never copy pixel-dev / Mini Discord tokens into prod.
 # This workflow does not apply Terraform.
 

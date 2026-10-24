@@ -27,4 +27,5 @@ module "pixel" {
   write_secrets                         = var.write_secrets
   secrets_version                       = var.secrets_version
   tailscale_auth_key                    = var.tailscale_auth_key
+  github_register_principal_id          = var.github_register_principal_id
 }

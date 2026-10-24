@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- A **Deploy dev** workflow puts a branch or pull request on the Pixel Dev bot without a laptop: GitHub → Actions → Deploy dev → Run workflow with a PR number, branch or SHA, or `just deploy-remote dev 123`. It runs `just check` on that commit, publishes `:<sha>` and `:dev` to GHCR, rolls `pixel-dev`, registers dev slash commands and creates a Sentry release in environment `dev`. It only runs when someone starts it, refuses PRs from forks, and never touches prod. For it to register commands, a maintainer sets `github_register_principal_id` in `infra/envs/dev` to `pixel-github-dev`'s principal ID and applies (it can read the dev `discord-token` and nothing else). See [ADR 0018](docs/adr/0018-deploy-dev-workflow.md).
+
 ## [0.19.0] - 2026-10-23
 
 ### Added

@@ -39,6 +39,10 @@ discord_guild_id = "100000000000000002"
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
+# Lets the Deploy dev workflow read discord-token (only) and register slash
+# commands (ADR 0018). az identity show -g pixel-bootstrap -n pixel-github-dev --query principalId -o tsv
+# github_register_principal_id = "00000000-0000-0000-0000-000000000000"
+
 sentry_enabled    = false
 tailscale_enabled = false
 
