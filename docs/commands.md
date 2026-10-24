@@ -181,6 +181,28 @@ Deletes a schedule.
 
 </PxCommand>
 
+### Parking
+
+Getting a parking spot at the gate. These need the `parking` capability. Every reply is private, and every booking ends at 23:59.
+
+<PxCommand :level="4" sig="/park for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How long, such as 30m, 2h, 2h30 or rest of day.' }">
+
+Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking list" tier="member" reply="private" :caps="['parking']">
+
+Which spots are open, who's in each, since when and until about when, and how long each spot stays open.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking leave" tier="member" reply="private" :caps="['parking']">
+
+Frees your spot.
+
+</PxCommand>
+
 ### Space state
 
 Sets whether Pixelbar shows as open or closed. This needs the `spacestate` capability.
@@ -287,19 +309,25 @@ Switches door control from Pixel back on.
 
 <PxCommand sig="/admin parking status" tier="admin" reply="private">
 
-The parking spots, whether each is open now and later today, and the parking settings.
+The parking spots, whether each is open now and later today, who's parked in them, and the parking settings.
 
 </PxCommand>
 
-<PxCommand sig="/admin parking open spots: [from:] [until:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes. Default: the reset (23:59).' }">
+<PxCommand sig="/admin parking open spots: [from:] [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked where this cuts in. Without it, the change is refused.' }">
 
 Opens borrowed spots for a while, replacing any opening they have that day. For a permanent spot, lifts its closure. Nothing runs past the reset.
 
 </PxCommand>
 
-<PxCommand sig="/admin parking close spots: [until:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again. Default: the reset (23:59).' }">
+<PxCommand sig="/admin parking close spots: [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked there. Without it, the change is refused.' }">
 
 Closes spots: a borrowed spot until it's opened again, a permanent one for a while.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
+
+Ends the booking in a spot, for someone who left without `/parking leave`.
 
 </PxCommand>
 
@@ -309,13 +337,13 @@ Adds a parking spot. A borrowed spot is closed until it's opened.
 
 </PxCommand>
 
-<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.' }">
+<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:] [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.', '[evict:]': 'End the booking of anyone parked there if this cuts in.' }">
 
 Changes a spot. Changing whether it's permanent drops the openings or closures that no longer apply.
 
 </PxCommand>
 
-<PxCommand sig="/admin parking remove-spot spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
+<PxCommand sig="/admin parking remove-spot spot: [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[evict:]': 'End the booking of anyone parked there. Without it, a booked spot isn\'t removed.' }">
 
 Removes a spot and its opening times.
 
