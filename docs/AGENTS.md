@@ -47,7 +47,7 @@ docs/
       shiki.ts              # code colours from the spectrum
       components/Px*.vue    # landing page, mark, command card, tier badge, status, mermaid
       components/pixel-mark.ts  # the mark as pixel-art paths (generated from the logo)
-      components/pixel-mark-intro.ts  # the hero's entrance animation, drawn from pixel-mark.ts
+      components/pixel-mark-intro.ts  # the hero's entrance: the original logo in dark, pixel-mark.ts in light
 ```
 
 ## The design system
@@ -63,7 +63,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 - **Colour is never the only signal.** States and tiers always carry a word.
 - **The logo has two versions.** Dark uses the original (`public/pixel-mark.png`, `-96.png`) on its black `--void` tile. Light uses the pixel-art mark printed on paper (`public/pixel-mark-light.svg`, `.png`, `-96.png`): a white star centre (`--mark-core`), the orbits in the `--mark-*` colours, no glow. Don't recolour, redraw or crop either by hand.
 - **`<PxMark>`** draws the mark from `pixel-mark.ts` with the `--mark-*` tokens, so it follows the theme: neon with a glow in dark, graphic-strength colours without glow in light. `animated` adds stepped motion: a shine runs round the orbits, particles twinkle and, in dark, the star breathes. Reduced motion turns it all off.
-- **`<PxMarkIntro>`** (the hero) is the launch video's entrance: the mark's pixels fly in and snap together on the grid, it lights up with a burst of `--spectrum-*` sparks, then it carries on like `<PxMark animated>`. It plays once, the first time it scrolls into view, and pauses off screen. It glows only in dark and follows the theme switch. Reduced motion shows the finished mark, still. The animation is plain TypeScript in `pixel-mark-intro.ts`, started on mount (it needs the browser); the sparks fly a little past the mark, so don't clip its box. The `--mark-*` light values are for artwork only (3:1), never for text.
+- **`<PxMarkIntro>`** (the hero) is the launch video's entrance, drawn on a canvas. In dark it uses the original logo (`public/pixel-mark.png`): a mosaic of its own pixels flies in and snaps together on the 64 × 64 grid, sharpens in steps (64, 128, 256) into the original itself, and lights up with a surge of glow and a burst of `--spectrum-*` sparks; then a light runs round the orbits and the star breathes, both drawn from the original's own pixels. The canvas uses `mix-blend-mode: screen` in dark so the original's black tile takes the page's background. In light it's the printed pixel art from `pixel-mark.ts` and the `--mark-*` tokens, with no glow. It follows the theme switch, plays once when it comes into view, pauses off screen, and shows the finished mark, still, with reduced motion. The animation is plain TypeScript in `pixel-mark-intro.ts`, started on mount (it needs the browser); the sparks fly a little past the mark, so don't clip its box.
 - **`pixel-mark.ts` is generated** by tracing the logo onto a 64 × 64 grid. Don't hand-edit its paths; if the logo changes, regenerate it and the light assets together.
 - **Fonts are self-hosted** through `@fontsource` (Pixelify Sans, IBM Plex Sans, IBM Plex Mono). Don't add Google Fonts or other third-party requests: visitors' browsers shouldn't contact anyone else (GDPR).
 - **No AI tropes:** no blue-purple gradients, emoji cards or left-border cards.
