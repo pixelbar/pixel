@@ -29,6 +29,15 @@ discord_guild_id = "100000000000000002"
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
+# The space state webhook: public HTTPS ingress to port 8081 only (ADR 0018). Push Key
+# Vault secret spacestate-webhook-secret first. The URL is the spacestate_webhook_url output.
+# spacestate_webhook_enabled = true
+# webhook_allowed_ip_ranges  = ["203.0.113.7/32"]   # optional; empty lets anyone try (signed requests only)
+# A hostname for it, in two applies: set custom_domain and apply, create the records from
+# the custom_domain_dns_records output at TransIP, then set bind_custom_domain and apply.
+# custom_domain      = "pixel.pixelbar.nl"
+# bind_custom_domain = true
+
 # Lets the Release workflow read discord-token (only) and register slash
 # commands (ADR 0014). az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv
 # github_register_principal_id = "00000000-0000-0000-0000-000000000000"

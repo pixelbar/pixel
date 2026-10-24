@@ -1,6 +1,6 @@
 # 0004. Azure Container Apps, single replica, GHCR, two environments
 
-* Status: accepted
+* Status: accepted ("no public ingress" amended by [0018](0018-space-state-webhook.md): optional ingress for the space state webhook only)
 * Date: 2026-10-03
 
 ## Context

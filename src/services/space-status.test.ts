@@ -52,6 +52,18 @@ function fakeFetch() {
 			queue.push(async () => Promise.reject(error));
 			return this;
 		},
+		/** A response that arrives only when `release` is called. */
+		held(body: unknown) {
+			let release: () => void = () => {};
+			const arrived = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			queue.push(async () => {
+				await arrived;
+				return new Response(JSON.stringify(body));
+			});
+			return release;
+		},
 	};
 }
 
@@ -83,6 +95,70 @@ function setup(options: { failureThreshold?: number; store?: SpaceStateStore } =
 		},
 	};
 }
+
+describe("SpaceApiStatus.recheck", () => {
+	it("checks straight away when nothing is under way, and says the change came from a push", async () => {
+		const { service, fetch, advance } = setup();
+		const changes: SpaceChange[] = [];
+		service.onChange((c) => changes.push(c));
+		fetch.json(open(false)).json(open(true));
+		await service.checkNow();
+		const at = advance(1000);
+		expect((await service.recheck()).state).toBe("open");
+		expect(changes).toEqual([{ from: "closed", to: "open", at, previousSince: null, via: "push" }]);
+	});
+
+	it("never reuses a check that started before it: it waits, then asks again", async () => {
+		const { service, fetch } = setup();
+		const changes: SpaceChange[] = [];
+		service.onChange((c) => changes.push(c));
+		fetch.json(open(false));
+		await service.checkNow();
+
+		// A poll is under way and will read the state from before the change.
+		const release = fetch.held(open(false));
+		fetch.json(open(true));
+		const poll = service.checkNow();
+		const recheck = service.recheck();
+		release();
+
+		expect((await poll).state).toBe("closed");
+		expect((await recheck).state).toBe("open");
+		expect(fetch.fn).toHaveBeenCalledTimes(3);
+		expect(changes.map((c) => c.via)).toEqual(["push"]);
+	});
+
+	it("shares one follow-up check between rechecks that arrive during the same check", async () => {
+		const { service, fetch } = setup();
+		const release = fetch.held(open(false));
+		fetch.json(open(true));
+		const poll = service.checkNow();
+		const first = service.recheck();
+		const second = service.recheck();
+		release();
+		await poll;
+		const [a, b] = await Promise.all([first, second]);
+		expect(a).toBe(b);
+		expect(fetch.fn).toHaveBeenCalledTimes(2);
+	});
+
+	it("still asks again when the check it waited for failed", async () => {
+		const { service, fetch } = setup();
+		fetch.fail(new Error("network down")).json(open(true));
+		const poll = service.checkNow();
+		const recheck = service.recheck();
+		await expect(poll).rejects.toBeInstanceOf(SpaceApiError);
+		expect((await recheck).state).toBe("open");
+	});
+
+	it("lets other checks share the recheck's request", async () => {
+		const { service, fetch } = setup();
+		fetch.json(open(true));
+		const [a, b] = await Promise.all([service.recheck(), service.checkNow()]);
+		expect(a).toBe(b);
+		expect(fetch.fn).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe("SpaceApiStatus.checkNow", () => {
 	it("reads open and closed from state.open", async () => {
@@ -215,7 +291,7 @@ describe("tracking changes", () => {
 		await service.checkNow();
 		const at = advance(1000);
 		await service.checkNow();
-		expect(changes).toEqual([{ from: "closed", to: "open", at, previousSince: null }]);
+		expect(changes).toEqual([{ from: "closed", to: "open", at, previousSince: null, via: "poll" }]);
 	});
 
 	it("tells listeners when the state it changed from began, if it saw that", async () => {
@@ -229,8 +305,8 @@ describe("tracking changes", () => {
 		const closedAt = advance(3 * 3_600_000);
 		await service.checkNow();
 		expect(changes).toEqual([
-			{ from: "closed", to: "open", at: openedAt, previousSince: null },
-			{ from: "open", to: "closed", at: closedAt, previousSince: openedAt },
+			{ from: "closed", to: "open", at: openedAt, previousSince: null, via: "poll" },
+			{ from: "open", to: "closed", at: closedAt, previousSince: openedAt, via: "poll" },
 		]);
 	});
 
@@ -417,7 +493,9 @@ describe("persistence", () => {
 		await service.checkNow();
 		const at = advance(60_000);
 		await service.checkNow();
-		expect(changes).toEqual([{ from: "open", to: "closed", at, previousSince: earlier }]);
+		expect(changes).toEqual([
+			{ from: "open", to: "closed", at, previousSince: earlier, via: "poll" },
+		]);
 		expect(store.saves).toEqual([{ state: "closed", since: at }]);
 	});
 

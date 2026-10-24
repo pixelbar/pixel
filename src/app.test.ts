@@ -46,6 +46,7 @@ describe("buildCore", () => {
 			logDir: undefined,
 			timezone: "Europe/Amsterdam",
 			healthPort: 0,
+			spaceStateWebhook: undefined,
 			sentryDsn: undefined,
 			sentryTracesSampleRate: 1,
 			sentryProfileSessionSampleRate: 1,

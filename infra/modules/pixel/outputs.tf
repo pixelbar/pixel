@@ -4,7 +4,7 @@ output "resource_group_name" {
 
 output "container_app_name" {
   value       = local.name_prefix
-  description = "Container App name (local.name_prefix). One replica, no public ingress. Not taken from the app resource object — that object is sensitive because of secret blocks."
+  description = "Container App name (local.name_prefix). One replica. Public ingress only when spacestate_webhook_enabled. Not taken from the app resource object — that object is sensitive because of secret blocks."
 }
 
 output "container_app_environment_name" {
@@ -44,4 +44,28 @@ output "managed_identity_client_id" {
 
 output "tailscale_enabled" {
   value = var.tailscale_enabled
+}
+
+output "spacestate_webhook_url" {
+  # Built from the environment's domain, like container_app_name, rather than read from
+  # the sensitive app object. External ingress is always <app>.<environment domain>.
+  # Once a custom domain is bound, that hostname; until then the app's own address.
+  value       = var.spacestate_webhook_enabled ? "https://${var.bind_custom_domain ? var.custom_domain : local.default_fqdn}/hooks/space-state" : null
+  description = "Where the space state service sends its webhook, or null when it is off. Give it this URL and the spacestate-webhook-secret value."
+}
+
+output "custom_domain_dns_records" {
+  # The verification ID isn't a secret: it ends up in public DNS.
+  value = var.custom_domain == null ? null : {
+    txt = {
+      name  = "asuid.${var.custom_domain}"
+      value = azurerm_container_app_environment.this.custom_domain_verification_id
+    }
+    cname = {
+      name  = var.custom_domain
+      value = local.default_fqdn
+    }
+    bound = var.bind_custom_domain
+  }
+  description = "The records to create at the DNS host (TransIP for pixelbar.nl) before setting bind_custom_domain, or null without custom_domain. A subdomain needs the CNAME; an apex domain can't have one."
 }

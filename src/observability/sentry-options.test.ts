@@ -3,7 +3,7 @@ import * as Sentry from "@sentry/node";
 import { pino } from "pino";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { REDACT_PATHS } from "./logger.ts";
-import { isHealthProbe, SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
+import { isUntracedRequest, SENTRY_LOG_LEVELS, sentryOptions } from "./sentry-options.ts";
 
 const sentryCfg = {
 	dsn: "https://key@o0.ingest.sentry.io/1",
@@ -73,12 +73,14 @@ describe("sentryOptions", () => {
 		]);
 	});
 
-	it("ignores health probes, including ones with a query string", () => {
-		expect(isHealthProbe("/healthz")).toBe(true);
-		expect(isHealthProbe("/readyz")).toBe(true);
-		expect(isHealthProbe("/healthz?ready=1")).toBe(true);
-		expect(isHealthProbe("/")).toBe(false);
-		expect(isHealthProbe("/api")).toBe(false);
+	it("traces only the webhooks: not health probes, nor anything else that turns up", () => {
+		expect(isUntracedRequest("/healthz")).toBe(true);
+		expect(isUntracedRequest("/readyz")).toBe(true);
+		expect(isUntracedRequest("/healthz?ready=1")).toBe(true);
+		expect(isUntracedRequest("/")).toBe(true);
+		expect(isUntracedRequest("/wp-login.php")).toBe(true);
+		expect(isUntracedRequest("/hooks/space-state")).toBe(false);
+		expect(isUntracedRequest("/hooks/space-state?x=1")).toBe(false);
 	});
 
 	it("scrubs secrets from a log before it is sent: the message and every attribute", () => {

@@ -9,6 +9,10 @@ import type { PersistedSpaceState, SpaceStateStore } from "./space-state-store.t
  * - Background polling (`start()`) keeps checking so Pixel notices changes even
  *   when nobody asks — that's how it knows "since when". SpaceAPI itself has no
  *   change timestamp, so "since" is only known for changes Pixel observed.
+ * - `recheck()` is for when something says the state just changed (the space state
+ *   webhook): it never reuses a check that was already under way, because that one may
+ *   have read the state from before the change. It's only a nudge: the state still comes
+ *   from SpaceAPI, never from whoever asked.
  * - `onChange` fires on real open↔closed flips (used by announcements, #3).
  * - With a `store`, the last known state and "since" survive restarts. On
  *   startup the saved state is only trusted once a live reading agrees with it:
@@ -35,12 +39,19 @@ export type SpaceChange = {
 	at: Date;
 	/** When the state it changed *from* began, if Pixel knew (e.g. how long it had been open). */
 	previousSince: Date | null;
+	/** `push` when a `recheck()` (the webhook) found it, `poll` for any other check. */
+	via: CheckTrigger;
 };
+
+/** What started a check: a webhook saying the state changed, or anything else. */
+export type CheckTrigger = "poll" | "push";
 
 export type SpaceStatus = {
 	/** How often the background poll checks SpaceAPI. */
 	readonly pollIntervalMs: number;
 	checkNow(): Promise<SpaceReading>;
+	/** Checks again because the state is said to have changed. Never reuses an earlier check. */
+	recheck(): Promise<SpaceReading>;
 	start(): void;
 	stop(): void;
 	onChange(listener: (change: SpaceChange) => void): () => void;
@@ -89,6 +100,8 @@ export class SpaceApiStatus implements SpaceStatus {
 	#restored = false;
 	#saveFailureReported = false;
 	#inFlight: Promise<SpaceReading> | undefined;
+	/** A recheck waiting for the check under way to finish, so it can start a fresh one. */
+	#queuedRecheck: Promise<SpaceReading> | undefined;
 	#consecutiveFailures = 0;
 	#timer: ReturnType<typeof setInterval> | undefined;
 
@@ -112,10 +125,28 @@ export class SpaceApiStatus implements SpaceStatus {
 	}
 
 	checkNow(): Promise<SpaceReading> {
-		this.#inFlight ??= this.#check().finally(() => {
+		return this.#inFlight ?? this.#startCheck("poll");
+	}
+
+	recheck(): Promise<SpaceReading> {
+		const underWay = this.#inFlight;
+		if (!underWay) return this.#startCheck("push");
+		// Rechecks that arrive during the same check share the one that follows it.
+		this.#queuedRecheck ??= underWay
+			.catch(() => {})
+			.then(() => {
+				this.#queuedRecheck = undefined;
+				return this.#inFlight ?? this.#startCheck("push");
+			});
+		return this.#queuedRecheck;
+	}
+
+	#startCheck(via: CheckTrigger): Promise<SpaceReading> {
+		const check = this.#check(via).finally(() => {
 			this.#inFlight = undefined;
 		});
-		return this.#inFlight;
+		this.#inFlight = check;
+		return check;
 	}
 
 	start(): void {
@@ -140,7 +171,7 @@ export class SpaceApiStatus implements SpaceStatus {
 		return () => this.#listeners.delete(listener);
 	}
 
-	async #check(): Promise<SpaceReading> {
+	async #check(via: CheckTrigger): Promise<SpaceReading> {
 		let state: SpaceState;
 		try {
 			state = await this.#fetchState();
@@ -151,7 +182,7 @@ export class SpaceApiStatus implements SpaceStatus {
 				: new SpaceApiError("SpaceAPI request failed", { cause: error });
 		}
 		this.#recordSuccess();
-		return this.#record(state);
+		return this.#record(state, via);
 	}
 
 	async #fetchState(): Promise<SpaceState> {
@@ -208,7 +239,7 @@ export class SpaceApiStatus implements SpaceStatus {
 		);
 	}
 
-	#record(state: SpaceState): SpaceReading {
+	#record(state: SpaceState, via: CheckTrigger): SpaceReading {
 		const now = this.#now();
 		if (state === "unknown") return { state, since: null, checkedAt: now };
 
@@ -228,10 +259,10 @@ export class SpaceApiStatus implements SpaceStatus {
 				const previousSince = previous.since;
 				this.#remember({ state, since: now });
 				this.#logger.info(
-					{ event: "spaceapi.changed", from: previous.state, to: state },
+					{ event: "spaceapi.changed", from: previous.state, to: state, via },
 					"space state changed",
 				);
-				this.#emit({ from: previous.state, to: state, at: now, previousSince });
+				this.#emit({ from: previous.state, to: state, at: now, previousSince, via });
 			}
 		}
 		this.#restored = false;

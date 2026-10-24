@@ -34,6 +34,13 @@ export default defineConfig({
 					functions: 98,
 					branches: 85,
 				},
+				// The one public endpoint: who may nudge Pixel is decided here.
+				"src/adapters/webhook/{signature,server}.ts": {
+					lines: 98,
+					statements: 98,
+					functions: 98,
+					branches: 85,
+				},
 				"src/observability/{scrub,sentry-reporter,health}.ts": {
 					lines: 98,
 					statements: 98,

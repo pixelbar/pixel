@@ -34,7 +34,8 @@ COPY content ./content
 # files whose loss only costs details like the "open for 2h" time.
 RUN mkdir -p /app/data && chown node:node /app/data
 USER node
-EXPOSE 8080
+# 8080: health probes (private). 8081: the space state webhook, when SPACESTATE_WEBHOOK_SECRET is set.
+EXPOSE 8080 8081
 # No --enable-source-maps: Node would rewrite stack frames to src/*.ts (not in the
 # image) before Sentry sees them, so the maps uploaded for /app/dist would never
 # match. Sentry applies those maps; the logs show dist/*.js frames.

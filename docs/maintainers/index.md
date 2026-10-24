@@ -39,6 +39,7 @@ Architecture decision records, newest last.
 | [0015](./adr/0015-secrets-manifest) | One manifest lists every Key Vault secret. |
 | [0016](./adr/0016-secrets-sync) | `just pull` / `just push` (and `secrets-pull` / `secrets-push`) sync tfvars and app secrets between Key Vault and the laptop. |
 | [0017](./adr/0017-one-writer-for-app-secrets) | Only the sync tool writes app secrets; Terraform writes just the infra group. |
+| [0018](./adr/0018-space-state-webhook) | A signed webhook from the space state service makes Pixel read SpaceAPI straight away. |
 
 ## Working on the site
 

@@ -30,3 +30,13 @@ output "log_analytics_workspace_name" {
 output "tailscale_enabled" {
   value = module.pixel.tailscale_enabled
 }
+
+output "spacestate_webhook_url" {
+  value       = module.pixel.spacestate_webhook_url
+  description = "Where the space state service sends its webhook, or null when it is off."
+}
+
+output "custom_domain_dns_records" {
+  value       = module.pixel.custom_domain_dns_records
+  description = "The TXT and CNAME records to create at the DNS host for custom_domain, or null when it isn't set."
+}

@@ -1,8 +1,8 @@
 # Pixel infrastructure
 
-How Pixel is hosted. Terraform lives in [`infra/`](../infra/). Day-to-day steps are in the [runbook](runbook.md). Design decisions: [ADR 0008](adr/0008-terraform-bootstrap.md) (bootstrap + OIDC), [ADR 0009](adr/0009-container-apps-dev.md) (Container Apps `dev`), [ADR 0010](adr/0010-ghcr-cd.md) (temporary CD routing for `dev`), [ADR 0012](adr/0012-prod-environment.md) (prod environment), [ADR 0013](adr/0013-release-workflow.md) (releases promote prod).
+How Pixel is hosted. Terraform lives in [`infra/`](../infra/). Day-to-day steps are in the [runbook](runbook.md). Design decisions: [ADR 0008](adr/0008-terraform-bootstrap.md) (bootstrap + OIDC), [ADR 0009](adr/0009-container-apps-dev.md) (Container Apps `dev`), [ADR 0010](adr/0010-ghcr-cd.md) (temporary CD routing for `dev`), [ADR 0012](adr/0012-prod-environment.md) (prod environment), [ADR 0013](adr/0013-release-workflow.md) (releases promote prod), [ADR 0018](adr/0018-space-state-webhook.md) (the space state webhook and its ingress).
 
-There is **no database**. Discord users never connect to Azure: the replica has **no public ingress** and **exactly one replica**. `prod` is [`infra/envs/prod`](../infra/envs/prod/) ([#12](https://github.com/pixelbar/pixel/issues/12)).
+There is **no database**. Discord users never connect to Azure: the replica has **exactly one replica** and **no public ingress**, except the optional space state webhook (HTTPS to one port and one path, signed; `spacestate_webhook_enabled`). `prod` is [`infra/envs/prod`](../infra/envs/prod/) ([#12](https://github.com/pixelbar/pixel/issues/12)).
 
 ## How the pieces are set
 
@@ -21,7 +21,7 @@ West Europe, subscription in bootstrap / env variables. Live **`pixel-dev`** is 
 | Backup | `pixel-dev-rsv` / `pixel-prod-rsv` | Daily share backup, 14-day keep (plus 14-day share soft-delete) |
 | Logs | `pixel-dev-logs` / `pixel-prod-logs` | Container Apps diagnostics, 30 days |
 | CAE | `pixel-dev-cae` / `pixel-prod-cae` | Consumption, **no VNet** |
-| App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** |
+| App | `pixel-dev` / `pixel-prod` | `min = max` replicas **1**, `revision_mode = Single`, ingress **none** unless `spacestate_webhook_enabled`: then external HTTPS to port 8081 only (the webhook), optionally limited to `webhook_allowed_ip_ranges`, optionally on a custom hostname (`pixel.pixelbar.nl` for prod) with a managed certificate |
 | Image | `ghcr.io/pixelbar/pixel:<sha>` (public) | No `.env`, no access YAML. Azure `dev` is rolled by `just deploy dev`; `prod` by the Release workflow after approval |
 
 **CD:** `just deploy dev` on a laptop builds linux/amd64, pushes GHCR, `az containerapp update` on `pixel-dev` with min=max=1, then `just register dev`. Merges to `main` publish GHCR (`:<sha>` and `:main`) and Sentry source maps. They do **not** roll `pixel-prod`. A Release rebuilds from the bumped commit (`:vX.Y.Z`), publishes the docs site, then Environment `prod` approval rolls `pixel-prod` to **that digest** (no Terraform apply). Production slash commands: the Release's `register-prod` job, after a second approval (fallback `just register prod`).
@@ -63,7 +63,7 @@ flowchart LR
       FILES["Azure Files pixeldevdata / pixel"]
       RSV["Backup pixel-dev-rsv"]
       LAW["Log Analytics 30d"]
-      CAE["CAE pixel-dev-cae<br/>Consumption, no VNet, no ingress"]
+      CAE["CAE pixel-dev-cae<br/>Consumption, no VNet<br/>ingress only for the webhook, when on"]
       APP["Container App pixel-dev<br/>1 replica: pixel + init prepare-volume"]
     end
     subgraph prod["RG pixel-prod"]
@@ -95,6 +95,7 @@ flowchart LR
     DISCORD["Discord gateway + REST<br/>Pixel Dev / test guild"]
     HA["Home Assistant<br/>Nabu Casa today"]
     SPACE["SpaceAPI spaceapi.pixelbar.nl"]
+    SSVC["Space state service<br/>pixelbar/spacestate"]
     SENTRY["Sentry org/project"]
     TS["Pixelbar tailnet<br/>sidecar stub off"]
   end
@@ -102,6 +103,7 @@ flowchart LR
   APP -->|outbound only| DISCORD
   APP -->|HTTPS + WS| HA
   APP --> SPACE
+  SSVC -.->|"signed webhook, HTTPS :443 → :8081<br/>only when spacestate_webhook_enabled"| APP
   APP --> SENTRY
   TS -.->|not wired| APP
 ```
@@ -112,7 +114,7 @@ One replica. Containers share a network namespace; they do **not** share filesys
 flowchart TB
   subgraph replica["pixel-dev replica  min=max=1"]
     INIT["init prepare-volume<br/>busybox:1.37.0<br/>mkdir + chmod persist"]
-    PIXEL["container pixel<br/>0.5 vCPU / 1Gi<br/>probes /healthz /readyz :8080"]
+    PIXEL["container pixel<br/>0.5 vCPU / 1Gi<br/>probes /healthz /readyz :8080 (private)<br/>webhook /hooks/space-state :8081"]
     TSSTUB["tailscale sidecar<br/>Terraform stub, live OFF"]
     INIT --> PIXEL
   end
@@ -122,6 +124,7 @@ flowchart TB
   FILEVOL --> INIT
   FILEVOL --> PIXEL
   PIXEL -->|Discord, SpaceAPI, Sentry, KV, GHCR| EGRESS["Azure egress"]
+  INGRESS["Azure ingress, HTTPS only<br/>when spacestate_webhook_enabled"] -->|:8081 only| PIXEL
   PIXEL -->|HA token + Nabu Casa URL| NABU["*.ui.nabu.casa"]
 ```
 
@@ -129,7 +132,7 @@ flowchart TB
 
 1. **Bootstrap** (hand-applied) created the three resource groups, state storage, and per-env GitHub identities. Env stacks deploy *into* those groups; they do not recreate them.
 2. **`infra/modules/pixel`** + **`infra/envs/dev`** created the vault, files share, CAE, app, backup, logs, and `pixel-dev-app`. Remote state is container `dev`. **`infra/envs/prod`** is the same module in `pixel-prod` (state container `prod`).
-3. **Secrets** are Key Vault names (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `sentry-dsn`). The Container App references **URIs + UAMI**. Only `just secrets-push` writes these app values ([ADR 0017](adr/0017-one-writer-for-app-secrets.md)); Terraform's ephemeral `write_secrets` inputs cover just the infra secrets `tailscale-auth-key` and `ghcr-pull-token`. Discord / HA / Sentry values do **not** belong in state. The Azure Files **account key** does (Container Apps can only mount SMB with the key).
+3. **Secrets** are Key Vault names (`discord-token`, `admins-yaml`, `home-assistant-token`, `mastodon-access-token`, `spacestate-user`, `spacestate-token`, `spacestate-webhook-secret`, `sentry-dsn`). The Container App references **URIs + UAMI**. Only `just secrets-push` writes these app values ([ADR 0017](adr/0017-one-writer-for-app-secrets.md)); Terraform's ephemeral `write_secrets` inputs cover just the infra secrets `tailscale-auth-key` and `ghcr-pull-token`. Discord / HA / Sentry values do **not** belong in state. The Azure Files **account key** does (Container Apps can only mount SMB with the key).
 4. **Image:** GHCR is public, so the app pulls with no registry password. `just deploy dev` updates the running **dev** image with `az containerapp update` and does **not** apply Terraform. After first create, Terraform **ignores** that **dev** image so apply cannot roll it back (#73). Prod apply sets `container_image`; a Release then rolls `pixel-prod` to the released SHA (same digest, no Terraform apply). Pin an explicit SHA (or `dev-dirty-*` on **dev** only), never `latest` alone.
 5. **Discord:** outbound gateway + REST. No FQDN. `/healthz` is process up; `/readyz` is Discord connected. Home Assistant is **not** on the probes (HA down must not restart the replica).
 6. **Home Assistant:** both URL and token, or neither. Live `dev` uses a Nabu Casa URL. The allow-list is `devices.yaml` on the share. A Tailscale sidecar is the preferred path ([#43](https://github.com/pixelbar/pixel/issues/43), [#74](https://github.com/pixelbar/pixel/issues/74)); the Terraform stub is **off** and is not enough to flip on as-is. Dev must not control the real doors.
@@ -166,11 +169,20 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 
 How to seed the share and vault: [dev README](../infra/envs/dev/README.md).
 
-## One replica, no public ingress
+## One replica, and ingress only for the webhook
 
 Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy dev` re-asserts that, and `just deploy prod` refuses (prod ships from the Release workflow). The Release prod job re-asserts the same on `pixel-prod`.
 
-Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
+Ingress is off by default. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
+
+The one exception is the space state webhook ([ADR 0018](adr/0018-space-state-webhook.md)), off until a stack sets `spacestate_webhook_enabled = true`. Then:
+
+- **External HTTPS ingress, to port 8081 only.** Azure terminates TLS and refuses plain HTTP (`allow_insecure_connections = false`). The health probes are on 8080, which ingress never targets, so `/healthz` and `/readyz` stay private. On 8081 Pixel answers only `POST /hooks/space-state`; everything else is a 404.
+- **Every request must be signed** with Key Vault `spacestate-webhook-secret` (`SPACESTATE_WEBHOOK_SECRET`), and an accepted one only makes Pixel read SpaceAPI again. Nothing in it is trusted.
+- **Optionally limited by address:** `webhook_allowed_ip_ranges` (CIDRs) adds Allow rules, and everyone else gets a 403 from Azure before reaching Pixel. The space state service also runs on Container Apps Consumption, whose outbound addresses can change, so leaving it empty and relying on the signature is fine.
+- **The URL** is the `spacestate_webhook_url` output: `https://<app>.<environment default domain>/hooks/space-state`, or `https://pixel.pixelbar.nl/hooks/space-state` once the custom domain is bound. Both stay the same across revisions and deploys; only the custom domain survives the environment being recreated.
+- **Custom domain** (`infra/modules/pixel/domain.tf`): `custom_domain` (prod `pixel.pixelbar.nl`, dev e.g. `pixel-dev.pixelbar.nl`) binds a hostname to the same ingress with a free Azure-managed certificate that Azure renews itself. pixelbar.nl's DNS is at **TransIP**, not Azure, so it takes two applies: the first prints the records (`custom_domain_dns_records`: TXT `asuid.<host>` with the environment's verification ID, CNAME `<host>` to the app's own address), and once they resolve `bind_custom_domain = true` issues the certificate (CNAME validation) and binds it. It needs `spacestate_webhook_enabled`. Steps: runbook, "Give the webhook a hostname".
+- **No effect on scaling or deploys.** min=max=1 still holds; ingress just routes to whichever revision is ready. A webhook lost during a revision swap is caught by the next poll.
 
 ## What is not in Azure
 

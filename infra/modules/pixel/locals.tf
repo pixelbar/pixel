@@ -11,6 +11,10 @@ locals {
   persist_mount = "/app/persist"
   secrets_mount = "/app/secrets"
 
+  # The space state webhook listens here (WEBHOOK_PORT). It is the only port ingress
+  # exposes; the probes use HEALTH_PORT (8080), which stays private.
+  webhook_port = 8081
+
   # node:24-slim runs as uid/gid 1000. Azure Files replaces /app/data from the
   # image, so the mount must make that user the owner.
   azure_file_mount_options = "uid=1000,gid=1000,dir_mode=0775,file_mode=0664,nobrl,mfsymlinks,cache=none"
@@ -27,6 +31,7 @@ locals {
     mastodon           = var.mastodon_instance != null
     spacestate         = var.spacestate_api_url != null
     spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
+    spacestate-webhook = var.spacestate_webhook_enabled
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null
@@ -72,6 +77,7 @@ locals {
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
+    var.spacestate_webhook_enabled ? { WEBHOOK_PORT = tostring(local.webhook_port) } : {},
   )
 
   # Environment variable => Key Vault secret name, for what the Pixel container reads from its

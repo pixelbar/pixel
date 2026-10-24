@@ -64,6 +64,34 @@ resource "azurerm_container_app" "this" {
     }
   }
 
+
+  # Off unless the space state webhook is on. Then it exposes only WEBHOOK_PORT over HTTPS
+  # (Azure terminates TLS; plain HTTP is refused), never the health port. Pixel checks the
+  # signature on every request (ADR 0018). It doesn't change scaling: min=max=1 still holds.
+  dynamic "ingress" {
+    for_each = var.spacestate_webhook_enabled ? [1] : []
+    content {
+      external_enabled           = true
+      target_port                = local.webhook_port
+      transport                  = "http"
+      allow_insecure_connections = false
+
+      traffic_weight {
+        latest_revision = true
+        percentage      = 100
+      }
+
+      dynamic "ip_security_restriction" {
+        for_each = var.webhook_allowed_ip_ranges
+        content {
+          name             = "webhook-sender-${ip_security_restriction.key}"
+          ip_address_range = ip_security_restriction.value
+          action           = "Allow"
+        }
+      }
+    }
+  }
+
   template {
     # Discord connects a long-lived gateway. Two replicas answer every command
     # twice. min=max=1 is a hard constraint, not a default. Overlap during a
@@ -259,6 +287,31 @@ resource "azurerm_container_app" "managed" {
       server               = var.container_registry_server
       username             = var.container_registry_username
       password_secret_name = "ghcr-pull-token"
+    }
+  }
+
+
+  dynamic "ingress" {
+    for_each = var.spacestate_webhook_enabled ? [1] : []
+    content {
+      external_enabled           = true
+      target_port                = local.webhook_port
+      transport                  = "http"
+      allow_insecure_connections = false
+
+      traffic_weight {
+        latest_revision = true
+        percentage      = 100
+      }
+
+      dynamic "ip_security_restriction" {
+        for_each = var.webhook_allowed_ip_ranges
+        content {
+          name             = "webhook-sender-${ip_security_restriction.key}"
+          ip_address_range = ip_security_restriction.value
+          action           = "Allow"
+        }
+      }
     }
   }
 

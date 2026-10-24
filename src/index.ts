@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
+import { startWebhookServer } from "./adapters/webhook/server.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -125,6 +126,17 @@ async function main(): Promise<void> {
 	// blocks Discord. Registered before Discord connects so it exists when features start.
 	startMastodonPublisher({ mastodon: config.mastodon, announcer, logger });
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
+	// The space state service calls this when the space opens or closes, so Pixel reads SpaceAPI
+	// straight away. Polling carries on either way: a webhook that never arrives only costs time.
+	const webhook = config.spaceStateWebhook
+		? startWebhookServer({
+				...config.spaceStateWebhook,
+				logger,
+				// Failures are already logged and counted by the status service.
+				onSpaceStateChanged: () => void spaceStatus.recheck().catch(() => {}),
+			})
+		: undefined;
+	if (!webhook) logger.info({ event: "webhook.off" }, "space state webhook is off: polling only");
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
 	// hang, the host going down). Only with Sentry set up, and never from a laptop.
 	const heartbeatPlan = planHeartbeat(config);
@@ -152,6 +164,7 @@ async function main(): Promise<void> {
 		spaceStatus.stop();
 		homeAssistant?.close();
 		await discord.stop();
+		webhook?.close();
 		health.close();
 		await Sentry.flush(2000);
 		process.exit(0);
