@@ -26,6 +26,7 @@ import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
+import { inMemoryParking } from "../../testing/parking.ts";
 import { createAdminFeature } from "./index.ts";
 
 const TARGET = "100000000000000050";
@@ -107,6 +108,7 @@ function setup(backend?: Fake, homeBackend?: HomeBackend, runtime: "local" | "cl
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",
+			parking: inMemoryParking(),
 		}),
 	);
 	const dispatcher = new Dispatcher({
