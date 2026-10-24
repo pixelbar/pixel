@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- The website's landing page opens with the logo's entrance from the launch video: in dark, the original logo's pixels fly in, sharpen into the original and light up with a burst of sparks, then a light runs round its orbits; in light, the printed pixel-art mark flies in the same way. It plays once when it comes into view, and stays still with reduced motion.
+
 ## [0.19.0] - 2026-10-23
 
 ### Added
