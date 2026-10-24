@@ -14,6 +14,12 @@ import {
 	pickSpot,
 } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import {
+	type EndReason,
+	endedText,
+	type ParkingNotices,
+	reminderText,
+} from "../../services/parking-notices.ts";
 import { type ParkingSpotStore, resetClock } from "../../services/parking-spots.ts";
 import {
 	describeInstant,
@@ -29,8 +35,11 @@ import { openUntil, type ParkingWindowStore } from "../../services/parking-windo
  * saves the booking first, then asks the gate to open, then says where to park.
  * Everything is private: who is parked where is personal data.
  *
- * Every booking ends at the daily reset (23:59 by default). A background tick does
- * that every 30 seconds, and once at startup in case Pixel was down at the time.
+ * A background tick (every 30 seconds, and once at startup in case Pixel was down)
+ * DMs a reminder `remindMinutes` before someone's end, offering `/parking extend` if
+ * the spot has more time; ends the booking `graceMinutes` after it if they haven't
+ * left or extended; and ends every booking at the daily reset (23:59 by default).
+ * The reminder is recorded before it's sent, so it's never sent twice.
  */
 
 export const PARKING_CAPABILITY: CapabilityDefinition = {
@@ -38,7 +47,7 @@ export const PARKING_CAPABILITY: CapabilityDefinition = {
 	description: "Ask Pixel for a parking spot at the gate, and see who's parked",
 };
 
-/** How often the tick ends bookings that have reached the reset. */
+/** How often the tick reminds people and ends bookings. */
 export const TICK_MS = 30_000;
 
 const ACCESS: Access = { minTier: "member", capability: PARKING_CAPABILITY.name };
@@ -46,8 +55,13 @@ const ACCESS: Access = { minTier: "member", capability: PARKING_CAPABILITY.name 
 export type ParkingDeps = {
 	spots: Pick<ParkingSpotStore, "all" | "settings" | "problem">;
 	windows: Pick<ParkingWindowStore, "entries">;
-	bookings: Pick<ParkingBookingStore, "all" | "byPerson" | "bySpot" | "claim" | "end" | "problem">;
+	bookings: Pick<
+		ParkingBookingStore,
+		"all" | "byPerson" | "bySpot" | "claim" | "update" | "end" | "problem"
+	>;
 	gate: Gate;
+	/** DMs reminders and endings. */
+	notices: Pick<ParkingNotices, "send">;
 	timezone: string;
 	logger: Logger;
 	reporter: Pick<ErrorReporter, "captureBackground">;
@@ -185,10 +199,16 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 				claim.kind === "booked"
 					? `Park in ${where}. It's yours until ${at(booking.until, start)}.`
 					: `You're already parked in ${where}, until ${at(booking.until, start)}.`;
-			return {
-				text: [head, gate, "Run `/parking leave` when you go."].join("\n"),
-				private: true,
-			};
+			const { remindMinutes } = deps.spots.settings();
+			const remindAt = booking.until.getTime() - remindMinutes * 60_000;
+			const lines = [head, gate];
+			if (claim.kind === "booked" && remindAt > start.getTime()) {
+				lines.push(
+					`I'll DM you ${remindMinutes} minutes before it ends (that needs DMs from server members on).`,
+				);
+			}
+			lines.push("Run `/parking leave` when you go.");
+			return { text: lines.join("\n"), private: true };
 		},
 	};
 
@@ -255,21 +275,133 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		},
 	};
 
-	/** Ends every booking that has reached the reset after it started. Never throws. */
-	const endAtReset = () => {
+	const extend: SubcommandDefinition = {
+		name: "extend",
+		description: "Stay longer in your spot, if it's open for longer",
+		access: ACCESS,
+		private: true,
+		options: [{ ...forOption, description: "How much longer, e.g. 30m, 1h or rest of day" }],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const t = now();
+			const booking = deps.bookings.byPerson(actorRef(principal));
+			if (!booking) {
+				return { text: "You're not parked anywhere. `/park` gets you a spot.", private: true };
+			}
+			const duration = parseDuration(String(args.for ?? ""));
+			if (!duration) {
+				throw new UserFacingError(
+					"I couldn't understand how long. Try something like `30m`, `1h` or `rest of day`.",
+				);
+			}
+			const reset = resetAfter(t);
+			const spot = deps.spots.all().find((s) => s.name === booking.spot);
+			const limit = (spot && openUntil(spot, deps.windows.entries(t), t, reset)) ?? t;
+			// From the end they had, or from now if that has already passed.
+			const base = Math.max(booking.until.getTime(), t.getTime());
+			const until =
+				duration.kind === "rest-of-day" ? reset : new Date(base + duration.minutes * 60_000);
+			const spare = Math.floor((limit.getTime() - base) / 60_000);
+			if (until > limit) {
+				const why =
+					limit.getTime() === reset.getTime()
+						? `parking ends at ${deps.spots.settings().resetAt} every day`
+						: `it closes at ${at(limit, t)}`;
+				throw new UserFacingError(
+					spare >= 1
+						? `**${booking.spot}** can only be extended by ${formatParkingDuration({ kind: "minutes", minutes: spare })}: ${why}. Try \`/parking extend for:${formatParkingDuration({ kind: "minutes", minutes: spare })}\`.`
+						: `**${booking.spot}** can't be extended: ${why}.`,
+				);
+			}
+			const { remindMinutes } = deps.spots.settings();
+			const remindAt = new Date(until.getTime() - remindMinutes * 60_000);
+			// A reminder that's already due would only repeat what they just did.
+			const updated = deps.bookings.update(booking.id, {
+				until,
+				remindedAt: remindAt > t ? null : t,
+			});
+			if (!updated) return { text: "You're not parked anywhere any more.", private: true };
+			logger.info(
+				{
+					event: "parking.extended",
+					spot: updated.spot,
+					until: until.toISOString(),
+					...actorLogFields(principal),
+				},
+				"extended a parking booking",
+			);
+			const lines = [`**${updated.spot}** is yours until ${at(until, t)} now.`];
+			if (remindAt > t) lines.push(`I'll DM you ${remindMinutes} minutes before it ends.`);
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const notifyEnded = async (ended: readonly ParkingBooking[], reason: EndReason, t: Date) => {
+		const settings = deps.spots.settings();
+		for (const b of ended) {
+			deps.logger.info(
+				{
+					event: reason === "reset" ? "parking.reset" : "parking.auto_ended",
+					spot: b.spot,
+					user: b.by.ref,
+					userName: b.by.name,
+				},
+				reason === "reset"
+					? "ended a parking booking at the daily reset"
+					: "ended a parking booking whose time was up",
+			);
+			await deps.notices.send(b, reason, endedText(b, reason, { now: t, zone, settings }));
+		}
+	};
+
+	/**
+	 * Ends bookings at the reset and after their grace period, and sends the reminders
+	 * that are due. Never throws.
+	 */
+	let running = false;
+	const tick = async () => {
+		if (running || deps.bookings.problem) return;
+		running = true;
 		const t = now();
-		if (deps.bookings.problem) return;
 		try {
-			const ended = deps.bookings.end((b) => resetAfter(b.since) <= t);
-			for (const b of ended) {
+			const settings = deps.spots.settings();
+			const grace = settings.graceMinutes * 60_000;
+			const atReset = deps.bookings.end((b) => resetAfter(b.since) <= t);
+			const over = deps.bookings.end((b) => t.getTime() >= b.until.getTime() + grace);
+			await notifyEnded(atReset, "reset", t);
+			await notifyEnded(over, "over", t);
+
+			const reset = resetAfter(t);
+			const entries = deps.windows.entries(t);
+			for (const b of deps.bookings.all()) {
+				const remindAt = b.until.getTime() - settings.remindMinutes * 60_000;
+				// Not when the reminder time had already passed when they parked (a short stay).
+				if (b.remindedAt !== null || t.getTime() < remindAt || remindAt < b.since.getTime()) {
+					continue;
+				}
+				// Recorded first: a missed reminder is better than a repeated one.
+				const reminded = deps.bookings.update(b.id, { remindedAt: t });
+				if (!reminded) continue;
+				const spot = deps.spots.all().find((s) => s.name === b.spot);
+				const until = spot ? openUntil(spot, entries, t, reset) : undefined;
 				deps.logger.info(
-					{ event: "parking.reset", spot: b.spot, user: b.by.ref, userName: b.by.name },
-					"ended a parking booking at the daily reset",
+					{ event: "parking.reminded", spot: b.spot, user: b.by.ref, userName: b.by.name },
+					"reminded someone their parking is nearly up",
+				);
+				await deps.notices.send(
+					reminded,
+					"reminder",
+					reminderText(reminded, until, reset, { now: t, zone, settings }),
 				);
 			}
 		} catch (error) {
-			deps.logger.error({ event: "parking.reset_failed", err: error }, "couldn't end bookings");
+			deps.logger.error(
+				{ event: "parking.tick_failed", err: error },
+				"couldn't run the parking tick",
+			);
 			deps.reporter.captureBackground(error, "parking");
+		} finally {
+			running = false;
 		}
 	};
 
@@ -279,14 +411,14 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			park,
 			{
 				name: "parking",
-				description: "Who's parked where, and freeing your spot",
+				description: "Who's parked where, staying longer, and freeing your spot",
 				access: ACCESS,
-				subcommands: [list, leave],
+				subcommands: [list, extend, leave],
 			},
 		],
 		start: () => {
-			endAtReset();
-			const timer = setInterval(endAtReset, TICK_MS);
+			void tick();
+			const timer = setInterval(() => void tick(), TICK_MS);
 			return () => clearInterval(timer);
 		},
 	};
