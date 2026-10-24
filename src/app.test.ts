@@ -8,6 +8,7 @@ import { CapabilityError } from "./core/capabilities.ts";
 import { MESSAGES } from "./core/dispatcher.ts";
 import { silentLogger } from "./core/logger.ts";
 import { nullErrorReporter } from "./core/ports/error-reporter.ts";
+import { PARKING_CAPABILITY } from "./features/parking/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { SPACESTATE_CAPABILITY } from "./features/spacestate/index.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
@@ -354,13 +355,14 @@ describe("buildCore", () => {
 			{ name: "door", description: "Open the door" },
 			SCHEDULE_CAPABILITY,
 			SPACESTATE_CAPABILITY,
+			PARKING_CAPABILITY,
 		];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
 
 		it("refuses to build when a command needs a capability that isn't registered", () => {
 			expect(() =>
 				buildCore(config, silentLogger, nullErrorReporter, { capabilities: [] }),
-			).toThrow(/Unknown capability required by command "(schedule|spacestate)"/);
+			).toThrow(/Unknown capability required by command "(schedule|spacestate|park)"/);
 		});
 
 		it("registers the Home Assistant capabilities, so admins can grant them", async () => {
@@ -372,6 +374,7 @@ describe("buildCore", () => {
 				"ha-doors",
 				"schedule-posts",
 				"spacestate",
+				"parking",
 			]);
 			const listed = await core.dispatcher.dispatch({
 				actor: actor({ userId: IDS.admin }),

@@ -21,6 +21,7 @@ import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { type FeedbackSink, nullFeedbackSink } from "./core/ports/feedback.ts";
+import { notConnectedGate } from "./core/ports/gate.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { RoleMirror } from "./core/role-mirror.ts";
@@ -34,6 +35,7 @@ import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
+import { ParkingBookingStore } from "./services/parking-bookings.ts";
 import { ParkingSpotStore } from "./services/parking-spots.ts";
 import { ParkingWindowStore } from "./services/parking-windows.ts";
 import { ScheduleStore } from "./services/schedules.ts";
@@ -160,7 +162,11 @@ export function buildCore(
 		file: join(config.dataDir, "parking-windows.yaml"),
 		logger,
 	});
-	for (const problem of [parkingSpots.problem, parkingWindows.problem]) {
+	const parkingBookings = new ParkingBookingStore({
+		file: join(config.dataDir, "parking-bookings.yaml"),
+		logger,
+	});
+	for (const problem of [parkingSpots.problem, parkingWindows.problem, parkingBookings.problem]) {
 		if (problem) reporter.captureBackground(new Error(problem), "parking");
 	}
 	// Opening times for spots removed or changed by hand no longer apply.
@@ -207,6 +213,9 @@ export function buildCore(
 		schedules,
 		parkingSpots,
 		parkingWindows,
+		parkingBookings,
+		// Until the gate API is connected (#154), /park never opens anything.
+		gate: notConnectedGate,
 		canSchedule,
 		infoTopics,
 		timezone: config.timezone,
