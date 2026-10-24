@@ -12,6 +12,7 @@ import { toInstant } from "../../core/recurrence.ts";
 import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { endedText, type ParkingNotices } from "../../services/parking-notices.ts";
 import {
 	MAX_DURATIONS,
 	MAX_GRACE_MINUTES,
@@ -50,6 +51,8 @@ export type ParkingAdminDeps = {
 	>;
 	windows: Pick<ParkingWindowStore, "entries" | "replace" | "reconcile" | "problem">;
 	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "problem">;
+	/** DMs people whose booking an admin ends. */
+	notices: Pick<ParkingNotices, "send">;
 	timezone: string;
 	now?: () => Date;
 };
@@ -223,6 +226,12 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		return cut;
 	};
 
+	/** Tells someone an admin ended their booking. Never throws, so it isn't awaited. */
+	const tell = (booking: ParkingBooking) => {
+		const context = { now: now(), zone, settings: deps.spots.settings() };
+		void deps.notices.send(booking, "admin", endedText(booking, "admin", context));
+	};
+
 	/** Ends bookings an admin's change cut into; returns a line for each. */
 	const evict = (
 		cut: readonly ParkingBooking[],
@@ -244,6 +253,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 					},
 					"ended a parking booking an admin's change cut into",
 				);
+				tell(b);
 				return `Ended ${escapeMarkdown(b.by.name)}'s booking in **${b.spot}**.`;
 			});
 	};
@@ -611,6 +621,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				},
 				"an admin ended a parking booking",
 			);
+			tell(ended);
 			return {
 				text: `Ended ${escapeMarkdown(ended.by.name)}'s booking: **${ended.spot}** is free again.`,
 				private: true,

@@ -187,13 +187,19 @@ Getting a parking spot at the gate. These need the `parking` capability. Every r
 
 <PxCommand :level="4" sig="/park for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How long, such as 30m, 2h, 2h30 or rest of day.' }">
 
-Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
+Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixel DMs you 15 minutes before your time is up (with `/parking extend` if the spot has more time), and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
 
 </PxCommand>
 
 <PxCommand :level="4" sig="/parking list" tier="member" reply="private" :caps="['parking']">
 
 Which spots are open, who's in each, since when and until about when, and how long each spot stays open.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking extend for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How much longer, such as 30m, 1h or rest of day.' }">
+
+Stays longer in your spot, as long as it's open that long and it's before 23:59. It adds to your end (or to now, if that's passed), and Pixel reminds you again before the new end. If the spot doesn't have that much time, Pixel says how much it has.
 
 </PxCommand>
 
@@ -339,7 +345,7 @@ Closes spots: a borrowed spot until it's opened again, a permanent one for a whi
 
 <PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
 
-Ends the booking in a spot, for someone who left without `/parking leave`.
+Ends the booking in a spot, for someone who left without `/parking leave`. Pixel DMs them that an admin ended it.
 
 </PxCommand>
 

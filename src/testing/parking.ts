@@ -9,6 +9,7 @@ export function inMemoryParking() {
 		spots: new ParkingSpotStore({ logger: silentLogger }),
 		windows: new ParkingWindowStore({ logger: silentLogger }),
 		bookings: new ParkingBookingStore({ logger: silentLogger }),
+		notices: { send: async () => {} },
 		timezone: "Europe/Amsterdam",
 	};
 }

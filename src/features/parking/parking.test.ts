@@ -3,7 +3,7 @@ import type { Principal } from "../../core/access.ts";
 import { type Args, isGroup, type SuggestContext } from "../../core/command.ts";
 import { silentLogger } from "../../core/logger.ts";
 import type { Gate } from "../../core/ports/gate.ts";
-import { ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { type ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { ParkingWindowStore } from "../../services/parking-windows.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
@@ -28,12 +28,16 @@ function setup(
 	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
 	const gate = options.gate ?? { open: vi.fn(async () => ({ opened: true as const })) };
 	const reporter = { captureBackground: vi.fn() };
+	const notices = {
+		send: vi.fn(async (_booking: ParkingBooking, _kind: string, _text: string) => {}),
+	};
 	let now = NOW;
 	const feature = createParkingFeature({
 		spots,
 		windows,
 		bookings,
 		gate,
+		notices,
 		timezone: ZONE,
 		logger: silentLogger,
 		reporter,
@@ -61,6 +65,7 @@ function setup(
 		bookings,
 		gate,
 		reporter,
+		notices,
 		feature,
 		park,
 		parking,
@@ -115,6 +120,7 @@ describe("parking", () => {
 		expect(parking.access).toEqual(access);
 		expect(parking.subcommands.map((s) => [s.name, s.access])).toEqual([
 			["list", access],
+			["extend", access],
 			["leave", access],
 		]);
 	});
@@ -136,7 +142,7 @@ describe("/park", () => {
 		const t = withSpots();
 		const text = await t.run({ for: "2h" });
 		expect(text).toBe(
-			"Park in **ours** (Next to the \\*gate\\*). It's yours until 12:00.\nThe gate is opening.\nRun `/parking leave` when you go.",
+			"Park in **ours** (Next to the \\*gate\\*). It's yours until 12:00.\nThe gate is opening.\nI'll DM you 15 minutes before it ends (that needs DMs from server members on).\nRun `/parking leave` when you go.",
 		);
 		expect(t.bookings.byPerson(`discord:${IDS.member}`)).toMatchObject({
 			spot: "ours",
@@ -303,10 +309,10 @@ describe("the daily reset", () => {
 
 		t.setNow(utc("08:00", 25));
 		await t.run({ for: "1h" });
-		vi.advanceTimersByTime(TICK_MS);
+		await vi.advanceTimersByTimeAsync(TICK_MS);
 		expect(t.bookings.all()).toHaveLength(1);
 		t.setNow(utc("22:59", 25));
-		vi.advanceTimersByTime(TICK_MS);
+		await vi.advanceTimersByTimeAsync(TICK_MS);
 		expect(t.bookings.all()).toEqual([]);
 		stop?.();
 	});
@@ -327,5 +333,204 @@ describe("the daily reset", () => {
 		const t = setup({ bookings: failing });
 		t.feature.start?.()();
 		expect(t.reporter.captureBackground).toHaveBeenCalledWith(expect.any(Error), "parking");
+	});
+});
+
+describe("/parking extend", () => {
+	const extend = async (t: ReturnType<typeof setup>, args: Args, who: Principal = member()) => {
+		const parking = t.parking;
+		if (!isGroup(parking)) throw new Error("group");
+		const sub = parking.subcommands.find((s) => s.name === "extend");
+		if (!sub || !("handler" in sub)) throw new Error("no extend");
+		return (await sub.handler(context({ principal: who, args }))).text ?? "";
+	};
+
+	it("adds to your end, up to the spot's close, and resets the reminder", async () => {
+		const t = withSpots();
+		await t.run({ for: "30m" }, member(BOB, "Bob"));
+		await t.run({ for: "1h" });
+		expect(t.bookings.byPerson(`discord:${IDS.member}`)?.spot).toBe("neighbour-1");
+		t.bookings.update(t.bookings.byPerson(`discord:${IDS.member}`)?.id ?? "", {
+			remindedAt: utc("08:45"),
+		});
+		expect(await extend(t, { for: "1h" })).toBe(
+			"**neighbour-1** is yours until 12:00 now.\nI'll DM you 15 minutes before it ends.",
+		);
+		expect(t.bookings.byPerson(`discord:${IDS.member}`)).toMatchObject({
+			until: utc("10:00"),
+			remindedAt: null,
+		});
+		await expect(extend(t, { for: "3h" })).rejects.toThrow(
+			"**neighbour-1** can only be extended by 2h: it closes at 14:00. Try `/parking extend for:2h`.",
+		);
+		await extend(t, { for: "2h" });
+		await expect(extend(t, { for: "1m" })).rejects.toThrow(
+			"**neighbour-1** can't be extended: it closes at 14:00.",
+		);
+	});
+
+	it("says by how much it can be extended", async () => {
+		const t = withSpots();
+		await t.run({ for: "30m" }, member(BOB, "Bob"));
+		await t.run({ for: "5h" });
+		await expect(extend(t, { for: "3h" })).rejects.toThrow(
+			"**neighbour-2** can only be extended by 2h: it closes at 17:00. Try `/parking extend for:2h`.",
+		);
+		await expect(extend(t, { for: "rest of day" })).rejects.toThrow(/only be extended by 2h/);
+	});
+
+	it("stays until the reset with rest of day, where the spot allows", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		await extend(t, { for: "rest of day" });
+		expect(t.bookings.byPerson(`discord:${IDS.member}`)?.until).toEqual(RESET);
+		await expect(extend(t, { for: "30m" })).rejects.toThrow(
+			"**ours** can't be extended: parking ends at 23:59 every day.",
+		);
+	});
+
+	it("counts from now once the end has passed, without a reminder that's already due", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		t.setNow(utc("09:03"));
+		expect(await extend(t, { for: "10m" })).toBe("**ours** is yours until 11:13 now.");
+		expect(t.bookings.byPerson(`discord:${IDS.member}`)?.remindedAt).toEqual(utc("09:03"));
+	});
+
+	it("needs a booking, and a duration it can read", async () => {
+		const t = withSpots();
+		expect(await extend(t, { for: "1h" })).toBe(
+			"You're not parked anywhere. `/park` gets you a spot.",
+		);
+		await t.run({ for: "1h" });
+		await expect(extend(t, { for: "ages" })).rejects.toThrow(/couldn't understand/);
+	});
+
+	it("says so when the booking ended meanwhile", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		Object.assign(t.bookings, { update: () => undefined });
+		expect(await extend(t, { for: "30m" })).toBe("You're not parked anywhere any more.");
+	});
+});
+
+describe("reminders and ending bookings", () => {
+	const start = async (t: ReturnType<typeof setup>) => {
+		const stop = t.feature.start?.();
+		await vi.advanceTimersByTimeAsync(0);
+		return stop;
+	};
+	const tick = () => vi.advanceTimersByTimeAsync(TICK_MS);
+	const sent = (t: ReturnType<typeof setup>) =>
+		t.notices.send.mock.calls.map(([booking, kind, text]) => [booking.spot, kind, text]);
+
+	it("reminds once before the end, offering an extension, then ends it after the grace period", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		const stop = await start(t);
+		expect(sent(t)).toEqual([]);
+
+		t.setNow(utc("08:45"));
+		await tick();
+		expect(sent(t)).toEqual([
+			[
+				"ours",
+				"reminder",
+				"Your parking in **ours** ends at 11:00.\nThe spot is open until 23:59, so you can stay longer: `/parking extend for:1h` (up to 12h59).\nIf you haven't left or extended by 11:05, I'll end it. Leaving? `/parking leave`.",
+			],
+		]);
+		expect(t.bookings.all()[0]?.remindedAt).toEqual(utc("08:45"));
+		await tick();
+		expect(sent(t)).toHaveLength(1);
+
+		t.setNow(utc("09:04"));
+		await tick();
+		expect(t.bookings.all()).toHaveLength(1);
+		t.setNow(utc("09:05"));
+		await tick();
+		expect(t.bookings.all()).toEqual([]);
+		expect(sent(t)[1]).toEqual([
+			"ours",
+			"over",
+			"I've ended your parking in **ours**: your time was up at 11:00.",
+		]);
+		stop?.();
+	});
+
+	it("says when the spot can't be extended", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		t.spots.setSettings({ graceMinutes: 0 });
+		await t.run({ for: "rest of day" }, member(BOB, "Bob"));
+		// Our spot is taken, so this gets neighbour-1, which closes right then.
+		await t.run({ for: "4h" });
+		t.setNow(utc("11:45"));
+		const stop = await start(t);
+		expect(sent(t)).toEqual([
+			[
+				"neighbour-1",
+				"reminder",
+				"Your parking in **neighbour-1** ends at 14:00.\nThe spot closes then, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving? `/parking leave`.",
+			],
+		]);
+		t.setNow(utc("21:44"));
+		await tick();
+		expect(
+			sent(t)
+				.filter(([, kind]) => kind === "reminder")
+				.at(-1),
+		).toEqual([
+			"ours",
+			"reminder",
+			"Your parking in **ours** ends at 23:59.\nParking ends at 23:59 every day, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving? `/parking leave`.",
+		]);
+		stop?.();
+	});
+
+	it("skips the reminder when the stay was too short for one", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		await t.run({ for: "10m" });
+		t.setNow(utc("08:09"));
+		const stop = await start(t);
+		expect(sent(t)).toEqual([]);
+		stop?.();
+	});
+
+	it("tells people when the reset ends their booking", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		await t.run({ for: "rest of day" });
+		t.setNow(utc("22:00"));
+		const stop = await start(t);
+		expect(sent(t)).toEqual([
+			["ours", "reset", "I've ended your parking in **ours**: parking ends at 23:59 every day."],
+		]);
+		stop?.();
+	});
+
+	it("never runs two ticks at once", async () => {
+		vi.useFakeTimers();
+		let release = () => {};
+		const t = withSpots();
+		t.notices.send.mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		await t.run({ for: "1h" });
+		await t.run({ for: "1h" }, member(BOB, "Bob"));
+		t.setNow(utc("08:45"));
+		const stop = await start(t);
+		await tick();
+		expect(t.notices.send).toHaveBeenCalledTimes(1);
+		release();
+		await vi.advanceTimersByTimeAsync(0);
+		release();
+		await tick();
+		expect(t.notices.send).toHaveBeenCalledTimes(2);
+		stop?.();
 	});
 });
