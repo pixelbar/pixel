@@ -1,34 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
 	describeInstant,
-	formatClock,
 	formatParkingDuration,
 	MAX_DURATION_MINUTES,
 	nextReset,
-	parseClock,
 	parseDuration,
 } from "./parking-time.ts";
 
 const ZONE = "Europe/Amsterdam";
 const RESET = { hour: 23, minute: 59 };
-
-describe("parseClock", () => {
-	it("reads HH:MM", () => {
-		expect(parseClock("23:59")).toEqual({ hour: 23, minute: 59 });
-		expect(parseClock(" 07:05 ")).toEqual({ hour: 7, minute: 5 });
-		expect(parseClock("00:00")).toEqual({ hour: 0, minute: 0 });
-	});
-
-	it("refuses anything else", () => {
-		for (const text of ["", "7:00", "24:00", "23:60", "23.59", "11pm", "23:59:00"]) {
-			expect(parseClock(text)).toBeUndefined();
-		}
-	});
-
-	it("formats a clock", () => {
-		expect(formatClock({ hour: 7, minute: 5 })).toBe("07:05");
-	});
-});
 
 describe("nextReset", () => {
 	it("is today's reset while it's still ahead", () => {
@@ -70,18 +50,10 @@ describe("describeInstant", () => {
 });
 
 describe("parseDuration", () => {
-	it.each([
-		["30m", 30],
-		["90 min", 90],
-		["45 minutes", 45],
-		["1h", 60],
-		["2 hours", 120],
-		["2h30", 150],
-		["2h 30m", 150],
-		["2H30M", 150],
-		["24h", MAX_DURATION_MINUTES],
-	])("reads %s", (typed, minutes) => {
-		expect(parseDuration(typed)).toEqual({ kind: "minutes", minutes });
+	// The units and forms are core/duration.ts's; this is what parking adds and limits.
+	it("reads a duration up to a day", () => {
+		expect(parseDuration("2h30")).toEqual({ kind: "minutes", minutes: 150 });
+		expect(parseDuration("1 day")).toEqual({ kind: "minutes", minutes: MAX_DURATION_MINUTES });
 	});
 
 	it("reads the rest of the day", () => {
@@ -89,16 +61,11 @@ describe("parseDuration", () => {
 		expect(parseDuration("  Rest  of the  DAY ")).toEqual({ kind: "rest-of-day" });
 	});
 
-	it.each(["", "0m", "2h60", "25h", "1441m", "soon", "2", "h", "1.5h", "-1h"])(
-		"refuses %j",
-		(typed) => {
-			expect(parseDuration(typed)).toBeUndefined();
-		},
-	);
+	it.each(["", "soon", "25h", "1441m", "2 days"])("refuses %j", (typed) => {
+		expect(parseDuration(typed)).toBeUndefined();
+	});
 
 	it("writes durations the usual way", () => {
-		expect(formatParkingDuration({ kind: "minutes", minutes: 30 })).toBe("30m");
-		expect(formatParkingDuration({ kind: "minutes", minutes: 60 })).toBe("1h");
 		expect(formatParkingDuration({ kind: "minutes", minutes: 125 })).toBe("2h05");
 		expect(formatParkingDuration({ kind: "rest-of-day" })).toBe("rest of day");
 	});

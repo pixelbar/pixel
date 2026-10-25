@@ -8,6 +8,7 @@ import type {
 	SubcommandDefinition,
 	Suggestion,
 } from "../../core/command.ts";
+import { formatMinutes, parseDurationMinutes } from "../../core/duration.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
@@ -49,15 +50,14 @@ const ACCESS: Access = { minTier: "member", capability: SCHEDULE_CAPABILITY.name
 const REPEATS = ["once", "weekly", "fortnightly", "monthly", "every-2-months"] as const;
 type Repeat = (typeof REPEATS)[number];
 
-const DURATIONS: Record<string, number> = {
-	"1 hour": 1,
-	"4 hours": 4,
-	"8 hours": 8,
-	"1 day": 24,
-	"3 days": 72,
-	"1 week": 168,
-	"2 weeks": 336,
-};
+/** How long a poll can stay open, as offered. Read by `core/duration.ts`. */
+const DURATIONS = ["1 hour", "4 hours", "8 hours", "1 day", "3 days", "1 week", "2 weeks"] as const;
+
+/** A poll duration in whole hours, or undefined if it isn't one. */
+export function pollHours(typed: string): number | undefined {
+	const minutes = parseDurationMinutes(typed);
+	return minutes !== undefined && minutes % 60 === 0 ? minutes / 60 : undefined;
+}
 
 /** How often the runner looks for due posts. */
 export const TICK_MS = 30_000;
@@ -113,7 +113,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		name: "duration",
 		description: "How long people can vote (default: 1 day)",
 		type: "string",
-		choices: Object.keys(DURATIONS),
+		choices: DURATIONS,
 	};
 	const nameOption: CommandOption = {
 		name: "name",
@@ -541,7 +541,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							const question = String(ctx.args.question ?? "").trim();
 							if (question === "") throw new UserFacingError("The question can't be empty.");
 							const answers = parseAnswers(String(ctx.args.answers ?? ""));
-							const durationHours = DURATIONS[String(ctx.args.duration ?? "1 day")] ?? 24;
+							const durationHours = pollHours(String(ctx.args.duration ?? "1 day"));
+							// Discord keeps a poll open for at most 32 days (768 hours).
+							if (durationHours === undefined || durationHours > 768) {
+								throw new UserFacingError("Pick how long the poll stays open from the list.");
+							}
 							return create(
 								ctx,
 								{
@@ -695,7 +699,10 @@ function editedPost(post: ChannelPost, args: CommandContext["args"]): ChannelPos
 	if (question === "") throw new UserFacingError("The question can't be empty.");
 	const answers = typeof args.answers === "string" ? parseAnswers(args.answers) : [...post.answers];
 	// `duration` is one of the choices (the dispatcher refuses anything else).
-	const durationHours = DURATIONS[String(args.duration ?? "")] ?? post.durationHours;
+	const durationHours =
+		args.duration === undefined
+			? post.durationHours
+			: (pollHours(String(args.duration)) ?? post.durationHours);
 	return { ...post, question, answers, durationHours };
 }
 
@@ -808,7 +815,7 @@ function describeSchedule(schedule: Schedule, zone: string, now: Date, title: st
 }
 
 function durationLabel(hours: number): string {
-	return Object.entries(DURATIONS).find(([, h]) => h === hours)?.[0] ?? `${hours} hours`;
+	return DURATIONS.find((d) => pollHours(d) === hours) ?? formatMinutes(hours * 60);
 }
 
 function describeOwnList(schedules: readonly Schedule[], zone: string, now: Date): Embed {

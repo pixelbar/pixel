@@ -4,7 +4,8 @@ import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
-import { type Clock, formatParkingDuration, parseClock, parseDuration } from "./parking-time.ts";
+import { formatTimeOfDay, parseTimeOfDay } from "../core/when.ts";
+import { type Clock, formatParkingDuration, parseDuration } from "./parking-time.ts";
 
 /**
  * Pixelbar's parking spots and the parking settings, kept in
@@ -71,7 +72,7 @@ const settingsSchema = z.strictObject({
 	graceMinutes: z.number().int().min(0).max(MAX_GRACE_MINUTES).optional(),
 	resetAt: z
 		.string()
-		.refine((t) => parseClock(t) !== undefined, { error: "must be like 23:59" })
+		.refine((t) => parseTimeOfDay(t) !== undefined, { error: "must be a time like 23:59" })
 		.optional(),
 	durations: z.array(durationSchema).min(1).max(MAX_DURATIONS).optional(),
 });
@@ -90,7 +91,12 @@ export class ParkingError extends UserFacingError {
 
 /** The reset as a clock. Always valid: settings are checked on load and on change. */
 export function resetClock(settings: Pick<ParkingSettings, "resetAt">): Clock {
-	return parseClock(settings.resetAt) ?? (parseClock(DEFAULT_SETTINGS.resetAt) as Clock);
+	return parseTimeOfDay(settings.resetAt) ?? (parseTimeOfDay(DEFAULT_SETTINGS.resetAt) as Clock);
+}
+
+/** The reset written the usual way ("23:59"), whichever way it was typed ("11:59pm"). */
+function normaliseReset(resetAt: string): string {
+	return formatTimeOfDay(resetClock({ resetAt }));
 }
 
 /** Durations written the usual way, without repeats. Undefined if one doesn't parse. */
@@ -194,7 +200,7 @@ export class ParkingSpotStore {
 		const parsed = settingsSchema.required().safeParse(next);
 		const durations = parsed.success ? normaliseDurations(parsed.data.durations) : undefined;
 		if (!durations) throw new ParkingError("Those settings aren't valid.");
-		const settings = { ...next, durations };
+		const settings = { ...next, resetAt: normaliseReset(next.resetAt), durations };
 		this.#save(this.#spots, settings);
 		return settings;
 	}
@@ -240,6 +246,7 @@ export class ParkingSpotStore {
 		const settings = { ...DEFAULT_SETTINGS, ...result.data.settings };
 		// Checked above, so this only writes them the usual way.
 		settings.durations = normaliseDurations(settings.durations) ?? DEFAULT_SETTINGS.durations;
+		settings.resetAt = normaliseReset(settings.resetAt);
 		this.#spots = spots.map((s) => withDescription(s, s.description));
 		this.#settings = settings;
 		return undefined;

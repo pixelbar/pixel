@@ -1,6 +1,50 @@
 import { describe, expect, it } from "vitest";
 import { formatLocal } from "./recurrence.ts";
-import { describeWhen, formatDays, parseDays, parseWhen, suggestDays } from "./when.ts";
+import {
+	addDays,
+	describeWhen,
+	formatDays,
+	formatTimeOfDay,
+	parseDays,
+	parseTimeOfDay,
+	parseWhen,
+	suggestDays,
+} from "./when.ts";
+
+describe("parseTimeOfDay", () => {
+	it.each([
+		["23:59", 23, 59],
+		[" 07:05 ", 7, 5],
+		["2359", 23, 59],
+		["23.59", 23, 59],
+		["23u59", 23, 59],
+		["19", 19, 0],
+		["11pm", 23, 0],
+		["11:59 pm", 23, 59],
+		["12am", 0, 0],
+	])("reads %j", (typed, hour, minute) => {
+		expect(parseTimeOfDay(typed)).toEqual({ hour, minute });
+	});
+
+	it.each(["", "24:00", "23:60", "13pm", "tomorrow", "wed 19", "11 59 pm", "19 xx"])(
+		"refuses %j",
+		(typed) => {
+			expect(parseTimeOfDay(typed)).toBeUndefined();
+		},
+	);
+
+	it("writes a time of day as HH:MM", () => {
+		expect(formatTimeOfDay({ hour: 7, minute: 5 })).toBe("07:05");
+	});
+
+	it("adds days across months and years", () => {
+		expect(addDays({ year: 2026, month: 12, day: 31 }, 1)).toEqual({
+			year: 2027,
+			month: 1,
+			day: 1,
+		});
+	});
+});
 
 const AMS = "Europe/Amsterdam";
 // Monday 12 October 2026, 10:00 in Amsterdam.

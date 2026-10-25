@@ -74,7 +74,9 @@ const DAY_ALIASES: Record<string, Weekday> = {
 const FILLER = new Set(["at", "on", "the", "of", "in", "next", "uur"]);
 
 type DayPart = { year: number; month: number; day: number };
-type TimePart = { hour: number; minute: number };
+/** A wall-clock time of day, such as 19:00. */
+export type TimeOfDay = { hour: number; minute: number };
+type TimePart = TimeOfDay;
 type DaySpec = { kind: "date"; date: DayPart } | { kind: "weekday"; weekday: Weekday };
 
 /** Pixelbar's usual evening, used when someone names a day but not a time. */
@@ -127,7 +129,24 @@ export function describeWhen(t: LocalDateTime): string {
 	const day = weekdayOf(t);
 	const name = day.charAt(0).toUpperCase() + day.slice(1);
 	const month = MONTHS[t.month - 1] as string;
-	return `${name} ${t.day} ${month.charAt(0).toUpperCase()}${month.slice(1)} ${t.year}, ${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
+	return `${name} ${t.day} ${month.charAt(0).toUpperCase()}${month.slice(1)} ${t.year}, ${formatTimeOfDay(t)}`;
+}
+
+/**
+ * A time of day on its own, read the same way as in `parseWhen`: "23:59", "2359",
+ * "23.59", "23u59", "11pm", "11:59 pm". Undefined for anything else.
+ */
+export function parseTimeOfDay(typed: string): TimeOfDay | undefined {
+	const tokens = typed.trim().toLowerCase().split(/\s+/).filter(Boolean);
+	const [first, second] = tokens;
+	if (first === undefined || tokens.length > 2) return undefined;
+	const time = readTime(first, second);
+	return time && time.used === tokens.length ? time.value : undefined;
+}
+
+/** "07:05" */
+export function formatTimeOfDay(t: TimeOfDay): string {
+	return `${String(t.hour).padStart(2, "0")}:${String(t.minute).padStart(2, "0")}`;
 }
 
 /** Removes a time from the tokens and returns it. */
@@ -262,7 +281,8 @@ function withYear(today: DayPart, month: number, day: number, year?: number): Da
 	return passed ? valid(today.year + 1, month, day) : thisYear;
 }
 
-function addDays(day: DayPart, n: number): DayPart {
+/** The calendar date `n` days after `day`. */
+export function addDays(day: DayPart, n: number): DayPart {
 	const d = new Date(Date.UTC(day.year, day.month - 1, day.day + n));
 	return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }

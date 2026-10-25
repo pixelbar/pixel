@@ -8,7 +8,7 @@ import type {
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import { toInstant } from "../../core/recurrence.ts";
-import { parseWhen } from "../../core/when.ts";
+import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import {
 	MAX_DURATIONS,
 	MAX_GRACE_MINUTES,
@@ -19,7 +19,7 @@ import {
 	type ParkingSpotStore,
 	resetClock,
 } from "../../services/parking-spots.ts";
-import { describeInstant, nextReset, parseClock } from "../../services/parking-time.ts";
+import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import {
 	openUntil,
 	type ParkingEntries,
@@ -516,9 +516,9 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const grace = minutes("grace", MAX_GRACE_MINUTES);
 			if (grace !== undefined) change.graceMinutes = grace;
 			if (typeof args.reset === "string") {
-				const clock = parseClock(args.reset);
-				if (!clock) throw new UserFacingError("`reset` is a time like `23:59`.");
-				change.resetAt = args.reset.trim();
+				const clock = parseTimeOfDay(args.reset);
+				if (!clock) throw new UserFacingError("`reset` is a time like `23:59` or `11:59pm`.");
+				change.resetAt = formatTimeOfDay(clock);
 			}
 			if (typeof args.durations === "string") {
 				const typed = args.durations

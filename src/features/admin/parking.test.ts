@@ -353,6 +353,12 @@ describe("/admin parking", () => {
 			});
 		});
 
+		it("reads the reset the way /schedule reads a time, and saves it as HH:MM", async () => {
+			const { run, spots } = setup();
+			await run("settings", { reset: "10:30pm" });
+			expect(spots.settings().resetAt).toBe("22:30");
+		});
+
 		it("refuses values it can't use", async () => {
 			const { fails } = setup();
 			await fails("settings", { remind: 121 }).toThrow(/from 0 to 120/);

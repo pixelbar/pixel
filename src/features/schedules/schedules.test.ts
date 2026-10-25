@@ -17,7 +17,23 @@ import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
 import { ScheduleStore } from "../../services/schedules.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
-import { createSchedulesFeature, parseAnswers, SCHEDULE_CAPABILITY, TICK_MS } from "./index.ts";
+import {
+	createSchedulesFeature,
+	parseAnswers,
+	pollHours,
+	SCHEDULE_CAPABILITY,
+	TICK_MS,
+} from "./index.ts";
+
+describe("pollHours", () => {
+	it("reads poll durations with the shared duration parser, in whole hours", () => {
+		expect(pollHours("1 hour")).toBe(1);
+		expect(pollHours("3 days")).toBe(72);
+		expect(pollHours("2 weeks")).toBe(336);
+		expect(pollHours("90m")).toBeUndefined();
+		expect(pollHours("soon")).toBeUndefined();
+	});
+});
 
 const AMS = "Europe/Amsterdam";
 // Monday 12 October 2026, 10:00 in Amsterdam.
