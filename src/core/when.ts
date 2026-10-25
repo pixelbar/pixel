@@ -1,3 +1,4 @@
+import { parseDurationMinutes } from "./duration.ts";
 import {
 	daysInMonth,
 	formatLocal,
@@ -19,7 +20,8 @@ import {
  *
  * Accepted: a day ("today", "tomorrow", "wed", "wednesday", "14 oct", "oct 14",
  * "14-10", "14-10-2026", "2026-10-14") and/or a time ("19", "19:00", "1900",
- * "19.30", "19u", "19u30", "7pm", "7:30pm"), in either order. Months are
+ * "19.30", "19u", "19u30", "7pm", "7:30pm"), in either order. Or "now" (the next
+ * whole minute) and "now+30m", "now + 2h30", "now+1 day". Months are
  * English names or their short forms ("oct", "october", "sep", "sept"). Four
  * digits right after a date ("14 oct 2027") are a year only when another time
  * is there too ("14 oct 2027 19:00") or no clock reads them ("14 oct 2099");
@@ -82,13 +84,44 @@ type DaySpec = { kind: "date"; date: DayPart } | { kind: "weekday"; weekday: Wee
 /** Pixelbar's usual evening, used when someone names a day but not a time. */
 const DEFAULT_TIME: TimePart = { hour: 19, minute: 0 };
 
+/** "now", or "now+30m" / "now + 2h30" with any duration `core/duration.ts` reads. */
+const NOW = /^now(?:\s*\+\s*(.+))?$/i;
+
+/**
+ * The moment "now" or "now+<duration>" means, to the minute: `now` plus the
+ * duration, rounded down, and never earlier than the next whole minute (so plain
+ * "now" is still in the future). Undefined when it isn't one, or the duration
+ * can't be read.
+ */
+function fromNow(typed: string, now: Date, zone: string): LocalDateTime | "invalid" | undefined {
+	const match = NOW.exec(typed);
+	if (!match) return undefined;
+	const minutes = match[1] === undefined ? 0 : parseDurationMinutes(match[1]);
+	if (minutes === undefined) return "invalid";
+	let at = Math.floor((now.getTime() + minutes * 60_000) / 60_000) * 60_000;
+	if (at <= now.getTime()) at += 60_000;
+	return toLocal(new Date(at), zone);
+}
+
 /**
  * The single future moment `typed` means in `zone`, or undefined when it isn't
- * a time we understand or it's already gone.
+ * a time we understand or it's already gone. A day or a time on its own is read
+ * relative to `now`. "now" and "now+<duration>" are relative to `options.now`
+ * (default `now`): pass the real time when `now` is another reference, such as
+ * the start of a window whose end is being read.
  */
-export function parseWhen(typed: string, now: Date, zone: string): LocalDateTime | undefined {
+export function parseWhen(
+	typed: string,
+	now: Date,
+	zone: string,
+	options: { now?: Date } = {},
+): LocalDateTime | undefined {
 	const trimmed = typed.trim();
 	if (trimmed === "") return undefined;
+
+	const relative = fromNow(trimmed, options.now ?? now, zone);
+	if (relative === "invalid") return undefined;
+	if (relative) return future(relative, now, zone);
 
 	const exact = parseLocal(trimmed);
 	if (exact) return future(exact, now, zone);

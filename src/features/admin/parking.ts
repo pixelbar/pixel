@@ -161,10 +161,11 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 	const timeArg = (args: Args, name: string, after: Date): Date | undefined => {
 		const typed = args[name];
 		if (typeof typed !== "string") return undefined;
-		const local = parseWhen(typed, after, zone);
+		// "now+2h" is from the real now, even when the rest is read after `from`.
+		const local = parseWhen(typed, after, zone, { now: now() });
 		if (!local) {
 			throw new UserFacingError(
-				`I couldn't understand \`${name}\`, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\` or \`tomorrow 8\`.`,
+				`I couldn't understand \`${name}\`, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\`, \`tomorrow 8\` or \`now+2h\`.`,
 			);
 		}
 		return toInstant(local, zone);
@@ -344,7 +345,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			},
 			{
 				name: "until",
-				description: "Borrowed spots: when it closes (default: the reset), e.g. 17:00",
+				description: "Borrowed spots: when it closes (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
 			},
 		],
@@ -415,7 +416,8 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			spotsOption,
 			{
 				name: "until",
-				description: "Permanent spots: when it opens again (default: the reset), e.g. 17:00",
+				description:
+					"Permanent spots: when it opens again (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
 			},
 		],

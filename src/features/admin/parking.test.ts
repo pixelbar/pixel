@@ -208,6 +208,20 @@ describe("/admin parking", () => {
 			]);
 		});
 
+		it("reads now and now+<duration> from the real now", async () => {
+			const { run, fails, entries } = withSpots();
+			expect(await run("open", { spots: "neighbour-1", from: "now", until: "now+2h30" })).toBe(
+				"**neighbour-1** open from 10:01 until 12:30.",
+			);
+			expect(entries().windows.map(span)).toEqual([
+				["neighbour-1", utc("08:01").toISOString(), utc("10:30").toISOString()],
+			]);
+			// From tomorrow, "now+2h" is still two hours from now: before it opens.
+			await fails("open", { spots: "neighbour-2", from: "tomorrow 8", until: "now+2h" }).toThrow(
+				/couldn't understand `until`, or it's in the past/,
+			);
+		});
+
 		it("never runs past the reset", async () => {
 			const { fails, entries } = withSpots();
 			await fails("open", { spots: "neighbour-1", until: "tomorrow 9" }).toThrow(

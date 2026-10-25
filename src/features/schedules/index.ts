@@ -93,7 +93,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	};
 	const whenOption: CommandOption = {
 		name: "when",
-		description: `When to post (${zone}), e.g. wed 1900, 14 oct 19:00, tomorrow 9am`,
+		description: `When to post (${zone}), e.g. wed 1900, 14 oct 19:00, tomorrow 9am, now+1h`,
 		type: "string",
 		required: true,
 	};

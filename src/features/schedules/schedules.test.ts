@@ -631,9 +631,9 @@ describe("when is free-form text", () => {
 			isSubgroup(s) ? [] : (s.options ?? []).filter((o) => o.name === "when"),
 		);
 		expect(descriptions.map((o) => o.description)).toEqual([
-			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
-			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
-			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am",
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am, now+1h",
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am, now+1h",
+			"When to post (America/New_York), e.g. wed 1900, 14 oct 19:00, tomorrow 9am, now+1h",
 		]);
 	});
 
