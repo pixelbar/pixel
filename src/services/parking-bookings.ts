@@ -144,6 +144,34 @@ export class ParkingBookingStore {
 		return next;
 	}
 
+	/**
+	 * Gives someone a spot, for an admin who found them parked there: a new booking
+	 * from `now` until `until`, replacing any booking they held (here or elsewhere).
+	 * The spot must not be held by anyone else (move them first). Returns the booking,
+	 * and the one it replaced, if any.
+	 */
+	assign(
+		by: ParkingBooking["by"],
+		spot: string,
+		now: Date,
+		until: Date,
+	): { booking: ParkingBooking; replaced: ParkingBooking | undefined } {
+		this.#writable();
+		const holder = this.bySpot(spot);
+		if (holder && holder.by.ref !== by.ref) throw new Error(`spot ${spot} is already taken`);
+		const replaced = this.byPerson(by.ref);
+		const booking: ParkingBooking = {
+			id: replaced?.id ?? this.#newId(),
+			spot,
+			by,
+			since: now,
+			until,
+			remindedAt: null,
+		};
+		this.#save([...this.#bookings.filter((b) => b.by.ref !== by.ref), booking]);
+		return { booking, replaced };
+	}
+
 	/** Ends every booking that `ends` says to, and returns them. */
 	end(ends: (booking: ParkingBooking) => boolean): ParkingBooking[] {
 		this.#writable();

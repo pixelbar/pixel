@@ -13,7 +13,7 @@ import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
-import { endedText, type ParkingNotices } from "../../services/parking-notices.ts";
+import { assignedText, endedText, type ParkingNotices } from "../../services/parking-notices.ts";
 import {
 	MAX_DURATIONS,
 	MAX_GRACE_MINUTES,
@@ -24,7 +24,7 @@ import {
 	type ParkingSpotStore,
 	resetClock,
 } from "../../services/parking-spots.ts";
-import { describeInstant, nextReset } from "../../services/parking-time.ts";
+import { describeInstant, nextReset, parseDuration } from "../../services/parking-time.ts";
 import {
 	clipToReset,
 	fitEntries,
@@ -51,7 +51,7 @@ export type ParkingAdminDeps = {
 		"all" | "get" | "settings" | "add" | "update" | "remove" | "setSettings" | "problem"
 	>;
 	windows: Pick<ParkingWindowStore, "entries" | "replace" | "reconcile" | "problem">;
-	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "problem">;
+	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "assign" | "problem">;
 	/** DMs people whose booking an admin ends. */
 	notices: Pick<ParkingNotices, "send">;
 	/** Posts every change to the parking channel and counts it in Sentry. */
@@ -214,7 +214,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 	};
 	const evictOption = {
 		name: "evict",
-		description: "End the booking of anyone parked where this cuts in (default: no)",
+		description: "End any booking this cuts into",
 		type: "boolean" as const,
 	};
 
@@ -340,7 +340,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			{ name: "description", description: "Where it is (shown to people)", type: "string" },
 			{
 				name: "permanent",
-				description: "Pixelbar's own spot: open every day, no window needed (default: no)",
+				description: "Pixelbar's own spot, open every day (default: no)",
 				type: "boolean",
 			},
 		],
@@ -377,7 +377,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 
 	const editSpot: SubcommandDefinition = {
 		name: "edit-spot",
-		description: "Change a parking spot's description, or whether it's permanent",
+		description: "Change a spot's description, or whether it's permanent",
 		access: { minTier: "admin" },
 		private: true,
 		options: [
@@ -482,19 +482,19 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 
 	const open: SubcommandDefinition = {
 		name: "open",
-		description: "Open borrowed spots for a while, or lift a permanent spot's closure",
+		description: "Open spots for a while, or lift a closure",
 		access: { minTier: "admin" },
 		private: true,
 		options: [
 			spotsOption,
 			{
 				name: "from",
-				description: "Borrowed spots: when it opens (default: now), e.g. 8:00 or tomorrow 8",
+				description: "When it opens (default: now), e.g. 8:00 or tomorrow 8",
 				type: "string",
 			},
 			{
 				name: "until",
-				description: "Borrowed spots: when it closes (default: the reset), e.g. 17:00 or now+2h",
+				description: "When it closes (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
 			},
 			evictOption,
@@ -571,16 +571,14 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 
 	const close: SubcommandDefinition = {
 		name: "close",
-		description:
-			"Close spots: a borrowed spot until it's opened again, a permanent one for a while",
+		description: "Close spots: borrowed ones for today, ours for a while",
 		access: { minTier: "admin" },
 		private: true,
 		options: [
 			spotsOption,
 			{
 				name: "until",
-				description:
-					"Permanent spots: when it opens again (default: the reset), e.g. 17:00 or now+2h",
+				description: "Permanent spots: when it reopens (default: the reset)",
 				type: "string",
 			},
 			evictOption,
@@ -649,7 +647,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 
 	const free: SubcommandDefinition = {
 		name: "free",
-		description: "End the booking in a spot, for someone who left without /parking leave",
+		description: "End the booking in a spot",
 		access: { minTier: "admin" },
 		private: true,
 		options: [spotOption],
@@ -679,20 +677,165 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		},
 	};
 
+	const assign: SubcommandDefinition = {
+		name: "assign",
+		description: "Give someone the spot they're parked in",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			{ name: "user", description: "Who is parked there", type: "user", required: true },
+			spotOption,
+			{
+				name: "for",
+				description: "How long (default: until the spot closes)",
+				type: "string",
+				suggest: async ({ typed }) => {
+					const needle = typed.trim().toLowerCase();
+					return deps.spots
+						.settings()
+						.durations.filter((d) => d.includes(needle))
+						.map((d) => ({ name: d, value: d }));
+				},
+			},
+			{
+				...evictOption,
+				description: "End the booking of whoever still holds the spot",
+			},
+		],
+		handler: async ({ args, users, principal, logger }) => {
+			usable();
+			const person = users.user;
+			if (!person) throw new UserFacingError("Pick who is parked there.");
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			if (!target) throw new UserFacingError("That spot no longer exists.");
+			const at = now();
+			const reset = resetAfter(at);
+			const when = (d: Date) => describeInstant(d, at, zone);
+
+			// Someone being found there is what clears a "reported taken" closure.
+			const current = deps.windows.entries(at);
+			const lifted = current.blocks.filter((b) => b.spot === target.name && b.reason === "taken");
+			const entries = {
+				windows: current.windows,
+				blocks: current.blocks.filter((b) => !lifted.includes(b)),
+			};
+			const openTill = openUntil(target, entries, at, reset);
+			if (!openTill) {
+				throw new UserFacingError(
+					`**${target.name}** is closed right now. Open it first with \`/admin parking open\`.`,
+				);
+			}
+			let until = openTill;
+			if (typeof args.for === "string") {
+				const duration = parseDuration(args.for);
+				if (!duration) {
+					throw new UserFacingError(
+						"I couldn't understand how long. Try something like `2h`, `2h30` or `rest of day`.",
+					);
+				}
+				until =
+					duration.kind === "rest-of-day"
+						? reset
+						: new Date(at.getTime() + duration.minutes * 60_000);
+				if (until > openTill) {
+					throw new UserFacingError(
+						`**${target.name}** is only open until ${when(openTill)}. Leave out \`for\` to give it until then.`,
+					);
+				}
+			}
+
+			const ref = actorRef({ platform: principal.platform, userId: person.id });
+			const own = deps.bookings.all().find((b) => b.by.ref === ref);
+			const holder = deps.bookings.all().find((b) => b.spot === target.name && b.by.ref !== ref);
+			// Pixel doesn't move whoever holds the spot: `/parking taken` gets them a new one.
+			if (holder && args.evict !== true) {
+				throw new UserFacingError(
+					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with \`/parking taken\`; or add \`evict:True\` to end their booking.`,
+				);
+			}
+
+			// Checked: now change things, closure first so a failed save changes nothing.
+			if (lifted.length > 0) deps.windows.replace(entries, at);
+			if (own && own.spot !== target.name) deps.bookings.end((b) => b.id === own.id);
+			const [evicted] = holder ? deps.bookings.end((b) => b.id === holder.id) : [];
+			const { booking } = deps.bookings.assign(
+				{ ref, name: person.displayName },
+				target.name,
+				at,
+				until,
+			);
+
+			logger.warn(
+				{
+					event: "parking.assigned",
+					spot: booking.spot,
+					until: booking.until.toISOString(),
+					parkedUser: ref,
+					parkedUserName: person.displayName,
+					...actorLogFields(principal),
+				},
+				"an admin gave someone a parking spot",
+			);
+			const context = { now: at, zone, settings: deps.spots.settings() };
+			void deps.notices.send(booking, "assigned", assignedText(booking, context));
+			void deps.activity.record(
+				{
+					kind: "assigned",
+					spot: booking.spot,
+					who: person.displayName,
+					admin: principal.displayName,
+					until: booking.until,
+				},
+				at,
+			);
+			const lines = [
+				`Gave **${booking.spot}** to ${escapeMarkdown(person.displayName)}, until ${when(booking.until)}.`,
+			];
+			if (lifted.length > 0) lines.push(`**${target.name}** is no longer closed as taken.`);
+			if (own && own.spot !== target.name) {
+				lines.push(`Their booking in **${own.spot}** has ended.`);
+			}
+			if (evicted) {
+				logger.warn(
+					{
+						event: "parking.evicted",
+						spot: evicted.spot,
+						parkedUser: evicted.by.ref,
+						parkedUserName: evicted.by.name,
+						...actorLogFields(principal),
+					},
+					"ended a parking booking an admin's assignment cut into",
+				);
+				tell(evicted);
+				void deps.activity.record(
+					{
+						kind: "evicted",
+						spot: evicted.spot,
+						who: evicted.by.name,
+						admin: principal.displayName,
+					},
+					at,
+				);
+				lines.push(`Ended ${escapeMarkdown(evicted.by.name)}'s booking.`);
+			}
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
 	const settings: SubcommandDefinition = {
 		name: "settings",
-		description: "See or change the reminder, the grace period, the reset and the durations",
+		description: "See or change the parking settings",
 		access: { minTier: "admin" },
 		private: true,
 		options: [
 			{
 				name: "remind",
-				description: `Minutes before someone's end to remind them (0–${MAX_REMIND_MINUTES})`,
+				description: `Minutes before the end to remind (0–${MAX_REMIND_MINUTES})`,
 				type: "integer",
 			},
 			{
 				name: "grace",
-				description: `Minutes after it to end their booking (0–${MAX_GRACE_MINUTES})`,
+				description: `Minutes after the end to end it (0–${MAX_GRACE_MINUTES})`,
 				type: "integer",
 			},
 			{
@@ -702,7 +845,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			},
 			{
 				name: "durations",
-				description: "Durations to offer, separated by commas, e.g. 30m, 1h, 2h30, rest of day",
+				description: "Durations to offer, comma-separated, e.g. 30m, 1h, rest of day",
 				type: "string",
 			},
 		],
@@ -797,6 +940,6 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		name: "parking",
 		description: "Parking spots and when they're open (admins only)",
 		access: { minTier: "admin" },
-		subcommands: [status, open, close, free, addSpot, editSpot, removeSpot, settings],
+		subcommands: [status, open, close, assign, free, addSpot, editSpot, removeSpot, settings],
 	};
 }

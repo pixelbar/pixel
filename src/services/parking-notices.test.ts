@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Logger } from "../core/logger.ts";
 import { silentLogger } from "../core/logger.ts";
 import type { ParkingBooking } from "./parking-bookings.ts";
-import { endedText, ParkingNotices, reminderText } from "./parking-notices.ts";
+import { assignedText, endedText, ParkingNotices, reminderText } from "./parking-notices.ts";
 
 const ZONE = "Europe/Amsterdam";
 const NOW = new Date("2026-10-24T08:45:00Z");
@@ -22,6 +22,12 @@ describe("parking DMs", () => {
 		expect(endedText(booking, "admin", context)).toBe("An admin ended your parking in **ours**.");
 		expect(endedText(booking, "over", context)).toContain("your time was up at 11:00");
 		expect(endedText(booking, "reset", context)).toContain("parking ends at 23:59 every day");
+	});
+
+	it("tells someone an admin gave them a spot", () => {
+		expect(assignedText(booking, context)).toBe(
+			"An admin gave you **ours**, until 11:00. Run `/parking leave` when you go.",
+		);
 	});
 
 	it("offers less than an hour when that's all the spot has", () => {
