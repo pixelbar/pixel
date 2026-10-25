@@ -21,6 +21,7 @@ discord_guild_id = "100000000000000002"
 
 # Optional. Leave null / commented until the prod guild channels exist.
 # discord_announcements_channel_id = "100000000000000003"
+# discord_closing_time_channel_id  = "100000000000000004"
 
 # Home Assistant and Mastodon stay off until prod has its own tokens.
 # home_assistant_url = "https://example.ui.nabu.casa"
