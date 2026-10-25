@@ -498,6 +498,17 @@ describe("reminders and ending bookings", () => {
 		stop?.();
 	});
 
+	it("skips the reminder for a stay exactly as long as the reminder, as /park said", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		const reply = await t.run({ for: "15m" });
+		expect(reply).not.toContain("I'll DM you");
+		const stop = await start(t);
+		await tick();
+		expect(sent(t)).toEqual([]);
+		stop?.();
+	});
+
 	it("tells people when the reset ends their booking", async () => {
 		vi.useFakeTimers();
 		const t = withSpots();

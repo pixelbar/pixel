@@ -375,8 +375,9 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			const entries = deps.windows.entries(t);
 			for (const b of deps.bookings.all()) {
 				const remindAt = b.until.getTime() - settings.remindMinutes * 60_000;
-				// Not when the reminder time had already passed when they parked (a short stay).
-				if (b.remindedAt !== null || t.getTime() < remindAt || remindAt < b.since.getTime()) {
+				// Not when the reminder time had come by the time they parked (a short stay):
+				// `/park` and `extend` only promise a reminder that's still ahead.
+				if (b.remindedAt !== null || t.getTime() < remindAt || remindAt <= b.since.getTime()) {
 					continue;
 				}
 				// Recorded first: a missed reminder is better than a repeated one.
