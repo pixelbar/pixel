@@ -2,7 +2,7 @@
 /** The landing page. Copy follows the design system's voice: plain, friendly, exact. */
 import { withBase } from "vitepress";
 import PxCommandTray from "./PxCommandTray.vue";
-import PxMark from "./PxMark.vue";
+import PxMarkIntro from "./PxMarkIntro.vue";
 import PxSpectrum from "./PxSpectrum.vue";
 import PxStatus from "./PxStatus.vue";
 import PxTierBadge from "./PxTierBadge.vue";
@@ -77,7 +77,7 @@ const tiers = [
 				</div>
 			</div>
 			<div class="hero__art">
-				<PxMark animated label="The Pixel mark: a pixel star with rainbow orbits" />
+				<PxMarkIntro label="The Pixel mark: a pixel star with rainbow orbits" />
 			</div>
 		</section>
 
@@ -156,6 +156,8 @@ const tiers = [
 	max-width: calc(1152px + 2 * var(--gutter));
 	margin: 0 auto;
 	padding: 0 var(--gutter);
+	/* The hero mark's sparks fly past it; never let them scroll the page sideways. */
+	overflow-x: clip;
 }
 @media (min-width: 640px) {
 	.px-home {

@@ -13,6 +13,12 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - A **Deploy dev** workflow puts a branch or pull request on the Pixel Dev bot without a laptop: GitHub → Actions → Deploy dev → Run workflow with a PR number, branch or SHA, or `just deploy-remote dev 123`. It runs `just check` on that commit, publishes `:<sha>` and `:dev` to GHCR, rolls `pixel-dev`, registers dev slash commands and creates a Sentry release in environment `dev`. It only runs when someone starts it, refuses PRs from forks, and never touches prod. For it to register commands, a maintainer sets `github_register_principal_id` in `infra/envs/dev` to `pixel-github-dev`'s principal ID and applies (it can read the dev `discord-token` and nothing else). See [ADR 0018](docs/adr/0018-deploy-dev-workflow.md).
 
+## [0.19.1] - 2026-10-24
+
+### Changed
+
+- The website's landing page opens with the logo's entrance from the launch video: in dark, the original logo's pixels fly in, sharpen into the original and light up with a burst of sparks, then a light runs round its orbits; in light, the printed pixel-art mark flies in the same way. It plays once when it comes into view, and stays still with reduced motion.
+
 ## [0.19.0] - 2026-10-23
 
 ### Added
@@ -267,7 +273,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.19.1...HEAD
+[0.19.1]: https://github.com/pixelbar/pixel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/pixelbar/pixel/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/pixelbar/pixel/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/pixelbar/pixel/compare/v0.16.0...v0.17.0

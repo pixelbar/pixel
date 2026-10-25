@@ -9,6 +9,7 @@ import PxCommand from "./components/PxCommand.vue";
 import PxCommandTray from "./components/PxCommandTray.vue";
 import PxHome from "./components/PxHome.vue";
 import PxMark from "./components/PxMark.vue";
+import PxMarkIntro from "./components/PxMarkIntro.vue";
 import PxMermaid from "./components/PxMermaid.vue";
 import PxSpectrum from "./components/PxSpectrum.vue";
 import PxStatus from "./components/PxStatus.vue";
@@ -32,6 +33,7 @@ export default {
 		app.component("PxCommandTray", PxCommandTray);
 		app.component("PxHome", PxHome);
 		app.component("PxMark", PxMark);
+		app.component("PxMarkIntro", PxMarkIntro);
 		app.component("PxMermaid", PxMermaid);
 		app.component("PxSpectrum", PxSpectrum);
 		app.component("PxStatus", PxStatus);
