@@ -171,7 +171,16 @@ export default defineConfig({
 							text: "0017 · One writer for app secrets",
 							link: "/maintainers/adr/0017-one-writer-for-app-secrets",
 						},
-						{ text: "0018 · Parking files", link: "/maintainers/adr/0018-parking-files" },
+						{
+							text: "0018 · Deploy dev workflow",
+							link: "/maintainers/adr/0018-deploy-dev-workflow",
+						},
+						{
+							text: "0019 · Level capabilities",
+							link: "/maintainers/adr/0019-level-capabilities",
+						},
+						{ text: "0020 · Two-way role sync", link: "/maintainers/adr/0020-two-way-role-sync" },
+						{ text: "0021 · Parking files", link: "/maintainers/adr/0021-parking-files" },
 					],
 				},
 			],

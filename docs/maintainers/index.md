@@ -39,7 +39,10 @@ Architecture decision records, newest last.
 | [0015](./adr/0015-secrets-manifest) | One manifest lists every Key Vault secret. |
 | [0016](./adr/0016-secrets-sync) | `just pull` / `just push` (and `secrets-pull` / `secrets-push`) sync tfvars and app secrets between Key Vault and the laptop. |
 | [0017](./adr/0017-one-writer-for-app-secrets) | Only the sync tool writes app secrets; Terraform writes just the infra group. |
-| [0018](./adr/0018-parking-files) | Parking spots, opening times and bookings are three files in `PIXEL_DATA_DIR`, one per rate of change. |
+| [0018](./adr/0018-deploy-dev-workflow) | The Deploy dev workflow puts a branch or same-repo PR on `pixel-dev` when a maintainer runs it. |
+| [0019](./adr/0019-level-capabilities) | Capabilities can be granted to a whole membership level (`tiers:` in `members.yaml`). |
+| [0020](./adr/0020-two-way-role-sync) | Discord's member and friend roles are synced back into `members.yaml`, only through the access store. |
+| [0021](./adr/0021-parking-files) | Parking spots, opening times and bookings are three files in `PIXEL_DATA_DIR`, one per rate of change. |
 
 ## Working on the site
 
