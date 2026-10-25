@@ -10,7 +10,7 @@ export function inMemoryParking() {
 		windows: new ParkingWindowStore({ logger: silentLogger }),
 		bookings: new ParkingBookingStore({ logger: silentLogger }),
 		notices: { send: async () => {} },
-		activity: { record: async () => false },
+		activity: { record: async () => false, posting: false },
 		timezone: "Europe/Amsterdam",
 	};
 }

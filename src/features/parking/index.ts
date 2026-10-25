@@ -61,7 +61,7 @@ export type ParkingDeps = {
 		"all" | "byPerson" | "bySpot" | "claim" | "move" | "update" | "end" | "problem"
 	>;
 	/** Posts every change to the parking channel and counts it in Sentry. */
-	activity: Pick<ParkingActivity, "record">;
+	activity: Pick<ParkingActivity, "record" | "posting">;
 	gate: Gate;
 	/** DMs reminders and endings. */
 	notices: Pick<ParkingNotices, "send">;
@@ -393,7 +393,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					? ` (${escapeMarkdown(candidate.spot.description)})`
 					: "";
 				return {
-					text: `Sorry about that. **${candidate.spot.name}**${description} is free for the rest of your time, until ${at(booking.until, t)}. Run \`/parking taken confirm:True\` to move there, and I'll close **${booking.spot}** and tell the admins.`,
+					text: `Sorry about that. **${candidate.spot.name}**${description} is free for the rest of your time, until ${at(booking.until, t)}. Run \`/parking taken confirm:True\` to move there, and I'll close **${booking.spot}**${deps.activity.posting ? " and tell the admins" : ""}.`,
 					private: true,
 				};
 			}
@@ -439,7 +439,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					},
 					"moved someone whose parking spot was taken",
 				);
-				void deps.activity.record(
+				const told = await deps.activity.record(
 					{
 						kind: "moved",
 						from: booking.spot,
@@ -450,7 +450,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					t,
 				);
 				return {
-					text: `Park in **${moved.spot}** instead, until ${at(moved.until, t)}. I've closed **${booking.spot}** and told the admins.`,
+					text: `Park in **${moved.spot}** instead, until ${at(moved.until, t)}. ${told ? `I've closed **${booking.spot}** and told the admins.` : `I've closed **${booking.spot}**, but I couldn't tell the admins, so please tell the board yourself.`}`,
 					private: true,
 				};
 			}

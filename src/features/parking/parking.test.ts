@@ -29,7 +29,10 @@ function setup(
 	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
 	const gate = options.gate ?? { open: vi.fn(async () => ({ opened: true as const })) };
 	const reporter = { captureBackground: vi.fn() };
-	const activity = { record: vi.fn(async (_event: ParkingActivityEvent, _now: Date) => true) };
+	const activity = {
+		record: vi.fn(async (_event: ParkingActivityEvent, _now: Date) => true),
+		posting: true,
+	};
 	const notices = {
 		send: vi.fn(async (_booking: ParkingBooking, _kind: string, _text: string) => {}),
 	};
@@ -592,6 +595,17 @@ describe("/parking taken", () => {
 		});
 		// Nobody else is sent to the taken spot.
 		expect(await t.run({ for: "1h" }, member(BOB, "Bob"))).toContain("**neighbour-2**");
+	});
+
+	it("never says the admins were told when they weren't", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		t.activity.posting = false;
+		expect(await taken(t)).toContain("and I'll close **ours**.");
+		t.activity.record.mockResolvedValueOnce(false);
+		expect(await taken(t, { confirm: true })).toBe(
+			"Park in **neighbour-1** instead, until 11:00. I've closed **ours**, but I couldn't tell the admins, so please tell the board yourself.",
+		);
 	});
 
 	it("asks them to leave when nothing else is free, and reports it to the board", async () => {
