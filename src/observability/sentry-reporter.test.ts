@@ -27,6 +27,16 @@ const { createSentryReporter } = await import("./sentry-reporter.ts");
 describe("createSentryReporter", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	it("counts metrics, with attributes or without", () => {
+		const reporter = createSentryReporter();
+		reporter.count?.("pixel.parking", { event: "booked", spot: "ours" });
+		reporter.count?.("pixel.parking");
+		expect(metricsCount).toHaveBeenNthCalledWith(1, "pixel.parking", 1, {
+			attributes: { event: "booked", spot: "ours" },
+		});
+		expect(metricsCount).toHaveBeenNthCalledWith(2, "pixel.parking", 1, undefined);
+	});
+
 	it("leaves breadcrumbs with their data, or without", () => {
 		const reporter = createSentryReporter();
 		reporter.breadcrumb("access", "tier changed", { target: "discord:1" });

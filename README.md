@@ -118,6 +118,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_ANNOUNCEMENTS_CHANNEL_ID` | Optional. Where announcements and the weekly poll are posted. `/info` points people at it |
 | `DISCORD_ANNOUNCE_BOT_CHANNEL_ID` | Optional. Post Pixel's own online/offline status here instead of the announcements channel |
 | `DISCORD_CLOSING_TIME_CHANNEL_ID` | Optional. Channel for the closing-time reminder. Unset, `off` or `none` disables it |
+| `DISCORD_PARKING_CHANNEL_ID` | Optional. A private admin channel where Pixel posts every parking change. Unset, `off` or `none` disables it |
 | `PIXEL_CLOSING_TIME_FILE` | Optional. Closing-time message body. Defaults to `data/closing-time.md`. Missing or empty → built-in default |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_SYNC` | Optional. `on` also reads those roles back into `members.yaml` every minute (needs the Server Members Intent) |

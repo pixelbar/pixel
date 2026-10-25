@@ -36,6 +36,7 @@ Pixel never logs secrets. Token-shaped strings are scrubbed from logs and Sentry
 | Scheduled posts (`data/schedules.yaml`) | Until that schedule is deleted |
 | Parking opening times (`data/parking-windows.yaml`): the admin who set each one | Until it ends, the same day at the latest |
 | Parking bookings (`data/parking-bookings.yaml`): who is parked, where, since and until when | Until the booking ends, 23:59 the same day at the latest. No history is kept |
+| Parking channel posts (when the channel is set): the display name of who parked, left, extended or reported a spot taken, and which spot | Until someone deletes them in Discord. Only admins should see that channel |
 | Azure Files backups of those files (when Pixel runs in Azure) | 14 days |
 | Pixel's rotating log file | About 14 days |
 | Azure Log Analytics (cloud console logs) | 30 days (already set in Terraform; Azure's minimum) |

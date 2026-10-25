@@ -7,6 +7,7 @@ import { escapeMarkdown, formatDuration } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Gate, GateResult } from "../../core/ports/gate.ts";
+import type { ParkingActivity } from "../../services/parking-activity.ts";
 import {
 	type FreeSpot,
 	freeSpots,
@@ -54,11 +55,13 @@ const ACCESS: Access = { minTier: "member", capability: PARKING_CAPABILITY.name 
 
 export type ParkingDeps = {
 	spots: Pick<ParkingSpotStore, "all" | "settings" | "problem">;
-	windows: Pick<ParkingWindowStore, "entries">;
+	windows: Pick<ParkingWindowStore, "entries" | "replace">;
 	bookings: Pick<
 		ParkingBookingStore,
-		"all" | "byPerson" | "bySpot" | "claim" | "update" | "end" | "problem"
+		"all" | "byPerson" | "bySpot" | "claim" | "move" | "update" | "end" | "problem"
 	>;
+	/** Posts every change to the parking channel and counts it in Sentry. */
+	activity: Pick<ParkingActivity, "record">;
 	gate: Gate;
 	/** DMs reminders and endings. */
 	notices: Pick<ParkingNotices, "send">;
@@ -173,6 +176,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					{ event: "parking.none_free", ...actorLogFields(principal) },
 					"no parking spot was free for that long",
 				);
+				void deps.activity.record({ kind: "none-free", who: principal.displayName }, start);
 				return {
 					text: longest
 						? `Nothing is free for that long, so the gate stays shut. **${longest.spot.name}** is free until ${at(longest.openUntil, start)}: try ${suggestion(longest.openUntil, start)}.`
@@ -191,6 +195,10 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 						...actorLogFields(principal),
 					},
 					"booked a parking spot",
+				);
+				void deps.activity.record(
+					{ kind: "booked", spot: booking.spot, who: principal.displayName, until: booking.until },
+					start,
 				);
 			}
 			const gate = await openGate(principal, booking, logger);
@@ -271,6 +279,10 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 				{ event: "parking.left", spot: ended.spot, ...actorLogFields(principal) },
 				"left a parking spot",
 			);
+			void deps.activity.record(
+				{ kind: "left", spot: ended.spot, who: principal.displayName },
+				now(),
+			);
 			return { text: `Thanks, **${ended.spot}** is free again.`, private: true };
 		},
 	};
@@ -330,13 +342,146 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 				},
 				"extended a parking booking",
 			);
+			void deps.activity.record(
+				{ kind: "extended", spot: updated.spot, who: principal.displayName, until },
+				t,
+			);
 			const lines = [`**${updated.spot}** is yours until ${at(until, t)} now.`];
 			if (remindAt > t) lines.push(`I'll DM you ${remindMinutes} minutes before it ends.`);
 			return { text: lines.join("\n"), private: true };
 		},
 	};
 
-	const notifyEnded = async (ended: readonly ParkingBooking[], reason: EndReason, t: Date) => {
+	const taken: SubcommandDefinition = {
+		name: "taken",
+		description: "Someone else is in your spot: move to another one, or report it",
+		access: ACCESS,
+		private: true,
+		options: [
+			{
+				name: "confirm",
+				description: "Move to the spot Pixel offers (without it, Pixel only shows it)",
+				type: "boolean",
+			},
+		],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const t = now();
+			const ref = actorRef(principal);
+			const booking = deps.bookings.byPerson(ref);
+			if (!booking) {
+				return { text: "You're not parked anywhere. `/park` gets you a spot.", private: true };
+			}
+			const reset = resetAfter(t);
+			const entries = deps.windows.entries(t);
+			// For the rest of their time, and at least a minute.
+			const end = new Date(Math.max(booking.until.getTime(), t.getTime() + 60_000));
+			const offer = (others: ReadonlySet<string>) =>
+				pickSpot(
+					freeSpots(deps.spots.all(), entries, new Set([...others, booking.spot]), t, reset),
+					end,
+				);
+			const otherSpots = new Set(
+				deps.bookings
+					.all()
+					.filter((b) => b.id !== booking.id)
+					.map((b) => b.spot),
+			);
+			const candidate = offer(otherSpots);
+			if (candidate && args.confirm !== true) {
+				const description = candidate.spot.description
+					? ` (${escapeMarkdown(candidate.spot.description)})`
+					: "";
+				return {
+					text: `Sorry about that. **${candidate.spot.name}**${description} is free for the rest of your time, until ${at(booking.until, t)}. Run \`/parking taken confirm:True\` to move there, and I'll close **${booking.spot}** and tell the admins.`,
+					private: true,
+				};
+			}
+			/** Closes the reported spot until the reset, so nobody else is sent there. */
+			const closeReported = () => {
+				const current = deps.windows.entries(t);
+				try {
+					deps.windows.replace(
+						{
+							windows: current.windows,
+							blocks: [
+								...current.blocks.filter((b) => !(b.spot === booking.spot && b.reason === "taken")),
+								{
+									spot: booking.spot,
+									from: t,
+									until: reset,
+									setBy: { ref, name: principal.displayName },
+									reason: "taken",
+								},
+							],
+						},
+						t,
+					);
+				} catch (error) {
+					// The report still stands; an admin can close it by hand.
+					deps.logger.error(
+						{ event: "parking.taken_close_failed", spot: booking.spot, err: error },
+						"couldn't close a spot reported taken",
+					);
+				}
+			};
+			const moved = candidate
+				? deps.bookings.move(booking.id, (others) => offer(others)?.spot.name)
+				: undefined;
+			if (moved) {
+				closeReported();
+				logger.warn(
+					{
+						event: "parking.moved",
+						from: booking.spot,
+						spot: moved.spot,
+						...actorLogFields(principal),
+					},
+					"moved someone whose parking spot was taken",
+				);
+				void deps.activity.record(
+					{
+						kind: "moved",
+						from: booking.spot,
+						to: moved.spot,
+						who: principal.displayName,
+						closedUntil: reset,
+					},
+					t,
+				);
+				return {
+					text: `Park in **${moved.spot}** instead, until ${at(moved.until, t)}. I've closed **${booking.spot}** and told the admins.`,
+					private: true,
+				};
+			}
+			// Nothing else is free (or the one offered was taken meanwhile): they have to go.
+			deps.bookings.end((b) => b.id === booking.id);
+			closeReported();
+			logger.warn(
+				{ event: "parking.taken", spot: booking.spot, ...actorLogFields(principal) },
+				"someone's parking spot was taken and nothing else was free",
+			);
+			const reported = await deps.activity.record(
+				{ kind: "taken", spot: booking.spot, who: principal.displayName, closedUntil: reset },
+				t,
+			);
+			return {
+				text: [
+					`Sorry: someone else is in **${booking.spot}** and no other spot is free right now, so please leave. I've ended your booking.`,
+					reported
+						? "I've reported it to the board."
+						: "I couldn't report it to the board, so please tell them yourself.",
+				].join("\n"),
+				private: true,
+			};
+		},
+	};
+
+	const notifyEnded = async (
+		ended: readonly ParkingBooking[],
+		reason: Exclude<EndReason, "admin">,
+		t: Date,
+	) => {
 		const settings = deps.spots.settings();
 		for (const b of ended) {
 			deps.logger.info(
@@ -351,6 +496,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					: "ended a parking booking whose time was up",
 			);
 			await deps.notices.send(b, reason, endedText(b, reason, { now: t, zone, settings }));
+			await deps.activity.record({ kind: "ended", spot: b.spot, who: b.by.name, reason }, t);
 		}
 	};
 
@@ -412,9 +558,9 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			park,
 			{
 				name: "parking",
-				description: "Who's parked where, staying longer, and freeing your spot",
+				description: "Who's parked where, staying longer, a taken spot, and freeing yours",
 				access: ACCESS,
-				subcommands: [list, extend, leave],
+				subcommands: [list, extend, taken, leave],
 			},
 		],
 		start: () => {

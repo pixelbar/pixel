@@ -110,6 +110,19 @@ describe("loadConfig", () => {
 		expect(announce).toEqual({ botChannelId: undefined, closingTimeChannelId: undefined });
 	});
 
+	it("treats the parking channel off, none, or empty as disabled, and accepts a Discord ID", () => {
+		expect(
+			loadConfig({ ...VALID, DISCORD_PARKING_CHANNEL_ID: "100000000000000098" }).discord.announce
+				.parkingChannelId,
+		).toBe("100000000000000098");
+		for (const value of [undefined, "", "off", "NONE"]) {
+			expect(
+				loadConfig({ ...VALID, DISCORD_PARKING_CHANNEL_ID: value }).discord.announce
+					.parkingChannelId,
+			).toBeUndefined();
+		}
+	});
+
 	it("treats closing-time channel off, none, or empty as disabled, and accepts a Discord ID", () => {
 		expect(loadConfig(VALID).discord.announce.closingTimeChannelId).toBeUndefined();
 		for (const value of ["", "off", "OFF", "none", "None"]) {
