@@ -122,6 +122,27 @@ describe("ParkingBookingStore", () => {
 		expect(store.assign(carol, "neighbour-1", NOW, LATER).replaced).toBeUndefined();
 	});
 
+	it("evicts whoever holds the spot in the same save, when told to", () => {
+		const store = open();
+		store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		const result = store.assign(bob, "ours", NOW, LATER, { evict: true });
+		expect(result.evicted?.by).toEqual(alice);
+		expect(
+			open()
+				.all()
+				.map((b) => [b.by.name, b.spot]),
+		).toEqual([["Bob", "ours"]]);
+	});
+
+	it("changes nothing when an assignment can't be saved", () => {
+		const store = open();
+		store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		// The temp file it writes through is a directory, so the save fails.
+		mkdirSync(`${file}.tmp`);
+		expect(() => store.assign(bob, "ours", NOW, LATER, { evict: true })).toThrow(/Couldn't save/);
+		expect(store.all().map((b) => b.by.name)).toEqual(["Alice"]);
+	});
+
 	it("reads a reminder back", () => {
 		const store = open();
 		const claim = store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));

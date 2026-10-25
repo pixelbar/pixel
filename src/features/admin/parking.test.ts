@@ -831,6 +831,59 @@ describe("/admin parking assign", () => {
 		]);
 	});
 
+	it("puts the closure back, and changes no booking, when the booking can't be saved", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		t.bookings.claim({ ref: bobRef, name: "Bob" }, NOW, () => ({
+			spot: "neighbour-1",
+			until: utc("10:00"),
+		}));
+		takenClosure(t, "ours");
+		const before = t.entries();
+		Object.assign(t.bookings, {
+			assign: () => {
+				throw new UserFacingError("Couldn't save the parking bookings, so nothing was changed.");
+			},
+		});
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/Couldn't save/);
+		expect(t.entries()).toEqual(before);
+		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Bob", "neighbour-1"]]);
+		expect(t.notices.send).not.toHaveBeenCalled();
+		expect(recorded(t).map((e) => e.kind)).not.toContain("assigned");
+	});
+
+	it("still fails cleanly when the closure can't be put back either", async () => {
+		const t = withSpots();
+		takenClosure(t, "ours");
+		const replace = t.windows.replace.bind(t.windows);
+		let calls = 0;
+		Object.assign(t.windows, {
+			replace: (...args: Parameters<typeof replace>) => {
+				calls++;
+				if (calls > 1) throw new Error("disk full");
+				replace(...args);
+			},
+		});
+		Object.assign(t.bookings, {
+			assign: () => {
+				throw new Error("disk full");
+			},
+		});
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow("disk full");
+	});
+
+	it("refuses before changing anything when the bookings file is invalid", async () => {
+		const bookings = Object.assign(new ParkingBookingStore({ logger: silentLogger }), {
+			problem: "bad",
+		});
+		const t = setup({ bookings });
+		t.spots.add({ name: "ours", permanent: true });
+		takenClosure(t, "ours");
+		const before = t.entries();
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/bookings file is invalid/);
+		expect(t.entries()).toEqual(before);
+	});
+
 	it("is off while the spots file is invalid", async () => {
 		const spots = Object.assign(new ParkingSpotStore({ logger: silentLogger }), { problem: "x" });
 		await expect(assign(setup({ spots }), { spot: "ours" })).rejects.toThrow(/parking is off/);

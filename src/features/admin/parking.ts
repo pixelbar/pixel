@@ -754,16 +754,34 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				);
 			}
 
-			// Checked: now change things, closure first so a failed save changes nothing.
+			// Checked: now change things. The bookings change is one save (the person's other
+			// booking, an evicted holder and the new booking together). The closure is lifted
+			// first and put back if that save fails, so a failure leaves everything as it was.
+			if (deps.bookings.problem) {
+				throw new UserFacingError(
+					"The parking bookings file is invalid, so nothing can be assigned until an admin fixes it. See the logs.",
+				);
+			}
 			if (lifted.length > 0) deps.windows.replace(entries, at);
-			if (own && own.spot !== target.name) deps.bookings.end((b) => b.id === own.id);
-			const [evicted] = holder ? deps.bookings.end((b) => b.id === holder.id) : [];
-			const { booking } = deps.bookings.assign(
-				{ ref, name: person.displayName },
-				target.name,
-				at,
-				until,
-			);
+			let assigned: ReturnType<typeof deps.bookings.assign>;
+			try {
+				assigned = deps.bookings.assign({ ref, name: person.displayName }, target.name, at, until, {
+					evict: holder !== undefined,
+				});
+			} catch (error) {
+				if (lifted.length > 0) {
+					try {
+						deps.windows.replace(current, at);
+					} catch {
+						logger.error(
+							{ event: "parking.assign_rollback_failed", spot: target.name },
+							"couldn't put a reported-taken closure back after a failed assign",
+						);
+					}
+				}
+				throw error;
+			}
+			const { booking, evicted } = assigned;
 
 			logger.warn(
 				{
