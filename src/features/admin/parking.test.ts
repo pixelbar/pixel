@@ -404,6 +404,39 @@ describe("/admin parking", () => {
 			expect(await t.run("settings", { reset: "23:59" })).not.toContain("opening time");
 		});
 
+		it("clips bookings to an earlier reset, re-arming their reminder", async () => {
+			const t = withSpots();
+			const alice = { ref: "discord:100000000000000002", name: "Alice" };
+			t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: RESET }));
+			t.bookings.claim({ ref: "discord:3", name: "B" }, NOW, () => ({
+				spot: "neighbour-1",
+				until: utc("10:00"),
+			}));
+			expect(await t.run("settings", { reset: "22:00" })).toContain(
+				"1 booking(s) now end at the new reset.",
+			);
+			expect(t.bookings.all().map((b) => [b.spot, b.until, b.remindedAt])).toEqual([
+				["ours", utc("20:00"), null],
+				["neighbour-1", utc("10:00"), null],
+			]);
+		});
+
+		it("still saves the reset when the bookings can't be shortened", async () => {
+			const t = withSpots();
+			t.bookings.claim({ ref: "discord:2", name: "A" }, NOW, () => ({
+				spot: "ours",
+				until: RESET,
+			}));
+			Object.assign(t.bookings, {
+				update: () => {
+					throw new Error("disk full");
+				},
+			});
+			expect(await t.run("settings", { reset: "22:00" })).toContain(
+				"couldn't shorten the bookings",
+			);
+		});
+
 		it("still saves the reset when the opening times can't be shortened", async () => {
 			const t = withSpots();
 			await t.run("open", { spots: "neighbour-1" });

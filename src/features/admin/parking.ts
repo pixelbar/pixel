@@ -49,7 +49,7 @@ export type ParkingAdminDeps = {
 		"all" | "get" | "settings" | "add" | "update" | "remove" | "setSettings" | "problem"
 	>;
 	windows: Pick<ParkingWindowStore, "entries" | "replace" | "reconcile" | "problem">;
-	bookings: Pick<ParkingBookingStore, "all" | "end" | "problem">;
+	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "problem">;
 	timezone: string;
 	now?: () => Date;
 };
@@ -707,6 +707,20 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 							"⚠️ I couldn't shorten the opening times that run past the new reset. See the logs.",
 						);
 					}
+				}
+				// Bookings too, so a reminder still comes before the reset ends them.
+				const late = deps.bookings.all().filter((b) => b.until > resetAfter(b.since));
+				try {
+					for (const b of late) {
+						const until = resetAfter(b.since);
+						const remindAt = until.getTime() - next.remindMinutes * 60_000;
+						deps.bookings.update(b.id, { until, remindedAt: remindAt > at.getTime() ? null : at });
+					}
+					if (late.length > 0) lines.push(`${late.length} booking(s) now end at the new reset.`);
+				} catch {
+					lines.push(
+						"⚠️ I couldn't shorten the bookings that run past the new reset. See the logs.",
+					);
 				}
 			}
 			return { text: lines.join("\n"), private: true };
