@@ -88,6 +88,11 @@ variable "discord_announce_bot_channel_id" {
   default = null
 }
 
+variable "discord_closing_time_channel_id" {
+  type    = string
+  default = null
+}
+
 variable "discord_role_member" {
   type    = string
   default = null
@@ -157,4 +162,10 @@ variable "tailscale_enabled" {
 variable "tailscale_image" {
   type    = string
   default = "ghcr.io/tailscale/tailscale:v1.86.5"
+}
+
+variable "github_register_principal_id" {
+  type        = string
+  default     = null
+  description = "Principal ID of pixel-github-dev (az identity show -g pixel-bootstrap -n pixel-github-dev --query principalId). Lets the Deploy dev workflow read discord-token, and only that, to register slash commands (ADR 0018)."
 }

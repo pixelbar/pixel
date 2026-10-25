@@ -1,0 +1,392 @@
+name: Deploy dev
+
+# A maintainer puts a branch or pull request on Azure `dev` (Actions → Deploy
+# dev → Run workflow, or `just deploy-remote dev <ref>`). ADR 0018. Like a
+# Release, but for the Pixel Dev bot and without a version: runs `just check`
+# on that commit, publishes GHCR `:<sha>` and `:dev` (never `:main` or a
+# version tag), rolls pixel-dev (one replica), registers dev slash commands
+# and creates a Sentry release in environment `dev`. Pushes never start it, so
+# it doesn't overwrite what someone is testing (ADR 0010). It replaces whatever
+# pixel-dev was running, including a `just deploy dev` from a laptop.
+# Never touches pixel-prod. Never copies the Pixel Dev token anywhere. This
+# workflow does not apply Terraform.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Pull request number (123 or #123), branch, or commit SHA. Empty: the branch picked above."
+        required: false
+        default: ""
+
+# Least privilege at the workflow level. Jobs raise what they need.
+permissions:
+  contents: read
+
+# One dev bot, one deploy at a time. Queue, never cancel a roll halfway.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+# Actions are pinned to commit SHAs (with the version in a comment) so a
+# moved or compromised tag can't change what runs here.
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  resolve:
+    name: Resolve the commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.ref.outputs.sha }}
+      branch: ${{ steps.ref.outputs.branch }}
+      label: ${{ steps.ref.outputs.label }}
+    steps:
+      - name: Resolve ref to a commit in this repository
+        id: ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Through env, never interpolated into the script.
+          REF: ${{ inputs.ref }}
+          DEFAULT_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ref="${REF:-${DEFAULT_REF}}"
+          ref="${ref#\#}"
+          if ! [[ "${ref}" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Not a PR number, branch or SHA: use letters, digits, . _ / -"
+            exit 1
+          fi
+          if [[ "${ref}" =~ ^[0-9]+$ ]] && [ "${#ref}" -lt 7 ]; then
+            pr="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${ref}")"
+            state="$(jq -r .state <<<"${pr}")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<<"${pr}")"
+            sha="$(jq -r .head.sha <<<"${pr}")"
+            branch="$(jq -r .head.ref <<<"${pr}")"
+            # A fork's code would run with the Pixel Dev token. Push the branch
+            # here first if a maintainer has read it and wants it on dev.
+            if [ "${head_repo}" != "${GITHUB_REPOSITORY}" ]; then
+              echo "::error::PR #${ref} is from a fork (${head_repo:-deleted}). Only branches in ${GITHUB_REPOSITORY} deploy to dev."
+              exit 1
+            fi
+            if [ "${state}" != "open" ]; then
+              echo "::warning::PR #${ref} is ${state}; deploying its head anyway."
+            fi
+            label="PR #${ref} (${branch})"
+          else
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${ref}" --jq .sha)"
+            branch="${ref}"
+            label="${ref}"
+          fi
+          if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve ${ref} to a commit."
+            exit 1
+          fi
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          echo "label=${label}" >> "${GITHUB_OUTPUT}"
+          echo "Deploying ${label} at ${sha} to pixel-dev." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Deploying ${label} at ${sha}."
+
+  check:
+    name: Lint, typecheck, test
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck, test with coverage thresholds
+        run: just check
+
+  publish:
+    name: Publish GHCR
+    needs: [resolve, check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.pin }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        env:
+          SHA: ${{ needs.resolve.outputs.sha }}
+        run: |
+          # :dev, as `just deploy dev` tags it. Never :main or :vX.Y.Z.
+          pin="${IMAGE_NAME}:${SHA}"
+          tags="${pin},${IMAGE_NAME}:dev"
+          echo "pin=${pin}" >> "${GITHUB_OUTPUT}"
+          echo "tags=${tags}" >> "${GITHUB_OUTPUT}"
+          echo "Publishing ${tags}"
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            PIXEL_VERSION=${{ needs.resolve.outputs.sha }}
+            PIXEL_GIT_SHA=${{ needs.resolve.outputs.sha }}
+            PIXEL_GIT_BRANCH=${{ needs.resolve.outputs.branch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Fail if the image contains secrets or access lists
+        env:
+          PIN: ${{ steps.meta.outputs.pin }}
+        run: |
+          docker pull "${PIN}"
+          if docker run --rm --entrypoint sh "${PIN}" -c 'test -e /app/.env || test -e /app/config/admins.yaml || test -e /app/config/members.yaml'; then
+            echo "::error::Image ${PIN} contains .env or access lists. Do not deploy it."
+            exit 1
+          fi
+          echo "No .env or access lists in ${PIN}."
+
+  deploy:
+    name: Roll pixel-dev
+    needs: [resolve, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require ARM_* on GitHub Environment dev
+        env:
+          ARM_CLIENT_ID: ${{ vars.ARM_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.ARM_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ vars.ARM_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          if [ -z "${ARM_CLIENT_ID}" ]; then
+            echo "::error::ARM_CLIENT_ID is not set on GitHub Environment dev (variable, not secret)."
+            missing=1
+          fi
+          if [ -z "${ARM_TENANT_ID}" ]; then
+            echo "::error::ARM_TENANT_ID is not set on GitHub Environment dev."
+            missing=1
+          fi
+          if [ -z "${ARM_SUBSCRIPTION_ID}" ]; then
+            echo "::error::ARM_SUBSCRIPTION_ID is not set on GitHub Environment dev."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. Image ${{ needs.publish.outputs.image }} was published. Not inventing credentials. This job does not apply Terraform and does not touch pixel-prod."
+            exit 1
+          fi
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Roll pixel-dev to the published image
+        env:
+          IMAGE: ${{ needs.publish.outputs.image }}
+          LABEL: ${{ needs.resolve.outputs.label }}
+        run: |
+          set -euo pipefail
+          # Names from scripts/envs.ts (ENVS.dev). This job only ever rolls dev.
+          resource_group="pixel-dev"
+          app_name="pixel-dev"
+          if ! az containerapp show -g "${resource_group}" -n "${app_name}" >/dev/null 2>&1; then
+            echo "::error::Container App ${app_name} is not in ${resource_group}. Apply infra/envs/dev first. This job does not apply Terraform."
+            exit 1
+          fi
+          pixel_env="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.containers[0].env[?name=='PIXEL_ENV'].value | [0]" -o tsv)"
+          if [ "${pixel_env}" != "dev" ]; then
+            echo "::error::${app_name} has PIXEL_ENV=${pixel_env}, not dev. Refusing to roll."
+            exit 1
+          fi
+          az containerapp update \
+            -g "${resource_group}" \
+            -n "${app_name}" \
+            --image "${IMAGE}" \
+            --min-replicas 1 \
+            --max-replicas 1
+          running="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.containers[0].image" -o tsv)"
+          min="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.minReplicas" -o tsv)"
+          max="$(az containerapp show -g "${resource_group}" -n "${app_name}" --query "properties.template.scale.maxReplicas" -o tsv)"
+          echo "Running ${running} min=${min} max=${max} (${LABEL})"
+          if [ "${max}" != "1" ] || [ "${min}" != "1" ]; then
+            echo "Replica count is not 1 (min=${min} max=${max}). Two bots on one token would answer twice."
+            exit 1
+          fi
+          echo "pixel-dev runs ${LABEL} (${IMAGE})." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Do not run just dev against the Pixel Dev token while pixel-dev is up."
+
+  register-dev:
+    name: Register dev slash commands
+    needs: [resolve, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.ARM_CLIENT_ID }}
+          tenant-id: ${{ vars.ARM_TENANT_ID }}
+          subscription-id: ${{ vars.ARM_SUBSCRIPTION_ID }}
+
+      - name: Register slash commands on the Pixel Dev guild
+        run: |
+          set -euo pipefail
+          resource_group="pixel-dev"
+          app_name="pixel-dev"
+          # Take the application, guild and token from the running app itself,
+          # so this can only ever register the bot that was just rolled.
+          app() {
+            az containerapp show -g "${resource_group}" -n "${app_name}" --query "$1" -o tsv
+          }
+          env_of() {
+            app "properties.template.containers[0].env[?name=='$1'].value | [0]"
+          }
+          pixel_env="$(env_of PIXEL_ENV)"
+          app_id="$(env_of DISCORD_APP_ID)"
+          guild_id="$(env_of DISCORD_GUILD_ID)"
+          token_url="$(app "properties.configuration.secrets[?name=='discord-token'].keyVaultUrl | [0]")"
+          if [ "${pixel_env}" != "dev" ]; then
+            echo "::error::${app_name} has PIXEL_ENV=${pixel_env}, not dev. Refusing to register."
+            exit 1
+          fi
+          if [ -z "${app_id}" ] || [ -z "${guild_id}" ] || [ -z "${token_url}" ]; then
+            echo "::error::${app_name} is missing DISCORD_APP_ID, DISCORD_GUILD_ID or the discord-token Key Vault reference."
+            exit 1
+          fi
+          if ! token="$(az keyvault secret show --id "${token_url}" --query value -o tsv)"; then
+            echo "::error::Cannot read discord-token. A maintainer sets github_register_principal_id in infra/envs/dev and applies (ADR 0018). Until then: just register dev on a laptop, or re-run this job after the apply."
+            exit 1
+          fi
+          echo "::add-mask::${token}"
+          DISCORD_TOKEN="${token}" \
+          DISCORD_APP_ID="${app_id}" \
+          DISCORD_GUILD_ID="${guild_id}" \
+          PIXEL_ENV=dev \
+            just register-ci dev
+
+  sentry-release:
+    name: Sentry release (source maps)
+    needs: [resolve, deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+    steps:
+      - name: Require Sentry org and token
+        run: |
+          missing=0
+          if [ -z "${SENTRY_AUTH_TOKEN}" ]; then
+            echo "::error::SENTRY_AUTH_TOKEN is not set (repository secret)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_ORG}" ]; then
+            echo "::error::SENTRY_ORG is not set (repository variable)."
+            missing=1
+          fi
+          if [ -z "${SENTRY_PROJECT}" ]; then
+            echo "::error::SENTRY_PROJECT is not set (repository variable)."
+            missing=1
+          fi
+          if [ "${missing}" -ne 0 ]; then
+            echo "Fail closed. pixel-dev was rolled. Sentry maps were not uploaded."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - uses: pnpm/action-setup@d9184bf108216479bc5a137cc391f4d7b14c870b # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+
+      - name: Install and compile (source maps)
+        run: |
+          pnpm install --frozen-lockfile
+          just build
+
+      - name: Create Sentry release and upload source maps
+        uses: getsentry/action-release@6fb9aeade7061441cf3864e34fbe11a1457ad7dc # v3.7.1
+        with:
+          environment: dev
+          release: ${{ needs.resolve.outputs.sha }}
+          sourcemaps: dist
+          inject: false
+          url_prefix: /app/dist
+          set_commits: auto
+          ignore_missing: true
+          disable_telemetry: true

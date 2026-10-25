@@ -88,6 +88,11 @@ variable "discord_announce_bot_channel_id" {
   default = null
 }
 
+variable "discord_closing_time_channel_id" {
+  type    = string
+  default = null
+}
+
 variable "discord_role_member" {
   type    = string
   default = null

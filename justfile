@@ -345,6 +345,25 @@ deploy env:
     fi
     echo "Do not run just dev against the ${env_file} Discord token while this app is up."
 
+# Runs the Deploy dev workflow (ADR 0018) from main's definition on a PR number,
+# branch or SHA; empty means this branch, which must be pushed. Needs gh. Prod refuses.
+# Put a PR or branch on an env via GitHub Actions: `just deploy-remote dev 123`
+[group('environments')]
+deploy-remote env ref="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pnpm exec tsx scripts/env.ts deploy {{env}}
+    ref="{{ref}}"
+    if [ -z "${ref}" ]; then
+      ref="$(git rev-parse --abbrev-ref HEAD)"
+      if [ "$(git rev-parse HEAD)" != "$(git rev-parse '@{u}' 2>/dev/null || true)" ]; then
+        echo "${ref} is not pushed as it is here. Push it first; the workflow deploys what GitHub has."
+        exit 1
+      fi
+    fi
+    gh workflow run deploy-dev.yml --ref main -f ref="${ref}"
+    echo "Started Deploy dev for ${ref}. Follow it: gh run watch \$(gh run list --workflow deploy-dev.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+
 # The old name for `just deploy dev`; kept for a release (#116).
 [group('environments')]
 deploy-dev: (deploy "dev")

@@ -8,7 +8,7 @@ name: Release
 # publishes the VitePress docs site, then rolls pixel-prod after GitHub
 # Environment `prod` approval (ADR 0013) and registers prod slash commands
 # (ADR 0014). Merges to main do not roll prod.
-# Azure `dev` stays `just deploy-dev`. Never copy pixel-dev / Mini Discord
+# Azure `dev` is `just deploy dev` or the Deploy dev workflow. Never copy pixel-dev / Mini Discord
 # tokens. This workflow does not apply Terraform.
 on:
   workflow_dispatch:

@@ -112,6 +112,17 @@ variable "discord_announce_bot_channel_id" {
   }
 }
 
+variable "discord_closing_time_channel_id" {
+  type        = string
+  default     = null
+  description = "Optional. DISCORD_CLOSING_TIME_CHANNEL_ID: where /closing-time and the post after space-close go. Null: off."
+
+  validation {
+    condition     = var.discord_closing_time_channel_id == null || can(regex("^\\d{17,20}$", var.discord_closing_time_channel_id))
+    error_message = "discord_closing_time_channel_id must be a Discord ID or unset."
+  }
+}
+
 variable "discord_role_member" {
   type        = string
   default     = null
