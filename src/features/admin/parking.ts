@@ -21,6 +21,7 @@ import {
 } from "../../services/parking-spots.ts";
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import {
+	clipToReset,
 	openUntil,
 	type ParkingEntries,
 	type ParkingEntry,
@@ -551,7 +552,23 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				},
 				"changed the parking settings",
 			);
-			return { text: `Saved.\n${describeSettings(next)}`, private: true };
+			const lines = [`Saved.\n${describeSettings(next)}`];
+			if (change.resetAt !== undefined) {
+				// An earlier reset: nothing already set may run past it.
+				const at = now();
+				const clipped = clipToReset(deps.windows.entries(at), resetAfter);
+				if (clipped.changed > 0) {
+					try {
+						deps.windows.replace(clipped.entries, at);
+						lines.push(`${clipped.changed} opening time(s) now end at the new reset.`);
+					} catch {
+						lines.push(
+							"⚠️ I couldn't shorten the opening times that run past the new reset. See the logs.",
+						);
+					}
+				}
+			}
+			return { text: lines.join("\n"), private: true };
 		},
 	};
 

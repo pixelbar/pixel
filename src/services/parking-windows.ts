@@ -186,6 +186,29 @@ export class ParkingWindowStore {
 	}
 }
 
+/**
+ * The entries clipped to the reset on the day each one starts (`resetAfter(from)`),
+ * for when the reset moves earlier: nothing may run past it. An entry left with
+ * nothing (it would start at or after the new reset) is dropped. Also returns how
+ * many changed.
+ */
+export function clipToReset(
+	entries: ParkingEntries,
+	resetAfter: (from: Date) => Date,
+): { entries: ParkingEntries; changed: number } {
+	let changed = 0;
+	const clip = (list: readonly ParkingEntry[]) =>
+		list.flatMap((e) => {
+			const cap = resetAfter(e.from);
+			if (e.until <= cap) return [e];
+			changed++;
+			return cap > e.from ? [{ ...e, until: cap }] : [];
+		});
+	const windows = clip(entries.windows);
+	const blocks = clip(entries.blocks);
+	return { entries: { windows, blocks }, changed };
+}
+
 function prune(entries: ParkingEntries, now: Date): ParkingEntries {
 	const live = (e: ParkingEntry) => e.until > now;
 	return { windows: entries.windows.filter(live), blocks: entries.blocks.filter(live) };

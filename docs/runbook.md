@@ -281,7 +281,7 @@ Admins manage the parking spots and when they're open with `/admin parking`. `/p
 | See what's open | `/admin parking status` |
 | Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
 
-- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): openings and closures end there at the latest, and are pruned from the file once they end.
+- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): openings and closures end there at the latest, and are pruned from the file once they end. Moving the reset earlier shortens what's already set to match.
 - **The files:** `data/parking-spots.yaml` (the spots and settings) and `data/parking-windows.yaml` (opening times). Back up the spots file with the access files. Neither is safe to delete: deleting the spots file deletes the spots, and deleting the windows file closes every borrowed spot until someone opens it again.
 - **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 - **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.

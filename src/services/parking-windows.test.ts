@@ -6,6 +6,7 @@ import { parse } from "yaml";
 import { silentLogger } from "../core/logger.ts";
 import type { ParkingSpot } from "./parking-spots.ts";
 import {
+	clipToReset,
 	openUntil,
 	type ParkingEntries,
 	type ParkingEntry,
@@ -172,6 +173,26 @@ describe("ParkingWindowStore", () => {
 			expect(broken.reconcile(spots, NOW)).toBe(1);
 			expect(broken.entries(NOW).windows).toEqual([]);
 		});
+	});
+});
+
+describe("clipToReset", () => {
+	it("ends entries at the reset of their day, and drops one left with nothing", () => {
+		const resetAt = () => at("20:00");
+		const { entries, changed } = clipToReset(
+			{
+				windows: [
+					entry("a", "08:00", "21:59"),
+					entry("b", "08:00", "12:00"),
+					entry("c", "20:00", "21:00"),
+				],
+				blocks: [entry("ours", "09:00", "21:00")],
+			},
+			resetAt,
+		);
+		expect(changed).toBe(3);
+		expect(entries.windows).toEqual([entry("a", "08:00", "20:00"), entry("b", "08:00", "12:00")]);
+		expect(entries.blocks).toEqual([entry("ours", "09:00", "20:00")]);
 	});
 });
 

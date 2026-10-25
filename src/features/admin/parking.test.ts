@@ -373,6 +373,39 @@ describe("/admin parking", () => {
 			expect(spots.settings().resetAt).toBe("22:30");
 		});
 
+		it("clips opening times and closures to an earlier reset", async () => {
+			const t = withSpots();
+			await t.run("open", { spots: "neighbour-1" });
+			await t.run("open", { spots: "neighbour-2", from: "22:30" });
+			await t.run("close", { spots: "ours", until: "17:00" });
+			expect(await t.run("settings", { reset: "22:00" })).toContain(
+				"1 opening time(s) now end at the new reset.",
+			);
+			// neighbour-1 now ends at 22:00 (20:00 UTC). neighbour-2 opens at 22:30, after the new
+			// reset, so it belongs to the next day and still fits.
+			expect(t.entries().windows.map(span)).toEqual([
+				["neighbour-1", NOW.toISOString(), utc("20:00").toISOString()],
+				["neighbour-2", utc("20:30").toISOString(), RESET.toISOString()],
+			]);
+			expect(t.entries().blocks.map(span)).toEqual([
+				["ours", NOW.toISOString(), utc("15:00").toISOString()],
+			]);
+			// A later reset changes nothing already set.
+			expect(await t.run("settings", { reset: "23:59" })).not.toContain("opening time");
+		});
+
+		it("still saves the reset when the opening times can't be shortened", async () => {
+			const t = withSpots();
+			await t.run("open", { spots: "neighbour-1" });
+			Object.assign(t.windows, {
+				replace: () => {
+					throw new Error("disk full");
+				},
+			});
+			expect(await t.run("settings", { reset: "22:00" })).toContain("couldn't shorten");
+			expect(t.spots.settings().resetAt).toBe("22:00");
+		});
+
 		it("refuses values it can't use", async () => {
 			const { fails } = setup();
 			await fails("settings", { remind: 121 }).toThrow(/from 0 to 120/);
