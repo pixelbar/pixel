@@ -417,3 +417,71 @@ describe("cancelling large answers", () => {
 		);
 	});
 });
+
+describe("listing buildings and doors", () => {
+	it("lists the buildings with the session, keeping only IDs and names", async () => {
+		const http = fakeFetch().json({
+			data: {
+				buildings: [
+					{ id: 49, name: "Main building", address: "somewhere", units: [1] },
+					{ id: "50", name: null },
+				],
+			},
+		});
+		expect(await client(http.fn).listBuildings(session())).toEqual([
+			{ id: "49", name: "Main building" },
+			{ id: "50", name: "" },
+		]);
+		expect(http.calls[0]?.url).toBe(`${BASE}/buildings?limit=250`);
+		expect(http.calls[0]?.init.method).toBe("GET");
+		expect(http.calls[0]?.init.body).toBeUndefined();
+		expect(headersOf(http.calls[0]).cookie).toBe(`${ACCESS_COOKIE}=access-one`);
+	});
+
+	it("lists a building's doors, and the account's own doors with their buildings", async () => {
+		const http = fakeFetch()
+			.json({ data: { doors: [{ id: 103, name: "Entrance", secret: "never-kept" }] } })
+			.json({
+				data: {
+					doors: [
+						{ id: 103, name: "Entrance", building_id: 49 },
+						{ id: 7, name: "Elsewhere", building: { id: "60" } },
+						{ id: 8 },
+					],
+				},
+			});
+		const api = client(http.fn);
+		expect(await api.listDoors(session(), "49")).toEqual([
+			{ id: "103", name: "Entrance", buildingId: "49" },
+		]);
+		expect(await api.myDoors(session())).toEqual([
+			{ id: "103", name: "Entrance", buildingId: "49" },
+			{ id: "7", name: "Elsewhere", buildingId: "60" },
+			{ id: "8", name: "", buildingId: undefined },
+		]);
+		expect(http.calls.map((c) => c.url)).toEqual([
+			`${BASE}/buildings/49/doors?limit=250`,
+			`${BASE}/me/doors?limit=250`,
+		]);
+	});
+
+	it("refuses a list that isn't one", async () => {
+		const http = fakeFetch()
+			.json({ data: {} })
+			.json({ data: { doors: [{ id: "x" }] } });
+		const api = client(http.fn);
+		await expect(api.listBuildings(session())).rejects.toThrow(/no buildings/);
+		await expect(api.myDoors(session())).rejects.toThrow(/no doors/);
+	});
+
+	it("says when the account may not list something", async () => {
+		const http = fakeFetch().raw("no", { status: 403 });
+		await expect(client(http.fn).listBuildings(session())).rejects.toMatchObject({ status: 403 });
+	});
+
+	it("takes a larger list than other answers", async () => {
+		const doors = Array.from({ length: 250 }, (_, i) => ({ id: i, name: "x".repeat(300) }));
+		const http = fakeFetch().json({ data: { doors } });
+		expect(await client(http.fn).listDoors(session(), "49")).toHaveLength(250);
+	});
+});

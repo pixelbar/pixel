@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, loadConfig, loadSentryConfig } from "./config.ts";
+import { ConfigError, loadConfig, loadOpenrAccount, loadSentryConfig } from "./config.ts";
 
 const VALID = {
 	DISCORD_TOKEN: "not-a-real-token",
@@ -711,5 +711,38 @@ describe("OpenR settings", () => {
 		["OPENR_URL", { ...ACCOUNT, OPENR_GATE_DOOR: "1", OPENR_URL: "http://openr.example" }],
 	])("refuses a bad %s", (name, env) => {
 		expect(errorOf(env)).toContain(name);
+	});
+});
+
+describe("loadOpenrAccount", () => {
+	const EMAIL = "pixel@example.invalid";
+	const PASSWORD = "not-a-real-password";
+
+	it("reads just the account, with OpenR's address by default", () => {
+		expect(loadOpenrAccount({ OPENR_EMAIL: ` ${EMAIL} `, OPENR_PASSWORD: PASSWORD })).toEqual({
+			url: "https://dashboard.openr.nl/api/v4",
+			email: EMAIL,
+			password: PASSWORD,
+		});
+		expect(
+			loadOpenrAccount({
+				OPENR_EMAIL: EMAIL,
+				OPENR_PASSWORD: PASSWORD,
+				OPENR_URL: "https://openr.example/api/v4",
+			}).url,
+		).toBe("https://openr.example/api/v4");
+	});
+
+	it("names what's missing, without echoing any value", () => {
+		expect(() => loadOpenrAccount({})).toThrow("Set OPENR_EMAIL and OPENR_PASSWORD");
+		let message = "";
+		try {
+			loadOpenrAccount({ OPENR_EMAIL: EMAIL, OPENR_PASSWORD: "", OPENR_URL: "http://x" });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toBe("Set OPENR_URL and OPENR_PASSWORD (see .env.example, OpenR)");
+		expect(message).not.toContain(EMAIL);
 	});
 });

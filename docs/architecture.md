@@ -251,6 +251,7 @@ The building's doors, and the parking gate, are run by [OpenR](https://openr.nl)
 - **What OpenR sees:** Pixel's account and which door, never who asked. Who opened what is in Pixel's own logs (`openr.door_opened`, `parking.gate_opened`).
 - **Nothing secret is logged:** not the email, password, code, login token or cookies, and no response body. Failures log their kind and HTTP status only. Every call has a time limit, a size cap on answers and refuses redirects, so the cookies never go to another host.
 - **Speaking like the dashboard:** requests carry the dashboard's `yy-app-version` header (`APP_VERSION` in `client.ts`) and its fixed `x-csrf-token`. If OpenR starts refusing Pixel after a dashboard update, check the version first.
+- **Finding the IDs:** `just openr-doors dev|prod` (`scripts/openr-doors.ts`) logs in with that env's account, lists `GET /buildings`, each building's `GET /buildings/<id>/doors` and the account's own `GET /me/doors` (keeping only IDs, names and buildings, and cleaning names before printing), suggests the settings and logs out. A list the account may not see (401, 403, 404) is noted and the rest carries on. Pixel itself never lists anything.
 - **Tests** mock `fetch` at the client boundary and stand in for the client in the connection's tests, never a live OpenR.
 
 ## Services and ports

@@ -46,6 +46,7 @@ just deploy dev       # local GHCR push + Azure pixel-dev (never prod; do not al
 just register dev     # slash commands on Pixel Dev / a test guild (.env.dev or .env)
 just register prod    # slash commands on the production guild (.env.prod, PIXEL_ENV=prod)
 just ha-devices dev   # pick HA devices and push them to that env's devices.yaml on Azure (also prod)
+just openr-doors dev  # list the OpenR buildings and doors that env's account sees, with IDs (asks for the emailed code)
 just env dev          # where an env lives on Azure (names only); every laptop tool reads them from scripts/envs.ts
 ```
 

@@ -16,7 +16,9 @@ import { z } from "zod";
  *     (`access_exp`, `refresh_exp`, in Unix seconds).
  *  3. `POST /me/current_session/refresh` with the refresh cookie gives fresh ones. A 401
  *     there means the session is over.
- * A door opens with `POST /buildings/<building>/doors/<door>/open`.
+ * A door opens with `POST /buildings/<building>/doors/<door>/open`. For setting Pixel up,
+ * `GET /buildings`, `GET /buildings/<building>/doors` and `GET /me/doors` list what the
+ * account can see (`just openr-doors`); Pixel itself never uses them.
  *
  * Every call has a time limit, follows no redirects (the cookies must not go to another
  * host) and is made once: nothing here retries.
@@ -98,6 +100,12 @@ export type OpenrApi = {
 	logout(session: OpenrSession): Promise<void>;
 };
 
+/** A building, as listed: only its ID and name are kept. */
+export type OpenrBuilding = { id: string; name: string };
+
+/** A door, as listed: only its ID, name and building are kept. */
+export type OpenrDoorInfo = { id: string; name: string; buildingId: string | undefined };
+
 export type OpenrClientOptions = {
 	/** Where the API lives, e.g. `https://dashboard.openr.nl/api/v4`. */
 	baseUrl: string;
@@ -114,6 +122,24 @@ const sessionBody = z.object({
 		refresh_exp: z.number().int().positive(),
 	}),
 });
+
+const openrId = z.union([z.number().int().nonnegative(), z.string().regex(/^\d{1,10}$/)]);
+
+/** Only the fields Pixel prints; everything else in a listed item is dropped unread. */
+const listedBuilding = z.object({ id: openrId, name: z.string().nullish() });
+const listedDoor = z.object({
+	id: openrId,
+	name: z.string().nullish(),
+	building_id: openrId.nullish(),
+	building: z.object({ id: openrId }).nullish(),
+});
+const buildingsBody = z.object({ data: z.object({ buildings: z.array(listedBuilding) }) });
+const doorsBody = z.object({ data: z.object({ doors: z.array(listedDoor) }) });
+
+/** How many items a list asks for, as the dashboard does. */
+export const LIST_LIMIT = 250;
+/** Lists can be larger than other answers. */
+const LIST_MAX_BYTES = 2 * 1024 * 1024;
 
 const loginBody = z.object({
 	data: z.object({ protosession_token: z.string().min(1) }),
@@ -189,9 +215,46 @@ export class OpenrClient implements OpenrApi {
 		await discardBody(response, this.#maxResponseBytes);
 	}
 
+	/** The buildings the account can see. A 403 means it isn't allowed to list them. */
+	async listBuildings(session: OpenrSession): Promise<OpenrBuilding[]> {
+		const body = await this.#list(session, `/buildings?limit=${LIST_LIMIT}`);
+		const parsed = buildingsBody.safeParse(body);
+		if (!parsed.success) throw new OpenrError("response", "OpenR's answer had no buildings in it");
+		return parsed.data.data.buildings.map((b) => ({ id: String(b.id), name: b.name ?? "" }));
+	}
+
+	/** A building's doors. */
+	async listDoors(session: OpenrSession, buildingId: string): Promise<OpenrDoorInfo[]> {
+		const path = `/buildings/${encodeURIComponent(buildingId)}/doors?limit=${LIST_LIMIT}`;
+		return this.#doors(await this.#list(session, path), buildingId);
+	}
+
+	/** The doors the account itself may open, in any building. */
+	async myDoors(session: OpenrSession): Promise<OpenrDoorInfo[]> {
+		return this.#doors(await this.#list(session, `/me/doors?limit=${LIST_LIMIT}`), undefined);
+	}
+
+	async #list(session: OpenrSession, path: string): Promise<unknown> {
+		const response = await this.#send("GET", path, { session, bearer: session.accessToken });
+		return this.#json(response, LIST_MAX_BYTES);
+	}
+
+	#doors(body: unknown, buildingId: string | undefined): OpenrDoorInfo[] {
+		const parsed = doorsBody.safeParse(body);
+		if (!parsed.success) throw new OpenrError("response", "OpenR's answer had no doors in it");
+		return parsed.data.data.doors.map((d) => {
+			const building = d.building_id ?? d.building?.id;
+			return {
+				id: String(d.id),
+				name: d.name ?? "",
+				buildingId: building === undefined || building === null ? buildingId : String(building),
+			};
+		});
+	}
+
 	/** Makes one request and returns the response if it's a success. Never retries. */
 	async #send(
-		method: "POST" | "DELETE",
+		method: "GET" | "POST" | "DELETE",
 		path: string,
 		options: {
 			body?: Record<string, unknown>;
@@ -239,8 +302,8 @@ export class OpenrClient implements OpenrApi {
 		return response;
 	}
 
-	async #json(response: Response): Promise<unknown> {
-		const text = await readText(response, this.#maxResponseBytes);
+	async #json(response: Response, maxBytes = this.#maxResponseBytes): Promise<unknown> {
+		const text = await readText(response, maxBytes);
 		if (text === undefined) throw new OpenrError("response", "OpenR's answer was too large");
 		try {
 			return JSON.parse(text);

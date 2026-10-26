@@ -438,6 +438,36 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 	};
 }
 
+const openrAccountSchema = z.object({
+	OPENR_URL: z.url({ protocol: /^https$/ }).default("https://dashboard.openr.nl/api/v4"),
+	OPENR_EMAIL: z.string().trim().min(3).max(200),
+	OPENR_PASSWORD: z.string().min(1),
+});
+
+/**
+ * Just the OpenR account, for `just openr-doors`, which lists the buildings and doors
+ * so the rest of the OpenR settings can be filled in. Errors name the variable but
+ * never echo its value.
+ */
+export function loadOpenrAccount(env: NodeJS.ProcessEnv = process.env): {
+	url: string;
+	email: string;
+	password: string;
+} {
+	const result = openrAccountSchema.safeParse(
+		Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")),
+	);
+	if (!result.success) {
+		const names = [...new Set(result.error.issues.map((issue) => issue.path.join(".")))];
+		throw new ConfigError(`Set ${names.join(" and ")} (see .env.example, OpenR)`);
+	}
+	return {
+		url: result.data.OPENR_URL,
+		email: result.data.OPENR_EMAIL,
+		password: result.data.OPENR_PASSWORD,
+	};
+}
+
 const sentrySchema = z.object({
 	PIXEL_ENV: pixelEnv,
 	PIXEL_VERSION: z.string().default("dev"),
