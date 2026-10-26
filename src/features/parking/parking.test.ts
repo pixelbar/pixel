@@ -246,9 +246,14 @@ describe("/park", () => {
 	});
 
 	it("says what the gate did", () => {
+		expect(gateLine({ opened: true })).toBe("The gate is opening.");
 		expect(gateLine({ opened: false, reason: "not-connected" })).toBe(
-			"Pixel can't open the gate yet, so open it the usual way.",
+			"Pixel can't open the gate right now, so open it the usual way.",
 		);
+		expect(gateLine({ opened: false, reason: "off" })).toBe(
+			"Opening doors from Pixel is switched off right now, so open the gate the usual way.",
+		);
+		expect(gateLine({ opened: false, reason: "failed" })).toContain("didn't open");
 	});
 });
 

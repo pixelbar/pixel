@@ -27,6 +27,7 @@ locals {
     mastodon           = var.mastodon_instance != null
     spacestate         = var.spacestate_api_url != null
     spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
+    openr              = var.openr_building_id != null
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null
@@ -75,6 +76,9 @@ locals {
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
+    var.openr_building_id != null ? { OPENR_BUILDING_ID = var.openr_building_id } : {},
+    var.openr_doors != null ? { OPENR_DOORS = var.openr_doors } : {},
+    var.openr_gate_door != null ? { OPENR_GATE_DOOR = var.openr_gate_door } : {},
   )
 
   # Environment variable => Key Vault secret name, for what the Pixel container reads from its

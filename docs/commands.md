@@ -215,6 +215,16 @@ Frees your spot.
 
 </PxCommand>
 
+### Doors
+
+The building's doors, through OpenR. This needs the `openr` capability. The parking gate isn't here: `/park` opens it.
+
+<PxCommand :level="4" sig="/openr open door:" tier="member" reply="private" autocomplete :caps="['openr']" :options="{ 'door:': 'Which door.' }">
+
+Opens one of the building's doors. Pixel asks once: if it doesn't open, try again in a moment. Refused while admins have switched door control off.
+
+</PxCommand>
+
 ### Space state
 
 Sets whether Pixelbar shows as open or closed. This needs the `spacestate` capability.
@@ -321,13 +331,37 @@ Sets the closing-time reminder. A form opens for the text.
 
 <PxCommand sig="/admin doors off" tier="admin" reply="private">
 
-Switches door control from Pixel off for everyone, at once.
+Switches door control from Pixel off for everyone, at once: Home Assistant's doors, OpenR's doors and the parking gate.
 
 </PxCommand>
 
 <PxCommand sig="/admin doors on" tier="admin" reply="private">
 
 Switches door control from Pixel back on.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr status" tier="admin" reply="private">
+
+Whether Pixel is logged in to OpenR, when its session ends, and the doors it can open.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr login" tier="admin" reply="private">
+
+Logs Pixel in to OpenR with its own account. OpenR then emails a code to that account.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr code code:" tier="admin" reply="private" :options="{ 'code:': 'The code from OpenR\'s email.' }">
+
+Finishes the login with the emailed code. Pixel then keeps the session going by itself.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr logout" tier="admin" reply="private">
+
+Logs Pixel out of OpenR, so it can't open any door until someone logs in again.
 
 </PxCommand>
 

@@ -604,3 +604,112 @@ describe("the bot status channel and build info", () => {
 		expect(() => loadConfig({ ...VALID, PIXEL_GIT_SHA: "not a sha" })).toThrow(/PIXEL_GIT_SHA/);
 	});
 });
+
+describe("OpenR settings", () => {
+	// Obviously fake values.
+	const EMAIL = "pixel@example.invalid";
+	const PASSWORD = "not-a-real-password";
+	const ACCOUNT = { OPENR_BUILDING_ID: "49", OPENR_EMAIL: EMAIL, OPENR_PASSWORD: PASSWORD };
+	const errorOf = (env: Record<string, string>): string => {
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			return (error as Error).message;
+		}
+		throw new Error("expected a ConfigError");
+	};
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).openr).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, OPENR_BUILDING_ID: "", OPENR_EMAIL: "", OPENR_PASSWORD: "" }).openr,
+		).toBeUndefined();
+	});
+
+	it("reads the account, the doors and the gate, with OpenR's own address by default", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				...ACCOUNT,
+				OPENR_EMAIL: ` ${EMAIL} `,
+				OPENR_DOORS: " Entrance=103, Living room = 203 ,Outdoor area=126, ",
+				OPENR_GATE_DOOR: " 125 ",
+			}).openr,
+		).toEqual({
+			url: "https://dashboard.openr.nl/api/v4",
+			buildingId: "49",
+			email: EMAIL,
+			password: PASSWORD,
+			doors: [
+				{ name: "Entrance", id: "103" },
+				{ name: "Living room", id: "203" },
+				{ name: "Outdoor area", id: "126" },
+			],
+			gateDoor: "125",
+		});
+	});
+
+	it("works with only doors, or only the gate, and takes another address", () => {
+		expect(loadConfig({ ...VALID, ...ACCOUNT, OPENR_DOORS: "Entrance=103" }).openr).toMatchObject({
+			doors: [{ name: "Entrance", id: "103" }],
+			gateDoor: undefined,
+		});
+		expect(
+			loadConfig({
+				...VALID,
+				...ACCOUNT,
+				OPENR_GATE_DOOR: "125",
+				OPENR_URL: "https://openr.example/api/v4",
+			}).openr,
+		).toMatchObject({ url: "https://openr.example/api/v4", doors: [], gateDoor: "125" });
+	});
+
+	it.each([
+		["only the building", { OPENR_BUILDING_ID: "49", OPENR_GATE_DOOR: "1" }],
+		["no password", { OPENR_BUILDING_ID: "49", OPENR_EMAIL: EMAIL, OPENR_GATE_DOOR: "1" }],
+		["no building", { OPENR_EMAIL: EMAIL, OPENR_PASSWORD: PASSWORD }],
+	])("refuses to start with %s, without echoing any value", (_label, env) => {
+		const message = errorOf(env);
+		expect(message).toMatch(/OPENR_BUILDING_ID, OPENR_EMAIL and OPENR_PASSWORD together/);
+		for (const value of [EMAIL, PASSWORD]) expect(message).not.toContain(value);
+	});
+
+	it("needs a door or a gate once it's on", () => {
+		expect(errorOf(ACCOUNT)).toMatch(/set OPENR_DOORS, OPENR_GATE_DOOR or both/);
+	});
+
+	it("needs the building for doors or a gate", () => {
+		expect(errorOf({ OPENR_GATE_DOOR: "125" })).toMatch(/need OPENR_BUILDING_ID/);
+		expect(errorOf({ OPENR_DOORS: "Entrance=103" })).toMatch(/need OPENR_BUILDING_ID/);
+	});
+
+	it("never offers the gate as a door", () => {
+		expect(
+			errorOf({ ...ACCOUNT, OPENR_DOORS: "Entrance=103,Gate=125", OPENR_GATE_DOOR: "125" }),
+		).toMatch(/OPENR_DOORS: must not include the parking gate/);
+	});
+
+	it.each([
+		["no ID", "Front door"],
+		["no name", "=777"],
+		["an ID that isn't digits", "Front door=abc"],
+		["a name that's too long", `${"x".repeat(51)}=1`],
+		["nothing at all", " , "],
+		["a name twice", "Entrance=1,entrance=2"],
+		["an ID twice", "Entrance=1,Back=1"],
+		["too many doors", Array.from({ length: 26 }, (_, i) => `D${i}=${i}`).join(",")],
+	])("refuses doors with %s, without echoing them", (_label, doors) => {
+		const message = errorOf({ ...ACCOUNT, OPENR_DOORS: doors });
+		expect(message).toMatch(/OPENR_DOORS/);
+		expect(message).not.toContain(doors);
+	});
+
+	it.each([
+		["OPENR_BUILDING_ID", { ...ACCOUNT, OPENR_BUILDING_ID: "forty-nine", OPENR_GATE_DOOR: "1" }],
+		["OPENR_GATE_DOOR", { ...ACCOUNT, OPENR_GATE_DOOR: "1; drop" }],
+		["OPENR_URL", { ...ACCOUNT, OPENR_GATE_DOOR: "1", OPENR_URL: "http://openr.example" }],
+	])("refuses a bad %s", (name, env) => {
+		expect(errorOf(env)).toContain(name);
+	});
+});
