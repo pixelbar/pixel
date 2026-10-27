@@ -53,6 +53,7 @@ function fakeApi() {
 		refresh: vi.fn<OpenrApi["refresh"]>(async () => session("two", 20)),
 		openDoor: vi.fn<OpenrApi["openDoor"]>(async () => {}),
 		logout: vi.fn<OpenrApi["logout"]>(async () => {}),
+		doorStatus: vi.fn<OpenrApi["doorStatus"]>(async () => ({ online: true, errors: [] })),
 	};
 }
 
@@ -405,6 +406,68 @@ describe("opening a door", () => {
 		});
 		expect(await connection.open("103")).toEqual({ opened: false, reason: "failed" });
 		expect(t.api.openDoor).not.toHaveBeenCalled();
+	});
+});
+
+describe("reading a door's status", () => {
+	it("reads it with the session", async () => {
+		const t = setup();
+		const connection = await loggedIn(t);
+		expect(await connection.doorStatus("103")).toEqual({ kind: "ok", online: true, errors: [] });
+		expect(t.api.doorStatus).toHaveBeenCalledWith(
+			session("one", 10),
+			"49",
+			"103",
+			expect.any(AbortSignal),
+		);
+	});
+
+	it("says it's logged out without a session", async () => {
+		const t = setup();
+		expect(await t.make().doorStatus("103")).toEqual({ kind: "logged-out" });
+		expect(t.api.doorStatus).not.toHaveBeenCalled();
+	});
+
+	it("refreshes an expired access first, with only the refresh cookie's session", async () => {
+		const t = setup();
+		const connection = await loggedIn(t);
+		t.later(11);
+		t.api.refresh.mockResolvedValueOnce(session("two", 30));
+		expect((await connection.doorStatus("103")).kind).toBe("ok");
+		expect(t.api.refresh).toHaveBeenCalledTimes(1);
+		expect(t.api.doorStatus.mock.calls[0]?.[0].cookies[ACCESS_COOKIE]).toBe("access-two");
+	});
+
+	it("fails when it can't refresh, and says logged out when the refresh is refused", async () => {
+		const t = setup();
+		const connection = await loggedIn(t);
+		t.later(11);
+		t.api.refresh.mockRejectedValueOnce(new OpenrError("network", "x"));
+		expect(await connection.doorStatus("103")).toEqual({ kind: "failed" });
+		t.api.refresh.mockRejectedValueOnce(new OpenrError("http", "x", { status: 401 }));
+		expect(await connection.doorStatus("103")).toEqual({ kind: "logged-out" });
+	});
+
+	it("refreshes for next time when OpenR says the access expired, and logs the status only", async () => {
+		const t = setup();
+		const connection = await loggedIn(t);
+		t.api.doorStatus.mockRejectedValueOnce(new OpenrError("http", "x", { status: 401 }));
+		expect(await connection.doorStatus("103")).toEqual({ kind: "failed" });
+		await vi.waitFor(() => expect(t.api.refresh).toHaveBeenCalledTimes(1));
+		expect(t.logs.find((l) => l.obj.event === "openr.status_failed")?.obj).toEqual({
+			event: "openr.status_failed",
+			door: "103",
+			kind: "http",
+			status: 401,
+		});
+	});
+
+	it("fails on anything else, without refreshing", async () => {
+		const t = setup();
+		const connection = await loggedIn(t);
+		t.api.doorStatus.mockRejectedValueOnce(new OpenrError("http", "x", { status: 500 }));
+		expect(await connection.doorStatus("103")).toEqual({ kind: "failed" });
+		expect(t.api.refresh).not.toHaveBeenCalled();
 	});
 });
 

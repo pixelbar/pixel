@@ -1,7 +1,12 @@
 import { actorLogFields, actorRef } from "../../core/access.ts";
 import type { SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
-import { formatDuration, formatUntil } from "../../core/format.ts";
-import type { DoorSystem, DoorSystemStatus, LoginStep } from "../../core/ports/door-system.ts";
+import { escapeMarkdown, formatDuration, formatUntil } from "../../core/format.ts";
+import type {
+	DoorStatusResult,
+	DoorSystem,
+	DoorSystemStatus,
+	LoginStep,
+} from "../../core/ports/door-system.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Reply } from "../../core/reply.ts";
 import type { OpenrDoor } from "../openr/index.ts";
@@ -27,6 +32,9 @@ const NOT_SET_UP: Reply = {
 	private: true,
 };
 
+/** How long before the session ends `/admin openr status` warns about it. */
+const ENDING_SOON_MS = 14 * 24 * 60 * 60_000;
+
 /** A code as OpenR emails it: digits, maybe typed with spaces. */
 const CODE = /^\d{4,10}$/;
 
@@ -35,20 +43,33 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 
 	const status: SubcommandDefinition = {
 		name: "status",
-		description: "Whether Pixel is logged in to OpenR",
+		description: "Whether Pixel is logged in to OpenR, and each door's status",
 		access: admin,
 		private: true,
+		placeholder: { text: "Checking…", private: true },
 		handler: async () => {
-			if (!deps.system) return NOT_SET_UP;
-			const doors = deps.doors.map((d) => d.name).join(", ") || "none";
-			return {
-				text: [
-					describeOpenr(deps.system.status(), deps.now()),
-					`Doors for \`/openr open\`: ${doors}`,
-					`Parking gate: ${deps.gateDoor === undefined ? "not set" : "set"}`,
-				].join("\n"),
-				private: true,
-			};
+			const system = deps.system;
+			if (!system) return NOT_SET_UP;
+			const session = system.status();
+			const lines = [describeOpenr(session, deps.now())];
+			const doors = [
+				...deps.doors.map((d) => ({ label: d.name, id: d.id })),
+				...(deps.gateDoor === undefined ? [] : [{ label: "Parking gate", id: deps.gateDoor }]),
+			];
+			if (doors.length === 0) {
+				lines.push("No doors are set.");
+			} else if (session.state !== "logged-in") {
+				lines.push(`Doors: ${doors.map((d) => `${d.label} (${d.id})`).join(", ")}`);
+			} else {
+				// Read live, all at once: each read has its own time limit.
+				const statuses = await Promise.all(doors.map((d) => system.doorStatus(d.id)));
+				lines.push(
+					"",
+					...doors.map((d, i) => `**${d.label}** (${d.id}): ${describeDoorStatus(statuses[i])}`),
+				);
+			}
+			if (deps.gateDoor === undefined) lines.push("Parking gate: not set.");
+			return { text: lines.join("\n"), private: true };
 		},
 	};
 
@@ -140,6 +161,12 @@ export function describeOpenr(status: DoorSystemStatus, now: Date): string {
 			const lines = [
 				`OpenR: logged in, session ends ${formatUntil(status.sessionUntil.getTime() - now.getTime())} unless refreshed`,
 			];
+			// OpenR ends a session about six months after the login, whatever Pixel does.
+			if (status.sessionUntil.getTime() - now.getTime() < ENDING_SOON_MS) {
+				lines.push(
+					"⚠️ The session ends soon: log in again with `/admin openr login` before it does.",
+				);
+			}
 			if (status.refreshFailingSince) {
 				lines.push(
 					`⚠️ Refreshing has failed since ${formatAgo(now, status.refreshFailingSince)}: OpenR may be down.`,
@@ -153,6 +180,22 @@ export function describeOpenr(status: DoorSystemStatus, now: Date): string {
 			return status.endedAt
 				? `OpenR: **logged out**: OpenR ended the session ${formatAgo(now, status.endedAt)}. Log in with \`/admin openr login\`.`
 				: "OpenR: **logged out**. Log in with `/admin openr login`.";
+	}
+}
+
+/** One door's live status, for `/admin openr status`. OpenR's own words are escaped. */
+export function describeDoorStatus(status: DoorStatusResult | undefined): string {
+	switch (status?.kind) {
+		case "ok": {
+			const online =
+				status.online === undefined ? "answered" : status.online ? "🟢 online" : "🔴 **offline**";
+			const errors = status.errors.map((e) => `⚠️ ${escapeMarkdown(e)}`);
+			return [online, ...errors].join(" · ");
+		}
+		case "logged-out":
+			return "not logged in";
+		default:
+			return "⚠️ couldn't read its status (see `openr.status_failed` in the logs)";
 	}
 }
 

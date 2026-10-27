@@ -1,6 +1,7 @@
 import type { Logger } from "../../core/logger.ts";
 import type {
 	DoorOpenResult,
+	DoorStatusResult,
 	DoorSystem,
 	DoorSystemStatus,
 	LoginStep,
@@ -186,6 +187,25 @@ export class OpenrConnection implements DoorSystem {
 			return { opened: false, reason: "failed" };
 		} finally {
 			this.#opening.delete(doorId);
+		}
+	}
+
+	async doorStatus(doorId: string): Promise<DoorStatusResult> {
+		if (!this.#session) return { kind: "logged-out" };
+		const deadline = AbortSignal.timeout(this.#openTimeoutMs);
+		try {
+			const session = await beforeDeadline(this.#usableSession(), deadline);
+			if (!session) return this.#session ? { kind: "failed" } : { kind: "logged-out" };
+			const status = await this.#api.doorStatus(session, this.#buildingId, doorId, deadline);
+			return { kind: "ok", ...status };
+		} catch (error) {
+			// An expired access ("Bearer Token Expired") is refreshed for next time.
+			if (error instanceof OpenrError && error.status === 401) void this.#refresh();
+			this.#logger.warn(
+				{ event: "openr.status_failed", door: doorId, ...describe(error) },
+				"couldn't read a door's status from OpenR",
+			);
+			return { kind: "failed" };
 		}
 	}
 

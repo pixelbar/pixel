@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SubcommandDefinition } from "../../core/command.ts";
 import { silentLogger } from "../../core/logger.ts";
-import type { DoorSystem, DoorSystemStatus, LoginStep } from "../../core/ports/door-system.ts";
+import type {
+	DoorStatusResult,
+	DoorSystem,
+	DoorSystemStatus,
+	LoginStep,
+} from "../../core/ports/door-system.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
-import { createOpenrSubgroup, describeOpenr } from "./openr.ts";
+import { createOpenrSubgroup, describeDoorStatus, describeOpenr } from "./openr.ts";
 
 const NOW = new Date("2030-01-01T10:00:00.000Z");
 const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
@@ -21,6 +26,11 @@ function fakeSystem(status: DoorSystemStatus = { state: "logged-out" }) {
 		})),
 		logout: vi.fn<DoorSystem["logout"]>(async () => {}),
 		open: vi.fn<DoorSystem["open"]>(async () => ({ opened: true })),
+		doorStatus: vi.fn<DoorSystem["doorStatus"]>(async () => ({
+			kind: "ok",
+			online: true,
+			errors: [],
+		})),
 	};
 }
 
@@ -153,15 +163,41 @@ describe("/admin openr logout", () => {
 });
 
 describe("/admin openr status", () => {
-	it("shows the session, the doors and whether the gate is set", async () => {
-		const { run } = setup(fakeSystem({ state: "logged-out" }));
+	it("lists the doors without reading them while logged out", async () => {
+		const { run, system } = setup(fakeSystem({ state: "logged-out" }));
 		expect(await run("status")).toBe(
 			[
 				"OpenR: **logged out**. Log in with `/admin openr login`.",
-				"Doors for `/openr open`: Entrance, Living room",
-				"Parking gate: set",
+				"Doors: Entrance (103), Living room (203), Parking gate (125)",
 			].join("\n"),
 		);
+		expect(system?.doorStatus).not.toHaveBeenCalled();
+	});
+
+	it("reads every door and the gate live while logged in", async () => {
+		const system = fakeSystem({
+			state: "logged-in",
+			sessionUntil: at(60 * 24 * 180),
+			refreshedAt: NOW,
+			refreshFailingSince: undefined,
+		});
+		system.doorStatus
+			.mockResolvedValueOnce({ kind: "ok", online: true, errors: [] })
+			.mockResolvedValueOnce({ kind: "ok", online: false, errors: ["Lock *jammed*"] })
+			.mockResolvedValueOnce({ kind: "failed" });
+		const { run, group } = setup(system);
+		expect(await run("status")).toBe(
+			[
+				"OpenR: logged in, session ends in 180 days unless refreshed",
+				"",
+				"**Entrance** (103): 🟢 online",
+				"**Living room** (203): 🔴 **offline** · ⚠️ Lock \\*jammed\\*",
+				"**Parking gate** (125): ⚠️ couldn't read its status (see `openr.status_failed` in the logs)",
+			].join("\n"),
+		);
+		expect(system.doorStatus.mock.calls.map((c) => c[0])).toEqual(["103", "203", "125"]);
+		const sub = group.subcommands.find((s) => s.name === "status");
+		expect(sub?.placeholder).toEqual({ text: "Checking…", private: true });
 	});
 
 	it("says when there are no doors or gate", async () => {
@@ -173,7 +209,20 @@ describe("/admin openr status", () => {
 			now: () => NOW,
 		});
 		const status = group.subcommands.find((s) => s.name === "status") as SubcommandDefinition;
-		expect((await status.handler(context())).text).toMatch(/open`: none\nParking gate: not set$/);
+		expect((await status.handler(context())).text).toMatch(
+			/No doors are set\.\nParking gate: not set\.$/,
+		);
+	});
+});
+
+describe("describeDoorStatus", () => {
+	it.each<[DoorStatusResult | undefined, string]>([
+		[{ kind: "ok", online: undefined, errors: [] }, "answered"],
+		[{ kind: "ok", online: true, errors: ["a", "b"] }, "🟢 online · ⚠️ a · ⚠️ b"],
+		[{ kind: "logged-out" }, "not logged in"],
+		[undefined, "⚠️ couldn't read its status (see `openr.status_failed` in the logs)"],
+	])("describes %j", (status, text) => {
+		expect(describeDoorStatus(status)).toBe(text);
 	});
 });
 
@@ -186,11 +235,20 @@ describe("describeOpenr", () => {
 				refreshedAt: NOW,
 				refreshFailingSince: undefined,
 			},
-			"OpenR: logged in, session ends in 1h 30m unless refreshed",
+			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin openr login` before it does.",
+		],
+		[
+			{
+				state: "logged-in",
+				sessionUntil: at(60 * 24 * 20),
+				refreshedAt: NOW,
+				refreshFailingSince: undefined,
+			},
+			"OpenR: logged in, session ends in 20 days unless refreshed",
 		],
 		[
 			{ state: "logged-in", sessionUntil: at(90), refreshedAt: NOW, refreshFailingSince: at(-30) },
-			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ Refreshing has failed since 30m ago: OpenR may be down.",
+			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin openr login` before it does.\n⚠️ Refreshing has failed since 30m ago: OpenR may be down.",
 		],
 		[
 			{ state: "awaiting-code", codeUntil: at(7) },

@@ -21,7 +21,15 @@ export type DoorSystem = {
 	logout(): Promise<void>;
 	/** Opens one door, once. Never throws. */
 	open(doorId: string): Promise<DoorOpenResult>;
+	/** Whether a door is online and any errors it reports. Read-only. Never throws. */
+	doorStatus(doorId: string): Promise<DoorStatusResult>;
 };
+
+export type DoorStatusResult =
+	/** `online` is undefined when the system doesn't say. `errors` are short and cleaned. */
+	| { kind: "ok"; online: boolean | undefined; errors: readonly string[] }
+	| { kind: "logged-out" }
+	| { kind: "failed" };
 
 export type DoorSystemStatus =
 	/** `endedAt`: when the system ended the last session by itself, so an admin must log in again. */

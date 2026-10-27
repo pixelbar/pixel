@@ -343,7 +343,7 @@ Switches door control from Pixel back on.
 
 <PxCommand sig="/admin openr status" tier="admin" reply="private">
 
-Whether Pixel is logged in to OpenR, when its session ends, and the doors it can open.
+Whether Pixel is logged in to OpenR, when its session ends, and each door's live status: online or offline, and any errors OpenR reports.
 
 </PxCommand>
 

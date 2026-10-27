@@ -346,7 +346,8 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 
 | I want to… | Do this |
 | --- | --- |
-| See whether Pixel can open doors | `/admin openr status` (or `/admin status`): logged in, when the session ends, whether refreshing is failing, the doors and the gate |
+| See whether Pixel can open doors | `/admin openr status`: logged in, when the session ends, whether refreshing is failing, and each door's and the gate's live status from OpenR (online or offline, and its errors). `/admin status` shows the session only |
+| Keep the session going | Nothing day to day: Pixel refreshes it every ~15 minutes. But OpenR ends it about **6 months after the login** whatever Pixel does; `/admin openr status` warns two weeks before. Log in again then |
 | Log Pixel in again | `/admin openr login`, then `/admin openr code code:` with the emailed code. A new login replaces the old session only once the code is accepted |
 | Stop every door and the gate now | `/admin doors off`. It also stops Home Assistant's doors. `/admin doors on` to undo |
 | Stop Pixel opening anything through OpenR at all | `/admin openr logout`: Pixel forgets the session and tells OpenR. Nothing opens until someone logs in again |
@@ -354,6 +355,7 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 | Add, rename or remove a door | Change `openr_doors` (or `OPENR_DOORS`) and apply, then restart. No re-registering: doors are autocompleted |
 
 - **When the session ends:** OpenR can end it (a refused refresh, a password change, an expiry). Pixel then can't open anything until an admin logs in again: Sentry gets an `openr` error saying so, the logs say `openr.session_ended`, and `/admin status` shows it. `/park` still books spots and says to open the gate the usual way.
+- **A door shows offline or errors** on `/admin openr status`: that's OpenR's own view of the door (its reader or controller), not Pixel's. Check it in the OpenR dashboard. `openr.status_failed` in the logs means the status couldn't be read at all.
 - **If OpenR is down:** opening fails at once (`openr.open_failed` with the HTTP status or `timeout`). Pixel keeps the session and keeps refreshing; `openr.refresh_failed` repeats in the logs and Sentry gets the first one. Nothing is retried or opened late.
 - **If OpenR starts refusing everything** after working before, OpenR may have changed its dashboard. Pixel copies the dashboard's version header (`APP_VERSION` in `src/adapters/openr/client.ts`); compare it with the version the dashboard sends (browser dev tools, any request's `yy-app-version`) and update it.
 - **Logs:** `openr.door_opened` / `openr.door_failed` / `openr.door_denied` (who, which door, why), `parking.gate_opened` / `parking.gate_failed`, and `openr.login_started`, `openr.login_completed`, `openr.logged_out` with the admin. Never the email, password, code or cookies.

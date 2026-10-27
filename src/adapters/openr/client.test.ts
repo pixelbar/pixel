@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	ACCESS_COOKIE,
 	APP_VERSION,
+	cleanText,
 	cookieHeader,
 	OpenrClient,
 	OpenrError,
 	type OpenrSession,
 	REFRESH_COOKIE,
-	sessionCookies,
+	setCookies as readSetCookies,
 } from "./client.ts";
 
 // Obviously fake values. Never put anything that looks like a real credential here.
@@ -59,7 +60,7 @@ function fakeFetch() {
 
 function client(
 	fetch: typeof globalThis.fetch,
-	extras: { timeoutMs?: number; maxResponseBytes?: number } = {},
+	extras: { timeoutMs?: number; maxResponseBytes?: number; now?: () => Date } = {},
 ) {
 	return new OpenrClient({ baseUrl: `${BASE}/`, fetch, ...extras });
 }
@@ -188,9 +189,33 @@ describe("OpenrClient.completeLogin", () => {
 		);
 	});
 
-	it("needs the expiry times", async () => {
-		const http = fakeFetch().json({ data: { access_exp: ACCESS_EXP } }, { headers: COOKIES });
-		await expect(client(http.fn).completeLogin("p", "1")).rejects.toThrow(/no session/);
+	it("takes the expiry times from the cookies when the body doesn't give them", async () => {
+		const now = new Date("2030-01-01T10:00:00.000Z");
+		const http = fakeFetch().raw(null, {
+			headers: setCookies(
+				`${ACCESS_COOKIE}=a; Max-Age=900; Expires=Wed, 01 Jan 2031 00:00:00 GMT`,
+				`${REFRESH_COOKIE}=r; Expires=Sat, 01 Jun 2030 10:00:00 GMT`,
+			),
+		});
+		const fresh = await client(http.fn, { now: () => now }).completeLogin("p", "1");
+		expect(fresh.accessUntil).toEqual(new Date("2030-01-01T10:15:00.000Z"));
+		expect(fresh.refreshUntil).toEqual(new Date("2030-06-01T10:00:00.000Z"));
+	});
+
+	it("counts the access as expired when nothing says how long it lasts, so a refresh follows", async () => {
+		const now = new Date("2030-01-01T10:00:00.000Z");
+		const http = fakeFetch().json({ data: { access_exp: null } }, { headers: COOKIES });
+		const fresh = await client(http.fn, { now: () => now }).completeLogin("p", "1");
+		expect(fresh.accessUntil).toEqual(now);
+		expect(fresh.refreshUntil).toEqual(new Date("2030-01-02T10:00:00.000Z"));
+	});
+
+	it("reads a body that isn't an object as no times at all", async () => {
+		const now = new Date("2030-01-01T10:00:00.000Z");
+		const http = fakeFetch().json([1, 2], { headers: COOKIES });
+		expect((await client(http.fn, { now: () => now }).completeLogin("p", "1")).accessUntil).toEqual(
+			now,
+		);
 	});
 
 	it("refuses a wrong code as refused", async () => {
@@ -200,15 +225,14 @@ describe("OpenrClient.completeLogin", () => {
 });
 
 describe("OpenrClient.refresh", () => {
-	it("sends both cookies and keeps what OpenR doesn't replace", async () => {
+	it("sends only the refresh cookie and no body, and keeps what OpenR doesn't replace", async () => {
 		const http = fakeFetch().json(sessionAnswer(), {
 			headers: setCookies(`${ACCESS_COOKIE}=access-two; Path=/`),
 		});
 		const fresh = await client(http.fn).refresh(session());
 		expect(http.calls[0]?.url).toBe(`${BASE}/me/current_session/refresh`);
-		expect(headersOf(http.calls[0]).cookie).toBe(
-			`${ACCESS_COOKIE}=access-one; ${REFRESH_COOKIE}=refresh-one`,
-		);
+		expect(headersOf(http.calls[0]).cookie).toBe(`${REFRESH_COOKIE}=refresh-one`);
+		expect(http.calls[0]?.init.body).toBeUndefined();
 		expect(headersOf(http.calls[0]).authorization).toBeUndefined();
 		expect(fresh.cookies).toEqual({
 			[ACCESS_COOKIE]: "access-two",
@@ -222,6 +246,26 @@ describe("OpenrClient.refresh", () => {
 		const fresh = await client(http.fn).refresh(old);
 		expect(headersOf(http.calls[0]).authorization).toBe("Bearer r-old");
 		expect(fresh).toMatchObject({ accessToken: "a-old", refreshToken: "r-old" });
+	});
+
+	it("replaces both cookies and takes the new times from the reply", async () => {
+		const http = fakeFetch().json(
+			{ data: { access_exp: ACCESS_EXP + 900, refresh_exp: REFRESH_EXP + 900 } },
+			{ headers: setCookies(`${ACCESS_COOKIE}=access-two`, `${REFRESH_COOKIE}=refresh-two`) },
+		);
+		expect(await client(http.fn).refresh(session())).toEqual(
+			session({
+				cookies: { [ACCESS_COOKIE]: "access-two", [REFRESH_COOKIE]: "refresh-two" },
+				accessUntil: new Date((ACCESS_EXP + 900) * 1000),
+				refreshUntil: new Date((REFRESH_EXP + 900) * 1000),
+			}),
+		);
+	});
+
+	it("keeps the old refresh expiry when a reply doesn't say", async () => {
+		const http = fakeFetch().raw("", { headers: setCookies(`${ACCESS_COOKIE}=access-two`) });
+		const fresh = await client(http.fn).refresh(session());
+		expect(fresh.refreshUntil).toEqual(new Date(REFRESH_EXP * 1000));
 	});
 
 	it("says a 401 means the session is over", async () => {
@@ -306,9 +350,14 @@ describe("reading answers", () => {
 		await expect(client(http.fn).login(EMAIL, PASSWORD)).rejects.toThrow(/wasn't JSON/);
 	});
 
-	it("refuses an empty answer", async () => {
+	it("takes an empty login answer as no session", async () => {
 		const http = fakeFetch().raw(null, { status: 200 });
-		await expect(client(http.fn).login(EMAIL, PASSWORD)).rejects.toThrow(/wasn't JSON/);
+		await expect(client(http.fn).login(EMAIL, PASSWORD)).rejects.toThrow(/no access cookie/);
+	});
+
+	it("refuses an empty answer where a list was expected", async () => {
+		const http = fakeFetch().raw(null, { status: 200 });
+		await expect(client(http.fn).myDoors(session())).rejects.toThrow(/wasn't JSON/);
 	});
 
 	it("refuses an answer that says it's too large, without reading it", async () => {
@@ -346,26 +395,94 @@ describe("reading answers", () => {
 	});
 });
 
-describe("sessionCookies", () => {
-	it("keeps only OpenR's cookies, without their attributes, and skips ones being deleted", () => {
+describe("setCookies", () => {
+	const now = new Date("2030-01-01T10:00:00.000Z");
+
+	it("keeps only OpenR's cookies with when they expire, and skips ones being deleted", () => {
 		const headers = setCookies(
-			`${ACCESS_COOKIE}=a=b; Path=/; Secure`,
+			`${ACCESS_COOKIE}=a=b; Path=/; Secure; Max-Age=900`,
+			`${REFRESH_COOKIE}=r; expires=Sat, 01 Jun 2030 10:00:00 GMT; HttpOnly`,
+			"_openr_plain=p",
+			"_openr_bad=x; Expires=not a date; Max-Age=soon",
 			"other=x; Path=/",
-			`${REFRESH_COOKIE}=; Path=/`,
+			"_openr_empty=; Path=/",
 			"_openr_old=gone; Max-Age=0",
 			"_openr_older=gone; max-age=-1",
+			"_openr_past=gone; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
 			"=nameless",
 			"broken",
 		);
-		expect(sessionCookies(headers)).toEqual({ [ACCESS_COOKIE]: "a=b" });
+		expect(Object.fromEntries(readSetCookies(headers, now))).toEqual({
+			[ACCESS_COOKIE]: { value: "a=b", expires: new Date("2030-01-01T10:15:00.000Z") },
+			[REFRESH_COOKIE]: { value: "r", expires: new Date("2030-06-01T10:00:00.000Z") },
+			_openr_plain: { value: "p", expires: undefined },
+			_openr_bad: { value: "x", expires: undefined },
+		});
 	});
 });
 
 describe("cookieHeader", () => {
-	it("leaves the refresh cookie out unless asked", () => {
-		const cookies = { [ACCESS_COOKIE]: "a", [REFRESH_COOKIE]: "r" };
-		expect(cookieHeader(cookies, false)).toBe(`${ACCESS_COOKIE}=a`);
-		expect(cookieHeader(cookies, true)).toBe(`${ACCESS_COOKIE}=a; ${REFRESH_COOKIE}=r`);
+	it("sends the access cookies normally, and only the refresh cookie to refresh", () => {
+		const cookies = { [ACCESS_COOKIE]: "a", [REFRESH_COOKIE]: "r", _openr_other: "o" };
+		expect(cookieHeader(cookies, "access")).toBe(`${ACCESS_COOKIE}=a; _openr_other=o`);
+		expect(cookieHeader(cookies, "refresh")).toBe(`${REFRESH_COOKIE}=r`);
+	});
+});
+
+describe("OpenrClient.doorStatus", () => {
+	it("reads whether the door is online and its errors, with the access cookie", async () => {
+		const http = fakeFetch().json({
+			data: {
+				status: {
+					online: false,
+					errors: ["Lock\u001b[31m jammed", { message: "Battery low" }, { code: 7 }, "fourth"],
+					error: "ignored past three",
+					serial: "never kept",
+				},
+			},
+		});
+		expect(await client(http.fn).doorStatus(session(), "49", "103")).toEqual({
+			online: false,
+			errors: ["Lock [31m jammed", "Battery low", "an error"],
+		});
+		expect(http.calls[0]?.url).toBe(`${BASE}/buildings/49/doors/103/status`);
+		expect(http.calls[0]?.init.method).toBe("GET");
+		expect(headersOf(http.calls[0]).cookie).toBe(`${ACCESS_COOKIE}=access-one`);
+	});
+
+	it("reads is_online and a single error, and a status that's only text", async () => {
+		const http = fakeFetch()
+			.json({ data: { status: { is_online: true, error: "Offline once" } } })
+			.json({ data: { status: "ok" } })
+			.json({ data: { status: {} } });
+		const api = client(http.fn);
+		expect(await api.doorStatus(session(), "49", "1")).toEqual({
+			online: true,
+			errors: ["Offline once"],
+		});
+		expect(await api.doorStatus(session(), "49", "1")).toEqual({ online: undefined, errors: [] });
+		expect(await api.doorStatus(session(), "49", "1")).toEqual({ online: undefined, errors: [] });
+	});
+
+	it("refuses an answer without a status", async () => {
+		const http = fakeFetch().json({ data: {} });
+		await expect(client(http.fn).doorStatus(session(), "49", "1")).rejects.toThrow(
+			/no door status/,
+		);
+	});
+
+	it("says an expired access is a 401", async () => {
+		const http = fakeFetch().json({ errors: { detail: "Bearer Token Expired" } }, { status: 401 });
+		await expect(client(http.fn).doorStatus(session(), "49", "1")).rejects.toMatchObject({
+			status: 401,
+		});
+	});
+});
+
+describe("cleanText", () => {
+	it("keeps OpenR's text to one clean, short line", () => {
+		expect(cleanText(" a\n\u0007b ")).toBe("a b");
+		expect(cleanText("x".repeat(120))).toBe(`${"x".repeat(99)}…`);
 	});
 });
 

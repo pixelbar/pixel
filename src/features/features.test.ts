@@ -110,6 +110,7 @@ describe("buildFeatures with OpenR", () => {
 			completeLogin: vi.fn(),
 			logout: vi.fn(),
 			open: vi.fn(async () => ({ opened: true }) as const),
+			doorStatus: vi.fn(async () => ({ kind: "failed" }) as const),
 		};
 		const { gate: _, ...rest } = deps();
 		const parking = inMemoryParking();

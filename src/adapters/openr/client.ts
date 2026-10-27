@@ -12,11 +12,16 @@ import { z } from "zod";
  *     `protosession_token`, and OpenR emails a code to the account.
  *  2. `POST /me/current_session/mfa` with that token and the code starts the session. In
  *     cookie-only mode (what the dashboard uses) the session is two cookies,
- *     `_openr_access_sig` and `_openr_refresh_sig`, and the body says when each expires
- *     (`access_exp`, `refresh_exp`, in Unix seconds).
- *  3. `POST /me/current_session/refresh` with the refresh cookie gives fresh ones. A 401
- *     there means the session is over.
- * A door opens with `POST /buildings/<building>/doors/<door>/open`. For setting Pixel up,
+ *     `_openr_access_sig` (about 15 minutes) and `_openr_refresh_sig` (about 6 months).
+ *  3. `POST /me/current_session/refresh`, with an empty body and **only** the refresh
+ *     cookie, sets both cookies again (`Set-Cookie`) and says when each expires
+ *     (`access_exp`, `refresh_exp`, in Unix seconds). A 401 there means the session is over.
+ * When a reply doesn't give the times, the cookies' own `Max-Age` or `Expires` do; failing
+ * both, the access cookie counts as expired, so the next check refreshes and learns them.
+ *
+ * A door opens with `POST /buildings/<building>/doors/<door>/open` (empty body, the access
+ * cookie), and `GET /buildings/<building>/doors/<door>/status` says whether it's online
+ * and any errors. An expired access cookie gets a 401 ("Bearer Token Expired"). For setting Pixel up,
  * `GET /buildings`, `GET /buildings/<building>/doors` and `GET /me/doors` list what the
  * account can see (`just openr-doors`); Pixel itself never uses them.
  *
@@ -98,7 +103,19 @@ export type OpenrApi = {
 		signal?: AbortSignal,
 	): Promise<void>;
 	logout(session: OpenrSession): Promise<void>;
+	doorStatus(
+		session: OpenrSession,
+		buildingId: string,
+		doorId: string,
+		signal?: AbortSignal,
+	): Promise<OpenrDoorStatus>;
 };
+
+/**
+ * What a door's status says, as far as Pixel reads it: whether it's online, when that's
+ * there, and its error messages (cleaned, at most three). Everything else is dropped.
+ */
+export type OpenrDoorStatus = { online: boolean | undefined; errors: string[] };
 
 /** A building, as listed: only its ID and name are kept. */
 export type OpenrBuilding = { id: string; name: string };
@@ -112,14 +129,38 @@ export type OpenrClientOptions = {
 	fetch?: typeof globalThis.fetch;
 	timeoutMs?: number;
 	maxResponseBytes?: number;
+	/** Only for cookies that say how long they last in seconds (`Max-Age`). */
+	now?: () => Date;
 };
 
-const sessionBody = z.object({
+/** Every field optional: a reply may carry the session in its cookies alone. */
+const sessionBody = z
+	.object({
+		data: z
+			.object({
+				access: z.string().min(1).nullish(),
+				refresh: z.string().min(1).nullish(),
+				access_exp: z.number().int().positive().nullish(),
+				refresh_exp: z.number().int().positive().nullish(),
+			})
+			.nullish(),
+	})
+	.catch({ data: undefined });
+
+/** Until a reply says how long the refresh cookie lasts, assume a day; the next refresh corrects it. */
+const UNKNOWN_REFRESH_MS = 24 * 60 * 60_000;
+
+const doorStatusBody = z.object({
 	data: z.object({
-		access: z.string().min(1).nullish(),
-		refresh: z.string().min(1).nullish(),
-		access_exp: z.number().int().positive(),
-		refresh_exp: z.number().int().positive(),
+		status: z.union([
+			z.string(),
+			z.looseObject({
+				online: z.boolean().nullish(),
+				is_online: z.boolean().nullish(),
+				errors: z.array(z.unknown()).nullish(),
+				error: z.string().nullish(),
+			}),
+		]),
 	}),
 });
 
@@ -151,8 +192,10 @@ export class OpenrClient implements OpenrApi {
 	readonly #fetch: typeof globalThis.fetch;
 	readonly #timeoutMs: number;
 	readonly #maxResponseBytes: number;
+	readonly #now: () => Date;
 
 	constructor(options: OpenrClientOptions) {
+		this.#now = options.now ?? (() => new Date());
 		this.#baseUrl = options.baseUrl.replace(/\/$/, "");
 		this.#origin = new URL(this.#baseUrl).origin;
 		this.#fetch = options.fetch ?? globalThis.fetch;
@@ -169,7 +212,7 @@ export class OpenrClient implements OpenrApi {
 				token_signature_transport: "cookie_only",
 			},
 		});
-		const body = await this.#json(response);
+		const body = await this.#json(response, this.#maxResponseBytes, true);
 		const code = loginBody.safeParse(body);
 		if (code.success) return { kind: "code", token: code.data.data.protosession_token };
 		// An account without a second step gets its session at once.
@@ -180,16 +223,53 @@ export class OpenrClient implements OpenrApi {
 		const response = await this.#send("POST", "/me/current_session/mfa", {
 			body: { token, mfa_code: code },
 		});
-		return this.#session(response, await this.#json(response), undefined);
+		const body = await this.#json(response, this.#maxResponseBytes, true);
+		return this.#session(response, body, undefined);
 	}
 
+	/** Empty body, and only the refresh cookie: the access cookie isn't sent. */
 	async refresh(session: OpenrSession): Promise<OpenrSession> {
 		const response = await this.#send("POST", "/me/current_session/refresh", {
 			session,
 			bearer: session.refreshToken,
-			withRefreshCookie: true,
+			cookies: "refresh",
 		});
-		return this.#session(response, await this.#json(response), session);
+		const body = await this.#json(response, this.#maxResponseBytes, true);
+		return this.#session(response, body, session);
+	}
+
+	/** Whether a door is online, and its errors. Read-only. */
+	async doorStatus(
+		session: OpenrSession,
+		buildingId: string,
+		doorId: string,
+		signal?: AbortSignal,
+	): Promise<OpenrDoorStatus> {
+		const path = `/buildings/${encodeURIComponent(buildingId)}/doors/${encodeURIComponent(doorId)}/status`;
+		const response = await this.#send("GET", path, {
+			session,
+			bearer: session.accessToken,
+			signal,
+		});
+		const parsed = doorStatusBody.safeParse(await this.#json(response));
+		if (!parsed.success)
+			throw new OpenrError("response", "OpenR's answer had no door status in it");
+		const { status } = parsed.data.data;
+		if (typeof status === "string") return { online: undefined, errors: [] };
+		const messages = [
+			...(status.errors ?? []).map((e) =>
+				typeof e === "string"
+					? e
+					: typeof e === "object" && e !== null && "message" in e && typeof e.message === "string"
+						? e.message
+						: "an error",
+			),
+			...(status.error ? [status.error] : []),
+		];
+		return {
+			online: status.online ?? status.is_online ?? undefined,
+			errors: messages.slice(0, 3).map(cleanText),
+		};
 	}
 
 	async openDoor(
@@ -260,7 +340,8 @@ export class OpenrClient implements OpenrApi {
 			body?: Record<string, unknown>;
 			session?: OpenrSession;
 			bearer?: string | undefined;
-			withRefreshCookie?: boolean;
+			/** Which session cookies to send: the access one (default) or only the refresh one. */
+			cookies?: "access" | "refresh";
 			signal?: AbortSignal | undefined;
 		},
 	): Promise<Response> {
@@ -272,7 +353,7 @@ export class OpenrClient implements OpenrApi {
 			"yy-app-version": APP_VERSION,
 		};
 		if (options.session) {
-			const cookie = cookieHeader(options.session.cookies, options.withRefreshCookie ?? false);
+			const cookie = cookieHeader(options.session.cookies, options.cookies ?? "access");
 			if (cookie) headers.cookie = cookie;
 		}
 		if (options.bearer) headers.authorization = `Bearer ${options.bearer}`;
@@ -302,9 +383,14 @@ export class OpenrClient implements OpenrApi {
 		return response;
 	}
 
-	async #json(response: Response, maxBytes = this.#maxResponseBytes): Promise<unknown> {
+	async #json(
+		response: Response,
+		maxBytes = this.#maxResponseBytes,
+		allowEmpty = false,
+	): Promise<unknown> {
 		const text = await readText(response, maxBytes);
 		if (text === undefined) throw new OpenrError("response", "OpenR's answer was too large");
+		if (allowEmpty && text.trim() === "") return {};
 		try {
 			return JSON.parse(text);
 		} catch {
@@ -314,10 +400,13 @@ export class OpenrClient implements OpenrApi {
 
 	/** The session a login or refresh answered with, on top of `previous` for a refresh. */
 	#session(response: Response, body: unknown, previous: OpenrSession | undefined): OpenrSession {
-		const parsed = sessionBody.safeParse(body);
-		if (!parsed.success) throw new OpenrError("response", "OpenR's answer had no session in it");
-		const { data } = parsed.data;
-		const cookies = { ...previous?.cookies, ...sessionCookies(response.headers) };
+		const data = sessionBody.parse(body).data ?? {};
+		const now = this.#now();
+		const set = setCookies(response.headers, now);
+		const cookies = {
+			...previous?.cookies,
+			...Object.fromEntries([...set].map(([name, cookie]) => [name, cookie.value])),
+		};
 		const accessToken = data.access ?? previous?.accessToken;
 		const refreshToken = data.refresh ?? previous?.refreshToken;
 		if (cookies[ACCESS_COOKIE] === undefined && accessToken === undefined) {
@@ -326,22 +415,32 @@ export class OpenrClient implements OpenrApi {
 		if (cookies[REFRESH_COOKIE] === undefined && refreshToken === undefined) {
 			throw new OpenrError("response", "OpenR's answer had no refresh cookie");
 		}
+		// The reply's Unix times first, then the cookies' own expiry. An access cookie with
+		// neither counts as expired (so the next check refreshes and learns the real time).
+		const seconds = (exp: number | null | undefined) =>
+			exp === null || exp === undefined ? undefined : new Date(exp * 1000);
 		return {
 			cookies,
 			accessToken,
 			refreshToken,
-			accessUntil: new Date(data.access_exp * 1000),
-			refreshUntil: new Date(data.refresh_exp * 1000),
+			accessUntil: seconds(data.access_exp) ?? set.get(ACCESS_COOKIE)?.expires ?? now,
+			refreshUntil:
+				seconds(data.refresh_exp) ??
+				set.get(REFRESH_COOKIE)?.expires ??
+				previous?.refreshUntil ??
+				new Date(now.getTime() + UNKNOWN_REFRESH_MS),
 		};
 	}
 }
 
+export type SetCookie = { value: string; expires: Date | undefined };
+
 /**
- * The `name=value` of each OpenR cookie a response sets, without its attributes. A
- * cookie set to expire (a logout, say) is left out.
+ * Each OpenR cookie a response sets: its value, and when it expires if it says (`Max-Age`
+ * wins over `Expires`, as in browsers). A cookie being deleted (a logout, say) is left out.
  */
-export function sessionCookies(headers: Headers): Record<string, string> {
-	const cookies: Record<string, string> = {};
+export function setCookies(headers: Headers, now: Date): Map<string, SetCookie> {
+	const cookies = new Map<string, SetCookie>();
 	for (const line of headers.getSetCookie()) {
 		const [pair = "", ...attributes] = line.split(";");
 		const at = pair.indexOf("=");
@@ -349,22 +448,45 @@ export function sessionCookies(headers: Headers): Record<string, string> {
 		const name = pair.slice(0, at).trim();
 		const value = pair.slice(at + 1).trim();
 		if (!name.startsWith("_openr_") || value === "") continue;
-		const expired = attributes.some((a) => /^\s*max-age\s*=\s*(0|-\d+)\s*$/i.test(a));
-		if (expired) continue;
-		cookies[name] = value;
+		let maxAge: number | undefined;
+		let expires: Date | undefined;
+		for (const attribute of attributes) {
+			const [key = "", ...rest] = attribute.split("=");
+			const raw = rest.join("=").trim();
+			if (/^\s*max-age\s*$/i.test(key) && /^-?\d+$/.test(raw)) maxAge = Number(raw);
+			if (/^\s*expires\s*$/i.test(key)) {
+				const date = new Date(raw);
+				if (!Number.isNaN(date.getTime())) expires = date;
+			}
+		}
+		const until = maxAge === undefined ? expires : new Date(now.getTime() + maxAge * 1000);
+		if (until !== undefined && until.getTime() <= now.getTime()) continue;
+		cookies.set(name, { value, expires: until });
 	}
 	return cookies;
 }
 
-/** The cookie header for a request. The refresh cookie only goes to the refresh call. */
+/**
+ * The cookie header for a request: the session's cookies but the refresh one, or for a
+ * refresh only the refresh one.
+ */
 export function cookieHeader(
 	cookies: Readonly<Record<string, string>>,
-	withRefresh: boolean,
+	which: "access" | "refresh",
 ): string {
 	return Object.entries(cookies)
-		.filter(([name]) => withRefresh || name !== REFRESH_COOKIE)
+		.filter(([name]) => (which === "refresh" ? name === REFRESH_COOKIE : name !== REFRESH_COOKIE))
 		.map(([name, value]) => `${name}=${value}`)
 		.join("; ");
+}
+
+/** Text from OpenR, safe to show: no control characters, one line, at most 100 characters. */
+export function cleanText(text: string): string {
+	const plain = text
+		.replace(/\p{Cc}/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return plain.length > 100 ? `${plain.slice(0, 99)}…` : plain;
 }
 
 /** The body as text, or undefined when it's larger than `maxBytes`. */
