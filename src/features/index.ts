@@ -27,7 +27,6 @@ import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
-import { createSpaceStateFeature } from "./spacestate/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 
@@ -85,7 +84,8 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			logger: deps.logger,
 			onSpaceClosed: closingTime.onSpaceClosed,
 		}),
-		createSpaceStateFeature({ api: deps.spaceState, reporter: deps.reporter }),
+		// Temporarily disabled: /spacestate isn't working. Re-enable once the API is fixed.
+		// createSpaceStateFeature({ api: deps.spaceState, reporter: deps.reporter }),
 		closingTime,
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),
