@@ -7,6 +7,7 @@ import { Calendar } from "./core/calendar.ts";
 import {
 	type CapabilityDefinition,
 	CapabilityRegistry,
+	grantedLists,
 	reportUnknownCapabilities,
 } from "./core/capabilities.ts";
 import { CapabilityNotifier } from "./core/capability-notify.ts";
@@ -101,7 +102,7 @@ export function buildCore(
 	for (const warning of access.view.warnings) {
 		logger.warn({ event: "access_config.warning" }, warning);
 	}
-	reportUnknownCapabilities(access.view.records.values(), capabilities, { logger, reporter });
+	reportUnknownCapabilities(grantedLists(access.view), capabilities, { logger, reporter });
 
 	const roles = new RoleMirror({ logger, reporter });
 	const home = new Home({ logger, reporter });

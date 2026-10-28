@@ -26,6 +26,17 @@ export type MemberRecord = {
 	capabilities: readonly string[];
 };
 
+/** A membership level that can be given capabilities as a whole. */
+export type GrantTier = Exclude<MemberTier, "guest">;
+
+/**
+ * Capabilities given to everyone at a membership level, in the members file's
+ * `tiers:` section. A grant reaches its level and every level above it (a
+ * friend grant reaches members too). It follows the members entry's level, so
+ * being an admin adds nothing, and a guest gets none.
+ */
+export type TierGrants = Readonly<Record<GrantTier, readonly string[]>>;
+
 /** Everything the rest of Pixel reads. Replaced as a whole after every change. */
 export type AccessView = {
 	/** Discord user ID → tier. Only non-guest tiers appear; guest entries are left out. */
@@ -35,6 +46,8 @@ export type AccessView = {
 	 * A person with several IDs appears under each (the same record).
 	 */
 	readonly records: ReadonlyMap<string, MemberRecord>;
+	/** Capabilities given to whole membership levels. */
+	readonly tierCapabilities: TierGrants;
 	readonly counts: { readonly admins: number; readonly members: number; readonly friends: number };
 	/** Non-fatal issues, safe to log (no IDs). */
 	readonly warnings: readonly string[];
@@ -54,6 +67,18 @@ export type AccessChangeResult = {
 	after: MemberRecord;
 };
 
+/** Replaces the capabilities given to a whole membership level. */
+export type TierCapabilityChange = {
+	tier: GrantTier;
+	capabilities: readonly string[];
+	reason?: string;
+};
+
+export type TierCapabilityResult = {
+	before: readonly string[];
+	after: readonly string[];
+};
+
 export type ReloadResult = { before: AccessView["counts"]; after: AccessView["counts"] };
 
 export type AccessStore = {
@@ -64,6 +89,14 @@ export type AccessStore = {
 	 * the stored data and `view` untouched, and throws a message safe to show.
 	 */
 	apply(change: AccessChange, by: PlatformActor): Promise<AccessChangeResult>;
+	/**
+	 * Like `apply`, for a whole membership level: the same checks, atomic write
+	 * and audit record. Nobody is DMed, since it can reach everyone at once.
+	 */
+	setTierCapabilities(
+		change: TierCapabilityChange,
+		by: PlatformActor,
+	): Promise<TierCapabilityResult>;
 	/** Re-reads everything from storage, for edits made by hand. Keeps the old view if it's invalid. */
 	reload(by: PlatformActor): Promise<ReloadResult>;
 };

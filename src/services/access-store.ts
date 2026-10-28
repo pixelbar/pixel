@@ -23,6 +23,8 @@ import type {
 	AccessView,
 	MemberRecord,
 	ReloadResult,
+	TierCapabilityChange,
+	TierCapabilityResult,
 } from "../core/ports/access-store.ts";
 import { MAX_REASON_LENGTH } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
@@ -33,13 +35,15 @@ import {
 	DISCORD_ID,
 	loadAccessFiles,
 	MAX_CAPABILITIES,
+	type MembersFile,
 	parseMembers,
 	readFile,
 	toRecord,
 } from "./access-config.ts";
 
 /**
- * The bot-managed members file. Every change goes through `apply`, which:
+ * The bot-managed members file. Every change goes through `apply` (one person)
+ * or `setTierCapabilities` (a whole level), which:
  *
  *  1. re-reads the file (so hand edits aren't lost) and checks it is valid, together
  *     with the admins (the same checks as at startup),
@@ -161,6 +165,13 @@ export class FileAccessStore implements AccessStore {
 		return result;
 	}
 
+	async setTierCapabilities(
+		change: TierCapabilityChange,
+		by: PlatformActor,
+	): Promise<TierCapabilityResult> {
+		return this.#setTierCapabilities(change, by);
+	}
+
 	async reload(by: PlatformActor): Promise<ReloadResult> {
 		let loaded: ReturnType<typeof loadAccessFiles>;
 		try {
@@ -206,7 +217,7 @@ export class FileAccessStore implements AccessStore {
 
 		const raw = this.#read(file);
 		const doc = parseDocument(raw);
-		const current = this.#parseCurrent(raw, file);
+		const current = this.#parseCurrent(raw, file).members;
 		const index = current.findIndex((entry) => entry.ids.includes(ref));
 		const before = index >= 0 ? toRecord(current[index] as (typeof current)[number]) : null;
 
@@ -230,21 +241,50 @@ export class FileAccessStore implements AccessStore {
 		}
 
 		edit(doc, change, index);
+		const nextFile = this.#save(doc, raw);
+		const updated = nextFile.members.find((entry) => entry.ids.includes(ref));
+		const after = toRecord(updated as NonNullable<typeof updated>);
+		this.#audit(change, by, before, after);
+		return { before, after };
+	}
+
+	// Synchronous on purpose: see the class comment.
+	#setTierCapabilities(change: TierCapabilityChange, by: PlatformActor): TierCapabilityResult {
+		const file = this.#paths.membersFile;
+		if (change.tier !== "member" && change.tier !== "friend") {
+			throw new AccessStoreError("Only the member and friend levels can be given capabilities.");
+		}
+		validateReason(change.reason);
+		validateCapabilities(change.capabilities);
+
+		const raw = this.#read(file);
+		const doc = parseDocument(raw);
+		const before = this.#parseCurrent(raw, file).tiers[change.tier];
+		if (sameCapabilities(before, change.capabilities)) return { before, after: before };
+
+		editTier(doc, change);
+		const after = this.#save(doc, raw).tiers[change.tier];
+		this.#auditTier(change, by, before, after);
+		return { before, after };
+	}
+
+	/**
+	 * Checks the edited document, writes it and swaps the view. Throws before
+	 * anything is written if the result is invalid.
+	 */
+	#save(doc: ReturnType<typeof parseDocument>, raw: string): MembersFile {
+		const file = this.#paths.membersFile;
 		// No padding inside [ ], so `ids: ["discord:123"]` round-trips exactly as written.
 		const next = doc.toString({ flowCollectionPadding: false });
 		// Our own edit must produce a valid file. If it doesn't, that is a bug, not user error.
-		const nextEntries = parseMembers(next, file);
+		const nextFile = parseMembers(next, file);
 		// Build the new view before writing, so a failing cross-file check can't leave the file
 		// changed while the view and the audit record are not.
-		const nextView = buildAccessConfig(this.#admins, nextEntries, this.#paths);
+		const nextView = buildAccessConfig(this.#admins, nextFile, this.#paths);
 
 		this.#writeFile(file, raw, next);
-
-		const updated = nextEntries.find((entry) => entry.ids.includes(ref));
-		const after = toRecord(updated as NonNullable<typeof updated>);
 		this.#view = nextView;
-		this.#audit(change, by, before, after);
-		return { before, after };
+		return nextFile;
 	}
 
 	/** Whether this Discord user, or any other id of the same person, is an admin. */
@@ -264,12 +304,12 @@ export class FileAccessStore implements AccessStore {
 		}
 	}
 
-	#parseCurrent(raw: string, file: string) {
+	#parseCurrent(raw: string, file: string): MembersFile {
 		try {
-			const entries = parseMembers(raw, file);
+			const parsed = parseMembers(raw, file);
 			// The same cross-file checks as startup: an id in two entries, an admin with no entry.
-			buildAccessConfig(this.#admins, entries, this.#paths);
-			return entries;
+			buildAccessConfig(this.#admins, parsed, this.#paths);
+			return parsed;
 		} catch (error) {
 			if (!(error instanceof AccessConfigError)) throw error;
 			this.#logger.warn({ event: "access.file_invalid" }, error.message);
@@ -334,6 +374,33 @@ export class FileAccessStore implements AccessStore {
 			capabilities: after.capabilities.join(","),
 		});
 	}
+
+	/** The audit record for a whole level: who, which level, before and after. */
+	#auditTier(
+		change: TierCapabilityChange,
+		by: PlatformActor,
+		before: readonly string[],
+		after: readonly string[],
+	): void {
+		const target = `tier:${change.tier}`;
+		this.#logger.info(
+			{
+				event: "access.changed",
+				...actorLogFields(by),
+				kind: "set-tier-capabilities",
+				target,
+				before: { capabilities: before },
+				after: { capabilities: after },
+				...(change.reason ? { reason: change.reason } : {}),
+			},
+			"access changed",
+		);
+		this.#reporter.breadcrumb("access", "set-tier-capabilities", {
+			actor: actorRef(by),
+			target,
+			capabilities: after.join(","),
+		});
+	}
 }
 
 /** Tier and capabilities only. Notes are free text about a person and stay out of logs. */
@@ -347,18 +414,37 @@ function sameCapabilities(left: readonly string[], right: readonly string[]): bo
 
 function validateChange(change: AccessChange): void {
 	if (!DISCORD_ID.test(change.id)) throw new AccessStoreError("That isn't a valid user ID.");
-	if (change.reason !== undefined && [...change.reason].length > MAX_REASON_LENGTH) {
+	validateReason(change.reason);
+	if (change.kind === "set-capabilities") validateCapabilities(change.capabilities);
+}
+
+function validateReason(reason: string | undefined): void {
+	if (reason !== undefined && [...reason].length > MAX_REASON_LENGTH) {
 		throw new AccessStoreError(`A reason can be at most ${MAX_REASON_LENGTH} characters.`);
 	}
-	if (change.kind === "set-capabilities") {
-		const names = change.capabilities;
-		if (names.length > MAX_CAPABILITIES || new Set(names).size !== names.length) {
-			throw new AccessStoreError("That isn't a valid list of capabilities.");
-		}
-		if (!names.every((name) => CAPABILITY_NAME.test(name))) {
-			throw new AccessStoreError("Capability names are lowercase words joined by '-'.");
-		}
+}
+
+function validateCapabilities(names: readonly string[]): void {
+	if (names.length > MAX_CAPABILITIES || new Set(names).size !== names.length) {
+		throw new AccessStoreError("That isn't a valid list of capabilities.");
 	}
+	if (!names.every((name) => CAPABILITY_NAME.test(name))) {
+		throw new AccessStoreError("Capability names are lowercase words joined by '-'.");
+	}
+}
+
+/** Sets one level's capabilities under `tiers:`, removing whatever is left empty. */
+function editTier(doc: ReturnType<typeof parseDocument>, change: TierCapabilityChange): void {
+	const path = ["tiers", change.tier, "capabilities"];
+	if (change.capabilities.length > 0) {
+		doc.setIn(path, doc.createNode([...change.capabilities]));
+		return;
+	}
+	doc.deleteIn(path);
+	const level = doc.getIn(["tiers", change.tier], true);
+	if (isMap(level) && level.items.length === 0) doc.deleteIn(["tiers", change.tier]);
+	const tiers = doc.get("tiers", true);
+	if (isMap(tiers) && tiers.items.length === 0) doc.delete("tiers");
 }
 
 /** Edits the YAML document in place, keeping comments, order and quoting. */

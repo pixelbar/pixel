@@ -1,5 +1,9 @@
 import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
-import { type CapabilityRegistry, reportUnknownCapabilities } from "../../core/capabilities.ts";
+import {
+	type CapabilityRegistry,
+	grantedLists,
+	reportUnknownCapabilities,
+} from "../../core/capabilities.ts";
 import type { Feature } from "../../core/feature.ts";
 import { formatDuration } from "../../core/format.ts";
 import type { Home } from "../../core/home.ts";
@@ -21,7 +25,7 @@ export type AdminDeps = {
 	/** `cloud` on Azure Container Apps, `local` on a laptop. Shown on `/admin status`. */
 	runtime?: "local" | "cloud";
 	startedAt: Date;
-	access: Pick<AccessStore, "view" | "apply" | "reload">;
+	access: Pick<AccessStore, "view" | "apply" | "setTierCapabilities" | "reload">;
 	capabilities: CapabilityRegistry;
 	roles: Pick<RoleMirror, "apply" | "inspect" | "states" | "check">;
 	home: Pick<Home, "status" | "check" | "getStates">;
@@ -90,7 +94,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 							const { before, after } = await deps.access.reload(principal);
 							const warnings = deps.access.view.warnings.length;
 							const unknown = reportUnknownCapabilities(
-								deps.access.view.records.values(),
+								grantedLists(deps.access.view),
 								deps.capabilities,
 								{ logger, reporter: deps.reporter },
 							);

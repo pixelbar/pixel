@@ -24,9 +24,10 @@ export type Access = {
 	/** Where the command may run. Omitted means everywhere. */
 	contexts?: readonly ChatContext[];
 	/**
-	 * A named permission the person must also hold, on top of `minTier`. Not
-	 * implied by any tier (admin included) or by a Discord role. Guests never
-	 * pass, whatever they hold. See `core/capabilities.ts`.
+	 * A named permission the person must also hold, on top of `minTier`. An
+	 * admin grants it to the person or to their membership level; it never comes
+	 * from being an admin or from a Discord role. Guests never pass, whatever they
+	 * hold. See `core/capabilities.ts`.
 	 */
 	capability?: string;
 };

@@ -12,8 +12,8 @@ import type { HomeKind } from "./home-kinds/kind.ts";
  *   the capability of the device's kind (`ha-lights` for lights and so on), **and**
  *   the action must be one the devices file allows for that device.
  *
- * Nothing implies a capability: not a tier, not being a Pixel admin, not a Discord
- * role. A guest never passes. This builds on `checkAccess`, so the tier and
+ * A capability comes only from a grant, to the person or to their membership level:
+ * never from being a Pixel admin or a Discord role. A guest never passes. This builds on `checkAccess`, so the tier and
  * capability semantics are the same as for any command.
  */
 

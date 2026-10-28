@@ -702,3 +702,121 @@ ${ADMIN_ENTRY}  - ids: ["discord:${IDS.member}", "discord:${SECOND}"]
 		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
 	});
 });
+
+describe("changing a level's capabilities", () => {
+	it("adds a tiers section, leaving the members and their comments alone", async () => {
+		const store = open();
+		const result = await store.setTierCapabilities(
+			{ tier: "member", capabilities: ["ha-lights"] },
+			by,
+		);
+		expect(result).toEqual({ before: [], after: ["ha-lights"] });
+		expect(read()).toContain("tiers:\n  member:\n    capabilities:\n      - ha-lights\n");
+		expect(read()).toContain("note: paid yearly # keep this");
+		expect(store.view.tierCapabilities).toEqual({ friend: [], member: ["ha-lights"] });
+		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
+		expect(existsSync(`${membersFile}.bak`)).toBe(true);
+	});
+
+	it("replaces one level's list and keeps the other's", async () => {
+		writeFileSync(
+			membersFile,
+			`tiers:\n  # everyone\n  friend:\n    capabilities: [workshop]\n  member:\n    capabilities: [ha-lights]\n${MEMBERS}`,
+		);
+		const store = open();
+		await store.setTierCapabilities(
+			{ tier: "member", capabilities: ["ha-lights", "ha-switches"] },
+			by,
+		);
+		expect(store.view.tierCapabilities).toEqual({
+			friend: ["workshop"],
+			member: ["ha-lights", "ha-switches"],
+		});
+		expect(read()).toContain("# everyone");
+	});
+
+	it("removes what is left empty", async () => {
+		writeFileSync(
+			membersFile,
+			`tiers:\n  friend:\n    capabilities: [workshop]\n  member:\n    capabilities: [ha-lights]\n${MEMBERS}`,
+		);
+		const store = open();
+		await store.setTierCapabilities({ tier: "member", capabilities: [] }, by);
+		expect(read()).toBe(`tiers:\n  friend:\n    capabilities: [workshop]\n${MEMBERS}`);
+		await store.setTierCapabilities({ tier: "friend", capabilities: [] }, by);
+		expect(read()).not.toContain("tiers");
+		expect(read()).toContain("# Paying members.");
+		expect(store.view.tierCapabilities).toEqual({ friend: [], member: [] });
+	});
+
+	it("does nothing, and doesn't write, when the list already matches", async () => {
+		const store = open();
+		const before = store.view;
+		const result = await store.setTierCapabilities({ tier: "friend", capabilities: [] }, by);
+		expect(result).toEqual({ before: [], after: [] });
+		expect(read()).toBe(MEMBERS);
+		expect(store.view).toBe(before);
+		expect(entries("access.changed")).toHaveLength(0);
+	});
+
+	it("refuses the guest and admin levels, bad names and a long reason, and changes nothing", async () => {
+		const store = open();
+		for (const change of [
+			{ tier: "guest" as never, capabilities: ["a"] },
+			{ tier: "admin" as never, capabilities: ["a"] },
+			{ tier: "member", capabilities: ["Bad Name"] },
+			{ tier: "member", capabilities: ["a", "a"] },
+			{ tier: "member", capabilities: ["a"], reason: "x".repeat(201) },
+		] as const) {
+			await expect(store.setTierCapabilities(change, by)).rejects.toThrow(AccessStoreError);
+		}
+		expect(read()).toBe(MEMBERS);
+		expect(entries("access.changed")).toHaveLength(0);
+	});
+
+	it("refuses a file that was broken by hand", async () => {
+		const store = open();
+		const broken = `members:\n  - ids: ["discord:${IDS.member}"]\n    tier: nonsense\n`;
+		writeFileSync(membersFile, broken);
+		await expect(
+			store.setTierCapabilities({ tier: "member", capabilities: ["a"] }, by),
+		).rejects.toThrow(/\/admin reload/);
+		expect(read()).toBe(broken);
+	});
+
+	it("audits who changed which level, before and after, and DMs nobody", async () => {
+		const notify = vi.fn();
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: { notify },
+		});
+		await store.setTierCapabilities(
+			{ tier: "friend", capabilities: ["workshop"], reason: "open day" },
+			by,
+		);
+		expect(entries("access.changed")).toEqual([
+			{
+				level: "info",
+				obj: {
+					event: "access.changed",
+					user: `discord:${IDS.admin}`,
+					userName: "Ada Lovelace",
+					userHandle: "ada_l",
+					kind: "set-tier-capabilities",
+					target: "tier:friend",
+					before: { capabilities: [] },
+					after: { capabilities: ["workshop"] },
+					reason: "open day",
+				},
+			},
+		]);
+		expect(reporter.breadcrumb).toHaveBeenCalledWith("access", "set-tier-capabilities", {
+			actor: `discord:${IDS.admin}`,
+			target: "tier:friend",
+			capabilities: "workshop",
+		});
+		expect(notify).not.toHaveBeenCalled();
+	});
+});

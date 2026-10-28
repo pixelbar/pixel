@@ -1,12 +1,13 @@
 import type { Logger } from "./logger.ts";
-import type { MemberRecord } from "./ports/access-store.ts";
+import type { AccessView, MemberRecord, MemberTier, TierGrants } from "./ports/access-store.ts";
 import type { ErrorReporter } from "./ports/error-reporter.ts";
 
 /**
- * Capabilities are named permissions granted to individual people, on top of
- * their tier: not implied by a tier, a Discord role or being an admin. A
- * command that needs one declares `access: { minTier, capability }`, and the
- * dispatcher requires both.
+ * Capabilities are named permissions on top of a tier. An admin grants one to
+ * an individual person, or to a whole membership level (`friend` or `member`)
+ * in the members file's `tiers:` section. Nothing else gives one: not the
+ * effective tier, a Discord role or being an admin. A command that needs one
+ * declares `access: { minTier, capability }`, and the dispatcher requires both.
  *
  * Every capability that exists is declared in code (`features/capabilities.ts`),
  * so admins can only grant real names and a typo can't create a silent grant.
@@ -64,6 +65,27 @@ export class CapabilityRegistry {
 	all(): CapabilityDefinition[] {
 		return [...this.#byName.values()];
 	}
+}
+
+/**
+ * What a membership level gets from tier grants: its own level's and every
+ * lower level's (a friend grant reaches members too). A guest gets none.
+ */
+export function tierGrantsFor(grants: TierGrants, level: MemberTier): string[] {
+	if (level === "guest") return [];
+	const reached = level === "member" ? [...grants.friend, ...grants.member] : grants.friend;
+	return [...new Set(reached)];
+}
+
+/** Every capability list in the members file: each entry's, then each level's. */
+export function grantedLists(
+	view: Pick<AccessView, "records" | "tierCapabilities">,
+): Pick<MemberRecord, "capabilities">[] {
+	return [
+		...view.records.values(),
+		{ capabilities: view.tierCapabilities.friend },
+		{ capabilities: view.tierCapabilities.member },
+	];
 }
 
 /**
