@@ -1,5 +1,6 @@
 /**
- * Shows Pixel's admin-tier commands to the people in config/admins.yaml.
+ * Shows Pixel's admin-tier commands to the env's admins (config/admins.<env>.yaml,
+ * from `just pull <env>`).
  * Usage: just command-access dev|prod   (run `just register` for that env first)
  *
  * Discord only lets a *user* change command permissions, so this walks you
@@ -26,13 +27,15 @@ import { buildCore } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import { silentLogger } from "../src/core/logger.ts";
 import { nullErrorReporter } from "../src/core/ports/error-reporter.ts";
-import { loadTarget } from "./target.ts";
+import { loadTarget, requireConfigFiles } from "./target.ts";
 
 const PORT = 53682;
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 const TIMEOUT_MS = 5 * 60_000;
 
-const { target, vars } = loadTarget(process.argv.slice(2), "just command-access dev|prod");
+const loaded = loadTarget(process.argv.slice(2), "just command-access dev|prod");
+requireConfigFiles(loaded);
+const { target, vars } = loaded;
 const config = loadConfig(vars);
 const { registry, access } = buildCore(config, silentLogger, nullErrorReporter);
 const names = hiddenCommandNames(registry.all().map((c) => c.definition));
