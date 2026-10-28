@@ -3,6 +3,7 @@ import {
 	CapabilityError,
 	CapabilityRegistry,
 	grantedLists,
+	heldCapabilities,
 	MAX_REGISTERED_CAPABILITIES,
 	reportUnknownCapabilities,
 	tierGrantsFor,
@@ -132,9 +133,43 @@ describe("tierGrantsFor", () => {
 	});
 });
 
+describe("heldCapabilities", () => {
+	const grants = { friend: ["workshop"], member: ["ha-lights"] };
+
+	it("is their own grants plus their level's, once each", () => {
+		expect(
+			heldCapabilities(
+				{ tier: "member", capabilities: ["ha-doors", "workshop"], revoked: [] },
+				grants,
+			),
+		).toEqual(["ha-doors", "workshop", "ha-lights"]);
+	});
+
+	it("leaves out what was revoked from them, wherever it came from", () => {
+		expect(
+			heldCapabilities(
+				{ tier: "member", capabilities: ["ha-doors"], revoked: ["ha-lights", "ha-doors"] },
+				grants,
+			),
+		).toEqual(["workshop"]);
+	});
+
+	it("gives a guest no level grants", () => {
+		expect(heldCapabilities({ tier: "guest", capabilities: ["a"], revoked: [] }, grants)).toEqual([
+			"a",
+		]);
+	});
+});
+
 describe("grantedLists", () => {
 	it("lists each person's capabilities, then each level's", () => {
-		const record = { ids: ["discord:1"], tier: "member" as const, capabilities: ["a"] };
+		const record = {
+			ids: ["discord:1"],
+			tier: "member" as const,
+			capabilities: ["a"],
+			revoked: [],
+		};
+
 		expect(
 			grantedLists({
 				records: new Map([["1", record]]),

@@ -24,6 +24,8 @@ function viewOf(entries: Entry[]): AccessView {
 			ids: entry.ids.map((id) => `discord:${id}`),
 			tier: entry.tier,
 			capabilities: [],
+			revoked: [],
+
 			...(entry.note ? { note: entry.note } : {}),
 		};
 		for (const id of entry.ids) {

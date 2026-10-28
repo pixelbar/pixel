@@ -12,7 +12,7 @@ import {
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
 import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
-import { CAPABILITY_NAME } from "../core/capabilities.ts";
+import { CAPABILITY_NAME, heldCapabilities } from "../core/capabilities.ts";
 import type { CapabilityNotifier } from "../core/capability-notify.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
@@ -143,11 +143,14 @@ export class FileAccessStore implements AccessStore {
 	async apply(change: AccessChange, by: PlatformActor): Promise<AccessChangeResult> {
 		const result = this.#apply(change, by);
 		if (change.kind === "set-capabilities" && result.before !== result.after) {
+			// What they actually hold, so a grant their level already gave, or a revocation of
+			// something they never had, sends nothing.
+			const grants = this.#view.tierCapabilities;
 			try {
 				await this.#notify?.notify(
 					change.id,
-					result.before?.capabilities ?? [],
-					result.after.capabilities,
+					result.before ? heldCapabilities(result.before, grants) : [],
+					heldCapabilities(result.after, grants),
 					by,
 				);
 			} catch (error) {
@@ -234,7 +237,8 @@ export class FileAccessStore implements AccessStore {
 		if (
 			before &&
 			change.kind === "set-capabilities" &&
-			sameCapabilities(before.capabilities, change.capabilities)
+			sameCapabilities(before.capabilities, change.capabilities) &&
+			(change.revoked === undefined || sameCapabilities(before.revoked, change.revoked))
 		) {
 			return { before, after: before };
 		}
@@ -371,6 +375,7 @@ export class FileAccessStore implements AccessStore {
 			before: before?.tier ?? "none",
 			after: after.tier,
 			capabilities: after.capabilities.join(","),
+			revoked: after.revoked.join(","),
 		});
 	}
 
@@ -404,7 +409,9 @@ export class FileAccessStore implements AccessStore {
 
 /** Tier and capabilities only. Notes are free text about a person and stay out of logs. */
 function summarise(record: MemberRecord | null) {
-	return record ? { tier: record.tier, capabilities: record.capabilities } : null;
+	return record
+		? { tier: record.tier, capabilities: record.capabilities, revoked: record.revoked }
+		: null;
 }
 
 function sameCapabilities(left: readonly string[], right: readonly string[]): boolean {
@@ -414,7 +421,10 @@ function sameCapabilities(left: readonly string[], right: readonly string[]): bo
 function validateChange(change: AccessChange): void {
 	if (!DISCORD_ID.test(change.id)) throw new AccessStoreError("That isn't a valid user ID.");
 	validateReason(change.reason);
-	if (change.kind === "set-capabilities") validateCapabilities(change.capabilities);
+	if (change.kind === "set-capabilities") {
+		validateCapabilities(change.capabilities);
+		if (change.revoked !== undefined) validateCapabilities(change.revoked);
+	}
 }
 
 function validateReason(reason: string | undefined): void {
@@ -446,6 +456,16 @@ function editTier(doc: ReturnType<typeof parseDocument>, change: TierCapabilityC
 	if (isMap(tiers) && tiers.items.length === 0) doc.delete("tiers");
 }
 
+/** Sets a list in the document, or removes the key when the list is empty. */
+function setList(
+	doc: ReturnType<typeof parseDocument>,
+	path: readonly (string | number)[],
+	names: readonly string[],
+): void {
+	if (names.length === 0) doc.deleteIn(path);
+	else doc.setIn(path, doc.createNode([...names]));
+}
+
 /** Edits the YAML document in place, keeping comments, order and quoting. `note` is new only. */
 function edit(
 	doc: ReturnType<typeof parseDocument>,
@@ -458,9 +478,8 @@ function edit(
 	const seq = members as YAMLSeq;
 
 	if (change.kind === "set-capabilities") {
-		const path = ["members", index, "capabilities"];
-		if (change.capabilities.length === 0) doc.deleteIn(path);
-		else doc.setIn(path, doc.createNode([...change.capabilities]));
+		setList(doc, ["members", index, "capabilities"], change.capabilities);
+		if (change.revoked !== undefined) setList(doc, ["members", index, "revoked"], change.revoked);
 		return;
 	}
 

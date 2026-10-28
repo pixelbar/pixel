@@ -5,7 +5,8 @@ import type { ErrorReporter } from "./ports/error-reporter.ts";
 /**
  * Capabilities are named permissions on top of a tier. An admin grants one to
  * an individual person, or to a whole membership level (`friend` or `member`)
- * in the members file's `tiers:` section. Nothing else gives one: not the
+ * in the members file's `tiers:` section, and can revoke one from a person
+ * even when their level grants it. Nothing else gives one: not the
  * effective tier, a Discord role or being an admin. A command that needs one
  * declares `access: { minTier, capability }`, and the dispatcher requires both.
  *
@@ -75,6 +76,21 @@ export function tierGrantsFor(grants: TierGrants, level: MemberTier): string[] {
 	if (level === "guest") return [];
 	const reached = level === "member" ? [...grants.friend, ...grants.member] : grants.friend;
 	return [...new Set(reached)];
+}
+
+/**
+ * What a person holds: their own grants plus their level's, minus what was
+ * revoked from them. A revocation wins over every grant. Whether a guest's
+ * count is the dispatcher's call (they never do).
+ */
+export function heldCapabilities(
+	record: Pick<MemberRecord, "tier" | "capabilities" | "revoked">,
+	grants: TierGrants,
+): string[] {
+	const revoked = new Set(record.revoked);
+	return [...new Set([...record.capabilities, ...tierGrantsFor(grants, record.tier)])].filter(
+		(name) => !revoked.has(name),
+	);
 }
 
 /** Every capability list in the members file: each entry's, then each level's. */

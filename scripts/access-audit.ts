@@ -8,7 +8,7 @@
  */
 import { parseAdmins, parseMembers } from "../src/services/access-config.ts";
 
-type Summary = { tier: string; capabilities: string[] };
+type Summary = { tier: string; capabilities: string[]; revoked: string[] };
 
 export type AuditEntry = {
 	kind:
@@ -23,9 +23,13 @@ export type AuditEntry = {
 	after: Summary | { capabilities: string[] } | { admin: boolean } | null;
 };
 
-type Person = { ids: string[]; tier: string; capabilities?: string[] };
+type Person = { ids: string[]; tier: string; capabilities?: string[]; revoked?: string[] };
 
-const summarise = (p: Person): Summary => ({ tier: p.tier, capabilities: p.capabilities ?? [] });
+const summarise = (p: Person): Summary => ({
+	tier: p.tier,
+	capabilities: p.capabilities ?? [],
+	revoked: p.revoked ?? [],
+});
 const sameList = (a: readonly string[], b: readonly string[]) =>
 	a.length === b.length && a.every((x, i) => x === b[i]);
 const overlaps = (a: readonly string[], b: readonly string[]) => a.some((id) => b.includes(id));
@@ -48,7 +52,7 @@ export function membersAudit(before: string | undefined, after: string): AuditEn
 		const b = summarise(prior);
 		if (b.tier !== a.tier)
 			out.push({ kind: "set-tier", target: targetOf(person.ids), before: b, after: a });
-		else if (!sameList(b.capabilities, a.capabilities))
+		else if (!sameList(b.capabilities, a.capabilities) || !sameList(b.revoked, a.revoked))
 			out.push({ kind: "set-capabilities", target: targetOf(person.ids), before: b, after: a });
 	}
 	for (const prior of old?.members ?? []) {
@@ -105,7 +109,9 @@ const show = (side: AuditEntry["before"]) => {
 	if (side === null) return "none";
 	if ("admin" in side) return side.admin ? "admin" : "not admin";
 	const caps = side.capabilities.length > 0 ? side.capabilities.join(",") : "no capabilities";
-	return "tier" in side ? `${side.tier} (${caps})` : caps;
+	if (!("tier" in side)) return caps;
+	const revoked = side.revoked.length > 0 ? `; revoked ${side.revoked.join(",")}` : "";
+	return `${side.tier} (${caps}${revoked})`;
 };
 
 /** One line for the push summary. */
