@@ -708,6 +708,66 @@ describe("/schedule edit", () => {
 		});
 	});
 
+	it("edits how long a poll stays open, and shows it in the confirmation and the preview", async () => {
+		const ctx = setup();
+		await ctx.poll({ name: "Vote", duration: "3 days", multiple: true });
+		const id = ctx.store.all()[0]?.id as string;
+		const result = await ctx.run("edit", { schedule: id, duration: "1 week" });
+		expect(ctx.store.get(id)?.post).toEqual({
+			kind: "poll",
+			question: "Who's coming?",
+			answers: ["Yes", "No", "Maybe"],
+			durationHours: 168,
+			multiple: true,
+		});
+		expect(text(result.reply.embeds?.[0])).toContain(
+			"A poll open for 1 week, several answers allowed",
+		);
+		expect(text(result.reply.embeds?.[1])).toContain("Open for: 1 week");
+		const preview = await ctx.run("preview", { schedule: id });
+		expect(text(preview.reply.embeds?.[0])).toContain("Open for: 1 week");
+	});
+
+	it("keeps a poll's duration when it isn't given", async () => {
+		const ctx = setup();
+		await ctx.poll({ name: "Vote", duration: "3 days" });
+		const id = ctx.store.all()[0]?.id as string;
+		const result = await ctx.run("edit", { schedule: id, question: "Who's in?" });
+		expect(ctx.store.get(id)?.post).toMatchObject({ question: "Who's in?", durationHours: 72 });
+		expect(text(result.reply.embeds?.[0])).toContain("A poll open for 3 days");
+	});
+
+	it("refuses a duration on a message before the form opens, and does not save", async () => {
+		const { form, run, store, mine } = await withTwoOwners();
+		const refusal =
+			"`duration` only works on a poll: it's how long people can vote. Leave it out to edit a message.";
+		expect(await form("edit", { schedule: mine.id, duration: "1 day" })).toMatchObject({
+			ready: false,
+			refuse: { reply: { text: refusal } },
+		});
+		const result = await run("edit", { schedule: mine.id, duration: "1 day", text: "New" });
+		expect(result.reply.text).toBe(refusal);
+		expect(store.get(mine.id)?.post).toEqual({
+			kind: "message",
+			text: "Pizza night tonight!",
+			mentions: false,
+		});
+	});
+
+	it("refuses a duration that isn't one of the choices, as create does", async () => {
+		const ctx = setup();
+		await ctx.poll({ name: "Vote" });
+		const id = ctx.store.all()[0]?.id as string;
+		const refusal = 'Invalid value for option "duration".';
+		const bad = await ctx.form("edit", { schedule: id, duration: "5 years" });
+		expect(bad.ready).toBe(false);
+		if (!bad.ready) expect(bad.refuse.reply.text).toBe(refusal);
+		const edited = await ctx.run("edit", { schedule: id, duration: "5 years" });
+		expect(edited.reply.text).toBe(refusal);
+		expect(ctx.store.get(id)?.post).toMatchObject({ durationHours: 24 });
+		expect((await ctx.poll({ duration: "5 years" })).reply.text).toBe(refusal);
+	});
+
 	it("edits when and repeat when they are already stored", async () => {
 		const { run, store, mine } = await withTwoOwners();
 		const result = await run("edit", {

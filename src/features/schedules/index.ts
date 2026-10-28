@@ -109,6 +109,12 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		type: "string",
 		suggest: async ({ typed }) => suggestDays(typed),
 	};
+	const durationOption: CommandOption = {
+		name: "duration",
+		description: "How long people can vote (default: 1 day)",
+		type: "string",
+		choices: Object.keys(DURATIONS),
+	};
 	const nameOption: CommandOption = {
 		name: "name",
 		description: "A name to find it by later (default: the start of the text)",
@@ -353,6 +359,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		) {
 			editTiming(schedule, ctx.args);
 		}
+		// The form's fields aren't sent yet, so this only checks `duration` before the form opens.
+		editedPost(schedule.post, ctx.args);
 		const next = nextRun(schedule, zone, now());
 		const title = next ? `Edit · ${describeWhen(toLocal(next, zone))}` : "Edit schedule";
 		if (schedule.post.kind === "message") {
@@ -513,12 +521,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							},
 							repeatOption,
 							daysOption,
-							{
-								name: "duration",
-								description: "How long people can vote (default: 1 day)",
-								type: "string",
-								choices: Object.keys(DURATIONS),
-							},
+							durationOption,
 							{
 								name: "multiple",
 								description: "Let people pick more than one answer",
@@ -578,6 +581,10 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							{ ...whenOption, required: false },
 							repeatOption,
 							daysOption,
+							{
+								...durationOption,
+								description: "For a poll: how long people can vote (default: unchanged)",
+							},
 							nameOption,
 							{
 								name: "text",
@@ -675,6 +682,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 /** The stored body after an edit: only the fields that were sent change. */
 function editedPost(post: ChannelPost, args: CommandContext["args"]): ChannelPost {
 	if (post.kind === "message") {
+		if (args.duration !== undefined) {
+			throw new UserFacingError(
+				"`duration` only works on a poll: it's how long people can vote. Leave it out to edit a message.",
+			);
+		}
 		const text = typeof args.text === "string" ? args.text.trim() : post.text;
 		if (text === "") throw new UserFacingError("The message can't be empty.");
 		return { ...post, text };
@@ -682,7 +694,9 @@ function editedPost(post: ChannelPost, args: CommandContext["args"]): ChannelPos
 	const question = typeof args.question === "string" ? args.question.trim() : post.question;
 	if (question === "") throw new UserFacingError("The question can't be empty.");
 	const answers = typeof args.answers === "string" ? parseAnswers(args.answers) : [...post.answers];
-	return { ...post, question, answers };
+	// `duration` is one of the choices (the dispatcher refuses anything else).
+	const durationHours = DURATIONS[String(args.duration ?? "")] ?? post.durationHours;
+	return { ...post, question, answers, durationHours };
 }
 
 function repeatOf(recurrence: Recurrence): Repeat {

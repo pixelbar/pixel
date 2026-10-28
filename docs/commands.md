@@ -151,9 +151,9 @@ Every scheduled post, with where and when it goes out next.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.' }">
+<PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [duration:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.', '[duration:]': 'For a poll: how long people can vote, from 1 hour to 2 weeks. Unchanged if left out; refused on a message.' }">
 
-Changes one of your own scheduled posts before it goes out: its content, and optionally when and how often. A new time or repeat counts from now, so nothing it would have posted before the edit goes out late. Turning a repeat into a one-off needs a new `when`.
+Changes one of your own scheduled posts before it goes out: its content, and optionally when, how often and, for a poll, how long it stays open. A new time or repeat counts from now, so nothing it would have posted before the edit goes out late. Turning a repeat into a one-off needs a new `when`.
 
 </PxCommand>
 
