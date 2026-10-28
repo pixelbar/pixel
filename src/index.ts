@@ -21,6 +21,10 @@ import { logProcessFailures } from "./observability/process-logging.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
 import { findMissingDevices } from "./services/home-devices.ts";
+import { InstanceLease } from "./services/instance-lease.ts";
+
+/** How often an instance checks whether another one has taken over (ADR 0021). */
+const LEASE_CHECK_EVERY_MS = 5_000;
 
 /** How often the role sync reads the Discord roles. */
 const ROLE_SYNC_EVERY_MS = 60_000;
@@ -73,6 +77,15 @@ async function main(): Promise<void> {
 		: undefined;
 	if (!roleSync) logger.info({ event: "role_sync.off" }, "role sync is off");
 	let heartbeat: Heartbeat | undefined;
+	let stopLeaseWatch: Stop = () => {};
+	/** Set once a newer instance has taken over: this one answers nothing and waits to be stopped. */
+	let standingBy = false;
+	// During a deploy the old and new instance overlap; the newest one answers (ADR 0021).
+	const lease = new InstanceLease({
+		file: join(config.dataDir, "instance.lease"),
+		logger,
+		onLost: () => void standBy(),
+	});
 	const discord = createDiscordAdapter({
 		token: config.discord.token,
 		guildId: config.discord.guildId,
@@ -90,13 +103,26 @@ async function main(): Promise<void> {
 		capabilityNotify,
 		roleMapping: config.discord.roles,
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
+		isActive: () => lease.holds(),
 		onReady: () => {
-			stopFeatures = startFeatures(features);
-			if (roleSync) stopRoleSync = roleSync.start();
-			heartbeat?.beat();
-			// Say Pixel is online once Home Assistant has had a moment to connect, so the
-			// status it posts is meaningful. Never holds anything up.
-			void Promise.race([homeAssistantSettled(), delay(10_000)]).then(() => botStatus.up());
+			// Take over from an instance still running from before this deploy, then start work.
+			void lease
+				.claim()
+				.catch((error: unknown) => {
+					// Answer anyway: an unreadable share must not take the bot down.
+					logger.error({ event: "instance.claim_failed", err: error }, "couldn't claim the lease");
+					reporter.captureBackground(error, "instance-lease");
+				})
+				.then(() => {
+					if (standingBy) return;
+					stopLeaseWatch = lease.watch(LEASE_CHECK_EVERY_MS);
+					stopFeatures = startFeatures(features);
+					if (roleSync) stopRoleSync = roleSync.start();
+					heartbeat?.beat();
+					// Say Pixel is online once Home Assistant has had a moment to connect, so the
+					// status it posts is meaningful. Never holds anything up.
+					void Promise.race([homeAssistantSettled(), delay(10_000)]).then(() => botStatus.up());
+				});
 		},
 	});
 	// Home Assistant connects in the background and reconnects forever, so it never holds up the
@@ -151,19 +177,36 @@ async function main(): Promise<void> {
 	}
 	spaceStatus.start();
 
-	let stopping = false;
-	const shutdown = async (signal: string) => {
-		if (stopping) return;
-		stopping = true;
-		logger.info({ event: "shutdown", signal }, "shutting down");
-		// Say goodbye while still connected, but never let it hold up the shutdown.
-		await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
+	/** Stops everything that answers or posts, and leaves Discord, so only the newer instance does. */
+	async function standBy(): Promise<void> {
+		if (standingBy || stopping) return;
+		standingBy = true;
+		stopLeaseWatch();
 		stopFeatures();
 		stopRoleSync();
 		heartbeat?.stop();
 		spaceStatus.stop();
 		homeAssistant?.close();
 		await discord.stop();
+	}
+
+	let stopping = false;
+	const shutdown = async (signal: string) => {
+		if (stopping) return;
+		stopping = true;
+		logger.info({ event: "shutdown", signal, standingBy }, "shutting down");
+		// Say goodbye while still connected, but never let it hold up the shutdown. An instance
+		// that is standing by says nothing: the newer one is online.
+		if (!standingBy) {
+			await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
+		}
+		stopLeaseWatch();
+		stopFeatures();
+		stopRoleSync();
+		heartbeat?.stop();
+		spaceStatus.stop();
+		homeAssistant?.close();
+		if (!standingBy) await discord.stop();
 		health.close();
 		await Sentry.flush(2000);
 		process.exit(0);

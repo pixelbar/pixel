@@ -148,7 +148,7 @@ flowchart TB
 | Init container (mkdir/chmod, then exits) | Share backup + 14-day soft-delete |
 | Terraform write-only secret inputs | Terraform state (not Pixel token *values*; does hold Files keys) |
 
-Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) on the same bot token answer every command twice. Stop-then-start during a revision swap is still [#11](https://github.com/pixelbar/pixel/issues/11).
+Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) on the same bot token answer every command twice. During a revision swap the old and new instance overlap; the newest one answers and the old one stands by ([ADR 0021](adr/0021-instance-lease.md), lease file on the share).
 
 ## Where data is seeded from
 
