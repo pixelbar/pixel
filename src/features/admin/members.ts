@@ -62,11 +62,11 @@ export function createLevelSubgroup(
 						`${describe(target)} is a Pixel admin. Admins are managed in admins.yaml only.`,
 					);
 				}
-				const record = view.records.get(target.id);
-				const current = record?.tier ?? "guest";
+				const current = view.records.get(target.id)?.tier ?? "guest";
 				// The username goes in the note so people reading the file can tell who is who. It's
-				// only for humans: Pixel acts on the ID. A note someone already wrote is kept.
-				const note = record?.note === undefined ? (target.handle ?? target.displayName) : undefined;
+				// only for humans: Pixel acts on the ID. The store writes it only when the entry has
+				// no note in the file as it reads it, so a note someone wrote is kept.
+				const defaultNote = target.handle ?? target.displayName;
 
 				// Pixel's data is updated first. Discord's roles then follow, even when nothing
 				// changed in Pixel, so a person who's out of step gets put right.
@@ -77,7 +77,7 @@ export function createLevelSubgroup(
 								kind: "set-tier",
 								id: target.id,
 								tier: level,
-								...(note ? { note } : {}),
+								...(defaultNote ? { defaultNote } : {}),
 								...(reason ? { reason } : {}),
 							},
 							principal,

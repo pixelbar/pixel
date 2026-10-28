@@ -54,8 +54,12 @@ export type AccessView = {
 };
 
 export type AccessChange =
-	/** Sets (or creates) someone's tier. Keeps their note and capabilities unless `note` is given. */
-	| { kind: "set-tier"; id: string; tier: MemberTier; note?: string; reason?: string }
+	/**
+	 * Sets (or creates) someone's tier, keeping their note and capabilities. `defaultNote`
+	 * is written only when the entry in the file, as read for this change, has no note, so
+	 * a note someone wrote (even by hand since the last reload) is never replaced.
+	 */
+	| { kind: "set-tier"; id: string; tier: MemberTier; defaultNote?: string; reason?: string }
 	/** Replaces someone's capabilities. They must already have an entry. */
 	| { kind: "set-capabilities"; id: string; capabilities: readonly string[]; reason?: string };
 
