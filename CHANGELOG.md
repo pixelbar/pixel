@@ -15,6 +15,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- `just push dev|prod` also sends a hand-edited `config/<env>/members.yaml` back to the env's file share. It shows the diff against the share, checks the file with `admins.yaml` the way Pixel does at startup, asks, and uploads only if Pixel hasn't changed the share's copy since it was read. Run `/admin reload` afterwards.
+- `just push` and `just secrets-push` audit hand edits to `members.yaml` and `admins.yaml`: they list each access change before asking, then send it to that env's Sentry Logs as an `access.changed` record like Pixel's own, with your Azure account as the `user` (`azure:<you>`) and `source: just-push`. Notes alone aren't recorded. Without a `SENTRY_DSN` for the env it says so and pushes anyway. `devices.yaml` and `announcement-routes.yaml` stay read-only mirrors.
 - `/admin level set` writes the person's Discord username (or display name) as the `note` on their `members.yaml` entry when it has none, so it's easier to see who is who in the file. A note someone already wrote is kept. The note is for people reading the file; Pixel still acts only on the ID.
 
 ## [0.20.0] - 2026-10-28

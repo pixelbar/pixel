@@ -598,6 +598,6 @@ Record significant decisions as short ADRs in `docs/adr/NNNN-title.md`. Numbers 
 | 0013 | Release workflow cuts versions and promotes prod + the docs site; merges to `main` do not roll `pixel-prod` | accepted (registration superseded by 0014) |
 | 0014 | Release registers prod slash commands; `pixel-github-prod` may read only `discord-token` | accepted |
 | 0015 | Secrets manifest (`infra/secrets.manifest.yaml`) is the one list of Key Vault secrets; Terraform reads it and a test fails on drift | accepted |
-| 0016 | `just secrets-pull` / `just secrets-push` sync the manifest's app secrets between Key Vault and `.env.<env>`, diffing against the live vault before a push; `just pull` / `just push` add the shared `terraform-tfvars` and read-only share mirrors | accepted |
+| 0016 | `just secrets-pull` / `just secrets-push` sync the manifest's app secrets between Key Vault and `.env.<env>`, diffing against the live vault before a push; `just pull` / `just push` add the shared `terraform-tfvars` and share mirrors (only a hand-edited `members.yaml` goes back up) | accepted |
 | 0017 | `just secrets-push` / `just push` are the only writers of the app secrets; Terraform's `write_secrets` writes only the infra group, and `removed` blocks drop the old app secrets from state without deleting them | accepted |
 | 0018 | The Deploy dev workflow puts a branch or same-repo PR on `pixel-dev` when a maintainer runs it (check, GHCR `:<sha>`/`:dev`, roll, register, Sentry); `pixel-github-dev` may read only `discord-token` | accepted |

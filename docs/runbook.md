@@ -148,7 +148,7 @@ That's all: Pixel updates `members.yaml` itself (writing the person's Discord us
 **Azure (`dev`):**
 
 - **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. `just secrets-pull dev` writes it to `config/admins.dev.yaml`; edit that, then `just secrets-push dev`, which checks it against the env's `members.yaml` and offers the restart (see [Sync secrets with Key Vault](#sync-secrets-with-key-vault)). Versions of the secret are history.
-- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit: upload the file to the share (see [Azure Container App (`dev`)](#azure-container-app-dev)) then `/admin reload`, or restart. Daily backups of the share keep 14 days.
+- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit of `members.yaml`: `just pull dev`, edit `config/dev/members.yaml`, `just push dev` (see [Pull and push an environment](#pull-and-push-an-environment)), then `/admin reload`, or restart. Daily backups of the share keep 14 days.
 - Prod (#12) will be the same layout in `pixel-prod`.
 
 ## Moderation
@@ -161,7 +161,7 @@ jq -c 'select(.user == "discord:123456789012345678")
        | {time: (.time/1000|todate), event, command, outcome, reason, msg}' data/logs/*.log
 ```
 
-The events to look for: `command.executed` (with `outcome`), `command.denied`, `command.rate_limited`, `access.changed`, and for Home Assistant `home.action` and `home.action_denied`. In Sentry, open **Logs** and filter on the `user` attribute (`discord:<id>`), or look at the issue's user. The names in the logs (`userName`, `userHandle`) are there so you can recognise the person, but act on the ID.
+The events to look for: `command.executed` (with `outcome`), `command.denied`, `command.rate_limited`, `access.changed` (from Pixel, or from `just push` with `source: just-push` and an `azure:` user), and for Home Assistant `home.action` and `home.action_denied`. In Sentry, open **Logs** and filter on the `user` attribute (`discord:<id>`), or look at the issue's user. The names in the logs (`userName`, `userHandle`) are there so you can recognise the person, but act on the ID.
 
 **Stop someone using Pixel.** Pixel has no block list of its own (#6 decided Discord's own moderation covers it):
 
@@ -384,7 +384,7 @@ These local files are gitignored and written readable only by you. **You need:**
 
 1. `just secrets-pull dev`. It reads every app secret from the vault and writes it into `.env.dev` (only those keys; the rest of the file stays as it is) and `config/admins.dev.yaml`. If one of your local values differs from the vault, it lists which and asks before overwriting, so an edit you haven't pushed isn't lost by accident.
 2. Edit the value in `.env.dev`, or edit `config/admins.dev.yaml`.
-3. `just secrets-push dev`. It reads the vault again (the live values) and lists each secret as `=` the same, `~` changes, `+` new in Key Vault, or `!` only in Key Vault (a push never deletes). Values are never shown, only their length. `admins.yaml` changes are shown as a diff and checked against `members.yaml` on the share, the way Pixel checks them at startup.
+3. `just secrets-push dev`. It reads the vault again (the live values) and lists each secret as `=` the same, `~` changes, `+` new in Key Vault, or `!` only in Key Vault (a push never deletes). Values are never shown, only their length. `admins.yaml` changes are shown as a diff and checked against `members.yaml` on the share, the way Pixel checks them at startup. Each admin added or removed is listed as an `access.changed` record and, once pushed, sent to that env's Sentry Logs with your Azure account as the `user` (as with `members.yaml`, below).
 4. Say yes to push. For `prod` you also type `prod`. It stops without writing if the vault changed since it was read (run it again), and reads every value back afterwards.
 5. **Restart.** Pixel reads secrets only at startup, so it keeps the old values until it restarts. The tool offers to run `just restart dev` for you; say no and run it yourself when it suits (a restart is a short gap in the bot).
 6. Check `/ping` and `/admin status` in that environment's server.
@@ -405,11 +405,13 @@ These local files are gitignored and written readable only by you. **You need:**
 | --- | --- | --- | --- |
 | Stack settings | `infra/envs/<env>/terraform.tfvars` | Key Vault secret `terraform-tfvars` (the `tooling` group) | Yes |
 | App secrets | `.env.<env>`, `config/admins.<env>.yaml` | Key Vault (as `just secrets-pull`, above) | Yes |
-| `members.yaml` | `config/<env>/members.yaml` | File share | Never: Pixel writes it (`/admin`) |
+| `members.yaml` | `config/<env>/members.yaml` | File share | Yes, for a hand edit (prefer `/admin`) |
 | `devices.yaml` | `config/home-assistant/<env>/devices.yaml` | File share | Never: use `just ha-devices` |
 | `announcement-routes.yaml` | `config/<env>/announcement-routes.yaml` | File share (`data/`) | Never: `/admin announcements` |
 
-All of them are gitignored. The share files are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
+All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
+
+**Edit `members.yaml` by hand** (to delete an entry, say; `/admin level set` and `/admin capabilities` are still quicker for what they cover): `just pull dev`, edit `config/dev/members.yaml`, then `just push dev`. It shows the diff against the share, checks the file with the vault's `admins.yaml` (or your local one, if you're pushing that too) the way Pixel does at startup, and asks. It uploads only if the share's copy hasn't changed since it was read: an admin command in the meantime stops it, so pull again and redo the edit. It reads the file back afterwards. Then run `/admin reload` in that env (or let it restart). Before asking, it lists each change as an `access.changed` record (a person's level or capabilities, a level's capabilities, someone removed; a note alone isn't one), and after the upload it sends them to that env's Sentry Logs, like Pixel's own, with `user` set to your Azure account (`azure:<you>`) and `source: just-push`. Without a `SENTRY_DSN` for that env it says so and pushes anyway.
 
 **`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`tailscale_auth_key`, `container_registry_password`: anything the stack's `variables.tf` marks `sensitive`; app secrets are not Terraform inputs at all) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
 

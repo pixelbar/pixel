@@ -10,7 +10,9 @@
  *     `infra/envs/<env>/terraform.tfvars`. Secret Terraform inputs never go in it: they
  *     belong in `secrets.auto.tfvars`, which stays on the laptop.
  *   - just pull also mirrors `members.yaml`, `devices.yaml` and `announcement-routes.yaml`
- *     from the env's file share, read-only: Pixel and `just ha-devices` write those.
+ *     from the env's file share. just push sends a hand-edited `members.yaml` back (shown
+ *     as a diff, checked with admins.yaml, and only if Pixel hasn't changed it since); the
+ *     other two are read-only: Pixel and `just ha-devices` write those.
  * `infra` secrets stay with Terraform and are never touched.
  *
  * pull: reads every managed secret from the env's vault and writes it locally, so you
@@ -41,12 +43,21 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { confirm, input } from "@inquirer/prompts";
+import * as Sentry from "@sentry/node";
+import { scrubDeep } from "../src/observability/scrub.ts";
 import {
 	AccessConfigError,
 	buildAccessConfig,
 	parseAdmins,
 	parseMembers,
 } from "../src/services/access-config.ts";
+import {
+	type AuditEntry,
+	adminsAudit,
+	auditAttributes,
+	describeAudit,
+	membersAudit,
+} from "./access-audit.ts";
 import { assertPixelEnv, ENVS, EnvError, type Target } from "./envs.ts";
 import { loadSecretsManifest, type SecretEntry, SecretsManifestError } from "./secrets-manifest.ts";
 import {
@@ -54,6 +65,7 @@ import {
 	azShowArgs,
 	compare,
 	describe,
+	describeShareFile,
 	envFile,
 	isFile,
 	isNotFound,
@@ -67,7 +79,9 @@ import {
 	type Row,
 	redactTfvars,
 	reusedDiscordToken,
+	type ShareFile,
 	setEnvValues,
+	shareFileChanges,
 	shareFiles,
 	stackVariables,
 	syncedSecrets,
@@ -76,7 +90,7 @@ import {
 	toPush,
 	VAULTS,
 } from "./secrets-sync-lib.ts";
-import { azDownloadArgs, shareRemote } from "./share.ts";
+import { azDownloadArgs, azUploadArgs, shareRemote } from "./share.ts";
 
 const run = promisify(execFile);
 
@@ -188,16 +202,80 @@ async function download(target: Target, path: string): Promise<string | undefine
 	return readFileSync(dest, "utf8");
 }
 
-/** Checks admins.yaml against the env's members.yaml on the share, as Pixel does at startup. */
-async function checkAdmins(target: Target, entry: SecretEntry, text: string): Promise<void> {
-	const members = await download(target, "members.yaml");
-	if (members === undefined)
-		throw new Stop(`${target}'s share has no members.yaml to check against.`);
-	const paths = { adminsFile: localFile(entry, target), membersFile: `members.yaml on ${target}` };
+type Access = { text: string; label: string };
+
+/** Checks admins.yaml against members.yaml, as Pixel does at startup. */
+function checkAccess(admins: Access, members: Access): void {
+	const paths = { adminsFile: admins.label, membersFile: members.label };
 	buildAccessConfig(
-		parseAdmins(text, paths.adminsFile),
-		parseMembers(members, paths.membersFile),
+		parseAdmins(admins.text, paths.adminsFile),
+		parseMembers(members.text, paths.membersFile),
 		paths,
+	);
+}
+
+/** Who is logged in to Azure: the account that makes the change, so the one audited. */
+async function azOperator(): Promise<string> {
+	try {
+		const { stdout } = await run("az", ["account", "show", "--query", "user.name", "-o", "tsv"]);
+		const name = stdout.trim();
+		if (name) return name;
+	} catch {
+		// Falls through to the same message.
+	}
+	throw new Stop("Couldn't tell who is logged in to Azure, for the audit. Is `az login` done?");
+}
+
+/**
+ * Sends the audit to Sentry Logs as Pixel's own `access.changed` lines go there. A
+ * failure to send never undoes the push: it says so, and the diff on your screen and
+ * the file's history are the record.
+ */
+async function sendAudit(
+	dsn: string,
+	target: Target,
+	operator: string,
+	entries: readonly AuditEntry[],
+): Promise<void> {
+	Sentry.init({
+		dsn,
+		environment: target,
+		defaultIntegrations: false,
+		dataCollection: { userInfo: false },
+		beforeSendLog: (log) => scrubDeep(log),
+	});
+	for (const entry of entries)
+		Sentry.logger.info("access changed", auditAttributes(entry, target, operator));
+	const sent = await Sentry.flush(10_000);
+	await Sentry.close();
+	say(
+		sent
+			? `Sent ${entries.length} access.changed record(s) to Sentry.`
+			: `Couldn't reach Sentry: the access.changed record(s) above weren't sent.`,
+	);
+}
+
+/** A share file `just push` sends back, when the local mirror differs from the share. */
+type SharePush = { file: ShareFile; local: string; remote: string | undefined };
+
+/** Compares the pushable mirrors with the share, one line each, and returns the changes. */
+async function planShare(target: Target): Promise<SharePush[]> {
+	say(`Reading config files from ${ENVS[target].storageAccount} (${target})…`);
+	const files = await Promise.all(
+		shareFiles(target)
+			.filter((file) => file.push)
+			.map(async (file) => ({
+				file,
+				local: readText(file.mirror),
+				remote: await download(target, file.path),
+			})),
+	);
+	for (const f of files) say(describeShareFile(f.file, f.local, f.remote));
+	say();
+	return files.flatMap((f) =>
+		f.local !== undefined && shareFileChanges(f.local, f.remote)
+			? [{ file: f.file, local: f.local, remote: f.remote }]
+			: [],
 	);
 }
 
@@ -244,7 +322,7 @@ async function pullShare(target: Target): Promise<void> {
 		for (const f of differs)
 			await showDiff(readText(f.mirror), f.remote as string, [f.mirror, f.path]);
 		const ok = await confirm({
-			message: `Replace ${differs.length} local mirror(s) with ${target}'s? They're read-only copies: Pixel and just ha-devices change the real ones.`,
+			message: `Replace ${differs.length} local mirror(s) with ${target}'s? Local edits to members.yaml you haven't pushed are lost.`,
 			default: true,
 		});
 		if (!ok) {
@@ -338,8 +416,11 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 	summary(rows, "push", target);
 
 	const changes = toPush(rows);
-	if (changes.length === 0) {
-		say(`Nothing to push: ${vault.vault} already matches.`);
+	const share = scope === "all" ? await planShare(target) : [];
+	if (changes.length === 0 && share.length === 0) {
+		say(
+			`Nothing to push: ${vault.vault}${scope === "all" ? " and the share" : ""} already match${scope === "all" ? "" : "es"}.`,
+		);
 		return;
 	}
 	for (const row of changes) {
@@ -351,14 +432,61 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 			shown(row.entry, target, row.local) ?? "",
 			[`${vault.vault}/${row.entry.vault}`, localFile(row.entry, target)],
 		);
-		if (row.entry.vault === "admins-yaml") {
-			await checkAdmins(target, row.entry, row.local);
-			say(`${localFile(row.entry, target)} is valid with ${target}'s members.yaml.`);
-		}
+	}
+	for (const f of share) {
+		await showDiff(f.remote, f.local, [
+			`${ENVS[target].storageAccount}/${f.file.path}`,
+			f.file.mirror,
+		]);
 	}
 
+	// Pixel refuses to start unless admins.yaml and members.yaml agree, so check the pair
+	// as it will be after this push.
+	const adminsRow = changes.find((row) => row.entry.vault === "admins-yaml");
+	const membersPush = share.find((f) => f.file.path === "members.yaml");
+	if (adminsRow?.local !== undefined || membersPush !== undefined) {
+		const adminsEntry = rows.find((row) => row.entry.vault === "admins-yaml")?.entry;
+		const adminsText = adminsRow?.local ?? live.get("admins-yaml");
+		if (adminsEntry === undefined || adminsText === undefined) {
+			throw new Stop(`${vault.vault} has no admins-yaml to check members.yaml against.`);
+		}
+		const admins = {
+			text: adminsText,
+			label: adminsRow ? localFile(adminsEntry, target) : `${vault.vault}/admins-yaml`,
+		};
+		const membersText = membersPush?.local ?? (await download(target, "members.yaml"));
+		if (membersText === undefined)
+			throw new Stop(`${target}'s share has no members.yaml to check against.`);
+		const members = {
+			text: membersText,
+			label: membersPush ? membersPush.file.mirror : `members.yaml on ${target}`,
+		};
+		checkAccess(admins, members);
+		say(`${admins.label} and ${members.label} are valid together.`);
+	}
+
+	// Pixel's admin commands log access.changed; a hand edit gets the same record, by
+	// whoever is logged in to Azure, so Sentry Logs has the whole history.
+	const adminsChanged =
+		adminsRow?.local !== undefined ? adminsAudit(adminsRow.remote, adminsRow.local) : [];
+	const membersChanged = membersPush ? membersAudit(membersPush.remote, membersPush.local) : [];
+	const dsn = local.get("sentry-dsn") ?? live.get("sentry-dsn");
+	const operator =
+		adminsChanged.length + membersChanged.length > 0 ? await azOperator() : undefined;
+	if (operator !== undefined) {
+		say();
+		say(`access.changed, as azure:${operator}:`);
+		for (const entry of [...adminsChanged, ...membersChanged]) say(describeAudit(entry));
+		if (dsn === undefined) say(`${target} has no SENTRY_DSN, so this won't be sent to Sentry.`);
+		say();
+	}
+
+	const what = [
+		...(changes.length > 0 ? [`${changes.length} secret(s)`] : []),
+		...share.map((f) => f.file.path),
+	].join(" and ");
 	const ok = await confirm({
-		message: `Push ${changes.length} secret(s) to ${target.toUpperCase()} (${vault.vault})?`,
+		message: `Push ${what} to ${target.toUpperCase()}?`,
 		default: false,
 	});
 	if (!ok) throw new Stop("Stopped. Nothing was pushed.");
@@ -367,7 +495,8 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 		if (typed.trim() !== "prod") throw new Stop("Stopped. Nothing was pushed.");
 	}
 
-	// Someone else may have changed the vault while you were reading the diff.
+	// Someone else may have changed the vault, or Pixel members.yaml (an admin command),
+	// while you were reading the diff.
 	const changing = changes.map((row) => row.entry);
 	const again = await readVault(target, changing);
 	for (const entry of changing) {
@@ -377,38 +506,77 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 			);
 		}
 	}
-
-	const done: string[] = [];
-	for (const row of changes) {
-		const source = join(work, "value");
-		writeFileSync(source, row.local ?? "", { mode: 0o600 });
-		try {
-			await run("az", azSetArgs(vault, row.entry, source));
-		} catch (error) {
-			const pushed =
-				done.length > 0 ? ` Already pushed: ${done.join(", ")}.` : " Nothing was pushed.";
-			throw new Stop(`Couldn't set ${row.entry.vault}: ${azFailure(error)}.${pushed}`);
-		} finally {
-			rmSync(source, { force: true });
+	for (const f of share) {
+		if ((await download(target, f.file.path)) !== f.remote) {
+			throw new Stop(
+				`${f.file.path} changed on ${target}'s share since it was read (an admin command?). Run just pull ${target}, redo your edit, and push again. Nothing was pushed.`,
+			);
 		}
-		done.push(row.entry.vault);
 	}
-	const back = await readVault(target, changing);
-	const wrong = changing.filter((entry) => back.get(entry.vault) !== local.get(entry.vault));
-	if (wrong.length > 0) {
-		throw new Stop(
-			`Pushed, but ${wrong.map((e) => e.vault).join(", ")} don't read back the same. Check by hand.`,
-		);
+
+	// Whatever was written is audited, even if a later step fails.
+	const audited: AuditEntry[] = [];
+	try {
+		const done: string[] = [];
+		for (const row of changes) {
+			const source = join(work, "value");
+			writeFileSync(source, row.local ?? "", { mode: 0o600 });
+			try {
+				await run("az", azSetArgs(vault, row.entry, source));
+			} catch (error) {
+				const pushed =
+					done.length > 0 ? ` Already pushed: ${done.join(", ")}.` : " Nothing was pushed.";
+				throw new Stop(`Couldn't set ${row.entry.vault}: ${azFailure(error)}.${pushed}`);
+			} finally {
+				rmSync(source, { force: true });
+			}
+			done.push(row.entry.vault);
+			if (row.entry.vault === "admins-yaml") audited.push(...adminsChanged);
+		}
+		const back = await readVault(target, changing);
+		const wrong = changing.filter((entry) => back.get(entry.vault) !== local.get(entry.vault));
+		if (wrong.length > 0) {
+			throw new Stop(
+				`Pushed, but ${wrong.map((e) => e.vault).join(", ")} don't read back the same. Check by hand.`,
+			);
+		}
+		if (done.length > 0) say(`Pushed ${done.join(", ")} to ${vault.vault}.`);
+
+		for (const f of share) {
+			const source = join(work, "upload");
+			writeFileSync(source, f.local, { mode: 0o600 });
+			try {
+				await run("az", azUploadArgs(shareRemote(target, f.file.path), source));
+			} catch (error) {
+				const pushed = done.length > 0 ? ` Already pushed: ${done.join(", ")}.` : "";
+				throw new Stop(`Couldn't upload ${f.file.path}: ${azFailure(error)}.${pushed}`);
+			} finally {
+				rmSync(source, { force: true });
+			}
+			if (f.file.path === "members.yaml") audited.push(...membersChanged);
+			if ((await download(target, f.file.path)) !== f.local) {
+				throw new Stop(`Uploaded, but ${f.file.path} doesn't read back the same. Check by hand.`);
+			}
+			done.push(f.file.path);
+			say(`Uploaded ${f.file.path} to ${ENVS[target].storageAccount}.`);
+		}
+	} finally {
+		if (operator !== undefined && dsn !== undefined && audited.length > 0)
+			await sendAudit(dsn, target, operator, audited);
 	}
-	say(`Pushed ${done.join(", ")} to ${vault.vault}.`);
 
 	if (changing.some((e) => e.group === "tooling")) {
 		say(
 			`The shared tfvars changed. Nothing is applied yet: run just tf-plan ${target}, then apply.`,
 		);
 	}
-	if (!changing.some((e) => e.group === "app")) return;
-	say(`${vault.app} reads secrets when it starts, so it keeps the old values until it restarts.`);
+	const appChanged = changing.some((e) => e.group === "app");
+	if (!appChanged && share.length === 0) return;
+	if (appChanged) {
+		say(`${vault.app} reads secrets when it starts, so it keeps the old values until it restarts.`);
+	} else {
+		say(`${vault.app} keeps the old members.yaml until /admin reload in Discord, or a restart.`);
+	}
 	const restart = await confirm({
 		message: `Restart ${vault.app} now (just restart ${target})?`,
 		default: false,
