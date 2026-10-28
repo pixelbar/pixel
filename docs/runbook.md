@@ -437,7 +437,7 @@ All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **
 
 **Fishbot:** `/fishbot` needs only the existing slash-command permissions; leave privileged intents off. After registration, try `/fishbot say phrase:fish` (public reply: “fish go m00!” addressed to the caller) and `/fishbot say` (private help). The feature has no configuration or saved state. It uses the normal dispatcher rate limits and never listens to ordinary messages. Original replies are retained, including old-school insults; the reference is [sjdiego's Fishbot triggers](https://github.com/sjdiego/fishbot/blob/main/triggers.go). IRC actions render as italics. Channel lookup and the obsolete Outwar URL trigger are omitted.
 
-**Deploys must stop the old instance before starting the new one,** so two never answer at once. Expect a short gap while it restarts. Overlap during a revision swap is still #11.
+**Only one instance answers during a deploy** ([ADR 0021](adr/0021-instance-lease.md)). Azure starts the new revision before stopping the old one. The new one writes its ID to `data/instance.lease` once it's connected and answers from then on; the old one logs `instance.lost` ("another instance took over"), stops its background work and disconnects, and says nothing when it's stopped. Seeing `instance.lost` after a deploy or a settings change is normal. It only works for instances sharing the file share, so still never run `just dev` on a cloud environment's token. `instance.lease` is safe to delete.
 
 **Azure CD ([ADR 0010](adr/0010-ghcr-cd.md), [ADR 0013](adr/0013-release-workflow.md)):**
 

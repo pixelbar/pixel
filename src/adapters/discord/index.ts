@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { Client, Events, GatewayIntentBits, type Interaction } from "discord.js";
 import type { PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
 import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
@@ -78,6 +78,11 @@ export type DiscordAdapterDeps = {
 	reportError: (error: unknown, actor?: PlatformActor) => void;
 	/** Called once the client is connected and the announcement publishers are registered. */
 	onReady?: () => void;
+	/**
+	 * Whether this instance should answer interactions right now. Another instance on the
+	 * same token answers otherwise (a deploy overlap, ADR 0021). Unset means always.
+	 */
+	isActive?: () => Promise<boolean>;
 };
 
 export type DiscordAdapter = {
@@ -241,6 +246,17 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	});
 
 	client.on(Events.InteractionCreate, (interaction) => {
+		if (!deps.isActive) {
+			handleInteraction(interaction);
+			return;
+		}
+		// Another instance answers while this one doesn't hold the lease; Discord sent it to both.
+		void deps.isActive().then((active) => {
+			if (active) handleInteraction(interaction);
+		});
+	});
+
+	function handleInteraction(interaction: Interaction): void {
 		if (interaction.isAutocomplete()) {
 			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
 			handleAutocomplete(interaction, displayName).catch((error: unknown) => {
@@ -294,7 +310,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				{ actor: discordActor(interaction.user, displayName), command: interaction.commandName },
 			);
 		});
-	});
+	}
 
 	return {
 		async start() {

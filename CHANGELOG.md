@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- During a deploy or a settings change, the old and new Pixel no longer both answer the same command (Discord refused one of them: "Discord expired /admin before Pixel acknowledged it"), run background work twice, or mark the bot offline after the new one came online. The newest instance writes its ID to `data/instance.lease` on the file share once it's connected and answers from then on; the old one stands by until Azure stops it. See [ADR 0021](docs/adr/0021-instance-lease.md).
+
 ## [0.22.0] - 2026-10-28
 
 ### Added
