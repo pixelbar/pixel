@@ -519,6 +519,32 @@ describe("poll reminders", () => {
 		expect(ctx.store.get(id)).toBeUndefined();
 	});
 
+	it("keeps a repeat edited into a one-off until that one-off has posted", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		// Edited (as /schedule edit does) into a one-off after the old poll closed.
+		ctx.store.update(id, {
+			recurrence: { kind: "once" },
+			start: "2026-10-28T19:00",
+			lastRunAt: at("2026-10-20T08:00:00").toISOString(),
+		});
+		await ctx.run(at("2026-10-20T08:00:05"));
+		expect(ctx.store.get(id)).toBeDefined();
+		await ctx.run(at("2026-10-28T18:00:05"));
+		expect(ctx.posted.at(-1)?.[1]).toEqual(POLL);
+		expect(ctx.store.get(id)?.lastPoll?.postedAt).toBe(at("2026-10-28T18:00:00").toISOString());
+	});
+
+	it("drops a one-off whose start can't be read once its poll closed", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder("18:00", { recurrence: { kind: "once" } }));
+		await ctx.run(plus(10_000));
+		ctx.store.update(id, { start: "not a time" });
+		await ctx.run(at("2026-10-17T17:00:11"));
+		expect(ctx.store.get(id)).toBeUndefined();
+	});
+
 	it("logs a reminder it can't record or a finished one-off it can't remove", async () => {
 		const ctx = setup();
 		const { id } = ctx.store.add(withReminder("18:00", { recurrence: { kind: "once" } }));

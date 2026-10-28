@@ -89,6 +89,23 @@ export function dueReminder(
 	return due && due.at < new Date(lastPoll.closesAt) ? due : undefined;
 }
 
+/**
+ * Whether a schedule still has an occurrence to post after the last one handled. A
+ * one-off edited from a repeat keeps the old repeat's `lastPoll`, so that alone
+ * doesn't mean it's done.
+ */
+function postsAgain(
+	schedule: Pick<Schedule, "start" | "recurrence" | "lastRunAt">,
+	timezone: string,
+): boolean {
+	const start = parseLocal(schedule.start);
+	if (!start) return false;
+	const after = schedule.lastRunAt
+		? new Date(schedule.lastRunAt)
+		: new Date(toInstant(start, timezone).getTime() - 1);
+	return nextOccurrence(start, schedule.recurrence, timezone, after) !== undefined;
+}
+
 /** The reminder message for a poll. Never pings anyone. */
 export function reminderPost(poll: PostedPoll, timezone: string): ChannelPost {
 	const closes = describeWhen(toLocal(new Date(poll.closesAt), timezone));
@@ -210,7 +227,11 @@ async function remindDue(deps: RunnerDeps, now: Date, log: Logger): Promise<void
 	for (const { id } of deps.store.all()) {
 		const schedule = deps.store.get(id);
 		if (!schedule?.lastPoll) continue;
-		if (schedule.recurrence.kind === "once" && now >= new Date(schedule.lastPoll.closesAt)) {
+		if (
+			schedule.recurrence.kind === "once" &&
+			now >= new Date(schedule.lastPoll.closesAt) &&
+			!postsAgain(schedule, deps.timezone)
+		) {
 			try {
 				deps.store.remove(schedule.id);
 			} catch (error) {
