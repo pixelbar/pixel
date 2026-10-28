@@ -118,6 +118,22 @@ export function parseWhen(typed: string, now: Date, zone: string): LocalDateTime
 	return future({ ...day.date, ...clock }, now, zone);
 }
 
+/**
+ * A time of day alone ("18:00", "1800", "6pm", "18u"), as "HH:MM", or undefined
+ * when it isn't one. For things that happen every day at that time.
+ */
+export function parseClock(typed: string): string | undefined {
+	const tokens = typed
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.split(" ")
+		.filter((t) => t !== "");
+	const time = takeTime(tokens);
+	if (!time || tokens.length > 0) return undefined;
+	return `${String(time.hour).padStart(2, "0")}:${String(time.minute).padStart(2, "0")}`;
+}
+
 function future(local: LocalDateTime, now: Date, zone: string): LocalDateTime | undefined {
 	return toInstant(local, zone) > now ? local : undefined;
 }

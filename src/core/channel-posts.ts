@@ -24,13 +24,16 @@ export type ChannelPost =
 			multiple: boolean;
 	  };
 
+/** A post the platform has sent: a link people can follow to it. */
+export type PostedMessage = { url: string };
+
 /** What the platform says about posting in a channel, or why Pixel can't. */
 export type ChannelCheck = { ok: true; name: string } | { ok: false; problem: string };
 
 export type ChannelPoster = {
 	/** Whether Pixel can make this kind of post in the channel. */
 	check(channelId: string, post: ChannelPost): Promise<ChannelCheck>;
-	post(channelId: string, post: ChannelPost): Promise<void>;
+	post(channelId: string, post: ChannelPost): Promise<PostedMessage>;
 };
 
 export class ChannelPostsUnavailableError extends UserFacingError {
@@ -55,7 +58,7 @@ export class ChannelPosts {
 		return this.#require().check(channelId, post);
 	}
 
-	post(channelId: string, post: ChannelPost): Promise<void> {
+	post(channelId: string, post: ChannelPost): Promise<PostedMessage> {
 		return this.#require().post(channelId, post);
 	}
 
