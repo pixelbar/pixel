@@ -115,7 +115,7 @@ type TierSource = {
 };
 ```
 
-Phase 1 has a single `ConfigTierSource`. Linked identities will use the same access store (several ids on one `members.yaml` entry). Discord roles are deliberately not a source (see "Discord role mirroring"). Neither the dispatcher nor any feature changes when a source is added.
+Phase 1 has a single `ConfigTierSource`. Linked identities will use the same access store (several ids on one `members.yaml` entry). Discord roles are deliberately not a source: the role sync writes them into `members.yaml` instead (see "Discord role mirroring"). Neither the dispatcher nor any feature changes when a source is added.
 
 Handlers receive a `Principal { platform, userId, displayName, tier }`. They never receive raw platform objects they could misuse to make their own authorisation decisions.
 
@@ -171,13 +171,15 @@ The Home Assistant capabilities are `ha-admin` (any device, whatever its kind) a
 
 ### Discord role mirroring
 
-Pixel's own data is the source of truth for tiers. Where the Discord server uses roles, Pixel can also hand out the matching role when an admin changes someone's level. It is a **one-way mirror from Pixel to Discord**: Pixel never reads a role to decide a tier, so a moderator handing out `member` gives nothing in Pixel, and a compromised Discord can't escalate anyone. It works the same when a member later uses Pixel from another platform, and in a server that has one role for everyone (leave the settings unset).
+Access is decided from Pixel's own data. Where the Discord server uses roles, Pixel hands out the matching role when an admin changes someone's level, and, with the **role sync** on, reads the roles back into `members.yaml` every minute ([ADR 0020](adr/0020-two-way-role-sync.md)). A role is never consulted when a command runs: it only changes the members file, through the access store, audited like an admin's change. It works the same when a member later uses Pixel from another platform, and in a server that has one role for everyone (leave the settings unset).
 
 - **Setup:** set `DISCORD_ROLE_MEMBER` and/or `DISCORD_ROLE_FRIEND` to a role's name (or its ID, which survives a rename). A tier with no setting isn't mirrored. Only these two tiers have roles: admin has none, a guest holds neither, and roles that aren't mapped (such as `hacker`) are never touched.
 - **The bot's role:** it needs the **Manage Roles** permission, and its highest role must sit **above** the roles it hands out. Keep it just above `member` and `friend` and below anything powerful, so that if its token ever leaked it could only give out those two roles. It can't change roles at or above its own.
 - **Checks, every time:** Pixel asks Discord for the roles and its own standing on every operation, with no caching, so renames and moved roles are noticed straight away. A tier whose role doesn't exist, is ambiguous (two roles share the name; use the ID), is managed by an integration, isn't below the bot's highest role, or the bot lacks Manage Roles, is turned off on its own. The others keep working. At startup and on `/admin reload` this is logged and reported to Sentry once per tier, and `/admin status` shows each tier as on or off with the reason.
 - **On `/admin level set`:** Pixel's data is updated first. Then the person's mapped role is added and the other tier's removed (only if they hold it), with an audit-log reason like "Set to member by Ada (id) via Pixel". If Discord fails, the reply says so plainly ("Pixel is updated, but the Discord roles weren't changed: …") and `/admin sync` fixes it. Roles are brought into line even when Pixel says nothing changed.
-- **`/admin sync [user:]`:** sets the mapped roles from Pixel's data for one person, or for everyone in Pixel's lists. Pixel always wins and nothing is pulled from Discord. An admin is mirrored by their members entry, since admins are members too. It can only reach people Pixel lists: finding people who hold a role but aren't listed would need the privileged `GuildMembers` intent, which Pixel doesn't use.
+- **`/admin sync [user:]`:** sets the mapped roles from Pixel's data for one person, or for everyone in Pixel's lists. Pixel always wins and nothing is pulled from Discord. An admin is mirrored by their members entry, since admins are members too. It can only reach people Pixel lists; the role sync is what picks up people who hold a role but aren't listed.
+- **Role sync (`DISCORD_ROLE_SYNC=on`):** every minute `core/role-sync.ts` lists who holds the mapped roles and changes `members.yaml` to match: a role holder gets that level (the higher if both, with their username as the note for a new entry), and someone at a mapped level without its role, or who left the server, becomes `guest`. It needs the **Server Members Intent** in the Developer Portal (members are listed over REST; the gateway doesn't request it). Safeguards: admins are never changed; nothing runs unless every configured tier's role works; a level whose role isn't mapped is left alone; someone Pixel pushed roles for in the last two minutes, or whose level changed since the roles were read, is skipped, so an admin's change isn't undone; more than 5 removals in one run are held back and reported. Problems are logged and reported once. Run `/admin sync` before turning it on.
+- **Threat model:** with the sync on, whoever can hand out the mapped roles in Discord can give Pixel access, including capabilities granted to the whole level. Keep Manage Roles to trusted moderators, and avoid giving sensitive capabilities such as `ha-doors` to a level. Admin can never come from a role.
 - **`/admin level get`** shows the mapped roles someone holds and whether they match their Pixel level. Role names come from Discord moderators, so they are shown as code spans and can't render as formatting, links or mentions.
 
 ### Audit in phase 1
@@ -237,7 +239,7 @@ Pixel's own data is the source of truth for tiers. Where the Discord server uses
 
 These are recorded so that phase 1 doesn't make them harder. Each will get an ADR before it is built.
 
-- ~~**Discord role sync** (roles as a tier source)~~: decided against. Roles are only ever *mirrored to* from Pixel's data (see "Discord role mirroring"), never read to decide a tier.
+- ~~**Discord role sync** (roles as a tier source)~~: roles are still not a tier source, but since [ADR 0020](adr/0020-two-way-role-sync.md) the role sync writes them into `members.yaml` (see "Discord role mirroring").
 - **More interactive platforms (Telegram):** these need **account linking** (#16). **No database:** linking writes `telegram:<id>` onto the person's `members.yaml` entry through the access store. The planned flow:
   1. The person runs `/link` on Discord.
   2. Pixel replies ephemerally with a one-time code: about 40 bits of entropy, stored only as a hash **in memory**, valid for 10 minutes, single use. Codes pending at a restart are lost (Pixel is a single instance).

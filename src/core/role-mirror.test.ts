@@ -13,6 +13,7 @@ function setup(backend?: Partial<MirrorBackend>) {
 			states: async () => [],
 			apply: async () => ({ kind: "unconfigured" }),
 			inspect: async () => ({ kind: "unconfigured" }),
+			holders: async () => ({ kind: "unconfigured" }),
 			...backend,
 		});
 	}
@@ -112,5 +113,58 @@ describe("check", () => {
 			expect.any(String),
 		);
 		expect(reporter.captureBackground).not.toHaveBeenCalled();
+	});
+});
+
+describe("holders", () => {
+	it("is unconfigured without a backend, and passes through with one", async () => {
+		expect(await setup().mirror.holders()).toEqual({ kind: "unconfigured" });
+		const list = { kind: "ok" as const, managed: ["member" as const], people: [], self: "1" };
+		const { mirror } = setup({ holders: async () => list });
+		expect(await mirror.holders()).toBe(list);
+	});
+
+	it("turns an unexpected failure into a plain one, and reports it", async () => {
+		const { mirror, reporter } = setup({
+			holders: async () => {
+				throw new Error("boom");
+			},
+		});
+		expect(await mirror.holders()).toEqual({
+			kind: "failed",
+			reason: "Discord didn't accept the change",
+		});
+		expect(reporter.captureBackground).toHaveBeenCalledOnce();
+	});
+});
+
+describe("appliedSince", () => {
+	it("remembers when Pixel last pushed someone's roles, and forgets after an hour", async () => {
+		let now = 1_000_000;
+		const mirror = new RoleMirror({
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+			now: () => now,
+		});
+		mirror.attach({
+			states: async () => [],
+			apply: async () => ({ kind: "unconfigured" }),
+			inspect: async () => ({ kind: "unconfigured" }),
+			holders: async () => ({ kind: "unconfigured" }),
+		});
+		expect(mirror.appliedSince("1", 0)).toBe(false);
+		await mirror.apply("1", "member", "why");
+		expect(mirror.appliedSince("1", now)).toBe(true);
+		expect(mirror.appliedSince("1", now + 1)).toBe(false);
+		now += 61 * 60_000;
+		await mirror.apply("2", "friend", "why");
+		expect(mirror.appliedSince("1", 0)).toBe(false);
+		expect(mirror.appliedSince("2", now)).toBe(true);
+	});
+
+	it("isn't recorded when there is no backend", async () => {
+		const { mirror } = setup();
+		await mirror.apply("1", "member", "why");
+		expect(mirror.appliedSince("1", 0)).toBe(false);
 	});
 });

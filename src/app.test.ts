@@ -61,6 +61,7 @@ describe("buildCore", () => {
 					closingTimeChannelId: undefined,
 				},
 				roles: { member: undefined, friend: undefined },
+				roleSync: false,
 			},
 			homeAssistant: undefined,
 			mastodon: undefined,

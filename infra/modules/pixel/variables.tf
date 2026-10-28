@@ -135,6 +135,17 @@ variable "discord_role_friend" {
   description = "Optional. Discord role name or ID that friend is mirrored to."
 }
 
+variable "discord_role_sync" {
+  type        = string
+  default     = null
+  description = "Optional. \"on\" reads the mapped roles back into members.yaml every minute (needs the Server Members Intent)."
+
+  validation {
+    condition     = var.discord_role_sync == null ? true : contains(["on", "off"], var.discord_role_sync)
+    error_message = "discord_role_sync must be \"on\" or \"off\"."
+  }
+}
+
 variable "home_assistant_url" {
   type        = string
   default     = null

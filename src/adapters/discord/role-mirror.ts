@@ -1,9 +1,11 @@
 import { type APIRole, PermissionFlagsBits, Routes } from "discord.js";
 import type {
+	HolderList,
 	Inspection,
 	MirrorBackend,
 	MirroredTier,
 	MirrorResult,
+	RoleHolder,
 	TierMirrorState,
 	TierOff,
 	WantedLevel,
@@ -12,9 +14,9 @@ import { MIRRORED_TIERS } from "../../core/role-mirror.ts";
 
 /**
  * The Discord side of the role mirror: Pixel's tiers pushed to the roles named
- * in config. It reads the server's roles and the bot's own standing fresh on
- * every call, never trusts a cached answer, and never reads a role to decide a
- * tier. Everything that decides something is a plain function, tested on its
+ * in config, and the list of who holds them read back for the role sync. It
+ * reads the server's roles and the bot's own standing fresh on every call and
+ * never trusts a cached answer. Everything that decides something is a plain function, tested on its
  * own; the class only talks to Discord.
  */
 
@@ -137,9 +139,37 @@ export function describeDiscordError(error: unknown): string | undefined {
 	}
 }
 
+/** A server member as the members list returns them. */
+export type DiscordMember = {
+	user: { id: string; username: string; bot?: boolean };
+	roles: string[];
+};
+
+/** Which managed tiers' roles each person holds. Bots and people holding none are left out. */
+export function roleHolders(
+	members: readonly DiscordMember[],
+	tiers: readonly ResolvedTier[],
+): RoleHolder[] {
+	const on = tiers.flatMap((tier) => (tier.status === "on" ? [tier] : []));
+	return members.flatMap((member) => {
+		if (member.user.bot) return [];
+		const held = new Set(member.roles);
+		const mine = on.filter((tier) => held.has(tier.roleId)).map((tier) => tier.tier);
+		return mine.length > 0
+			? [{ userId: member.user.id, username: member.user.username, tiers: mine }]
+			: [];
+	});
+}
+
+/** Discord returns at most this many members per request. */
+const MEMBERS_PAGE = 1000;
+
+const NO_MEMBERS_INTENT =
+	"Discord won't list the server's members, so turn on the Server Members Intent for the bot in the Developer Portal";
+
 /** The parts of discord.js's REST client this uses. */
 export type RoleRest = {
-	get(route: `/${string}`): Promise<unknown>;
+	get(route: `/${string}`, options?: { query?: URLSearchParams }): Promise<unknown>;
 	put(route: `/${string}`, options?: { reason?: string }): Promise<unknown>;
 	delete(route: `/${string}`, options?: { reason?: string }): Promise<unknown>;
 };
@@ -222,6 +252,49 @@ export class DiscordRoleMirror implements MirrorBackend {
 				has: held.has(tier.roleId),
 			})),
 		};
+	}
+
+	async holders(): Promise<HolderList> {
+		const tiers = await this.#resolve();
+		if (tiers.every((tier) => tier.status === "unconfigured")) return { kind: "unconfigured" };
+		// Every configured tier must work: a broken role would look like nobody holds it.
+		if (tiers.some((tier) => tier.status === "off")) {
+			return { kind: "failed", reason: offReasons(tiers) };
+		}
+		let members: DiscordMember[];
+		try {
+			members = await this.#allMembers();
+		} catch (error) {
+			const code =
+				typeof error === "object" && error !== null
+					? (error as { code?: unknown }).code
+					: undefined;
+			if (code === 50001) return { kind: "failed", reason: NO_MEMBERS_INTENT };
+			const known = describeDiscordError(error);
+			if (!known) throw error;
+			return { kind: "failed", reason: known };
+		}
+		return {
+			kind: "ok",
+			managed: tiers.flatMap((tier) => (tier.status === "on" ? [tier.tier] : [])),
+			people: roleHolders(members, tiers),
+			self: this.#botId,
+		};
+	}
+
+	/** Every member of the server, a page at a time. Needs the Server Members Intent. */
+	async #allMembers(): Promise<DiscordMember[]> {
+		const all: DiscordMember[] = [];
+		let after = "0";
+		for (;;) {
+			const page = (await this.#rest.get(Routes.guildMembers(this.#guildId), {
+				query: new URLSearchParams({ limit: String(MEMBERS_PAGE), after }),
+			})) as DiscordMember[];
+			all.push(...page);
+			const last = page.at(-1);
+			if (page.length < MEMBERS_PAGE || !last) return all;
+			after = last.user.id;
+		}
 	}
 
 	/** Asks Discord for the roles and the bot's standing right now. */

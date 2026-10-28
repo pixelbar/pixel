@@ -108,6 +108,9 @@ const envSchema = z
 		// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
 		DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
 		DISCORD_ROLE_FRIEND: optional(z.string().trim().min(1).max(100)),
+		// "on" also reads the roles back into members.yaml every minute. Needs the Server Members
+		// Intent in the Developer Portal. Off unless set.
+		DISCORD_ROLE_SYNC: optional(z.enum(["on", "off"])),
 
 		// Both unset means Home Assistant is off. Setting only one is a mistake, so it stops startup.
 		HOME_ASSISTANT_URL: optional(z.url({ protocol: /^https?$/ })),
@@ -209,9 +212,14 @@ export type Config = {
 		};
 		/**
 		 * The Discord role each tier is mirrored to, by name or ID. Pixel pushes tiers
-		 * to these roles and never reads them. Unset means not mirrored.
+		 * to these roles. Unset means not mirrored.
 		 */
 		roles: { member: string | undefined; friend: string | undefined };
+		/**
+		 * Whether the role sync also reads these roles back into members.yaml every
+		 * minute (`core/role-sync.ts`). Off unless `DISCORD_ROLE_SYNC=on`.
+		 */
+		roleSync: boolean;
 	};
 	/**
 	 * How to reach Home Assistant: its address (for example the Nabu Casa cloud URL)
@@ -292,6 +300,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
+			roleSync: e.DISCORD_ROLE_SYNC === "on",
 		},
 		homeAssistant:
 			e.HOME_ASSISTANT_URL !== undefined && e.HOME_ASSISTANT_TOKEN !== undefined

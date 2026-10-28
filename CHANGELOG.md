@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- **Discord role sync:** with `DISCORD_ROLE_SYNC=on`, Pixel reads the `member` and `friend` roles every minute and updates `members.yaml` to match. Someone given a role gets that level (new entries get their username as the note), and someone whose role is removed, or who leaves the server, becomes a guest. Admins are never changed. Every change goes through the access store and is audited as the bot. It pauses (reported once) if a configured role is broken or Discord won't list members, and holds back more than 5 removals at once. Turn on the **Server Members Intent** for the bot in the Developer Portal and run `/admin sync` before switching it on. See [ADR 0020](docs/adr/0020-two-way-role-sync.md).
+
 - Admins can give a capability to everyone at a membership level: `/admin capabilities grant-level level:member capability:ha-lights` (and `revoke-level`). A `friend` grant reaches members too. It's saved in a new optional `tiers:` section of `members.yaml`, audited like other access changes, and DMs nobody. A person holds their own grants plus their level's, so promoting or demoting someone changes them at once; being an admin still gives none. `/admin capabilities list` shows which levels a capability reaches and marks what a person gets from their level. See [ADR 0019](docs/adr/0019-level-capabilities.md).
 
 ### Changed

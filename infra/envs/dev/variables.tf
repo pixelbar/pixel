@@ -103,6 +103,11 @@ variable "discord_role_friend" {
   default = null
 }
 
+variable "discord_role_sync" {
+  type    = string
+  default = null
+}
+
 variable "home_assistant_url" {
   type        = string
   default     = null

@@ -2,9 +2,12 @@ import type { Logger } from "./logger.ts";
 import type { ErrorReporter } from "./ports/error-reporter.ts";
 
 /**
- * A one-way mirror from Pixel to a platform's roles. Pixel's own data is the
- * source of truth for tiers, so this only ever pushes: Pixel never reads a role
- * to decide anyone's tier, and nothing is pulled back.
+ * Pixel's tiers and a platform's roles, kept in step both ways. Pushing
+ * (`apply`) happens when an admin changes someone's level. Reading
+ * (`holders`) is only for the role sync (`core/role-sync.ts`), which changes
+ * the members file through the access store; a role is never consulted when
+ * a command runs, so the dispatcher still decides from Pixel's own data
+ * ([ADR 0020](../../docs/adr/0020-two-way-role-sync.md)).
  *
  * Only `member` and `friend` have roles. Admin has none, and a guest simply
  * holds neither. Roles other than the mapped ones are never touched.
@@ -45,6 +48,29 @@ export type Inspection =
 	| { kind: "failed"; reason: string }
 	| { kind: "ok"; holdings: RoleHolding[] };
 
+/** Someone holding at least one of the mapped roles. */
+export type RoleHolder = {
+	userId: string;
+	/** Their platform username, for the members file's note. For humans only. */
+	username: string;
+	/** The tiers whose role they hold. */
+	tiers: readonly MirroredTier[];
+};
+
+export type HolderList =
+	| { kind: "unconfigured" }
+	/** `reason` is plain words with no personal data. */
+	| { kind: "failed"; reason: string }
+	| {
+			kind: "ok";
+			/** The tiers whose roles were read. People at any other tier are left alone. */
+			managed: readonly MirroredTier[];
+			/** Everyone in the server holding a managed role. Anyone missing holds none. */
+			people: readonly RoleHolder[];
+			/** The bot's own user ID, which the audit log names as the one making the change. */
+			self: string;
+	  };
+
 /** Implemented by a platform adapter (Discord). */
 export type MirrorBackend = {
 	states(): Promise<readonly TierMirrorState[]>;
@@ -52,20 +78,38 @@ export type MirrorBackend = {
 	apply(userId: string, wanted: WantedLevel, reason: string): Promise<MirrorResult>;
 	/** Which mapped roles the person holds right now. Read-only. */
 	inspect(userId: string): Promise<Inspection>;
+	/**
+	 * Everyone holding a mapped role. Read-only. Fails unless every configured
+	 * tier is on, so a renamed or broken role can't make everyone look like
+	 * they lost it.
+	 */
+	holders(): Promise<HolderList>;
 };
 
-export type RoleMirrorOptions = { logger: Logger; reporter: ErrorReporter };
+export type RoleMirrorOptions = {
+	logger: Logger;
+	reporter: ErrorReporter;
+	/** Milliseconds since the epoch. Injectable for tests. */
+	now?: () => number;
+};
+
+/** How long `apply` calls are remembered for `appliedSince`. */
+const REMEMBER_MS = 60 * 60_000;
 
 const UNEXPECTED = "Discord didn't accept the change";
 
 export class RoleMirror {
 	readonly #logger: Logger;
 	readonly #reporter: ErrorReporter;
+	readonly #now: () => number;
 	#backend: MirrorBackend | undefined;
+	/** User ID → when Pixel last pushed their roles. */
+	readonly #applied = new Map<string, number>();
 
-	constructor({ logger, reporter }: RoleMirrorOptions) {
+	constructor({ logger, reporter, now = Date.now }: RoleMirrorOptions) {
 		this.#logger = logger.child({ component: "role-mirror" });
 		this.#reporter = reporter;
+		this.#now = now;
 	}
 
 	/** A platform adapter plugs its backend in once it's connected. */
@@ -86,6 +130,7 @@ export class RoleMirror {
 
 	async apply(userId: string, wanted: WantedLevel, reason: string): Promise<MirrorResult> {
 		if (!this.#backend) return { kind: "unconfigured" };
+		this.#remember(userId);
 		try {
 			return await this.#backend.apply(userId, wanted, reason);
 		} catch (error) {
@@ -100,6 +145,32 @@ export class RoleMirror {
 		} catch (error) {
 			return this.#unexpected(error, "inspect", (why) => ({ kind: "failed", reason: why }));
 		}
+	}
+
+	async holders(): Promise<HolderList> {
+		if (!this.#backend) return { kind: "unconfigured" };
+		try {
+			return await this.#backend.holders();
+		} catch (error) {
+			return this.#unexpected(error, "holders", (why) => ({ kind: "failed", reason: why }));
+		}
+	}
+
+	/**
+	 * Whether Pixel pushed this person's roles at or after `since` (ms). The
+	 * role sync leaves them alone, so a role list read before an admin's change
+	 * can't undo it.
+	 */
+	appliedSince(userId: string, since: number): boolean {
+		return (this.#applied.get(userId) ?? Number.NEGATIVE_INFINITY) >= since;
+	}
+
+	#remember(userId: string): void {
+		const now = this.#now();
+		for (const [id, at] of this.#applied) {
+			if (at < now - REMEMBER_MS) this.#applied.delete(id);
+		}
+		this.#applied.set(userId, now);
 	}
 
 	/**

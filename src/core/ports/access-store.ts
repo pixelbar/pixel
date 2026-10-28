@@ -1,9 +1,10 @@
 import type { PlatformActor, Tier } from "../access.ts";
 
 /**
- * Who is a member or friend, and what extra capabilities they have. Pixel's
- * own data is the source of truth for this: Discord roles are never read to
- * decide a tier. `admin` is not stored here, it comes only from admins.yaml.
+ * Who is a member or friend, and what extra capabilities they have. Access is
+ * decided from this data alone. The role sync may change it from Discord roles,
+ * through `apply` like an admin (ADR 0020), but a role is never read to decide
+ * a command. `admin` is not stored here, it comes only from admins.yaml.
  *
  * Phase 1 keeps it in a bot-managed file. A database can replace it later
  * behind this interface.

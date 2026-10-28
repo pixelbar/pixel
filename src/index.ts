@@ -6,6 +6,7 @@ import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
+import { RoleSync } from "./core/role-sync.ts";
 import { createBotStatus } from "./features/bot-status/index.ts";
 import { loadBuildInfo } from "./observability/build-info.ts";
 import { startHealthServer } from "./observability/health.ts";
@@ -20,6 +21,9 @@ import { logProcessFailures } from "./observability/process-logging.ts";
 import { createSentryFeedback } from "./observability/sentry-feedback.ts";
 import { createSentryReporter } from "./observability/sentry-reporter.ts";
 import { findMissingDevices } from "./services/home-devices.ts";
+
+/** How often the role sync reads the Discord roles. */
+const ROLE_SYNC_EVERY_MS = 60_000;
 
 async function main(): Promise<void> {
 	const config = loadConfig();
@@ -62,6 +66,12 @@ async function main(): Promise<void> {
 	// Background work (e.g. announcing space changes) starts once Discord is ready,
 	// so the announcement publishers exist before the first change is announced.
 	let stopFeatures: Stop = () => {};
+	let stopRoleSync: Stop = () => {};
+	// Reads the mapped roles back into members.yaml. Only with DISCORD_ROLE_SYNC=on.
+	const roleSync = config.discord.roleSync
+		? new RoleSync({ access, roles, logger, reporter, everyMs: ROLE_SYNC_EVERY_MS })
+		: undefined;
+	if (!roleSync) logger.info({ event: "role_sync.off" }, "role sync is off");
 	let heartbeat: Heartbeat | undefined;
 	const discord = createDiscordAdapter({
 		token: config.discord.token,
@@ -82,6 +92,7 @@ async function main(): Promise<void> {
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
+			if (roleSync) stopRoleSync = roleSync.start();
 			heartbeat?.beat();
 			// Say Pixel is online once Home Assistant has had a moment to connect, so the
 			// status it posts is meaningful. Never holds anything up.
@@ -148,6 +159,7 @@ async function main(): Promise<void> {
 		// Say goodbye while still connected, but never let it hold up the shutdown.
 		await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
 		stopFeatures();
+		stopRoleSync();
 		heartbeat?.stop();
 		spaceStatus.stop();
 		homeAssistant?.close();

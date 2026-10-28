@@ -70,6 +70,7 @@ locals {
     var.discord_closing_time_channel_id != null ? { DISCORD_CLOSING_TIME_CHANNEL_ID = var.discord_closing_time_channel_id } : {},
     var.discord_role_member != null ? { DISCORD_ROLE_MEMBER = var.discord_role_member } : {},
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},
+    var.discord_role_sync != null ? { DISCORD_ROLE_SYNC = var.discord_role_sync } : {},
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
