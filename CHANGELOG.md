@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- **Discord role sync:** with `DISCORD_ROLE_SYNC=on`, Pixel reads the `member` and `friend` roles every minute and updates `members.yaml` to match. Someone given a role gets that level (new entries get their username as the note), and someone whose role is removed, or who leaves the server, becomes a guest. Admins are never changed. Every change goes through the access store and is audited as the bot. It pauses (reported once) if a configured role is broken or Discord won't list members, and holds back more than 5 removals at once. Turn on the **Server Members Intent** for the bot in the Developer Portal and run `/admin sync` before switching it on. See [ADR 0020](docs/adr/0020-two-way-role-sync.md).
+
 ## [0.21.0] - 2026-10-28
 
 ### Added

@@ -17,6 +17,7 @@ module "pixel" {
   discord_closing_time_channel_id       = var.discord_closing_time_channel_id
   discord_role_member                   = var.discord_role_member
   discord_role_friend                   = var.discord_role_friend
+  discord_role_sync                     = var.discord_role_sync
   home_assistant_url                    = var.home_assistant_url
   mastodon_instance                     = var.mastodon_instance
   spacestate_api_url                    = var.spacestate_api_url

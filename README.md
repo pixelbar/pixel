@@ -120,6 +120,7 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `DISCORD_CLOSING_TIME_CHANNEL_ID` | Optional. Channel for the closing-time reminder. Unset, `off` or `none` disables it |
 | `PIXEL_CLOSING_TIME_FILE` | Optional. Closing-time message body. Defaults to `data/closing-time.md`. Missing or empty → built-in default |
 | `DISCORD_ROLE_MEMBER`, `DISCORD_ROLE_FRIEND` | Optional. A Discord role (name or ID) that each level is mirrored to. Unset means not mirrored |
+| `DISCORD_ROLE_SYNC` | Optional. `on` also reads those roles back into `members.yaml` every minute (needs the Server Members Intent) |
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |

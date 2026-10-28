@@ -11,6 +11,7 @@ import {
 	type RoleMapping,
 	type RoleRest,
 	resolveTiers,
+	roleHolders,
 } from "./role-mirror.ts";
 
 const GUILD = "100000000000000020";
@@ -403,5 +404,116 @@ describe("DiscordRoleMirror", () => {
 			await mirrorFor(rest).inspect(PERSON);
 			expect(calls.some((c) => c.method !== "get")).toBe(false);
 		});
+	});
+});
+
+const member = (id: string, roles: string[], bot = false) => ({
+	user: { id, username: `user${id.slice(-3)}`, ...(bot ? { bot } : {}) },
+	roles,
+});
+
+describe("roleHolders", () => {
+	const tiers = resolveTiers(BOTH, ROLES, STANDING, GUILD);
+
+	it("lists who holds a managed role, leaving out bots and everyone else", () => {
+		expect(
+			roleHolders(
+				[
+					member("100000000000000201", [MEMBER_ID, FRIEND_ID, HACKER_ID]),
+					member("100000000000000202", [FRIEND_ID]),
+					member("100000000000000203", [HACKER_ID]),
+					member("100000000000000204", [MEMBER_ID], true),
+				],
+				tiers,
+			),
+		).toEqual([
+			{ userId: "100000000000000201", username: "user201", tiers: ["member", "friend"] },
+			{ userId: "100000000000000202", username: "user202", tiers: ["friend"] },
+		]);
+	});
+
+	it("ignores a tier that isn't on", () => {
+		const memberOnly = resolveTiers(
+			{ member: "member", friend: undefined },
+			ROLES,
+			STANDING,
+			GUILD,
+		);
+		expect(roleHolders([member("100000000000000202", [FRIEND_ID])], memberOnly)).toEqual([]);
+	});
+});
+
+describe("DiscordRoleMirror.holders", () => {
+	/** The bot's own lookups from fakeDiscord, plus a paged members list. */
+	function withMembers(pages: ReturnType<typeof member>[][], failList?: unknown) {
+		const base = fakeDiscord();
+		const queries: string[] = [];
+		const rest: RoleRest = {
+			...base.rest,
+			async get(route, options) {
+				if (route === `/guilds/${GUILD}/members`) {
+					queries.push(options?.query?.toString() ?? "");
+					if (failList) throw failList;
+					return pages[queries.length - 1] ?? [];
+				}
+				return base.rest.get(route);
+			},
+		};
+		return { rest, queries, calls: base.calls };
+	}
+
+	it("reads every page of members and names the bot as the one acting", async () => {
+		const full = Array.from({ length: 1000 }, (_, i) =>
+			member(String(100000000000001000n + BigInt(i)), i === 0 ? [MEMBER_ID] : []),
+		);
+		const { rest, queries, calls } = withMembers([
+			full,
+			[member("100000000000009999", [FRIEND_ID])],
+		]);
+		expect(await mirrorFor(rest).holders()).toEqual({
+			kind: "ok",
+			managed: ["member", "friend"],
+			people: [
+				{ userId: "100000000000001000", username: "user000", tiers: ["member"] },
+				{ userId: "100000000000009999", username: "user999", tiers: ["friend"] },
+			],
+			self: BOT,
+		});
+		expect(queries).toEqual(["limit=1000&after=0", "limit=1000&after=100000000000001999"]);
+		expect(calls.some((c) => c.method !== "get")).toBe(false);
+	});
+
+	it("doesn't call Discord when nothing is mapped", async () => {
+		const { rest, queries } = withMembers([]);
+		expect(await mirrorFor(rest, { member: undefined, friend: undefined }).holders()).toEqual({
+			kind: "unconfigured",
+		});
+		expect(queries).toEqual([]);
+	});
+
+	it("refuses to read anything while a configured tier is off", async () => {
+		const { rest, queries } = withMembers([]);
+		const result = await mirrorFor(rest, { member: "member", friend: "nobody" }).holders();
+		expect(result).toEqual({
+			kind: "failed",
+			reason: "friend: no role matches the configured name or ID",
+		});
+		expect(queries).toEqual([]);
+	});
+
+	it("says to turn on the Server Members Intent when Discord won't list members", async () => {
+		const { rest } = withMembers([], { code: 50001 });
+		expect(await mirrorFor(rest).holders()).toEqual({
+			kind: "failed",
+			reason: expect.stringContaining("Server Members Intent"),
+		});
+	});
+
+	it("explains other known errors, and lets unknown ones through", async () => {
+		expect(await mirrorFor(withMembers([], { code: 50013 }).rest).holders()).toMatchObject({
+			kind: "failed",
+		});
+		const boom = new Error("socket hang up");
+		await expect(mirrorFor(withMembers([], boom).rest).holders()).rejects.toBe(boom);
 	});
 });

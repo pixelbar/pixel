@@ -119,7 +119,7 @@ The URL `just command-access` prints is **not** an invite. It is user OAuth (`ap
 **Invite (prod or a new test bot):**
 
 1. Developer Portal → the right application (prod is not Pixel Dev) → **Bot**. Public Bot as you need it. **Require OAuth2 Code Grant** off. Guild install, not user install.
-2. OAuth2 → URL Generator: scopes **`bot`** and **`applications.commands`**. Permissions to request: View Channel, Send Messages, Embed Links, Read Message History, plus Send Polls if you use `/schedule`, plus Manage Roles only if you set `DISCORD_ROLE_MEMBER` / `DISCORD_ROLE_FRIEND`. Open the URL, pick the server (you need Manage Server), authorise. Confirm the bot is in **Members**.
+2. OAuth2 → URL Generator: scopes **`bot`** and **`applications.commands`**. Permissions to request: View Channel, Send Messages, Embed Links, Read Message History, plus Send Polls if you use `/schedule`, plus Manage Roles only if you set `DISCORD_ROLE_MEMBER` / `DISCORD_ROLE_FRIEND`. With `DISCORD_ROLE_SYNC=on`, also turn on **Server Members Intent** under Bot → Privileged Gateway Intents (for each bot: Pixel Dev and prod). Open the URL, pick the server (you need Manage Server), authorise. Confirm the bot is in **Members**.
 3. Put that application ID in `DISCORD_APP_ID` and the server ID in `DISCORD_GUILD_ID` (gitignored `.env` for local, gitignored `terraform.tfvars` for Azure). Channel IDs must be in **this** guild.
 4. `just register dev` or `just register prod` against that env’s token and guild. Optional: add redirect `http://localhost:53682/callback`, then `just command-access` for the same env.
 5. Start **one** instance. Never two processes on one token.
@@ -136,6 +136,8 @@ Tiers come from two files: `config/admins.yaml` (hand-edited) and `config/member
 2. Check it with `/admin level get user:<person>`.
 
 That's all: Pixel updates `members.yaml` itself (writing the person's Discord username as the `note` if the entry has none, so you can tell who is who; it never replaces a note you wrote), keeps `members.yaml.bak`, and logs an `access.changed` event with who did it. If Pixel is configured to mirror Discord roles, it also sets the person's role. `/admin sync` re-applies the roles for everyone if they ever drift.
+
+**Role sync (optional).** With `DISCORD_ROLE_SYNC=on`, Pixel also works the other way: every minute it reads who holds the mapped roles and updates `members.yaml` (role given → that level; role taken away or left the server → guest; admins never change). Giving someone the `member` role in Discord is then enough. To turn it on: enable the Server Members Intent for the bot (Developer Portal → Bot), run `/admin sync` so everyone Pixel lists holds their role, then set `DISCORD_ROLE_SYNC=on` (`discord_role_sync = "on"` in the env's `terraform.tfvars` on Azure) and restart. Look for `role_sync.problem` in the logs or Sentry: it says why the sync paused (a broken role, the intent off) or that it held back more than 5 removals at once; fix the roles or run `/admin sync`, and it carries on by itself. Each change is an `access.changed` record by the bot, with reason "Has the member role" or "Discord role removed".
 
 **Remove someone completely:** `/admin level set … level:guest` keeps their entry. To delete the entry, edit `members.yaml` by hand (remove the whole `- ids: …` block), then `/admin reload`. Admins can't be changed from Discord (see below).
 

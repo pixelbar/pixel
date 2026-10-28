@@ -76,6 +76,14 @@ describe("loadConfig", () => {
 		});
 	});
 
+	it("reads roles back only when the role sync is on", () => {
+		expect(loadConfig(VALID).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "" }).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "off" }).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "on" }).discord.roleSync).toBe(true);
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "yes" })).toThrow(/DISCORD_ROLE_SYNC/);
+	});
+
 	it("rejects a blank or over-long role setting", () => {
 		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_MEMBER: "   " })).toThrow(
 			/DISCORD_ROLE_MEMBER/,

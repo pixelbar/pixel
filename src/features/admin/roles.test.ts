@@ -67,6 +67,7 @@ type Fake = {
 	states: ReturnType<typeof vi.fn<MirrorBackend["states"]>>;
 	apply: ReturnType<typeof vi.fn<MirrorBackend["apply"]>>;
 	inspect: ReturnType<typeof vi.fn<MirrorBackend["inspect"]>>;
+	holders: ReturnType<typeof vi.fn<MirrorBackend["holders"]>>;
 };
 
 function fakeBackend(overrides: Partial<MirrorBackend> = {}): Fake {
@@ -77,6 +78,9 @@ function fakeBackend(overrides: Partial<MirrorBackend> = {}): Fake {
 		),
 		inspect: vi.fn<MirrorBackend["inspect"]>(
 			overrides.inspect ?? (async () => ({ kind: "ok", holdings: [] })),
+		),
+		holders: vi.fn<MirrorBackend["holders"]>(
+			overrides.holders ?? (async () => ({ kind: "unconfigured" })),
 		),
 	};
 }

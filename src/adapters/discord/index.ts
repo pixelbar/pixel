@@ -208,7 +208,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		await Promise.all(ready.guilds.cache.map(leaveIfForeign));
 		deps.calendar.use(createDiscordCalendarSource(ready, guildId));
 		deps.channelPosts.use(createDiscordPoster(ready, guildId));
-		// Mirror tiers to roles (Pixel to Discord only), and say plainly what works and what doesn't.
+		// Mirror tiers to roles (and let the role sync read them back), and say plainly what works.
 		deps.roles.attach(
 			new DiscordRoleMirror({
 				rest: ready.rest,

@@ -166,7 +166,7 @@ type Feature = {
 
 ## Discord adapter
 
-- **discord.js v14, slash commands only.** Intents: `Guilds` only, which isn't privileged. No `MessageContent`. Scheduled events are read over REST, which needs no intent.
+- **discord.js v14, slash commands only.** Intents: `Guilds` only, which isn't privileged. The role sync (`DISCORD_ROLE_SYNC=on`) lists members over REST, which needs the Server Members Intent switched on in the Developer Portal, but the gateway never requests it. No `MessageContent`. Scheduled events are read over REST, which needs no intent.
 - **Guild allow-list:** interactions from any guild other than `DISCORD_GUILD_ID` are refused, and the bot leaves other guilds. Slash commands are guild-only (they aren't available in DMs). Pixel does send DMs when a capability is granted or revoked (see below).
 - **Autocomplete:** a string or integer option can have a `suggest` function (never together with fixed `choices`). It runs while someone types and returns up to 25 `{ name, value }` suggestions from live data, and it can see the options already filled in, so the actions offered can depend on the device chosen. `Dispatcher.suggest` runs it through the **same access gates as the command**, so people who can't run a command get an empty list (logged as `command.suggest_denied`), and it has its own, more generous rate limit so typing can't use up the budget for commands. A slow (over 2.5 s, Discord's limit is 3) or failing function gives an empty list. What was typed is never logged. **Suggestions are not validation:** Discord doesn't check that a submitted value came from them, so the command validates what it receives as usual.
 - **Capability DMs:** when `AccessStore.apply` actually grants or revokes capabilities, Pixel DMs that Discord user ID through a `DirectMessenger` port (`core/ports/direct-message.ts`, implemented here). Mentions stay off. A closed inbox or other send failure is logged (`capability.dm_failed`, IDs only) and never fails the `/admin` command or tells the target why.
@@ -441,6 +441,7 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `PIXEL_CLOSING_TIME_FILE`     |        | Optional. Operator-authored closing-time body. Default `{PIXEL_DATA_DIR}/closing-time.md`. Missing or empty → built-in default. Not a secret |
 | `DISCORD_ROLE_MEMBER`         |        | Optional. A Discord role name or ID that the `member` level is mirrored to. Unset means not mirrored |
 | `DISCORD_ROLE_FRIEND`         |        | Optional. A Discord role name or ID that the `friend` level is mirrored to. Unset means not mirrored |
+| `DISCORD_ROLE_SYNC`           |        | Optional. `on` reads the mapped roles back into `members.yaml` every minute (needs the Server Members Intent; [ADR 0020](adr/0020-two-way-role-sync.md)). Unset or `off` means push only |
 | `HOME_ASSISTANT_URL`          |        | Optional, with the token. Where Pixel reaches Home Assistant (http or https). On Azure prefer the Tailscale sidecar address; a Nabu Casa URL still works |
 | `HOME_ASSISTANT_TOKEN`        |        | Optional, with the URL. A long-lived access token from a **non-admin** Home Assistant user. A secret |
 | `MASTODON_INSTANCE`           |        | Optional, with the token. Origin of the Mastodon instance (http or https). A path is stripped so only the origin is used. Never hard-coded |

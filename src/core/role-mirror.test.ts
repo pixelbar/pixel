@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { silentLogger } from "./logger.ts";
 import { nullErrorReporter } from "./ports/error-reporter.ts";
-import { type MirrorBackend, RoleMirror, type TierMirrorState } from "./role-mirror.ts";
+import {
+	type MirrorBackend,
+	type MirrorResult,
+	RoleMirror,
+	type TierMirrorState,
+} from "./role-mirror.ts";
 
 function setup(backend?: Partial<MirrorBackend>) {
-	const logger = { ...silentLogger, info: vi.fn(), error: vi.fn() };
+	const logger = { ...silentLogger, info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 	logger.child = () => logger;
 	const reporter = { ...nullErrorReporter, captureBackground: vi.fn() };
 	const mirror = new RoleMirror({ logger, reporter });
@@ -13,6 +18,7 @@ function setup(backend?: Partial<MirrorBackend>) {
 			states: async () => [],
 			apply: async () => ({ kind: "unconfigured" }),
 			inspect: async () => ({ kind: "unconfigured" }),
+			holders: async () => ({ kind: "unconfigured" }),
 			...backend,
 		});
 	}
@@ -112,5 +118,86 @@ describe("check", () => {
 			expect.any(String),
 		);
 		expect(reporter.captureBackground).not.toHaveBeenCalled();
+	});
+});
+
+describe("holders", () => {
+	it("is unconfigured without a backend, and passes through with one", async () => {
+		expect(await setup().mirror.holders()).toEqual({ kind: "unconfigured" });
+		const list = { kind: "ok" as const, managed: ["member" as const], people: [], self: "1" };
+		const { mirror } = setup({ holders: async () => list });
+		expect(await mirror.holders()).toBe(list);
+	});
+
+	it("turns an unexpected failure into a plain one, reporting it once per outage", async () => {
+		let fail = true;
+		const boom = new Error("boom");
+		const { mirror, reporter, logger } = setup({
+			holders: async () => {
+				if (fail) throw boom;
+				return { kind: "unconfigured" };
+			},
+		});
+		const failed = { kind: "failed", reason: "couldn't read the roles from Discord" };
+		expect(await mirror.holders()).toEqual(failed);
+		expect(await mirror.holders()).toEqual(failed);
+		expect(reporter.captureBackground).toHaveBeenCalledOnce();
+		expect(reporter.captureBackground).toHaveBeenCalledWith(boom, "role-mirror");
+		expect(logger.warn).toHaveBeenCalledOnce();
+		// It works again, then a new outage is reported again.
+		fail = false;
+		await mirror.holders();
+		fail = true;
+		await mirror.holders();
+		expect(reporter.captureBackground).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("appliedSince", () => {
+	it("remembers when Pixel last pushed someone's roles, and forgets after an hour", async () => {
+		let now = 1_000_000;
+		const mirror = new RoleMirror({
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+			now: () => now,
+		});
+		mirror.attach({
+			states: async () => [],
+			apply: async () => ({ kind: "unconfigured" }),
+			inspect: async () => ({ kind: "unconfigured" }),
+			holders: async () => ({ kind: "unconfigured" }),
+		});
+		expect(mirror.appliedSince("1", 0)).toBe(false);
+		await mirror.apply("1", "member", "why");
+		expect(mirror.appliedSince("1", now)).toBe(true);
+		expect(mirror.appliedSince("1", now + 1)).toBe(false);
+		now += 61 * 60_000;
+		await mirror.apply("2", "friend", "why");
+		expect(mirror.appliedSince("1", 0)).toBe(false);
+		expect(mirror.appliedSince("2", now)).toBe(true);
+	});
+
+	it("remembers a push Discord didn't take until one does", async () => {
+		let result: MirrorResult = { kind: "failed", reason: "nope" };
+		const { mirror } = setup({ apply: async () => result });
+		expect(mirror.pushFailed("1")).toBe(false);
+		await mirror.apply("1", "member", "why");
+		expect(mirror.pushFailed("1")).toBe(true);
+		result = { kind: "in-sync", off: [] };
+		await mirror.apply("1", "member", "why");
+		expect(mirror.pushFailed("1")).toBe(false);
+		const thrown = setup({
+			apply: async () => {
+				throw new Error("boom");
+			},
+		});
+		await thrown.mirror.apply("2", "friend", "why");
+		expect(thrown.mirror.pushFailed("2")).toBe(true);
+	});
+
+	it("isn't recorded when there is no backend", async () => {
+		const { mirror } = setup();
+		await mirror.apply("1", "member", "why");
+		expect(mirror.appliedSince("1", 0)).toBe(false);
 	});
 });
