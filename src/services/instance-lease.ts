@@ -31,14 +31,25 @@ export type InstanceLeaseOptions = {
 	id?: string;
 };
 
+/**
+ * - `idle`: not claimed yet, so not answering (the instance it replaces still is).
+ * - `claiming`: the claim is being written. Still not answering, and a file that names
+ *   another instance is the one being replaced, not a takeover.
+ * - `held`: written; answering until the file names someone else.
+ * - `unwritten`: the claim couldn't be written. Answering anyway, never counted as lost
+ *   (the file still names the old instance), and trying the write again on each check.
+ * - `lost`: a newer instance took over. Never answers or claims again.
+ */
+type LeaseState = "idle" | "claiming" | "held" | "unwritten" | "lost";
+
 export class InstanceLease {
 	readonly id: string;
 	readonly #file: string;
 	readonly #logger: Logger;
 	readonly #onLost: () => void;
-	#claimed = false;
-	#lost = false;
-	#readFailed = false;
+	#state: LeaseState = "idle";
+	/** Whether the last read or write failed, so a problem that persists is logged once. */
+	#failing = false;
 
 	constructor({ file, logger, onLost, id = randomUUID() }: InstanceLeaseOptions) {
 		this.id = id;
@@ -53,9 +64,16 @@ export class InstanceLease {
 	 * must not silence the bot.
 	 */
 	async claim(): Promise<void> {
-		if (this.#lost) return;
-		this.#claimed = true;
-		await this.#write();
+		if (this.#state !== "idle") return;
+		this.#state = "claiming";
+		try {
+			await this.#write();
+		} catch (error) {
+			this.#state = "unwritten";
+			this.#failing = true;
+			throw error;
+		}
+		this.#state = "held";
 		this.#logger.info(
 			{ event: "instance.claimed", instance: this.id },
 			"this instance is answering",
@@ -67,25 +85,22 @@ export class InstanceLease {
 	 * has claimed it since. Never throws.
 	 */
 	async holds(): Promise<boolean> {
-		if (!this.#claimed || this.#lost) return false;
+		if (this.#state === "unwritten") return this.#retry();
+		if (this.#state !== "held") return false;
 		let owner: string;
 		try {
 			owner = parseOwner(await readFile(this.#file, "utf8"));
 		} catch (error) {
 			if (isMissing(error)) return this.#reclaim();
-			if (!this.#readFailed) {
-				this.#logger.warn(
-					{ event: "instance.read_failed", err: error },
-					"couldn't read the instance lease, so carrying on",
-				);
-			}
-			this.#readFailed = true;
+			this.#problem(error, "couldn't read the instance lease, so carrying on");
 			return true;
 		}
-		this.#readFailed = false;
+		// A check that started before a failed rewrite mustn't count the stale file as a takeover.
+		if (this.#state !== "held") return this.#state === "unwritten";
+		this.#failing = false;
 		if (owner === this.id) return true;
 		if (owner === "") return this.#reclaim();
-		this.#lost = true;
+		this.#state = "lost";
 		this.#logger.warn(
 			{ event: "instance.lost", instance: this.id, now: owner },
 			"another instance took over, so this one is standing by",
@@ -102,6 +117,7 @@ export class InstanceLease {
 		return () => clearInterval(timer);
 	}
 
+	/** The file is missing or empty: someone deleted it, so write it again. */
 	async #reclaim(): Promise<boolean> {
 		try {
 			await this.#write();
@@ -110,12 +126,34 @@ export class InstanceLease {
 				"the instance lease was missing, so wrote it again",
 			);
 		} catch (error) {
-			this.#logger.warn(
-				{ event: "instance.read_failed", err: error },
-				"couldn't write the instance lease",
-			);
+			this.#state = "unwritten";
+			this.#problem(error, "couldn't write the instance lease, so carrying on");
 		}
 		return true;
+	}
+
+	/** The claim was never written: try again, answering either way. */
+	async #retry(): Promise<boolean> {
+		try {
+			await this.#write();
+		} catch (error) {
+			this.#problem(error, "couldn't write the instance lease, so carrying on");
+			return true;
+		}
+		if (this.#state === "unwritten") this.#state = "held";
+		this.#failing = false;
+		this.#logger.info(
+			{ event: "instance.claimed", instance: this.id },
+			"this instance is answering",
+		);
+		return true;
+	}
+
+	#problem(error: unknown, message: string): void {
+		if (!this.#failing) {
+			this.#logger.warn({ event: "instance.lease_failed", err: error }, message);
+		}
+		this.#failing = true;
 	}
 
 	/** Temp file then rename, so a reader never sees half a file. */
