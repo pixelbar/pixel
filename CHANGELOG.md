@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- `just register`, `just command-access` and `just deploy` for `dev` or `prod` now read that environment's access lists and devices file where `just pull` puts them (`config/admins.<env>.yaml`, `config/<env>/members.yaml`, `config/home-assistant/<env>/`), instead of the local bot's `config/admins.yaml`. When one is missing they say to run `just pull <env>`. `just validate-config dev|prod` checks those files, and `just deploy dev` runs it before building, so a missing file no longer fails the deploy after the app has rolled.
+
 ## [0.22.0] - 2026-10-28
 
 ### Added

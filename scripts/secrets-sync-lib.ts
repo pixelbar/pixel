@@ -7,8 +7,7 @@
  */
 import { join } from "node:path";
 import { parseEnv } from "node:util";
-import { ENVS, type Target } from "./envs.ts";
-import { mirrorDir } from "./ha-devices-lib.ts";
+import { ENVS, localFiles, type Target } from "./envs.ts";
 import type { SecretEntry, SecretsManifest } from "./secrets-manifest.ts";
 
 /** Where each env's secrets live on Azure, and the Container App that reads them. */
@@ -25,7 +24,7 @@ export function envFile(target: Target): string {
 
 /** The local copy of a target's `admins-yaml` secret. Gitignored (`config/*.yaml`). */
 export function adminsFile(target: Target): string {
-	return join("config", `admins.${target}.yaml`);
+	return localFiles(target).adminsFile;
 }
 
 /** The stack's settings, shared through the `terraform-tfvars` secret. Gitignored (`*.tfvars`). */
@@ -368,18 +367,15 @@ export function tfvarsProblems(
 export type ShareFile = { path: string; mirror: string; push: boolean };
 
 export function shareFiles(target: Target): ShareFile[] {
+	const files = localFiles(target);
 	return [
-		{ path: "members.yaml", mirror: join("config", target, "members.yaml"), push: true },
+		{ path: "members.yaml", mirror: files.membersFile, push: true },
 		{
 			path: "home-assistant/devices.yaml",
-			mirror: join(mirrorDir(target), "devices.yaml"),
+			mirror: join(files.homeAssistantDir, "devices.yaml"),
 			push: false,
 		},
-		{
-			path: "data/announcement-routes.yaml",
-			mirror: join("config", target, "announcement-routes.yaml"),
-			push: false,
-		},
+		{ path: "data/announcement-routes.yaml", mirror: files.announcementRoutesFile, push: false },
 	];
 }
 

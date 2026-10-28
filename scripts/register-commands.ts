@@ -1,6 +1,7 @@
 /**
  * Registers Pixel's slash commands on the configured guild.
  * Usage: just register dev  or  just register prod
+ * Reads that env's file and the config `just pull <env>` wrote (see `localFiles`).
  */
 import { REST, Routes } from "discord.js";
 import { toSlashCommand } from "../src/adapters/discord/commands.ts";
@@ -8,9 +9,11 @@ import { buildCore } from "../src/app.ts";
 import { loadConfig } from "../src/config.ts";
 import { silentLogger } from "../src/core/logger.ts";
 import { nullErrorReporter } from "../src/core/ports/error-reporter.ts";
-import { loadTarget } from "./target.ts";
+import { loadTarget, requireConfigFiles } from "./target.ts";
 
-const { target, vars } = loadTarget(process.argv.slice(2), "just register dev|prod");
+const loaded = loadTarget(process.argv.slice(2), "just register dev|prod");
+requireConfigFiles(loaded);
+const { target, vars } = loaded;
 const config = loadConfig(vars);
 const { registry } = buildCore(config, silentLogger, nullErrorReporter);
 const body = registry.all().map(({ definition }) => toSlashCommand(definition));

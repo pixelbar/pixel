@@ -8,6 +8,7 @@
  * Pure: nothing here reads a file, the environment or Azure, so it can be tested.
  * `scripts/env.ts` does the reading.
  */
+import { join } from "node:path";
 import { parseEnv } from "node:util";
 
 /** An environment that runs on Azure. `local` is `just dev` on a laptop and has none of this. */
@@ -59,6 +60,60 @@ export const ENVS: Readonly<Record<Target, PixelEnv>> = {
 
 /** Every env file a laptop may have. `.env` is the local bot (`just dev`). */
 export const ENV_FILES = [".env", ".env.dev", ".env.prod"] as const;
+
+/**
+ * Where `just pull <env>` (and `just secrets-pull`, `just ha-devices`) put an env's
+ * config on the laptop. All gitignored. `config/admins.yaml`, `config/members.yaml` and
+ * `config/home-assistant/` are the local bot's (`just dev`), never an env's.
+ */
+export type LocalFiles = {
+	/** The `admins-yaml` Key Vault secret. */
+	adminsFile: string;
+	/** Read-only mirror of the share's `members.yaml`. */
+	membersFile: string;
+	/** Holds the read-only mirror of the share's `home-assistant/devices.yaml`. */
+	homeAssistantDir: string;
+	/** Read-only mirror of the share's `data/announcement-routes.yaml`. */
+	announcementRoutesFile: string;
+};
+
+export function localFiles(target: Target): LocalFiles {
+	return {
+		adminsFile: join("config", `admins.${target}.yaml`),
+		membersFile: join("config", target, "members.yaml"),
+		homeAssistantDir: join("config", "home-assistant", target),
+		announcementRoutesFile: join("config", target, "announcement-routes.yaml"),
+	};
+}
+
+/**
+ * Points Pixel's config paths at the env's pulled files, so a tool that builds the core
+ * for `dev` reads dev's access lists and devices, not the local bot's. A path the env
+ * file (or the shell) sets itself wins.
+ */
+export function withLocalFiles(
+	target: Target,
+	vars: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+	const files = localFiles(target);
+	return {
+		...vars,
+		PIXEL_ADMINS_FILE: vars.PIXEL_ADMINS_FILE || files.adminsFile,
+		PIXEL_MEMBERS_FILE: vars.PIXEL_MEMBERS_FILE || files.membersFile,
+		PIXEL_HOME_ASSISTANT_DIR: vars.PIXEL_HOME_ASSISTANT_DIR || files.homeAssistantDir,
+	};
+}
+
+/** What to run when files an env's tool needs aren't on the laptop, or undefined when they are. */
+export function missingFilesProblem(
+	target: Target,
+	files: readonly string[],
+	exists: (file: string) => boolean,
+): string | undefined {
+	const missing = files.filter((file) => !exists(file));
+	if (missing.length === 0) return undefined;
+	return `Missing ${missing.join(", ")}. Run: just pull ${target}`;
+}
 
 export class EnvError extends Error {
 	override name = "EnvError";

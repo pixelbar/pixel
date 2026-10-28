@@ -13,7 +13,7 @@ import {
 	type HomeDeviceTier,
 	loadHomeDevices,
 } from "../src/services/home-devices.ts";
-import type { Target } from "./envs.ts";
+import { localFiles, type Target } from "./envs.ts";
 import type { InventoryEntry } from "./ha-inventory.ts";
 
 /** Where `devices.yaml` sits on an env's file share (Pixel mounts it at `/app/persist`). */
@@ -21,7 +21,7 @@ export const DEVICES_PATH = `home-assistant/${DEVICES_FILE}`;
 
 /** The local copy of an env's remote file. Gitignored, like every devices file. */
 export function mirrorDir(target: Target): string {
-	return join("config", "home-assistant", target);
+	return localFiles(target).homeAssistantDir;
 }
 
 /**
