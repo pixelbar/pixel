@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-28
+
 ### Added
 
 - Admins can give a capability to everyone at a membership level: `/admin capabilities grant-level level:member capability:ha-lights` (and `revoke-level`). A `friend` grant reaches members too. It's saved in a new optional `tiers:` section of `members.yaml`, audited like other access changes, and DMs nobody. A person holds their own grants plus their level's, so promoting or demoting someone changes them at once; being an admin still gives none. `/admin capabilities list` shows which levels a capability reaches and marks what a person gets from their level. See [ADR 0019](docs/adr/0019-level-capabilities.md).
@@ -290,7 +292,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/pixelbar/pixel/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/pixelbar/pixel/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/pixelbar/pixel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/pixelbar/pixel/compare/v0.18.0...v0.19.0
