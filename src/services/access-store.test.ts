@@ -99,6 +99,7 @@ describe("opening", () => {
 			tier: "member",
 			note: "paid yearly",
 			capabilities: ["front-door"],
+			revoked: [],
 		});
 	});
 
@@ -124,7 +125,12 @@ describe("changing a tier", () => {
 		const result = await store.apply({ kind: "set-tier", id: NEW_ID, tier: "friend" }, by);
 
 		expect(result.before).toBeNull();
-		expect(result.after).toEqual({ ids: [`discord:${NEW_ID}`], tier: "friend", capabilities: [] });
+		expect(result.after).toEqual({
+			ids: [`discord:${NEW_ID}`],
+			tier: "friend",
+			capabilities: [],
+			revoked: [],
+		});
 		const text = read();
 		expect(text.startsWith(MEMBERS)).toBe(true);
 		expect(text).toContain(`- ids: ["discord:${NEW_ID}"]\n    tier: friend`);
@@ -379,6 +385,103 @@ describe("changing capabilities", () => {
 	});
 });
 
+describe("revoking what a level gives", () => {
+	const LEVEL = `tiers:\n  member:\n    capabilities: [workshop]\n${MEMBERS}`;
+
+	it("writes and clears the revoked list, keeping the capabilities", async () => {
+		const store = open();
+		await store.apply(
+			{
+				kind: "set-capabilities",
+				id: IDS.member,
+				capabilities: ["front-door"],
+				revoked: ["workshop"],
+			},
+			by,
+		);
+		expect(read()).toContain(
+			"    capabilities:\n      - front-door\n    revoked:\n      - workshop\n",
+		);
+		expect(store.view.records.get(IDS.member)?.revoked).toEqual(["workshop"]);
+		expect(entries("access.changed")[0]?.obj).toMatchObject({
+			before: { capabilities: ["front-door"], revoked: [] },
+			after: { capabilities: ["front-door"], revoked: ["workshop"] },
+		});
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"], revoked: [] },
+			by,
+		);
+		expect(read()).toBe(MEMBERS);
+	});
+
+	it("keeps the revoked list when a change leaves it out", async () => {
+		const store = open();
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: [], revoked: ["workshop"] },
+			by,
+		);
+		await store.apply({ kind: "set-capabilities", id: IDS.member, capabilities: ["a"] }, by);
+		await store.apply({ kind: "set-tier", id: IDS.member, tier: "friend" }, by);
+		expect(store.view.records.get(IDS.member)?.revoked).toEqual(["workshop"]);
+	});
+
+	it("does nothing when both lists already match", async () => {
+		const store = open();
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: ["front-door"], revoked: [] },
+			by,
+		);
+		expect(entries("access.changed")).toHaveLength(0);
+		expect(existsSync(`${membersFile}.bak`)).toBe(false);
+	});
+
+	it("notifies with what they actually hold, counting their level", async () => {
+		writeFileSync(membersFile, LEVEL);
+		const notify = vi.fn();
+		const store = FileAccessStore.open({
+			paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
+			logger: logger(),
+			reporter,
+			notify: { notify },
+		});
+		await store.apply(
+			{
+				kind: "set-capabilities",
+				id: IDS.member,
+				capabilities: ["front-door"],
+				revoked: ["workshop"],
+			},
+			by,
+		);
+		expect(notify).toHaveBeenLastCalledWith(
+			IDS.member,
+			["front-door", "workshop"],
+			["front-door"],
+			by,
+		);
+		// A grant the level already gives changes nothing they hold, so it sends nothing.
+		notify.mockClear();
+		await store.apply(
+			{ kind: "set-capabilities", id: IDS.member, capabilities: [], revoked: [] },
+			by,
+		);
+		await store.apply({ kind: "set-capabilities", id: IDS.member, capabilities: ["workshop"] }, by);
+		expect(notify).toHaveBeenCalledTimes(2);
+		expect(notify.mock.calls[1]?.[1]).toEqual(["workshop"]);
+		expect(notify.mock.calls[1]?.[2]).toEqual(["workshop"]);
+	});
+
+	it.each([
+		[["Bad Name"], /lowercase words/],
+		[["a", "a"], /valid list/],
+	])("refuses an invalid revoked list %j", async (revoked, message) => {
+		await expect(
+			open().apply({ kind: "set-capabilities", id: IDS.member, capabilities: [], revoked }, by),
+		).rejects.toThrow(message);
+		expect(read()).toBe(MEMBERS);
+	});
+});
+
 describe("safe writes", () => {
 	it("keeps the previous version as .bak on every write", async () => {
 		const store = open();
@@ -590,6 +693,7 @@ describe("audit", () => {
 			before: "member",
 			after: "member",
 			capabilities: "a,b",
+			revoked: "",
 		});
 	});
 

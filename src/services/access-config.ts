@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { type PlatformActor, splitRef, type Tier } from "../core/access.ts";
-import { CAPABILITY_NAME, tierGrantsFor } from "../core/capabilities.ts";
+import { CAPABILITY_NAME, heldCapabilities } from "../core/capabilities.ts";
 import type {
 	AccessView,
 	MemberRecord,
@@ -67,6 +67,8 @@ const membersSchema = z.strictObject({
 			tier: z.enum(["member", "friend", "guest"]),
 			note: z.string().optional(),
 			capabilities: capabilities.optional(),
+			// Taken away even if their level grants it (ADR 0022).
+			revoked: capabilities.optional(),
 		}),
 	),
 });
@@ -118,6 +120,7 @@ export function toRecord(entry: MemberEntry): MemberRecord {
 		tier: entry.tier,
 		...(entry.note !== undefined ? { note: entry.note } : {}),
 		capabilities: entry.capabilities ?? [],
+		revoked: entry.revoked ?? [],
 	};
 }
 
@@ -268,7 +271,8 @@ export class ConfigTierSource implements TierSource {
 
 /**
  * Capabilities straight from the access store: the person's own, plus what their
- * membership level gets. The dispatcher decides whether they count.
+ * membership level gets, minus what was revoked from them. The dispatcher
+ * decides whether they count.
  */
 export class StoreCapabilitySource implements CapabilitySource {
 	readonly name = "access-config";
@@ -283,6 +287,6 @@ export class StoreCapabilitySource implements CapabilitySource {
 		const { records, tierCapabilities } = this.#store.view;
 		const record = records.get(actor.userId);
 		if (!record) return [];
-		return [...record.capabilities, ...tierGrantsFor(tierCapabilities, record.tier)];
+		return heldCapabilities(record, tierCapabilities);
 	}
 }

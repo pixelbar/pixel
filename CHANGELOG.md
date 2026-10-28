@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/admin capabilities revoke` now works on a capability someone gets from their membership level: it's taken away from that person alone, and everyone else at the level keeps it. It's saved as a `revoked:` list on their entry in `members.yaml`, which wins over every grant and stays when their level changes. `/admin capabilities grant` gives it back. `/admin capabilities list` and `/admin level get` show revocations, and the person is DMed. See [ADR 0022](docs/adr/0022-capability-revocation.md).
+
+
 ## [0.22.0] - 2026-10-28
 
 ### Added

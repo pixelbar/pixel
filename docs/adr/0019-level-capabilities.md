@@ -22,6 +22,7 @@ This **supersedes** the "nothing implies a capability: not a tier" rule in `iden
 ## Consequences
 
 - One admin command can give a capability to everyone at a level. Granting `ha-doors` to `member` would let every member open the building, and a taken-over account of any member could too (see [`home-assistant.md`](../home-assistant.md#threat-model)). The audit record and `/admin capabilities list` show it, and `revoke-level` takes it back at once.
-- Revoking from a level doesn't touch individual grants, so someone granted a capability on their own keeps it. `/admin capabilities revoke` on someone who has it only from their level says so and changes nothing.
+- Revoking from a level doesn't touch individual grants, so someone granted a capability on their own keeps it. `/admin capabilities revoke` on someone who has it only from their level says so and changes nothing. (Superseded by [ADR 0022](0022-capability-revocation.md): it now revokes it from that person alone.)
+
 - A person's capabilities now depend on their level: demoting a member to friend takes away the member level's grants straight away, and promoting a friend gives them.
 - `members.yaml` is still the one source, so a hand edit followed by `/admin reload` works as before, and unknown names in `tiers:` are warned about and ignored like a person's.

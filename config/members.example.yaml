@@ -20,6 +20,8 @@
 #
 # tier: member | friend | guest   (guest keeps the entry, but no tier)
 # capabilities: optional named permissions (lowercase words joined by '-')
+# revoked: optional; taken away from this person even if their level grants
+#   it. Wins over every grant. /admin capabilities revoke and grant manage it.
 # Same shape as admins.yaml: `ids` is a list of "<platform>:<user id>", e.g.
 # ["discord:123456789012345678"]. One person can have several (say, one per
 # platform); an id may appear in only one entry.
@@ -35,3 +37,6 @@ members:
     tier: friend
     # capabilities:
     #   - front-door
+    # revoked:
+    #   - ha-lights
+

@@ -192,7 +192,11 @@ export function createLevelSubgroup(
 													)
 													.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
 								},
+								...(record && record.revoked.length > 0
+									? [{ name: "Revoked", value: record.revoked.join(", ") }]
+									: []),
 								...(record?.note ? [{ name: "Note", value: inlineCode(record.note, 300) }] : []),
+
 								...(rolesField ? [rolesField] : []),
 							],
 						},
