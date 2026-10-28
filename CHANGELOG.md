@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-28
+
 ### Changed
 
 - `/spacestate` is switched off for now because it isn't working. It isn't registered, so run `just register dev` / `just register prod` after deploying to remove it from Discord. Its code and config stay in place to turn back on.
@@ -284,7 +286,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.19.1...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/pixelbar/pixel/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/pixelbar/pixel/compare/v0.19.0...v0.19.1
 [0.19.0]: https://github.com/pixelbar/pixel/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/pixelbar/pixel/compare/v0.17.0...v0.18.0
