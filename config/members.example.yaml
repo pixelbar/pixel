@@ -9,6 +9,15 @@
 # Admin comes from admins.yaml; the entry holds their membership level,
 # capabilities and note.
 #
+# Optional: capabilities for everyone at a level. A friend grant reaches
+# members too. Only friend and member can be listed. An admin gets their own
+# entry's level grants, and nothing more for being an admin.
+# tiers:
+#   friend:
+#     capabilities: [workshop]
+#   member:
+#     capabilities: [ha-lights]
+#
 # tier: member | friend | guest   (guest keeps the entry, but no tier)
 # capabilities: optional named permissions (lowercase words joined by '-')
 # Same shape as admins.yaml: `ids` is a list of "<platform>:<user id>", e.g.

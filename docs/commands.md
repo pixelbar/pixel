@@ -243,6 +243,18 @@ Takes a capability away.
 
 </PxCommand>
 
+<PxCommand sig="/admin capabilities grant-level level: capability: [reason:]" tier="admin" reply="private" :options="{ 'level:': 'member or friend. A friend grant reaches members too.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
+
+Gives everyone at a membership level a capability.
+
+</PxCommand>
+
+<PxCommand sig="/admin capabilities revoke-level level: capability: [reason:]" tier="admin" reply="private" :options="{ 'level:': 'member or friend.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
+
+Takes a capability away from a membership level. People granted it on their own keep it.
+
+</PxCommand>
+
 <PxCommand sig="/admin capabilities list [user:]" tier="admin" reply="private" :options="{ '[user:]': 'Show just this person.' }">
 
 Which capabilities exist, or what one person has.

@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Admins can give a capability to everyone at a membership level: `/admin capabilities grant-level level:member capability:ha-lights` (and `revoke-level`). A `friend` grant reaches members too. It's saved in a new optional `tiers:` section of `members.yaml`, audited like other access changes, and DMs nobody. A person holds their own grants plus their level's, so promoting or demoting someone changes them at once; being an admin still gives none. `/admin capabilities list` shows which levels a capability reaches and marks what a person gets from their level. See [ADR 0019](docs/adr/0019-level-capabilities.md).
+
 ## [0.20.0] - 2026-10-28
 
 ### Changed

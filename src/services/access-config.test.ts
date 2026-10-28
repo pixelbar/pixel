@@ -419,6 +419,71 @@ describe("StoreCapabilitySource", () => {
 	});
 });
 
+describe("level capabilities", () => {
+	const TIERS =
+		"tiers:\n  friend:\n    capabilities: [workshop]\n  member:\n    capabilities: [ha-lights]\n";
+	const PEOPLE = `  - ids: ["discord:${IDS.member}"]
+    tier: member
+    capabilities: [front-door]
+  - ids: ["discord:${IDS.friend}"]
+    tier: friend
+  - ids: ["discord:${IDS.guest}"]
+    tier: guest
+`;
+
+	it("reads the tiers section, and defaults to none", () => {
+		write(ADMINS, TIERS + members());
+		expect(loadAccessConfig(paths).tierCapabilities).toEqual({
+			friend: ["workshop"],
+			member: ["ha-lights"],
+		});
+		write(ADMINS, MEMBERS);
+		expect(loadAccessConfig(paths).tierCapabilities).toEqual({ friend: [], member: [] });
+		write(ADMINS, `tiers:\n  member: {}\n${members()}`);
+		expect(loadAccessConfig(paths).tierCapabilities).toEqual({ friend: [], member: [] });
+	});
+
+	it.each([
+		["guest", "tiers:\n  guest:\n    capabilities: [a]\n", /tiers: Unrecognized key/],
+		["admin", "tiers:\n  admin:\n    capabilities: [a]\n", /tiers: Unrecognized key/],
+		["a typo", "tiers:\n  member:\n    capabilites: [a]\n", /tiers\.member/],
+		[
+			"a bad name",
+			"tiers:\n  member:\n    capabilities: [Bad Name]\n",
+			/tiers\.member\.capabilities\[0\]/,
+		],
+		["a repeat", "tiers:\n  friend:\n    capabilities: [a, a]\n", /must not repeat/],
+	])("rejects %s", (_label, tiers, message) => {
+		write(ADMINS, tiers + members());
+		expect(() => loadAccessConfig(paths)).toThrow(message);
+	});
+
+	it("gives each person their level's and lower levels' capabilities, and a guest none", async () => {
+		write(ADMINS, TIERS + members(PEOPLE));
+		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		expect(await source.capabilitiesFor(actor({ userId: IDS.member }))).toEqual([
+			"front-door",
+			"workshop",
+			"ha-lights",
+		]);
+		expect(await source.capabilitiesFor(actor({ userId: IDS.friend }))).toEqual(["workshop"]);
+		expect(await source.capabilitiesFor(actor({ userId: IDS.guest }))).toEqual([]);
+		expect(await source.capabilitiesFor(actor({ userId: "100000000000000099" }))).toEqual([]);
+	});
+
+	it("follows an admin's members entry, not their admin status", async () => {
+		write(ADMINS, TIERS + members());
+		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		expect(await source.capabilitiesFor(actor({ userId: IDS.admin }))).toEqual([
+			"workshop",
+			"ha-lights",
+		]);
+		write(ADMINS, `${TIERS}members:\n  - ids: ["discord:${IDS.admin}"]\n    tier: guest\n`);
+		const demoted = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		expect(await demoted.capabilitiesFor(actor({ userId: IDS.admin }))).toEqual([]);
+	});
+});
+
 describe("ConfigTierSource", () => {
 	it("returns tiers for listed Discord users and null otherwise", async () => {
 		write(ADMINS, MEMBERS);

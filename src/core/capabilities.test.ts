@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	CapabilityError,
 	CapabilityRegistry,
+	grantedLists,
 	MAX_REGISTERED_CAPABILITIES,
 	reportUnknownCapabilities,
+	tierGrantsFor,
 	unknownCapabilities,
 } from "./capabilities.ts";
 import { silentLogger } from "./logger.ts";
@@ -114,5 +116,30 @@ describe("reportUnknownCapabilities", () => {
 		).toEqual([]);
 		expect(logger.warn).not.toHaveBeenCalled();
 		expect(reporter.captureBackground).not.toHaveBeenCalled();
+	});
+});
+
+describe("tierGrantsFor", () => {
+	const grants = { friend: ["workshop", "ha-lights"], member: ["ha-lights", "ha-doors"] };
+
+	it("gives a level its own grants and every lower level's, once each", () => {
+		expect(tierGrantsFor(grants, "member")).toEqual(["workshop", "ha-lights", "ha-doors"]);
+		expect(tierGrantsFor(grants, "friend")).toEqual(["workshop", "ha-lights"]);
+	});
+
+	it("gives a guest nothing", () => {
+		expect(tierGrantsFor(grants, "guest")).toEqual([]);
+	});
+});
+
+describe("grantedLists", () => {
+	it("lists each person's capabilities, then each level's", () => {
+		const record = { ids: ["discord:1"], tier: "member" as const, capabilities: ["a"] };
+		expect(
+			grantedLists({
+				records: new Map([["1", record]]),
+				tierCapabilities: { friend: ["b"], member: ["c"] },
+			}),
+		).toEqual([record, { capabilities: ["b"] }, { capabilities: ["c"] }]);
 	});
 });

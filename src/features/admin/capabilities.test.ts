@@ -81,7 +81,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 			},
 		},
 	});
-	const commands = new CommandRegistry();
+	const commands = new CommandRegistry({ capabilities: registry });
 	commands.register(
 		createAdminFeature({
 			version: "1",
@@ -119,7 +119,7 @@ const human = (id: string, displayName = "Someone"): ResolvedUser => ({
 
 function run(
 	dispatcher: Dispatcher,
-	subcommand: "grant" | "grant-all" | "revoke" | "list",
+	subcommand: "grant" | "grant-all" | "revoke" | "grant-level" | "revoke-level" | "list",
 	args: Record<string, string>,
 	target?: ResolvedUser,
 	as: Partial<PlatformActor> = { userId: IDS.admin, displayName: "Ada", handle: "ada_l" },
@@ -161,20 +161,28 @@ describe("who may run them", () => {
 		["a member", IDS.member],
 		["a friend", IDS.friend],
 		["a guest", IDS.guest],
-	])(
-		"refuses grant, grant-all, revoke and list to %s, and changes nothing",
-		async (_label, userId) => {
-			const { dispatcher } = setup();
-			const before = BEFORE();
-			for (const sub of ["grant", "grant-all", "revoke", "list"] as const) {
-				const result = await run(dispatcher, sub, { capability: "front-door" }, human(IDS.member), {
-					userId,
-				});
-				expect(result.reply.text).toBe(MESSAGES.deniedTier);
-			}
-			expect(read()).toBe(before);
-		},
-	);
+	])("refuses every capabilities subcommand to %s, and changes nothing", async (_label, userId) => {
+		const { dispatcher } = setup();
+		const before = BEFORE();
+		for (const sub of [
+			"grant",
+			"grant-all",
+			"revoke",
+			"grant-level",
+			"revoke-level",
+			"list",
+		] as const) {
+			const result = await run(
+				dispatcher,
+				sub,
+				{ capability: "front-door", level: "member" },
+				human(IDS.member),
+				{ userId },
+			);
+			expect(result.reply.text).toBe(MESSAGES.deniedTier);
+		}
+		expect(read()).toBe(before);
+	});
 
 	it("lists them as /admin capabilities grant, grant-all, revoke and list for /help", async () => {
 		const { commands } = setup();
@@ -501,5 +509,194 @@ describe("list", () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "list", {}, human(IDS.member, "**@everyone**"));
 		expect(result.reply.embeds?.[0]?.title).toBe("\\*\\*@everyone\\*\\*");
+	});
+});
+
+/** A command that needs the workshop capability, to check what a level grant really allows. */
+function withWorkshopTool(commands: CommandRegistry) {
+	commands.register({
+		name: "workshop-tool",
+		commands: [
+			{
+				name: "laser",
+				description: "Use the laser",
+				access: { minTier: "friend", capability: "workshop" },
+				handler: async () => ({ text: "zap" }),
+			},
+		],
+	});
+}
+
+const useLaser = (dispatcher: Dispatcher, userId: string) =>
+	dispatcher.dispatch({ actor: actor({ userId }), command: "laser", args: {} });
+
+describe("grant-level", () => {
+	it("gives everyone at the level the capability, persists it, and audits it", async () => {
+		const { dispatcher, store, notified } = setup();
+		const result = await run(dispatcher, "grant-level", {
+			level: "member",
+			capability: "front-door",
+			reason: "everyone has a key",
+		});
+		expect(result.private).toBe(true);
+		expect(result.reply.embeds?.[0]?.title).toBe("Capability granted to a level");
+		expect(fieldsOf(result)).toEqual({
+			Level: "member",
+			Reaches: "every member",
+			Capability: "front-door: Open the front door",
+		});
+		expect(store.view.tierCapabilities.member).toEqual(["front-door"]);
+		expect(openStore().view.tierCapabilities.member).toEqual(["front-door"]);
+		expect(events("access.changed")[0]?.obj).toMatchObject({
+			kind: "set-tier-capabilities",
+			target: "tier:member",
+			before: { capabilities: [] },
+			after: { capabilities: ["front-door"] },
+			reason: "everyone has a key",
+			user: `discord:${IDS.admin}`,
+		});
+		expect(notified).toEqual([]);
+	});
+
+	it("lets a friend grant reach friends and members, but never a guest", async () => {
+		const { dispatcher, commands } = setup();
+		withWorkshopTool(commands);
+		expect((await useLaser(dispatcher, IDS.member)).reply.text).toBe(MESSAGES.deniedTier);
+		await run(dispatcher, "grant-level", { level: "friend", capability: "workshop" });
+		expect((await useLaser(dispatcher, IDS.member)).reply.text).toBe("zap");
+		expect((await useLaser(dispatcher, IDS.friend)).reply.text).toBe("zap");
+		expect((await useLaser(dispatcher, DEMOTED)).reply.text).toBe(MESSAGES.deniedTier);
+		expect((await useLaser(dispatcher, UNLISTED)).reply.text).toBe(MESSAGES.deniedTier);
+	});
+
+	it("doesn't reach a friend when given to members", async () => {
+		const { dispatcher, commands } = setup();
+		withWorkshopTool(commands);
+		await run(dispatcher, "revoke", { capability: "workshop" }, human(IDS.friend));
+		await run(dispatcher, "grant-level", { level: "member", capability: "workshop" });
+		expect((await useLaser(dispatcher, IDS.member)).reply.text).toBe("zap");
+		expect((await useLaser(dispatcher, IDS.friend)).reply.text).toBe(MESSAGES.deniedTier);
+	});
+
+	it("says so and writes nothing when the level already has it", async () => {
+		const { dispatcher } = setup();
+		await run(dispatcher, "grant-level", { level: "friend", capability: "workshop" });
+		const before = BEFORE();
+		const result = await run(dispatcher, "grant-level", {
+			level: "friend",
+			capability: "workshop",
+		});
+		expect(result.reply.text).toBe("The friend level already has workshop. Nothing changed.");
+		expect(read()).toBe(before);
+	});
+
+	it("refuses a level that isn't member or friend, an unknown capability and a long reason", async () => {
+		const { dispatcher } = setup();
+		const before = BEFORE();
+		const cases: Record<string, string>[] = [
+			{ level: "admin", capability: "workshop" },
+			{ level: "guest", capability: "workshop" },
+			{ level: "member", capability: "nope" },
+			{ level: "member", capability: "workshop", reason: "x".repeat(MAX_REASON_LENGTH + 1) },
+		];
+		for (const args of cases) {
+			const result = await run(dispatcher, "grant-level", args);
+			expect(result.reply.embeds).toBeUndefined();
+			expect(result.reply.text).toBeTruthy();
+		}
+		expect(read()).toBe(before);
+	});
+
+	it("offers the two levels as choices", () => {
+		const { commands } = setup();
+		const level = commands
+			.get("admin")
+			?.definition.subcommands?.flatMap((s) =>
+				"subcommands" in s && s.subcommands ? s.subcommands : [],
+			)
+			.find((s) => s.name === "grant-level")
+			?.options?.find((o) => o.name === "level");
+		expect(level).toMatchObject({ required: true, choices: ["member", "friend"] });
+	});
+});
+
+describe("revoke-level", () => {
+	it("takes it from the level, but not from someone granted it on their own", async () => {
+		const { dispatcher, commands, store } = setup();
+		withWorkshopTool(commands);
+		await run(dispatcher, "grant-level", { level: "friend", capability: "workshop" });
+		const result = await run(dispatcher, "revoke-level", {
+			level: "friend",
+			capability: "workshop",
+			reason: "abuse",
+		});
+		expect(result.reply.embeds?.[0]?.title).toBe("Capability revoked from a level");
+		expect(store.view.tierCapabilities.friend).toEqual([]);
+		expect(events("access.changed")[1]?.obj).toMatchObject({
+			kind: "set-tier-capabilities",
+			before: { capabilities: ["workshop"] },
+			after: { capabilities: [] },
+			reason: "abuse",
+		});
+		expect((await useLaser(dispatcher, IDS.member)).reply.text).toBe(MESSAGES.deniedTier);
+		expect((await useLaser(dispatcher, IDS.friend)).reply.text).toBe("zap");
+	});
+
+	it("says so and writes nothing when the level doesn't have it", async () => {
+		const { dispatcher } = setup();
+		const before = BEFORE();
+		const result = await run(dispatcher, "revoke-level", {
+			level: "member",
+			capability: "workshop",
+		});
+		expect(result.reply.text).toBe("The member level doesn't have workshop. Nothing changed.");
+		expect(read()).toBe(before);
+	});
+
+	it("points per-person revoke at the level when that's where it comes from", async () => {
+		const { dispatcher } = setup();
+		await run(dispatcher, "grant-level", { level: "member", capability: "front-door" });
+		const before = BEFORE();
+		const result = await run(dispatcher, "revoke", { capability: "front-door" }, human(IDS.member));
+		expect(result.reply.text).toContain("gets front-door from their member level");
+		expect(result.reply.text).toContain("/admin capabilities revoke-level");
+		expect(read()).toBe(before);
+	});
+});
+
+describe("list with level grants", () => {
+	it("says which levels a capability reaches", async () => {
+		const { dispatcher } = setup();
+		await run(dispatcher, "grant-level", { level: "member", capability: "front-door" });
+		await run(dispatcher, "grant-level", { level: "friend", capability: "workshop" });
+		await run(dispatcher, "grant-level", { level: "member", capability: "workshop" });
+		const result = await run(dispatcher, "list", {});
+		expect(result.reply.embeds?.[0]?.description).toBe(
+			"**front-door**: Open the front door (0 people, and every member)\n**workshop**: Use the workshop (1 person, and every friend and member)",
+		);
+	});
+
+	it("shows what a person gets from their level, once", async () => {
+		const { dispatcher } = setup();
+		await run(dispatcher, "grant-level", { level: "friend", capability: "workshop" });
+		await run(dispatcher, "grant-level", { level: "member", capability: "front-door" });
+		expect(fieldsOf(await run(dispatcher, "list", {}, human(IDS.friend))).Capabilities).toBe(
+			"workshop: Use the workshop",
+		);
+		expect(fieldsOf(await run(dispatcher, "list", {}, human(IDS.member))).Capabilities).toBe(
+			"workshop: Use the workshop (from the member level)\nfront-door: Open the front door (from the member level)",
+		);
+	});
+
+	it("flags a level grant whose name no longer exists", async () => {
+		writeFileSync(
+			membersFile,
+			`tiers:\n  member:\n    capabilities: [old-thing]\nmembers:\n  - ids: ["discord:${IDS.admin}"]\n    tier: member\n  - ids: ["discord:${IDS.member}"]\n    tier: member\n`,
+		);
+		const { dispatcher } = setup();
+		const result = await run(dispatcher, "list", {}, human(IDS.member));
+		expect(fieldsOf(result).Capabilities).toBe(
+			"old-thing (from the member level, not registered, ignored)",
+		);
 	});
 });

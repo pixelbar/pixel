@@ -30,8 +30,17 @@ import { createWhoamiFeature } from "./whoami/index.ts";
 
 const counts = { admins: 2, members: 10, friends: 3 };
 const access: AccessStore = {
-	view: { discord: new Map(), records: new Map(), counts, warnings: [] },
+	view: {
+		discord: new Map(),
+		records: new Map(),
+		tierCapabilities: { friend: [], member: [] },
+		counts,
+		warnings: [],
+	},
 	apply: async () => {
+		throw new Error("unused");
+	},
+	setTierCapabilities: async () => {
 		throw new Error("unused");
 	},
 	reload: async () => ({ before: counts, after: counts }),
@@ -169,7 +178,7 @@ describe("help", () => {
 
 function adminSubcommand(
 	name: string,
-	store: Pick<AccessStore, "view" | "apply" | "reload"> = access,
+	store: Pick<AccessStore, "view" | "apply" | "setTierCapabilities" | "reload"> = access,
 ) {
 	const admin = createAdminFeature({
 		version: "1.0.0",
@@ -200,6 +209,7 @@ describe("admin", () => {
 		const reply = await adminSubcommand("reload", {
 			view: { ...access.view, warnings: ["x", "y"] },
 			apply: access.apply,
+			setTierCapabilities: access.setTierCapabilities,
 			reload,
 		}).handler(context({ principal: caller }));
 		expect(reload).toHaveBeenCalledWith(caller);
@@ -228,6 +238,7 @@ describe("admin", () => {
 				records: new Map([[IDS.member, record(["gone", "old"])]]),
 			},
 			apply: access.apply,
+			setTierCapabilities: access.setTierCapabilities,
 			reload: access.reload,
 		};
 		const admin = createAdminFeature({
@@ -254,6 +265,7 @@ describe("admin", () => {
 		const failing = {
 			view: access.view,
 			apply: access.apply,
+			setTierCapabilities: access.setTierCapabilities,
 			reload: async () => {
 				throw new UserFacingError("Reload failed");
 			},

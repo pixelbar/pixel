@@ -2,8 +2,13 @@ import { readFileSync } from "node:fs";
 import { parse, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { type PlatformActor, splitRef, type Tier } from "../core/access.ts";
-import { CAPABILITY_NAME } from "../core/capabilities.ts";
-import type { AccessView, MemberRecord, MemberTier } from "../core/ports/access-store.ts";
+import { CAPABILITY_NAME, tierGrantsFor } from "../core/capabilities.ts";
+import type {
+	AccessView,
+	MemberRecord,
+	MemberTier,
+	TierGrants,
+} from "../core/ports/access-store.ts";
 import type { CapabilitySource } from "../core/ports/capability-source.ts";
 import type { TierSource } from "../core/ports/tier-source.ts";
 
@@ -49,7 +54,12 @@ const capabilities = z
 	.max(MAX_CAPABILITIES, { error: `at most ${MAX_CAPABILITIES} capabilities` })
 	.refine((names) => new Set(names).size === names.length, { error: "must not repeat a name" });
 
+// Capabilities for everyone at a level. `guest` and `admin` can't be given any: a guest never
+// passes a capability check, and admin status never implies one.
+const tierGrant = z.strictObject({ capabilities: capabilities.optional() });
+
 const membersSchema = z.strictObject({
+	tiers: z.strictObject({ friend: tierGrant.optional(), member: tierGrant.optional() }).optional(),
 	members: z.array(
 		z.strictObject({
 			ids,
@@ -62,6 +72,9 @@ const membersSchema = z.strictObject({
 });
 
 type MemberEntry = z.infer<typeof membersSchema>["members"][number];
+
+/** The parsed members file: each person, and what each level gets. */
+export type MembersFile = { members: MemberEntry[]; tiers: TierGrants };
 
 export type AccessConfig = AccessView;
 
@@ -88,8 +101,15 @@ export function parseAdmins(source: string, file: string): string[][] {
 }
 
 /** Parses and validates the text of the members file. Throws `AccessConfigError`. */
-export function parseMembers(source: string, file: string): MemberEntry[] {
-	return parseSource(file, source, membersSchema).members;
+export function parseMembers(source: string, file: string): MembersFile {
+	const { members, tiers } = parseSource(file, source, membersSchema);
+	return {
+		members,
+		tiers: {
+			friend: tiers?.friend?.capabilities ?? [],
+			member: tiers?.member?.capabilities ?? [],
+		},
+	};
 }
 
 export function toRecord(entry: MemberEntry): MemberRecord {
@@ -103,7 +123,7 @@ export function toRecord(entry: MemberEntry): MemberRecord {
 
 export function buildAccessConfig(
 	admins: readonly (readonly string[])[],
-	members: readonly MemberEntry[],
+	{ members, tiers }: MembersFile,
 	paths: AccessConfigPaths,
 ): AccessConfig {
 	assertUniqueAcross(
@@ -167,7 +187,7 @@ export function buildAccessConfig(
 	});
 	for (const userId of adminIds) discord.set(userId, "admin");
 
-	return { discord, records, counts, warnings: [] };
+	return { discord, records, tierCapabilities: tiers, counts, warnings: [] };
 }
 
 /** Each ID may appear once across all entries of a file. Messages name positions, never IDs. */
@@ -246,7 +266,10 @@ export class ConfigTierSource implements TierSource {
 	}
 }
 
-/** Capabilities straight from the access store's members entries. The dispatcher decides whether they count. */
+/**
+ * Capabilities straight from the access store: the person's own, plus what their
+ * membership level gets. The dispatcher decides whether they count.
+ */
 export class StoreCapabilitySource implements CapabilitySource {
 	readonly name = "access-config";
 	readonly #store: { readonly view: AccessView };
@@ -257,6 +280,9 @@ export class StoreCapabilitySource implements CapabilitySource {
 
 	async capabilitiesFor(actor: PlatformActor): Promise<readonly string[]> {
 		if (actor.platform !== "discord") return [];
-		return this.#store.view.records.get(actor.userId)?.capabilities ?? [];
+		const { records, tierCapabilities } = this.#store.view;
+		const record = records.get(actor.userId);
+		if (!record) return [];
+		return [...record.capabilities, ...tierGrantsFor(tierCapabilities, record.tier)];
 	}
 }
