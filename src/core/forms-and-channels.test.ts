@@ -449,13 +449,13 @@ describe("ChannelPosts", () => {
 		expect(posts.ready).toBe(false);
 		const poster = {
 			check: vi.fn(async () => ({ ok: true as const, name: "g" })),
-			post: vi.fn(async () => {}),
+			post: vi.fn(async () => ({ url: "https://example.test/m/1" })),
 		};
 		posts.use(poster);
 		expect(posts.ready).toBe(true);
 		const post = { kind: "message" as const, text: "hi", mentions: false };
 		expect(await posts.check("1", post)).toEqual({ ok: true, name: "g" });
-		await posts.post("1", post);
+		expect(await posts.post("1", post)).toEqual({ url: "https://example.test/m/1" });
 		expect(poster.post).toHaveBeenCalledWith("1", post);
 	});
 

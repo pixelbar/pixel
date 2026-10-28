@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- **Poll reminders:** `/schedule poll` takes `remind-in` (a channel) and `remind-at` (a time of day). While the poll is open, Pixel posts a reminder there every day at that time, with the question, when it closes and a link to the poll. Reminders stop when the poll closes, so a weekly Monday poll open for a week reminds every day that week. `/schedule edit` changes them, and `remind-at:off` turns them off. Run `just register dev` / `just register prod` so Discord shows the new options.
+
 ## [0.22.0] - 2026-10-28
 
 ### Added

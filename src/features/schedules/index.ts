@@ -25,12 +25,13 @@ import {
 	weekdayOf,
 } from "../../core/recurrence.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
-import { describeWhen, parseDays, parseWhen, suggestDays } from "../../core/when.ts";
+import { describeWhen, parseClock, parseDays, parseWhen, suggestDays } from "../../core/when.ts";
 import {
 	MAX_MESSAGE_LENGTH,
 	MAX_POLL_ANSWER,
 	MAX_POLL_ANSWERS,
 	MAX_POLL_QUESTION,
+	type PollReminder,
 	type Schedule,
 	type ScheduleStore,
 } from "../../services/schedules.ts";
@@ -120,6 +121,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		description: "A name to find it by later (default: the start of the text)",
 		type: "string",
 	};
+	const remindInOption: CommandOption = {
+		name: "remind-in",
+		description: "For a poll: a channel to remind people in every day while it's open",
+		type: "channel",
+	};
+	const remindAtOption: CommandOption = {
+		name: "remind-at",
+		description: `For a poll: when to remind each day (${zone}), e.g. 18:00`,
+		type: "string",
+	};
 	const scheduleOption: CommandOption = {
 		name: "schedule",
 		description: "Which schedule",
@@ -167,8 +178,9 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	async function checkChannel(
 		ctx: Pick<CommandContext, "channels">,
 		post: ChannelPost,
+		option = "channel",
 	): Promise<{ id: string; name: string }> {
-		const channel = ctx.channels.channel;
+		const channel = ctx.channels[option];
 		if (!channel) throw new UserFacingError("Pick a channel.");
 		if (!channel.caller.canPost) {
 			throw new UserFacingError(
@@ -190,6 +202,45 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		return { id: channel.id, name: check.name };
 	}
 
+	/**
+	 * The reminder from `remind-in` and `remind-at` on top of `current`: unchanged when
+	 * neither is given, none for `remind-at: off`. Checks the person and Pixel may post
+	 * in the reminder channel.
+	 */
+	async function reminderFrom(
+		ctx: Pick<CommandContext, "args" | "channels">,
+		post: ChannelPost,
+		current?: PollReminder,
+	): Promise<PollReminder | undefined> {
+		const inGiven = typeof ctx.args["remind-in"] === "string";
+		const atText =
+			typeof ctx.args["remind-at"] === "string" ? ctx.args["remind-at"].trim() : undefined;
+		if (!inGiven && atText === undefined) return current;
+		if (post.kind !== "poll") throw new UserFacingError("Reminders only work for polls.");
+		if (atText?.toLowerCase() === "off") {
+			if (inGiven) throw new UserFacingError("Leave out `remind-in` to turn reminders off.");
+			return undefined;
+		}
+		const at = atText === undefined ? current?.at : parseClock(atText);
+		if (atText !== undefined && at === undefined) {
+			throw new UserFacingError(
+				`I couldn't understand that time. Type a time of day in ${zone}, for example \`18:00\` or \`6pm\`.`,
+			);
+		}
+		if (at === undefined)
+			throw new UserFacingError("Add `remind-at`: the time to remind each day.");
+		if (!inGiven) {
+			if (!current) throw new UserFacingError("Add `remind-in`: the channel to remind people in.");
+			return { ...current, at };
+		}
+		const channel = await checkChannel(
+			ctx,
+			{ kind: "message", text: ".", mentions: false },
+			"remind-in",
+		);
+		return { channelId: channel.id, channelName: channel.name, at };
+	}
+
 	async function create(
 		ctx: CommandContext,
 		post: ChannelPost,
@@ -198,6 +249,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const { start, recurrence } = timing(ctx.args);
 		checkFilledLength(post, { start, recurrence }, zone, now(), deps.interpolator);
 		const channel = await checkChannel(ctx, post);
+		const reminder = await reminderFrom(ctx, post);
 		const name = cleanName(typeof ctx.args.name === "string" ? ctx.args.name : fallbackName);
 		const schedule = deps.store.add({
 			name,
@@ -210,6 +262,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			createdBy: { ref: actorRef(ctx.principal), name: ctx.principal.displayName },
 			createdAt: now().toISOString(),
 			lastRunAt: null,
+			...(reminder ? { reminder } : {}),
 		});
 		ctx.logger.info(
 			{
@@ -218,6 +271,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				channelId: channel.id,
 				kind: post.kind,
 				recurrence: recurrence.kind,
+				reminderChannelId: reminder?.channelId,
 			},
 			"scheduled a post",
 		);
@@ -245,6 +299,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	): Promise<{ title: string }> {
 		const { start } = timing(ctx.args);
 		await checkChannel(ctx, post);
+		await reminderFrom(ctx, post);
 		return { title: describeWhen(start) };
 	}
 
@@ -361,6 +416,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		}
 		// The form's fields aren't sent yet, so this only checks `duration` before the form opens.
 		editedPost(schedule.post, ctx.args);
+		await reminderFrom(ctx, schedule.post, schedule.reminder);
 		const next = nextRun(schedule, zone, now());
 		const title = next ? `Edit · ${describeWhen(toLocal(next, zone))}` : "Edit schedule";
 		if (schedule.post.kind === "message") {
@@ -391,6 +447,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				: { start: parseLocal(schedule.start) as LocalDateTime, recurrence: schedule.recurrence };
 		const post = editedPost(schedule.post, ctx.args);
 		checkFilledLength(post, timingChange, zone, now(), deps.interpolator);
+		const reminder = await reminderFrom(ctx, post, schedule.reminder);
 		const name = typeof ctx.args.name === "string" ? cleanName(ctx.args.name) : schedule.name;
 		const start = formatLocal(timingChange.start);
 		const retimed =
@@ -401,6 +458,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			start,
 			recurrence: timingChange.recurrence,
 			name,
+			reminder,
 			// New timing counts from now, like resume: nothing it "missed" before the edit goes out.
 			...(retimed ? { lastRunAt: fromNow(schedule, now()) } : {}),
 		});
@@ -527,6 +585,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								description: "Let people pick more than one answer",
 								type: "boolean",
 							},
+							remindInOption,
+							remindAtOption,
 							nameOption,
 						],
 						beforeForm: (ctx) =>
@@ -584,6 +644,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							{
 								...durationOption,
 								description: "For a poll: how long people can vote (default: unchanged)",
+							},
+							remindInOption,
+							{
+								...remindAtOption,
+								description: `For a poll: when to remind each day (${zone}), or off`,
 							},
 							nameOption,
 							{
@@ -802,9 +867,17 @@ function describeSchedule(schedule: Schedule, zone: string, now: Date, title: st
 			{ name: "What", value: what },
 			{ name: "Repeats", value: describeRecurrence(start, schedule.recurrence) },
 			{ name: `Next posts (${zone})`, value: times.length > 0 ? times.join("\n") : "None" },
+			...(schedule.reminder
+				? [{ name: "Reminders", value: describeReminder(schedule.reminder, zone) }]
+				: []),
 		],
 		accent: "positive",
 	};
+}
+
+/** "Every day at 18:00 (Europe/Amsterdam) in #general, while the poll is open" */
+function describeReminder(reminder: PollReminder, zone: string): string {
+	return `Every day at ${reminder.at} (${zone}) in #${escapeMarkdown(reminder.channelName)}, while the poll is open`;
 }
 
 function durationLabel(hours: number): string {
@@ -841,7 +914,10 @@ function describeList(schedules: readonly Schedule[], zone: string, now: Date): 
 				? `next ${describeWhen(toLocal(next, zone))}`
 				: "no more posts";
 		const kind = s.post.kind === "poll" ? "🗳" : "💬";
-		return `${kind} ${label(s)} in #${escapeMarkdown(s.channelName)}\n${describeRecurrence(start, s.recurrence)} · ${when}`;
+		const reminds = s.reminder
+			? ` · reminds daily at ${s.reminder.at} in #${escapeMarkdown(s.reminder.channelName)}`
+			: "";
+		return `${kind} ${label(s)} in #${escapeMarkdown(s.channelName)}\n${describeRecurrence(start, s.recurrence)} · ${when}${reminds}`;
 	});
 	return {
 		title: `Scheduled posts (${zone})`,

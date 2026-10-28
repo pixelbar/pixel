@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatLocal } from "./recurrence.ts";
-import { describeWhen, formatDays, parseDays, parseWhen, suggestDays } from "./when.ts";
+import { describeWhen, formatDays, parseClock, parseDays, parseWhen, suggestDays } from "./when.ts";
 
 const AMS = "Europe/Amsterdam";
 // Monday 12 October 2026, 10:00 in Amsterdam.
@@ -157,5 +157,22 @@ describe("days of the week", () => {
 		expect(empty.map((s) => s.value)).toContain("mon,tue,wed,thu,fri");
 		expect(empty.map((s) => s.value)).toContain("sun");
 		expect(formatDays(["wed", "sat"])).toBe("wed,sat");
+	});
+});
+
+describe("parseClock", () => {
+	it("reads a time of day the ways `when` does", () => {
+		expect(parseClock("18:00")).toBe("18:00");
+		expect(parseClock(" 1800 ")).toBe("18:00");
+		expect(parseClock("6pm")).toBe("18:00");
+		expect(parseClock("6:30 pm")).toBe("18:30");
+		expect(parseClock("9.15")).toBe("09:15");
+		expect(parseClock("19u")).toBe("19:00");
+	});
+
+	it("refuses anything that isn't just a time", () => {
+		for (const typed of ["", "wed 18:00", "tomorrow", "25:00", "18:00 18:00", "soon"]) {
+			expect(parseClock(typed)).toBeUndefined();
+		}
 	});
 });

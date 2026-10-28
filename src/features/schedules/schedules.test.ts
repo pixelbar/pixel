@@ -44,9 +44,12 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 	// The feature's clock; tests move it with `clock.now = ...`.
 	const clock = { now: NOW };
 	const poster = {
-		check: vi.fn(async (): Promise<ChannelCheck> => options.check ?? { ok: true, name: "general" }),
+		check: vi.fn(
+			async (_id: string): Promise<ChannelCheck> => options.check ?? { ok: true, name: "general" },
+		),
 		post: vi.fn(async (_id: string, post: ChannelPost) => {
 			posted.push(post);
+			return { url: `https://example.test/m/${posted.length}` };
 		}),
 	};
 	if (options.ready !== false) posts.use(poster);
@@ -80,14 +83,21 @@ function setup(options: { check?: ChannelCheck; ready?: boolean } = {}) {
 	const run = (
 		subcommand: string,
 		args: Record<string, string | boolean>,
-		options: { userId?: string; channel?: ResolvedChannel } = {},
+		options: {
+			userId?: string;
+			channel?: ResolvedChannel;
+			channels?: Record<string, ResolvedChannel>;
+		} = {},
 	) =>
 		dispatcher.dispatch({
 			actor: actor({ userId: options.userId ?? IDS.member, displayName: "Ada" }),
 			command: "schedule",
 			subcommand,
 			args,
-			channels: options.channel ? { channel: options.channel } : {},
+			channels: {
+				...(options.channel ? { channel: options.channel } : {}),
+				...options.channels,
+			},
 		});
 	const message = (args: Record<string, string | boolean> = {}, ch = channel()) =>
 		run(
@@ -423,6 +433,154 @@ describe("/schedule poll", () => {
 		["an answer that's too long", `Yes\n${"x".repeat(56)}`, /at most 55/],
 	])("refuses %s", async (_label, answers, message) => {
 		expect((await setup().poll({ answers })).reply.text).toMatch(message);
+	});
+
+	describe("reminders", () => {
+		const REMIND = "100000000000000051";
+		const remindChannel = (caller: Partial<ResolvedChannel["caller"]> = {}): ResolvedChannel => ({
+			...channel(caller),
+			id: REMIND,
+			name: "chat",
+		});
+		const pollWithReminder = (
+			ctx: ReturnType<typeof setup>,
+			args: Record<string, string | boolean> = {},
+			remindIn: ResolvedChannel | null = remindChannel(),
+		) =>
+			ctx.run(
+				"poll",
+				{
+					channel: CHANNEL,
+					when: "mon 10:30",
+					question: "Who's coming?",
+					answers: "Yes\nNo",
+					repeat: "weekly",
+					...(remindIn ? { "remind-in": REMIND } : {}),
+					"remind-at": "6pm",
+					...args,
+				},
+				{ channel: channel(), channels: remindIn ? { "remind-in": remindIn } : {} },
+			);
+
+		it("saves the channel and time, and shows them in the confirmation and the list", async () => {
+			const ctx = setup();
+			ctx.poster.check.mockImplementation(
+				async (id: string): Promise<ChannelCheck> => ({
+					ok: true,
+					name: id === REMIND ? "chat" : "general",
+				}),
+			);
+			const result = await pollWithReminder(ctx);
+			expect(ctx.store.all()[0]?.reminder).toEqual({
+				channelId: REMIND,
+				channelName: "chat",
+				at: "18:00",
+			});
+			expect(text(result.reply.embeds?.[0])).toContain(
+				"Reminders: Every day at 18:00 (Europe/Amsterdam) in #chat, while the poll is open",
+			);
+			const list = await ctx.run("list", {});
+			expect(list.reply.embeds?.[0]?.description).toContain("reminds daily at 18:00 in #chat");
+			expect(ctx.poster.check).toHaveBeenCalledWith(REMIND, {
+				kind: "message",
+				text: ".",
+				mentions: false,
+			});
+		});
+
+		it("needs both a channel and a time", async () => {
+			const ctx = setup();
+			expect((await pollWithReminder(ctx, {}, null)).reply.text).toMatch(/Add `remind-in`/);
+			const noTime = await ctx.run(
+				"poll",
+				{ channel: CHANNEL, when: "wed", question: "Q", answers: "a\nb", "remind-in": REMIND },
+				{ channel: channel(), channels: { "remind-in": remindChannel() } },
+			);
+			expect(noTime.reply.text).toMatch(/Add `remind-at`/);
+			expect(ctx.store.all()).toEqual([]);
+		});
+
+		it("refuses a time it can't read", async () => {
+			const result = await pollWithReminder(setup(), { "remind-at": "tomorrow" });
+			expect(result.reply.text).toMatch(/couldn't understand that time\. Type a time of day/);
+		});
+
+		it("only reminds where the person can post themselves, and where Pixel can", async () => {
+			const ctx = setup();
+			const refused = await pollWithReminder(ctx, {}, remindChannel({ canPost: false }));
+			expect(refused.reply.text).toMatch(/only schedule posts in channels where you can post/);
+			ctx.poster.check.mockImplementation(
+				async (id: string): Promise<ChannelCheck> =>
+					id === REMIND ? { ok: false, problem: "nope" } : { ok: true, name: "general" },
+			);
+			expect((await pollWithReminder(ctx)).reply.text).toMatch(/can't post there: nope/);
+			expect(ctx.store.all()).toEqual([]);
+		});
+
+		it("checks the reminder before the form opens", async () => {
+			const ctx = setup();
+			await expect(
+				ctx.dispatcher.prepareForm({
+					actor: actor({ userId: IDS.member, displayName: "Ada" }),
+					command: "schedule",
+					subcommand: "poll",
+					args: { channel: CHANNEL, when: "wed", "remind-at": "18:00" },
+					channels: { channel: channel() },
+				}),
+			).resolves.toMatchObject({
+				ready: false,
+				refuse: { reply: { text: expect.stringMatching(/Add `remind-in`/) } },
+			});
+		});
+
+		it("is changed, kept or turned off by an edit", async () => {
+			const ctx = setup();
+			await pollWithReminder(ctx);
+			const id = ctx.store.all()[0]?.id as string;
+			await ctx.run("edit", { schedule: id, "remind-at": "9:15" });
+			expect(ctx.store.get(id)?.reminder).toMatchObject({ channelId: REMIND, at: "09:15" });
+			await ctx.run("edit", { schedule: id, name: "Renamed" });
+			expect(ctx.store.get(id)?.reminder?.at).toBe("09:15");
+			const both = await ctx.run(
+				"edit",
+				{ schedule: id, "remind-at": "off", "remind-in": REMIND },
+				{ channels: { "remind-in": remindChannel() } },
+			);
+			expect(both.reply.text).toMatch(/Leave out `remind-in`/);
+			await ctx.run("edit", { schedule: id, "remind-at": "OFF" });
+			expect(ctx.store.get(id)?.reminder).toBeUndefined();
+		});
+
+		it("are added to a poll by an edit, and refused for a message", async () => {
+			const ctx = setup();
+			await ctx.poll({ name: "Vote" });
+			await ctx.message({ name: "Msg" });
+			const [pollId, messageId] = ctx.store.all().map((s) => s.id) as [string, string];
+			await ctx.run(
+				"edit",
+				{ schedule: pollId, "remind-in": REMIND, "remind-at": "20:00" },
+				{ channels: { "remind-in": remindChannel() } },
+			);
+			expect(ctx.store.get(pollId)?.reminder?.at).toBe("20:00");
+			const refused = await ctx.run("edit", { schedule: messageId, "remind-at": "20:00" });
+			expect(refused.reply.text).toMatch(/Reminders only work for polls/);
+		});
+
+		it("are posted by the runner each day the poll is open, linking to it", async () => {
+			const ctx = setup();
+			// Mon 12 Oct 10:30, open for 3 days; reminders at 18:00.
+			await pollWithReminder(ctx, { duration: "3 days" });
+			ctx.clock.now = new Date("2026-10-12T08:30:05Z");
+			await ctx.tick();
+			ctx.clock.now = new Date("2026-10-12T16:00:05Z");
+			await ctx.tick();
+			expect(ctx.posted.at(-1)).toEqual({
+				kind: "message",
+				text: "🗳️ Reminder: vote on **Who's coming?** before Thu 15 Oct 2026, 10:30: https://example.test/m/1",
+				mentions: false,
+			});
+			expect(ctx.poster.post).toHaveBeenLastCalledWith(REMIND, expect.anything());
+		});
 	});
 
 	it("needs a question", async () => {
@@ -950,7 +1108,7 @@ describe("the background runner", () => {
 	it("checks straight away and every 30 seconds, and stops when told", async () => {
 		const store = new ScheduleStore({ logger: silentLogger });
 		const posts = new ChannelPosts();
-		const post = vi.fn(async () => {});
+		const post = vi.fn(async () => ({ url: "https://example.test/m/1" }));
 		posts.use({ check: async () => ({ ok: true, name: "g" }), post });
 		store.add({
 			name: "x",
