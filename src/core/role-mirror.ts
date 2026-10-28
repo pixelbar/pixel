@@ -105,6 +105,10 @@ export class RoleMirror {
 	#backend: MirrorBackend | undefined;
 	/** User ID → when Pixel last pushed their roles. */
 	readonly #applied = new Map<string, number>();
+	/** People whose last push Discord didn't take, until one does. */
+	readonly #pushFailed = new Set<string>();
+	/** Whether the last `holders` call threw, so an outage is reported once, not every run. */
+	#holdersThrew = false;
 
 	constructor({ logger, reporter, now = Date.now }: RoleMirrorOptions) {
 		this.#logger = logger.child({ component: "role-mirror" });
@@ -131,11 +135,15 @@ export class RoleMirror {
 	async apply(userId: string, wanted: WantedLevel, reason: string): Promise<MirrorResult> {
 		if (!this.#backend) return { kind: "unconfigured" };
 		this.#remember(userId);
+		let result: MirrorResult;
 		try {
-			return await this.#backend.apply(userId, wanted, reason);
+			result = await this.#backend.apply(userId, wanted, reason);
 		} catch (error) {
-			return this.#unexpected(error, "apply", (why) => ({ kind: "failed", reason: why }));
+			result = this.#unexpected(error, "apply", (why) => ({ kind: "failed", reason: why }));
 		}
+		if (result.kind === "failed") this.#pushFailed.add(userId);
+		else this.#pushFailed.delete(userId);
+		return result;
 	}
 
 	async inspect(userId: string): Promise<Inspection> {
@@ -150,9 +158,25 @@ export class RoleMirror {
 	async holders(): Promise<HolderList> {
 		if (!this.#backend) return { kind: "unconfigured" };
 		try {
-			return await this.#backend.holders();
+			const list = await this.#backend.holders();
+			this.#holdersThrew = false;
+			return list;
 		} catch (error) {
-			return this.#unexpected(error, "holders", (why) => ({ kind: "failed", reason: why }));
+			// The sync asks every minute: report the first failure of an outage, log the rest.
+			if (this.#holdersThrew) {
+				this.#logger.warn(
+					{ event: "role_mirror.failed", action: "holders", err: error },
+					"still can't read roles",
+				);
+			} else {
+				this.#logger.error(
+					{ event: "role_mirror.failed", action: "holders", err: error },
+					"role mirror failed",
+				);
+				this.#reporter.captureBackground(error, "role-mirror");
+			}
+			this.#holdersThrew = true;
+			return { kind: "failed", reason: "couldn't read the roles from Discord" };
 		}
 	}
 
@@ -163,6 +187,15 @@ export class RoleMirror {
 	 */
 	appliedSince(userId: string, since: number): boolean {
 		return (this.#applied.get(userId) ?? Number.NEGATIVE_INFINITY) >= since;
+	}
+
+	/**
+	 * Whether Discord didn't take the last push of this person's roles (and no
+	 * later one has worked). The role sync leaves them alone until one does
+	 * (`/admin sync`), so a change Pixel made isn't undone by roles it couldn't set.
+	 */
+	pushFailed(userId: string): boolean {
+		return this.#pushFailed.has(userId);
 	}
 
 	#remember(userId: string): void {

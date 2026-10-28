@@ -176,7 +176,10 @@ function fakeAccess(entries: Entry[]) {
 function setup(
 	entries: Entry[],
 	list: HolderList | (() => Promise<HolderList>),
-	options: { applied?: (id: string, since: number) => boolean } = {},
+	options: {
+		applied?: (id: string, since: number) => boolean;
+		pushFailed?: (id: string) => boolean;
+	} = {},
 ) {
 	const access = fakeAccess(entries);
 	const logger = { ...silentLogger, info: vi.fn(), warn: vi.fn(), error: vi.fn() };
@@ -185,6 +188,7 @@ function setup(
 	const roles = {
 		holders: vi.fn(typeof list === "function" ? list : async () => list),
 		appliedSince: vi.fn(options.applied ?? (() => false)),
+		pushFailed: vi.fn(options.pushFailed ?? (() => false)),
 	};
 	const sync = new RoleSync({
 		access,
@@ -263,6 +267,23 @@ describe("RoleSync", () => {
 		expect(access.apply).not.toHaveBeenCalled();
 		// Within two runs of now.
 		expect(roles.appliedSince).toHaveBeenCalledWith(ADA, 1_000_000 - 120_000);
+	});
+
+	it("skips someone whose last push Discord didn't take, however long ago", async () => {
+		const { sync, access } = setup(
+			[
+				{ ids: [ADA], tier: "member" },
+				{ ids: [BOB], tier: "member" },
+			],
+			ok(),
+			{ pushFailed: (id) => id === ADA },
+		);
+		expect(await sync.run()).toMatchObject({ applied: 1, skipped: 1 });
+		expect(access.apply).toHaveBeenCalledOnce();
+		expect(access.apply).toHaveBeenCalledWith(
+			expect.objectContaining({ id: BOB }),
+			expect.anything(),
+		);
 	});
 
 	it("skips someone whose level changed after the roles were read", async () => {

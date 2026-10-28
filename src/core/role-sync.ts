@@ -20,6 +20,8 @@ import type { HolderList, MirroredTier, RoleHolder, RoleMirror } from "./role-mi
  *  - a tier whose role isn't mapped is left alone;
  *  - someone whose roles Pixel pushed since the run started, or just before, is skipped,
  *    and so is anyone whose level changed in Pixel after the plan was made;
+ *  - someone whose last push Discord didn't take is skipped until one does (`/admin sync`),
+ *    so an admin's change isn't undone by roles Pixel couldn't set;
  *  - more than `MAX_DEMOTIONS` removals in one run are all held back and reported,
  *    since that looks like a mistake (a role cleared, or the sync turned on before
  *    `/admin sync` brought Discord into line).
@@ -101,7 +103,7 @@ export function planSync(
 
 export type RoleSyncDeps = {
 	access: Pick<AccessStore, "view" | "apply">;
-	roles: Pick<RoleMirror, "holders" | "appliedSince">;
+	roles: Pick<RoleMirror, "holders" | "appliedSince" | "pushFailed">;
 	logger: Logger;
 	reporter: ErrorReporter;
 	everyMs: number;
@@ -179,7 +181,11 @@ export class RoleSync {
 		let skipped = 0;
 		for (const change of plan.changes) {
 			const now = this.#access.view.records.get(change.userId)?.tier ?? "none";
-			if (now !== change.from || this.#roles.appliedSince(change.userId, since)) {
+			if (
+				now !== change.from ||
+				this.#roles.appliedSince(change.userId, since) ||
+				this.#roles.pushFailed(change.userId)
+			) {
 				skipped++;
 				continue;
 			}

@@ -17,8 +17,9 @@ Pixel mirrored levels to Discord roles one way only: an admin set someone's leve
   - nothing runs unless every configured tier's role is working (exists, unambiguous, below the bot), so a renamed or deleted role can't make everyone look like they lost it;
   - a level whose role isn't mapped is left alone;
   - someone whose roles Pixel pushed in the last two minutes (an admin's `/admin level set` or `/admin sync`) is skipped, and so is anyone whose level changed after the roles were read, so the sync can't undo an admin's change;
+  - someone whose last push Discord didn't take is skipped until a push for them works (`/admin sync`), so a role Pixel couldn't set doesn't undo the admin's change once the two minutes are up;
   - more than 5 removals in one run are all held back and reported to Sentry once, as that looks like a mistake;
-  - a persistent problem is reported once, not every minute.
+  - a persistent problem, or an outage reading the roles, is reported once, not every minute.
 - **Pushing still happens** on `/admin level set` and `/admin sync`. When the two disagree after the grace period, Discord's role wins.
 
 This **supersedes** the one-way rule in AGENTS.md rule 13 and "Discord role mirroring" in `identity-and-access.md`.
