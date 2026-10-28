@@ -14,6 +14,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - A **Deploy dev** workflow puts a branch or pull request on the Pixel Dev bot without a laptop: GitHub → Actions → Deploy dev → Run workflow with a PR number, branch or SHA, or `just deploy-remote dev 123`. It runs `just check` on that commit, publishes `:<sha>` and `:dev` to GHCR, rolls `pixel-dev`, registers dev slash commands and creates a Sentry release in environment `dev`. It only runs when someone starts it, refuses PRs from forks, and never touches prod. For it to register commands, a maintainer sets `github_register_principal_id` in `infra/envs/dev` to `pixel-github-dev`'s principal ID and applies (it can read the dev `discord-token` and nothing else). See [ADR 0018](docs/adr/0018-deploy-dev-workflow.md).
 - Terraform can set the closing-time channel on Azure (`discord_closing_time_channel_id` in `infra/envs/dev` and `prod`). Before, it could only be set by hand on the Container App, and the next apply removed it.
 
+### Fixed
+
+- An announcement channel Pixel couldn't use (the bot status and closing-time channels, and channels set with `/admin announcements`) now starts posting once it's fixed, without a restart or setting it again. Pixel tries it again shortly after Discord says a channel or role changed, and every 5 minutes, and logs `discord.announce_enabled` / `announcements.route_on` when it's back. Before, it stayed off until Pixel restarted. A retry that fails the same way isn't reported again.
+- The reason a channel can't be used is clearer: "there's no channel with that ID" and "the bot can't see the channel" are now told apart, instead of "the channel doesn't exist or the bot can't see it". Pixel also checks its own roles with Discord instead of trusting a cached copy. The runbook has a new troubleshooting entry for this.
+
 ## [0.19.1] - 2026-10-24
 
 ### Changed

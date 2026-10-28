@@ -50,6 +50,22 @@ export type OpenedChannel =
 	| { ok: true; channel: AnnouncementChannel }
 	| { ok: false; problem: string };
 
+const NO_SUCH_CHANNEL = "there's no channel with that ID";
+
+/** Why Discord wouldn't give the bot a channel, from its error code. */
+export function describeChannelFetchError(error: unknown): string {
+	const code =
+		typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+	switch (code) {
+		case 10003: // Unknown Channel
+			return NO_SUCH_CHANNEL;
+		case 50001: // Missing Access
+			return "the bot can't see the channel (it needs View Channel there, or isn't in that server)";
+		default:
+			return "couldn't ask Discord about the channel, try again";
+	}
+}
+
 /**
  * Opens a channel for announcements and checks it's usable: it exists, is a
  * text channel in the Pixelbar server, and the bot has the permissions it
@@ -60,8 +76,13 @@ export async function openAnnouncementChannel(
 	client: Client<true>,
 	options: { channelId: string; guildId: string; required: readonly bigint[] },
 ): Promise<OpenedChannel> {
-	const channel = await client.channels.fetch(options.channelId).catch(() => null);
-	if (!channel) return { ok: false, problem: "the channel doesn't exist or the bot can't see it" };
+	let channel: Awaited<ReturnType<typeof client.channels.fetch>>;
+	try {
+		channel = await client.channels.fetch(options.channelId);
+	} catch (error) {
+		return { ok: false, problem: describeChannelFetchError(error) };
+	}
+	if (!channel) return { ok: false, problem: NO_SUCH_CHANNEL };
 	if (channel.isDMBased() || !channel.isSendable()) {
 		return { ok: false, problem: "it isn't a server text channel the bot can post in" };
 	}
@@ -71,7 +92,8 @@ export async function openAnnouncementChannel(
 
 	// Discord can fail this (a network blip, a rate limit). Say so rather than throw, so one
 	// channel never stops the others or the rest of startup.
-	const me = await channel.guild.members.fetchMe().catch(() => null);
+	// Always ask Discord: without the GuildMembers intent the cached member can miss a role given since.
+	const me = await channel.guild.members.fetchMe({ force: true }).catch(() => null);
 	if (!me) return { ok: false, problem: "couldn't check the bot's permissions there, try again" };
 	const missing = missingPermissions(channel.permissionsFor(me), options.required);
 	if (missing.length > 0) {

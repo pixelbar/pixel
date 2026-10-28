@@ -1,6 +1,7 @@
 import { type Client, PermissionFlagsBits, PermissionsBitField } from "discord.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+	describeChannelFetchError,
 	LIVE_PERMISSIONS,
 	missingPermissions,
 	openAnnouncementChannel,
@@ -47,6 +48,17 @@ describe("missingPermissions", () => {
 			"SendMessages",
 			"EmbedLinks",
 		]);
+	});
+});
+
+describe("describeChannelFetchError", () => {
+	it("copes with things that aren't Discord errors", () => {
+		expect(describeChannelFetchError(null)).toBe(
+			"couldn't ask Discord about the channel, try again",
+		);
+		expect(describeChannelFetchError("nope")).toBe(
+			"couldn't ask Discord about the channel, try again",
+		);
 	});
 });
 
@@ -108,7 +120,7 @@ describe("openAnnouncementChannel", () => {
 
 	/** Just enough of a discord.js client for opening one channel. */
 	function client(
-		fetchMe: () => Promise<unknown>,
+		fetchMe: (options?: { force?: boolean }) => Promise<unknown>,
 		granted = new PermissionsBitField(LIVE_PERMISSIONS),
 	) {
 		const channel = {
@@ -121,11 +133,57 @@ describe("openAnnouncementChannel", () => {
 		return { channels: { fetch: async () => channel } } as unknown as Client<true>;
 	}
 
+	/** A client whose channel fetch fails, or finds nothing. */
+	const fetching = (fetch: () => Promise<unknown>) =>
+		({ channels: { fetch } }) as unknown as Client<true>;
+	const discordError = (code: number) => Object.assign(new Error("Discord said no"), { code });
+
 	const open = (c: Client<true>) =>
 		openAnnouncementChannel(c, { channelId: CHANNEL, guildId: GUILD, required: LIVE_PERMISSIONS });
 
 	it("opens a channel the bot can use", async () => {
 		expect((await open(client(async () => ({})))).ok).toBe(true);
+	});
+
+	it("asks Discord for the bot's roles instead of trusting the cache", async () => {
+		const fetchMe = vi.fn(async () => ({}));
+		await open(client(fetchMe));
+		expect(fetchMe).toHaveBeenCalledWith({ force: true });
+	});
+
+	it("tells a channel that doesn't exist from one the bot can't see", async () => {
+		await expect(
+			open(
+				fetching(async () => {
+					throw discordError(10003);
+				}),
+			),
+		).resolves.toEqual({ ok: false, problem: "there's no channel with that ID" });
+		await expect(open(fetching(async () => null))).resolves.toEqual({
+			ok: false,
+			problem: "there's no channel with that ID",
+		});
+		await expect(
+			open(
+				fetching(async () => {
+					throw discordError(50001);
+				}),
+			),
+		).resolves.toEqual({
+			ok: false,
+			problem:
+				"the bot can't see the channel (it needs View Channel there, or isn't in that server)",
+		});
+	});
+
+	it("says to try again when Discord fails some other way", async () => {
+		await expect(
+			open(
+				fetching(async () => {
+					throw new Error("503 Service Unavailable");
+				}),
+			),
+		).resolves.toEqual({ ok: false, problem: "couldn't ask Discord about the channel, try again" });
 	});
 
 	it("says it couldn't check, instead of throwing, when Discord won't say who the bot is", async () => {

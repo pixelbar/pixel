@@ -287,6 +287,76 @@ describe("DiscordAnnouncementRoutes", () => {
 			expect(routes.list().find((r) => r.channelId === GENERAL)?.problem).toBeUndefined();
 		});
 
+		describe("retry", () => {
+			const HIDDEN = "the bot lacks these permissions there: ViewChannel";
+
+			it("starts a broken route once its channel works, without setting it again", async () => {
+				saved([
+					{ style: "timeline", channelId: ANNOUNCEMENTS },
+					{ style: "single", channelId: GENERAL },
+				]);
+				const { routes, registered, problems, opened } = setup();
+				problems.set(GENERAL, HIDDEN);
+				await routes.start();
+				expect(routes.hasProblems()).toBe(true);
+				problems.delete(GENERAL);
+				opened.length = 0;
+				await routes.retry();
+				// Only the broken one is opened again.
+				expect(opened).toEqual([{ channelId: GENERAL, required: LIVE_PERMISSIONS }]);
+				expect(registered.has(routePublisherId("single", GENERAL))).toBe(true);
+				expect(routes.hasProblems()).toBe(false);
+				expect(routes.list().find((r) => r.channelId === GENERAL)?.problem).toBeUndefined();
+			});
+
+			it("stays quiet while the problem is the same, and reports a new one", async () => {
+				saved([{ style: "single", channelId: GENERAL }]);
+				const { routes, problems, reportError } = setup();
+				problems.set(GENERAL, HIDDEN);
+				await routes.start();
+				await routes.retry();
+				expect(reportError).toHaveBeenCalledOnce();
+				problems.set(GENERAL, "there's no channel with that ID");
+				await routes.retry();
+				expect(reportError).toHaveBeenCalledTimes(2);
+				expect(routes.list()[0]?.problem).toBe(
+					"I can't announce in that channel: there's no channel with that ID.",
+				);
+			});
+
+			it("leaves a route alone that an admin changed or removed while it was opening", async () => {
+				saved([
+					{ style: "single", channelId: GENERAL },
+					{ style: "live", channelId: ANNOUNCEMENTS },
+				]);
+				let whileOpening: ((channelId: string) => void) | undefined;
+				const { routes, store, registered } = setup({
+					openChannel: async (channelId): Promise<OpenedChannel> => {
+						if (!whileOpening) return { ok: false, problem: HIDDEN };
+						whileOpening(channelId);
+						return { ok: true, channel: fakeChannel().channel };
+					},
+				});
+				await routes.start();
+				// While each opens, an admin removes one and moves the other to another style.
+				whileOpening = (channelId) => {
+					if (channelId === GENERAL) store.remove(GENERAL);
+					else store.set({ style: "timeline", channelId });
+				};
+				await routes.retry();
+				expect(registered.size).toBe(0);
+			});
+
+			it("does nothing when every route is posting", async () => {
+				saved([{ style: "single", channelId: GENERAL }]);
+				const { routes, opened } = setup();
+				await routes.start();
+				opened.length = 0;
+				await routes.retry();
+				expect(opened).toEqual([]);
+			});
+		});
+
 		it("writes its post memory under the given directory", async () => {
 			const { routes, registered } = setup();
 			await routes.set("live", GENERAL);
