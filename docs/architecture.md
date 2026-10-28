@@ -266,7 +266,7 @@ The [spaceapi.io directory](https://api.spaceapi.io/openapi.json) was considered
 | `whoami`  | `/whoami`                    | guest  | ✅    | Private reply: your ID and tier                     |
 | `admin`   | `/admin status`              | admin  | ✅    | Private reply: version, uptime, access-list counts (no IDs) |
 | `admin`   | `/admin reload`              | admin  | ✅    | Re-reads `admins.yaml` and `members.yaml` after hand edits. Keeps the old data if they're now invalid |
-| `admin`   | `/admin level set user: level: [reason:]` | admin | ✅ | Makes someone `member`, `friend` or `guest`. Private reply with before and after. Refuses admins and bots, and says so when nothing would change |
+| `admin`   | `/admin level set user: level: [reason:]` | admin | ✅ | Makes someone `member`, `friend` or `guest`. Private reply with before and after. Writes their username as the entry's note when it has none Refuses admins and bots, and says so when nothing would change |
 | `admin`   | `/admin level get user:`         | admin  | ✅    | Private. Level, where it comes from (admins file, members file, not listed), capabilities, the note and, when roles are mirrored, their Discord roles with any mismatch. Lookups are logged |
 | `admin`   | `/admin sync [user:]`        | admin  | ✅    | Sets the mapped Discord roles from Pixel's data, for one person or everyone in Pixel's lists. Pixel always wins |
 | `admin`   | `/admin capabilities grant\|revoke user: capability: [reason:]` | admin | ✅ | Gives or takes a named permission. Picked from the registry in `features/capabilities.ts`, audited, refused for guests and bots. Says so when nothing would change. The person is DMed on an actual change; a closed inbox is logged and does not fail the command |

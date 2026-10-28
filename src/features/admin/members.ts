@@ -62,14 +62,24 @@ export function createLevelSubgroup(
 						`${describe(target)} is a Pixel admin. Admins are managed in admins.yaml only.`,
 					);
 				}
-				const current = view.records.get(target.id)?.tier ?? "guest";
+				const record = view.records.get(target.id);
+				const current = record?.tier ?? "guest";
+				// The username goes in the note so people reading the file can tell who is who. It's
+				// only for humans: Pixel acts on the ID. A note someone already wrote is kept.
+				const note = record?.note === undefined ? (target.handle ?? target.displayName) : undefined;
 
 				// Pixel's data is updated first. Discord's roles then follow, even when nothing
 				// changed in Pixel, so a person who's out of step gets put right.
 				const changed = current !== level;
 				const result = changed
 					? await access.apply(
-							{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
+							{
+								kind: "set-tier",
+								id: target.id,
+								tier: level,
+								...(note ? { note } : {}),
+								...(reason ? { reason } : {}),
+							},
 							principal,
 						)
 					: undefined;

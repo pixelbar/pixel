@@ -209,7 +209,7 @@ Re-reads the admin and member lists after they were edited by hand.
 
 <PxCommand sig="/admin level set user: level: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'level:': 'member, friend or guest. Guest keeps their entry but gives no access.', '[reason:]': 'Why, for the audit log.' }">
 
-Makes someone a member or friend, or sets them back to guest.
+Makes someone a member or friend, or sets them back to guest. If their entry has no note, their username is saved as one, so the file shows who is who.
 
 </PxCommand>
 

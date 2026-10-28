@@ -198,6 +198,35 @@ describe("/admin level set", () => {
 		});
 	});
 
+	it("writes the person's username as the note, so the file shows who is who", async () => {
+		const { dispatcher, store } = setup();
+		await run(dispatcher, "set-level", { level: "member" }, human(TARGET, "New Person"));
+		expect(store.view.records.get(TARGET)?.note).toBe("someone_h");
+		expect(read()).toContain(`ids: ["discord:${TARGET}"]\n    tier: member\n    note: someone_h\n`);
+	});
+
+	it("falls back to the display name when there's no username", async () => {
+		const { dispatcher, store } = setup();
+		const { handle: _, ...noHandle } = human(TARGET, "New Person");
+		await run(dispatcher, "set-level", { level: "friend" }, noHandle);
+		expect(store.view.records.get(TARGET)?.note).toBe("New Person");
+	});
+
+	it("adds a note to an entry without one, and never replaces one someone wrote", async () => {
+		const { dispatcher, store } = setup();
+		await run(dispatcher, "set-level", { level: "member" }, human(IDS.friend));
+		expect(store.view.records.get(IDS.friend)?.note).toBe("someone_h");
+		await run(dispatcher, "set-level", { level: "friend" }, human(IDS.member));
+		expect(store.view.records.get(IDS.member)?.note).toBe("paid yearly");
+	});
+
+	it("doesn't write a note when nothing else changes", async () => {
+		const { dispatcher } = setup();
+		const before = read();
+		await run(dispatcher, "set-level", { level: "friend" }, human(IDS.friend));
+		expect(read()).toBe(before);
+	});
+
 	it("upgrades a friend to a member", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "set-level", { level: "member" }, human(IDS.friend));

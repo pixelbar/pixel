@@ -135,7 +135,7 @@ Tiers come from two files: `config/admins.yaml` (hand-edited) and `config/member
 1. In Discord, an admin runs `/admin level set user:<person> level:<member|friend|guest>` with an optional reason.
 2. Check it with `/admin level get user:<person>`.
 
-That's all: Pixel updates `members.yaml` itself, keeps `members.yaml.bak`, and logs an `access.changed` event with who did it. If Pixel is configured to mirror Discord roles, it also sets the person's role. `/admin sync` re-applies the roles for everyone if they ever drift.
+That's all: Pixel updates `members.yaml` itself (writing the person's Discord username as the `note` if the entry has none, so you can tell who is who; it never replaces a note you wrote), keeps `members.yaml.bak`, and logs an `access.changed` event with who did it. If Pixel is configured to mirror Discord roles, it also sets the person's role. `/admin sync` re-applies the roles for everyone if they ever drift.
 
 **Remove someone completely:** `/admin level set … level:guest` keeps their entry. To delete the entry, edit `members.yaml` by hand (remove the whole `- ids: …` block), then `/admin reload`. Admins can't be changed from Discord (see below).
 
