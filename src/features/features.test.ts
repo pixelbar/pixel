@@ -101,7 +101,6 @@ describe("buildFeatures", () => {
 			"info",
 			"ping",
 			"schedule",
-			"spacestate",
 			"status",
 			"whoami",
 		]);

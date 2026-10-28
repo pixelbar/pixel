@@ -395,7 +395,8 @@ describe("buildCore", () => {
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
 		});
 
-		describe("/spacestate", () => {
+		// Temporarily disabled with the feature (see features/index.ts).
+		describe.skip("/spacestate", () => {
 			const spaceStateApi = {
 				url: "https://space.example/state",
 				user: "pixel",
