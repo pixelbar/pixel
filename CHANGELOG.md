@@ -15,6 +15,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Terraform can set the closing-time channel on Azure (`discord_closing_time_channel_id` in `infra/envs/dev` and `prod`). Before, it could only be set by hand on the Container App, and the next apply removed it.
 - `/schedule edit` takes `duration` to change how long a scheduled poll stays open, so it's no longer stuck at what it was created with. Polls posted after the edit use it; one already posted isn't changed. It's refused on a message schedule. Needs `just register dev` / `just register prod`.
 
+### Fixed
+
+- An announcement channel Pixel couldn't use (the bot status and closing-time channels, and channels set with `/admin announcements`) now starts posting once it's fixed, without a restart or setting it again. Pixel tries it again shortly after Discord says a channel or role changed, and every 5 minutes, and logs `discord.announce_enabled` / `announcements.route_on` when it's back. Before, it stayed off until Pixel restarted. A retry that fails the same way isn't reported again.
+- The reason a channel can't be used is clearer: "there's no channel with that ID" and "the bot can't see the channel" are now told apart, instead of "the channel doesn't exist or the bot can't see it". Pixel also checks its own roles with Discord instead of trusting a cached copy. The runbook has a new troubleshooting entry for this.
+
 ## [0.19.1] - 2026-10-24
 
 ### Changed

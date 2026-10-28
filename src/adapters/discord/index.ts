@@ -14,7 +14,11 @@ import {
 	openAnnouncementChannel,
 	TIMELINE_PERMISSIONS,
 } from "./announce-channel.ts";
-import type { AnnouncementChannel } from "./announce-publishers.ts";
+import {
+	AnnouncementRecheck,
+	type ConfiguredChannel,
+	ConfiguredChannels,
+} from "./announce-recheck.ts";
 import { DiscordAnnouncementRoutes, type DiscordRoutesOptions } from "./announce-routes.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import type { DiscordOption } from "./args.ts";
@@ -83,6 +87,10 @@ export type DiscordAdapter = {
 };
 
 const DEFER_AFTER_MS = 1500;
+/** After a permission change, wait for the rest of the burst (a category sync updates every channel in it). */
+const RECHECK_SETTLE_MS = 5_000;
+/** Giving the bot a role sends no event without the GuildMembers intent, so also try this often. */
+const RECHECK_EVERY_MS = 5 * 60_000;
 
 /**
  * Thin wiring between the discord.js Client and the handlers in handlers.ts,
@@ -113,14 +121,13 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		allowedMentions: { parse: [] },
 	});
 
+	/** Tries channels that couldn't be opened again; set once the publishers are. */
+	let recheck: AnnouncementRecheck | undefined;
+	let stopRecheck: (() => void) | undefined;
+
 	/** Opens the configured announcement channels and registers a publisher for each usable one. */
 	async function registerPublishers(ready: Client<true>): Promise<void> {
-		const wanted: {
-			id: string;
-			channelId: string | undefined;
-			required: readonly bigint[];
-			create: (channel: AnnouncementChannel, channelId: string) => Publisher;
-		}[] = [
+		const wanted: (Omit<ConfiguredChannel, "channelId"> & { channelId: string | undefined })[] = [
 			{
 				id: BOT_STATUS_PUBLISHER_ID,
 				channelId: deps.announce.botChannelId,
@@ -159,20 +166,26 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		deps.announcementRoutes.use(routes);
 		await routes.start();
 
-		for (const { id, channelId, required, create } of wanted) {
-			if (!channelId) continue;
-			const opened = await openAnnouncementChannel(ready, { channelId, guildId, required });
-			if (opened.ok) {
-				deps.announcer.register(create(opened.channel, channelId));
-			} else {
-				// Announcements for this channel stay off; everything else keeps working.
-				logger.error(
-					{ event: "discord.announce_disabled", publisher: id, channelId },
-					`announcements to ${id} are off: ${opened.problem}`,
-				);
-				reportError(new Error(`Announcements to ${id} are off: ${opened.problem}`));
-			}
-		}
+		const configured = new ConfiguredChannels({
+			channels: wanted.flatMap(({ channelId, ...rest }) =>
+				channelId ? [{ ...rest, channelId }] : [],
+			),
+			openChannel: (channelId, required) =>
+				openAnnouncementChannel(ready, { channelId, guildId, required }),
+			announcer: deps.announcer,
+			logger,
+			reportError,
+		});
+		await configured.start();
+		// A channel that couldn't be opened is tried again, so fixing its permissions needs no restart.
+		recheck = new AnnouncementRecheck({
+			targets: [configured, routes],
+			settleMs: RECHECK_SETTLE_MS,
+			everyMs: RECHECK_EVERY_MS,
+			logger,
+			reportError,
+		});
+		stopRecheck = recheck.start();
 		// Pixel's own status in the member list follows the space. It needs no channel.
 		const presence = createPresencePublisher(ready.user);
 		deps.announcer.register(presence);
@@ -215,6 +228,13 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		deps.onReady?.();
 	});
 	client.on(Events.GuildCreate, leaveIfForeign);
+	// A channel's or a role's permissions changed: a channel that couldn't be used may work now.
+	client.on(Events.ChannelUpdate, (_, channel) => {
+		if (!channel.isDMBased() && channel.guildId === guildId) recheck?.changed();
+	});
+	client.on(Events.GuildRoleUpdate, (_, role) => {
+		if (role.guild.id === guildId) recheck?.changed();
+	});
 	client.on(Events.Error, (error) => {
 		logger.error({ err: error }, "discord client error");
 		reportError(error);
@@ -281,6 +301,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			await client.login(deps.token);
 		},
 		async stop() {
+			stopRecheck?.();
 			await client.destroy();
 		},
 		isReady() {
