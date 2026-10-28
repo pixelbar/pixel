@@ -361,20 +361,44 @@ export function tfvarsProblems(
 }
 
 /**
- * Files on the env's share that `just pull` mirrors locally, read-only. Pixel (and
- * `just ha-devices`) are their only writers, so the mirrors never go back up.
+ * Files on the env's share that `just pull` mirrors locally. `just push` sends back
+ * only the ones marked `push` (members.yaml, a hand edit); Pixel and `just ha-devices`
+ * are the only writers of the rest, so those mirrors are read-only.
  */
-export type ShareFile = { path: string; mirror: string };
+export type ShareFile = { path: string; mirror: string; push: boolean };
 
 export function shareFiles(target: Target): ShareFile[] {
 	return [
-		{ path: "members.yaml", mirror: join("config", target, "members.yaml") },
-		{ path: "home-assistant/devices.yaml", mirror: join(mirrorDir(target), "devices.yaml") },
+		{ path: "members.yaml", mirror: join("config", target, "members.yaml"), push: true },
+		{
+			path: "home-assistant/devices.yaml",
+			mirror: join(mirrorDir(target), "devices.yaml"),
+			push: false,
+		},
 		{
 			path: "data/announcement-routes.yaml",
 			mirror: join("config", target, "announcement-routes.yaml"),
+			push: false,
 		},
 	];
+}
+
+/** One line for a pushed share file: local mirror → the share. */
+export function describeShareFile(
+	file: ShareFile,
+	local: string | undefined,
+	remote: string | undefined,
+): string {
+	if (local === undefined) return `  - ${file.path}: no ${file.mirror} (left as it is)`;
+	if (remote === undefined) return `  + ${file.path}: new on the share (from ${file.mirror})`;
+	return local === remote
+		? `  = ${file.path}: the same`
+		: `  ~ ${file.path}: changes (from ${file.mirror})`;
+}
+
+/** Whether a push uploads the mirror: there is one, and it differs from the share. */
+export function shareFileChanges(local: string | undefined, remote: string | undefined): boolean {
+	return local !== undefined && local !== remote;
 }
 
 /** Whether `az storage file download` failed because the file isn't on the share. */

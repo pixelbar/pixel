@@ -63,13 +63,23 @@ export function createLevelSubgroup(
 					);
 				}
 				const current = view.records.get(target.id)?.tier ?? "guest";
+				// The username goes in the note so people reading the file can tell who is who. It's
+				// only for humans: Pixel acts on the ID. The store writes it only when the entry has
+				// no note in the file as it reads it, so a note someone wrote is kept.
+				const defaultNote = target.handle ?? target.displayName;
 
 				// Pixel's data is updated first. Discord's roles then follow, even when nothing
 				// changed in Pixel, so a person who's out of step gets put right.
 				const changed = current !== level;
 				const result = changed
 					? await access.apply(
-							{ kind: "set-tier", id: target.id, tier: level, ...(reason ? { reason } : {}) },
+							{
+								kind: "set-tier",
+								id: target.id,
+								tier: level,
+								...(defaultNote ? { defaultNote } : {}),
+								...(reason ? { reason } : {}),
+							},
 							principal,
 						)
 					: undefined;

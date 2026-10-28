@@ -135,7 +135,7 @@ describe("changing a tier", () => {
 	it("adds a person after the admin entry, as a quoted ID", async () => {
 		writeFileSync(membersFile, `members:\n${ADMIN_ENTRY}`);
 		const store = open();
-		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", note: "new" }, by);
+		await store.apply({ kind: "set-tier", id: NEW_ID, tier: "member", defaultNote: "new" }, by);
 		expect(read()).toBe(
 			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${NEW_ID}"]\n    tier: member\n    note: new\n`,
 		);
@@ -151,14 +151,47 @@ describe("changing a tier", () => {
 		expect(store.view.records.get(IDS.member)?.capabilities).toEqual(["front-door"]);
 	});
 
-	it("updates the note when one is given", async () => {
+	it("never replaces a note with the default one", async () => {
 		const store = open();
-		await store.apply(
-			{ kind: "set-tier", id: IDS.member, tier: "member", note: "paid monthly" },
+		const result = await store.apply(
+			{ kind: "set-tier", id: IDS.member, tier: "friend", defaultNote: "someone_h" },
 			by,
 		);
-		expect(read()).toContain("note: paid monthly");
-		expect(read()).not.toContain("paid yearly");
+		expect(result.after.note).toBe("paid yearly");
+		expect(read()).not.toContain("someone_h");
+	});
+
+	it("writes the default note to an entry that has none, even at the same tier", async () => {
+		writeFileSync(
+			membersFile,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${NEW_ID}"]\n    tier: member\n`,
+		);
+		const store = open();
+		await store.apply(
+			{ kind: "set-tier", id: NEW_ID, tier: "member", defaultNote: "someone_h" },
+			by,
+		);
+		expect(read()).toContain(`tier: member\n    note: someone_h\n`);
+	});
+
+	it("keeps a note written by hand since the store last read the file", async () => {
+		writeFileSync(
+			membersFile,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${NEW_ID}"]\n    tier: friend\n`,
+		);
+		const store = open();
+		expect(store.view.records.get(NEW_ID)?.note).toBeUndefined();
+		writeFileSync(
+			membersFile,
+			`members:\n${ADMIN_ENTRY}  - ids: ["discord:${NEW_ID}"]\n    tier: friend\n    note: written by hand\n`,
+		);
+		await store.apply(
+			{ kind: "set-tier", id: NEW_ID, tier: "member", defaultNote: "someone_h" },
+			by,
+		);
+		expect(read()).toContain("note: written by hand");
+		expect(read()).not.toContain("someone_h");
+		expect(store.view.records.get(NEW_ID)?.note).toBe("written by hand");
 	});
 
 	it("marks someone as a guest without deleting their entry or capabilities", async () => {
@@ -521,11 +554,13 @@ describe("safe writes", () => {
 
 describe("audit", () => {
 	it("logs who did it, to whom, and before and after, but never the note", async () => {
+		writeFileSync(membersFile, MEMBERS.replace("    note: paid yearly # keep this\n", ""));
 		const store = open();
 		await store.apply(
-			{ kind: "set-tier", id: IDS.member, tier: "friend", note: "secret note" },
+			{ kind: "set-tier", id: IDS.member, tier: "friend", defaultNote: "secret note" },
 			by,
 		);
+		expect(read()).toContain("note: secret note");
 
 		const [entry] = entries("access.changed");
 		expect(entry?.level).toBe("info");

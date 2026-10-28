@@ -8,6 +8,7 @@ import {
 	azShowArgs,
 	compare,
 	describe,
+	describeShareFile,
 	envFile,
 	envValue,
 	isFile,
@@ -24,6 +25,7 @@ import {
 	reusedDiscordToken,
 	secretTfvarsFile,
 	setEnvValues,
+	shareFileChanges,
 	shareFiles,
 	stackVariables,
 	syncedSecrets,
@@ -403,10 +405,49 @@ variable "discord_token" {
 group("share files", () => {
 	it("mirrors the share's config files under config/, never next to the real ones", () => {
 		expect(shareFiles("prod")).toEqual([
-			{ path: "members.yaml", mirror: "config/prod/members.yaml" },
-			{ path: "home-assistant/devices.yaml", mirror: "config/home-assistant/prod/devices.yaml" },
-			{ path: "data/announcement-routes.yaml", mirror: "config/prod/announcement-routes.yaml" },
+			{ path: "members.yaml", mirror: "config/prod/members.yaml", push: true },
+			{
+				path: "home-assistant/devices.yaml",
+				mirror: "config/home-assistant/prod/devices.yaml",
+				push: false,
+			},
+			{
+				path: "data/announcement-routes.yaml",
+				mirror: "config/prod/announcement-routes.yaml",
+				push: false,
+			},
 		]);
+	});
+
+	it("pushes only members.yaml back", () => {
+		expect(
+			shareFiles("dev")
+				.filter((f) => f.push)
+				.map((f) => f.path),
+		).toEqual(["members.yaml"]);
+	});
+
+	it("uploads a mirror only when there is one and it differs", () => {
+		expect(shareFileChanges("a", "b")).toBe(true);
+		expect(shareFileChanges("a", undefined)).toBe(true);
+		expect(shareFileChanges("a", "a")).toBe(false);
+		expect(shareFileChanges(undefined, "a")).toBe(false);
+		expect(shareFileChanges(undefined, undefined)).toBe(false);
+	});
+
+	it("describes a pushed share file without its contents", () => {
+		const [members] = shareFiles("dev");
+		if (members === undefined) throw new Error("no members.yaml");
+		expect(describeShareFile(members, "x", "x")).toBe("  = members.yaml: the same");
+		expect(describeShareFile(members, "x", "y")).toBe(
+			"  ~ members.yaml: changes (from config/dev/members.yaml)",
+		);
+		expect(describeShareFile(members, "x", undefined)).toBe(
+			"  + members.yaml: new on the share (from config/dev/members.yaml)",
+		);
+		expect(describeShareFile(members, undefined, "y")).toBe(
+			"  - members.yaml: no config/dev/members.yaml (left as it is)",
+		);
 	});
 
 	it("tells a missing file from other failures", () => {

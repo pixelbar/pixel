@@ -226,8 +226,9 @@ pull env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} pull --all
 
 # Diffs against the live vault and pushes on a yes. Refuses tfvars that hold a secret or
-# are for the other env. The share mirrors never go back up (Pixel writes those).
-# Push an env's tfvars and app secrets after showing the diff: `just push dev|prod`
+# are for the other env. members.yaml goes back to the share too, checked with admins.yaml,
+# and only if Pixel hasn't changed it since; the other mirrors never go back up.
+# Push an env's tfvars, app secrets and members.yaml after showing the diff: `just push dev|prod`
 [group('environments')]
 push env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} push --all

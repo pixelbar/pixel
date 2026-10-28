@@ -224,12 +224,11 @@ export class FileAccessStore implements AccessStore {
 		if (change.kind === "set-capabilities" && !before) {
 			throw new AccessStoreError("That person isn't in the access list yet. Set their tier first.");
 		}
-		if (
-			before &&
-			change.kind === "set-tier" &&
-			before.tier === change.tier &&
-			(change.note === undefined || change.note === before.note)
-		) {
+		// Decided against the file just read, not the in-memory view, which may predate a
+		// hand edit.
+		const note =
+			change.kind === "set-tier" && before?.note === undefined ? change.defaultNote : undefined;
+		if (before && change.kind === "set-tier" && before.tier === change.tier && note === undefined) {
 			return { before, after: before };
 		}
 		if (
@@ -240,7 +239,7 @@ export class FileAccessStore implements AccessStore {
 			return { before, after: before };
 		}
 
-		edit(doc, change, index);
+		edit(doc, change, index, note);
 		const nextFile = this.#save(doc, raw);
 		const updated = nextFile.members.find((entry) => entry.ids.includes(ref));
 		const after = toRecord(updated as NonNullable<typeof updated>);
@@ -447,8 +446,13 @@ function editTier(doc: ReturnType<typeof parseDocument>, change: TierCapabilityC
 	if (isMap(tiers) && tiers.items.length === 0) doc.delete("tiers");
 }
 
-/** Edits the YAML document in place, keeping comments, order and quoting. */
-function edit(doc: ReturnType<typeof parseDocument>, change: AccessChange, index: number): void {
+/** Edits the YAML document in place, keeping comments, order and quoting. `note` is new only. */
+function edit(
+	doc: ReturnType<typeof parseDocument>,
+	change: AccessChange,
+	index: number,
+	note: string | undefined,
+): void {
 	const members = doc.get("members", true);
 	if (!isSeq(members)) throw new Error("members is not a list"); // unreachable: validated above
 	const seq = members as YAMLSeq;
@@ -462,14 +466,14 @@ function edit(doc: ReturnType<typeof parseDocument>, change: AccessChange, index
 
 	if (index >= 0) {
 		doc.setIn(["members", index, "tier"], change.tier);
-		if (change.note !== undefined) doc.setIn(["members", index, "note"], change.note);
+		if (note !== undefined) doc.setIn(["members", index, "note"], note);
 		return;
 	}
 
 	const item = doc.createNode({
 		ids: [`discord:${change.id}`],
 		tier: change.tier,
-		...(change.note !== undefined ? { note: change.note } : {}),
+		...(note !== undefined ? { note } : {}),
 	}) as YAMLMap;
 	if (!isMap(item)) throw new Error("couldn't create a members entry");
 	// IDs must be quoted strings, or they lose precision when read back as numbers. A short
