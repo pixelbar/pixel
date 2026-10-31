@@ -133,7 +133,7 @@ Messages and polls that Pixel posts in a channel, once or on a repeat. These nee
 
 <PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
 
-<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00 or tomorrow 9am.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
+<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00, tomorrow 9am, now or now+1h.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
 
 Schedules a message. A form opens for the text. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
@@ -294,5 +294,47 @@ Switches door control from Pixel off for everyone, at once.
 <PxCommand sig="/admin doors on" tier="admin" reply="private">
 
 Switches door control from Pixel back on.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking status" tier="admin" reply="private">
+
+The parking spots, whether each is open now and later today, and the parking settings.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking open spots: [from:] [until:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes, such as 17:00 or now+2h. Default: the reset (23:59).' }">
+
+Opens borrowed spots for a while, replacing any opening they have that day. For a permanent spot, lifts its closure. Nothing runs past the reset.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking close spots: [until:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again, such as 17:00 or now+2h. Default: the reset (23:59).' }">
+
+Closes spots: a borrowed spot until it's opened again, a permanent one for a while.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Lowercase words joined by -, such as neighbour-1.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
+
+Adds a parking spot. A borrowed spot is closed until it's opened.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.' }">
+
+Changes a spot. Changing whether it's permanent drops the openings or closures that no longer apply.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking remove-spot spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
+
+Removes a spot and its opening times.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking settings [remind:] [grace:] [reset:] [durations:]" tier="admin" reply="private" :options="{ '[remind:]': 'Minutes before someone\'s end to remind them (0–120).', '[grace:]': 'Minutes after it to end their booking (0–60).', '[reset:]': 'When every booking ends each day, such as 23:59.', '[durations:]': 'The durations offered, separated by commas, such as 30m, 1h, 2h30, rest of day.' }">
+
+Shows the parking settings, or changes them.
 
 </PxCommand>

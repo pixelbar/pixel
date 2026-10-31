@@ -34,6 +34,8 @@ import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
+import { ParkingSpotStore } from "./services/parking-spots.ts";
+import { ParkingWindowStore } from "./services/parking-windows.ts";
 import { ScheduleStore } from "./services/schedules.ts";
 import { HttpSpaceStateApi } from "./services/space-state-api.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
@@ -149,6 +151,20 @@ export function buildCore(
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
 	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
 	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
+	// Invalid parking files don't stop Pixel either: parking (or its borrowed spots) is off until fixed.
+	const parkingSpots = new ParkingSpotStore({
+		file: join(config.dataDir, "parking-spots.yaml"),
+		logger,
+	});
+	const parkingWindows = new ParkingWindowStore({
+		file: join(config.dataDir, "parking-windows.yaml"),
+		logger,
+	});
+	for (const problem of [parkingSpots.problem, parkingWindows.problem]) {
+		if (problem) reporter.captureBackground(new Error(problem), "parking");
+	}
+	// Opening times for spots removed or changed by hand no longer apply.
+	if (!parkingSpots.problem) parkingWindows.reconcile(parkingSpots.all(), new Date());
 	const identity = new IdentityService(
 		[new ConfigTierSource(access)],
 		[new StoreCapabilitySource(access)],
@@ -189,6 +205,8 @@ export function buildCore(
 		calendar,
 		channelPosts,
 		schedules,
+		parkingSpots,
+		parkingWindows,
 		canSchedule,
 		infoTopics,
 		timezone: config.timezone,

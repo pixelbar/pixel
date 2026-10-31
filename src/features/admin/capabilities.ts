@@ -1,6 +1,11 @@
 import { highestTier, splitRef, TIER_LABELS, type Tier } from "../../core/access.ts";
 import { type CapabilityRegistry, tierGrantsFor } from "../../core/capabilities.ts";
-import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
+import type {
+	ResolvedUser,
+	SubcommandDefinition,
+	SubgroupDefinition,
+	Suggestion,
+} from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import {
@@ -39,8 +44,9 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		description: "Which capability",
 		type: "string",
 		required: true,
-		// Discord shows a picker when there are choices, and free text when there are none.
-		...(names.length > 0 ? { choices: names } : {}),
+		// Suggestions, not choices: Discord counts every choice towards /admin's size limit,
+		// once per subcommand. The handlers check the name is registered.
+		suggest: async ({ typed }: { typed: string }) => suggestCapabilities(capabilities.all(), typed),
 	} as const;
 	const levelOption = {
 		name: "level",
@@ -367,6 +373,20 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		const description = capabilities.get(name)?.description;
 		return description ? `${name}: ${description}` : name;
 	}
+}
+
+/** Registered capabilities whose name or description has what was typed, at most 25. */
+export function suggestCapabilities(
+	all: readonly { name: string; description: string }[],
+	typed: string,
+): Suggestion[] {
+	const needle = typed.trim().toLowerCase();
+	return all
+		.filter(
+			(c) => c.name.toLowerCase().includes(needle) || c.description.toLowerCase().includes(needle),
+		)
+		.slice(0, 25)
+		.map((c) => ({ name: `${c.name}: ${c.description}`.slice(0, 100), value: c.name }));
 }
 
 /** The level an admin picked. The platform doesn't check it came from the choices. */

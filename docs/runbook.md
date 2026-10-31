@@ -104,7 +104,7 @@ docker run -d --name pixel \
   -p 8080:8080 pixel:local
 ```
 
-Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` is not safe to delete** (it is the scheduled posts). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
+Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml`, `data/parking-spots.yaml` and `data/parking-windows.yaml` are not safe to delete** (the scheduled posts, the parking spots, and today's parking opening times). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
@@ -267,6 +267,24 @@ After a deploy that adds `/schedule`, run **`just register dev`** or **`just reg
 - **Stop one now:** `/schedule pause` or `/schedule delete`. To stop someone's schedules, revoke their capability: each of theirs pauses the next time it's due.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+
+## Parking
+
+Admins manage the parking spots and when they're open with `/admin parking`. `/park` itself comes in a later release (#152). After deploying a version that adds `/admin parking`, run `just register dev` or `just register prod`.
+
+| I want to… | Do this |
+| --- | --- |
+| Add our own spot | `/admin parking add-spot name:ours permanent:True description:…`. A permanent spot is open every day until the reset |
+| Add a borrowed spot | `/admin parking add-spot name:neighbour-1 description:…`. It's closed until it's opened |
+| Open borrowed spots for today | `/admin parking open spots:neighbour-1 neighbour-2 until:17:00`. `from` defaults to now and `until` to the reset. Running it again for a spot replaces that day's opening. `from:tomorrow 8` sets tomorrow's the evening before |
+| Close a spot | `/admin parking close spots:neighbour-1` ends a borrowed spot's opening for today. `/admin parking close spots:ours until:14:00` closes our own spot for a while (default: until the reset); `/admin parking open spots:ours` opens it again |
+| See what's open | `/admin parking status` |
+| Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
+
+- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): openings and closures end there at the latest, and are pruned from the file once they end. Moving the reset earlier shortens what's already set to match.
+- **The files:** `data/parking-spots.yaml` (the spots and settings) and `data/parking-windows.yaml` (opening times). Back up the spots file with the access files. Neither is safe to delete: deleting the spots file deletes the spots, and deleting the windows file closes every borrowed spot until someone opens it again.
+- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
 
 ## Closing-time
 
@@ -648,6 +666,7 @@ Under GDPR, someone can ask what Pixel holds about them, or ask for it to be del
 | `members.yaml` (and `members.yaml.bak`) | ID, tier, any note, capabilities | Until removed |
 | `admins.yaml` (host file, and Azure Key Vault) | Admin Discord IDs | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
+| `data/parking-windows.yaml` | ID and name of the admin who set each opening or closure | Until it ends (the daily reset at the latest) |
 | Azure Files backups of those files | The same files | 14 days |
 | Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | About 14 days (rotating file) |
 | Azure Log Analytics (`pixel-dev-logs`) | The same log lines, from the container | 30 days (`log_retention_days` in Terraform; Azure's floor) |
@@ -676,7 +695,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 ## Disaster recovery
 
-**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts). Not needed: the rest of `data/` (state and logs, safe to delete), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
+**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts) and `data/parking-spots.yaml` (the parking spots and settings). Not needed: the rest of `data/` (state and logs, safe to delete), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
 
 **Rebuild from scratch (today):**
 
