@@ -12,6 +12,7 @@ import {
 } from "./core/capabilities.ts";
 import { CapabilityNotifier } from "./core/capability-notify.ts";
 import { ChannelPosts } from "./core/channel-posts.ts";
+import { DirectMessages } from "./core/direct-messages.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { Home } from "./core/home.ts";
@@ -48,6 +49,8 @@ export type Core = {
 	capabilities: CapabilityRegistry;
 	/** DMs someone when a capability is granted or revoked, once Discord has plugged in. */
 	capabilityNotify: CapabilityNotifier;
+	/** DMs for features (parking reminders), once Discord has plugged in. */
+	directMessages: DirectMessages;
 	/** Mirrors tiers to Discord roles once the Discord adapter has plugged its backend in. */
 	roles: RoleMirror;
 	/** Reads and controls Home Assistant once its adapter has plugged a backend in. */
@@ -96,6 +99,7 @@ export function buildCore(
 	// Capabilities are declared in code. Names in the file that aren't are ignored, but reported.
 	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
 	const capabilityNotify = new CapabilityNotifier({ logger, capabilities });
+	const directMessages = new DirectMessages();
 	// Missing or invalid files throw here, so Pixel never starts with "everyone is a guest".
 	const access = FileAccessStore.open({
 		paths: config.access,
@@ -216,6 +220,7 @@ export function buildCore(
 		parkingBookings,
 		// Until the gate API is connected (#154), /park never opens anything.
 		gate: notConnectedGate,
+		directMessages,
 		canSchedule,
 		infoTopics,
 		timezone: config.timezone,
@@ -240,6 +245,7 @@ export function buildCore(
 		access,
 		capabilities,
 		capabilityNotify,
+		directMessages,
 		roles,
 		home,
 		homeDevices,

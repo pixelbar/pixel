@@ -3,6 +3,7 @@ import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
 import type { ChannelPosts } from "../core/channel-posts.ts";
+import type { DirectMessages } from "../core/direct-messages.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Home } from "../core/home.ts";
 import { createInterpolator } from "../core/interpolate.ts";
@@ -16,6 +17,7 @@ import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
 import type { ParkingBookingStore } from "../services/parking-bookings.ts";
+import { ParkingNotices } from "../services/parking-notices.ts";
 import type { ParkingSpotStore } from "../services/parking-spots.ts";
 import type { ParkingWindowStore } from "../services/parking-windows.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
@@ -65,6 +67,8 @@ export type FeatureDeps = {
 	parkingBookings: ParkingBookingStore;
 	/** Opens the parking gate; never opens anything until its API is connected. */
 	gate: Gate;
+	/** DMs for features (parking reminders), once the platform adapter is ready. */
+	directMessages: DirectMessages;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -80,6 +84,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 	// One interpolator for every user-set post. Register later tokens here
 	// (space state, Home Assistant, …) — do not add an if/else in each feature.
 	const interpolator = createInterpolator({ timezone: deps.timezone });
+	const parkingNotices = new ParkingNotices({ messages: deps.directMessages, logger: deps.logger });
 	const closingTime = createClosingTimeFeature({
 		announcer: deps.announcer,
 		enabled: deps.closingTime.enabled,
@@ -118,6 +123,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			windows: deps.parkingWindows,
 			bookings: deps.parkingBookings,
 			gate: deps.gate,
+			notices: parkingNotices,
 			timezone: deps.timezone,
 			logger: deps.logger,
 			reporter: deps.reporter,
@@ -145,6 +151,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 				spots: deps.parkingSpots,
 				windows: deps.parkingWindows,
 				bookings: deps.parkingBookings,
+				notices: parkingNotices,
 				timezone: deps.timezone,
 			},
 		}),
