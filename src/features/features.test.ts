@@ -81,6 +81,7 @@ const deps = () => ({
 	parkingBookings: inMemoryParking().bookings,
 	gate: notConnectedGate,
 	directMessages: new DirectMessages(),
+	parkingChannelId: undefined,
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },

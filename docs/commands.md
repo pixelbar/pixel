@@ -203,6 +203,12 @@ Stays longer in your spot, as long as it's open that long and it's before 23:59.
 
 </PxCommand>
 
+<PxCommand :level="4" sig="/parking taken [confirm:]" tier="member" reply="private" :caps="['parking']" :options="{ '[confirm:]': 'Move to the spot Pixel offers. Without it, Pixel only shows you the spot.' }">
+
+Someone else is in your spot. If another spot is free for the rest of your time, Pixel shows it, and `confirm:True` moves you there. If nothing else is free, Pixel ends your booking, asks you to leave and reports it to the board. Either way, your spot is closed until the end of the day and the admins are told.
+
+</PxCommand>
+
 <PxCommand :level="4" sig="/parking leave" tier="member" reply="private" :caps="['parking']">
 
 Frees your spot.

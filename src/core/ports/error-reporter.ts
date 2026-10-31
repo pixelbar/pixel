@@ -44,6 +44,12 @@ export type ErrorReporter = {
 	 * and capped sizes. Reporters that can't attach leave this out.
 	 */
 	attach?(source: string, data: Record<string, unknown>): void;
+	/**
+	 * Counts something that happened (a metric, such as a parking booking), so how
+	 * often it's used can be charted. Attributes are short labels to slice by; never
+	 * a person's ID or name. Reporters without metrics leave this out.
+	 */
+	count?(name: string, attributes?: Record<string, string>): void;
 };
 
 export const nullErrorReporter: ErrorReporter = {

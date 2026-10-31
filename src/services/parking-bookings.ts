@@ -123,6 +123,27 @@ export class ParkingBookingStore {
 		return next;
 	}
 
+	/**
+	 * Moves a booking to another spot, in one go like `claim`: `pick` gets the spots
+	 * other bookings hold and returns the spot to move to, or undefined when none fits.
+	 * Undefined when the booking has ended or nothing fits.
+	 */
+	move(
+		id: string,
+		pick: (taken: ReadonlySet<string>) => string | undefined,
+	): ParkingBooking | undefined {
+		this.#writable();
+		const current = this.#bookings.find((b) => b.id === id);
+		if (!current) return undefined;
+		const others = this.#bookings.filter((b) => b.id !== id);
+		const spot = pick(new Set(others.map((b) => b.spot)));
+		if (!spot) return undefined;
+		if (others.some((b) => b.spot === spot)) throw new Error(`spot ${spot} is already taken`);
+		const next = { ...current, spot };
+		this.#save(this.#bookings.map((b) => (b.id === id ? next : b)));
+		return next;
+	}
+
 	/** Ends every booking that `ends` says to, and returns them. */
 	end(ends: (booking: ParkingBooking) => boolean): ParkingBooking[] {
 		this.#writable();

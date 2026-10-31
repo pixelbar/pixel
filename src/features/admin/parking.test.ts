@@ -32,12 +32,14 @@ function setup(
 	const windows = options.windows ?? new ParkingWindowStore({ logger: silentLogger });
 	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
 	const notices = { send: vi.fn(async () => {}) };
+	const activity = { record: vi.fn(async () => true) };
 	let now = NOW;
 	const group = createParkingSubgroup({
 		spots,
 		windows,
 		bookings,
 		notices,
+		activity,
 		timezone: ZONE,
 		now: () => now,
 	});
@@ -59,6 +61,7 @@ function setup(
 		windows,
 		bookings,
 		notices,
+		activity,
 		group,
 		sub,
 		run,
@@ -589,6 +592,98 @@ describe("/admin parking and bookings", () => {
 			.toThrow(
 				/\*\*ours\*\* until about 14:00, \*\*neighbour-1\*\* until about 14:00\. .*end those bookings/,
 			);
+	});
+});
+
+describe("/admin parking activity", () => {
+	const events = (t: ReturnType<typeof setup>) =>
+		(t.activity.record.mock.calls as unknown as [Record<string, unknown>][]).map(([e]) => e);
+
+	it("posts every admin change for the other admins", async () => {
+		const t = setup();
+		await t.run("add-spot", { name: "ours", permanent: true });
+		await t.run("add-spot", { name: "neighbour-1" });
+		await t.run("edit-spot", { spot: "neighbour-1", description: "Here" });
+		await t.run("edit-spot", { spot: "ours", permanent: false });
+		await t.run("open", { spots: "neighbour-1", until: "17:00" });
+		await t.run("close", { spots: "neighbour-1" });
+		await t.run("remove-spot", { spot: "ours" });
+		await t.run("settings", { remind: 10 });
+		expect(events(t).map((e) => [e.action, e.admin, e.text])).toEqual([
+			["spot-added", "Test User", "added the spot **ours** (permanent)."],
+			["spot-added", "Test User", "added the spot **neighbour-1** (borrowed)."],
+			["spot-edited", "Test User", "changed the spot **neighbour-1**."],
+			["spot-edited", "Test User", "changed the spot **ours** (now borrowed)."],
+			["opened", "Test User", "opened parking: **neighbour-1** open from now until 17:00."],
+			["closed", "Test User", "closed parking: **neighbour-1** closed for today."],
+			["spot-removed", "Test User", "removed the spot **ours**."],
+			[
+				"settings",
+				"Test User",
+				"changed the parking settings: reminder 10m before, ended 5m after, reset 23:59, durations 30m, 1h, 2h, 4h, rest of day.",
+			],
+		]);
+	});
+
+	it("posts bookings an admin ends", async () => {
+		const t = withSpots();
+		const alice = { ref: "discord:100000000000000002", name: "Alice" };
+		t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: utc("10:00") }));
+		await t.run("free", { spot: "ours" });
+		t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: utc("10:00") }));
+		await t.run("close", { spots: "ours", evict: true });
+		expect(events(t).filter((e) => e.kind !== "admin")).toEqual([
+			{ kind: "freed", spot: "ours", who: "Alice", admin: "Test User" },
+			{ kind: "evicted", spot: "ours", who: "Alice", admin: "Test User" },
+		]);
+	});
+
+	it("shows a borrowed spot reported taken, and open lifts it", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		const current = t.entries();
+		t.windows.replace(
+			{
+				windows: current.windows,
+				blocks: [
+					{
+						spot: "neighbour-1",
+						from: NOW,
+						until: RESET,
+						setBy: { ref: "discord:2", name: "Alice" },
+						reason: "taken",
+					},
+				],
+			},
+			NOW,
+		);
+		expect(await t.run("status")).toContain(
+			"**neighbour-1** (borrowed)\n  closed until 23:59 (reported taken)",
+		);
+		expect(await t.run("open", { spots: "neighbour-1" })).toBe(
+			"**neighbour-1** open from now until 23:59.\n**neighbour-1** is no longer closed.",
+		);
+		expect(t.entries().blocks).toEqual([]);
+	});
+
+	it("shows our spot reported taken", async () => {
+		const t = withSpots();
+		t.windows.replace(
+			{
+				windows: [],
+				blocks: [
+					{
+						spot: "ours",
+						from: NOW,
+						until: RESET,
+						setBy: { ref: "x", name: "y" },
+						reason: "taken",
+					},
+				],
+			},
+			NOW,
+		);
+		expect(await t.run("status")).toContain("closed until 23:59 (reported taken)");
 	});
 });
 
