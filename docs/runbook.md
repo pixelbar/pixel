@@ -104,7 +104,7 @@ docker run -d --name pixel \
   -p 8080:8080 pixel:local
 ```
 
-Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml`, `data/parking-spots.yaml` and `data/parking-windows.yaml` are not safe to delete** (the scheduled posts, the parking spots, and today's parking opening times). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
+Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` and the three `data/parking-*.yaml` files are not safe to delete** (the scheduled posts, and the parking spots, today's opening times and who is parked). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
@@ -270,7 +270,7 @@ After a deploy that adds `/schedule`, run **`just register dev`** or **`just reg
 
 ## Parking
 
-Admins manage the parking spots and when they're open with `/admin parking`. `/park` itself comes in a later release (#152). After deploying a version that adds `/admin parking`, run `just register dev` or `just register prod`.
+Members with the `parking` capability get a spot at the gate with `/park for:` (`/admin capabilities grant user: capability:parking`), see who's parked with `/parking list`, and free their spot with `/parking leave`. Admins manage the spots and when they're open with `/admin parking`. After deploying a version that adds these commands, run `just register dev` or `just register prod`. Pixel can't open the gate yet (#154): `/park` says so, and people open it the usual way.
 
 | I want to… | Do this |
 | --- | --- |
@@ -280,9 +280,14 @@ Admins manage the parking spots and when they're open with `/admin parking`. `/p
 | Close a spot | `/admin parking close spots:neighbour-1` ends a borrowed spot's opening for today. `/admin parking close spots:ours until:14:00` closes our own spot for a while (default: until the reset); `/admin parking open spots:ours` opens it again |
 | See what's open | `/admin parking status` |
 | Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
+| Free a spot someone left without `/parking leave` | `/admin parking free spot:` |
+| Close or remove a spot someone's parked in | Pixel refuses and says who's there until when. Add `evict:True` to end their booking |
+| Stop someone parking | Revoke their `parking` capability. A booking they already hold stays until they leave, an admin frees it, or the reset |
 
-- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): openings and closures end there at the latest, and are pruned from the file once they end. Moving the reset earlier shortens what's already set to match.
-- **The files:** `data/parking-spots.yaml` (the spots and settings) and `data/parking-windows.yaml` (opening times). Back up the spots file with the access files. Neither is safe to delete: deleting the spots file deletes the spots, and deleting the windows file closes every borrowed spot until someone opens it again.
+- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): every booking ends there, and openings and closures end there at the latest and are pruned from the file once they end. If Pixel was down at the reset, it ends those bookings when it starts. Moving the reset earlier shortens what's already set to match.
+- **Who's parked** is in `data/parking-bookings.yaml`. A booking is deleted when it ends. Look for `parking.booked`, `parking.left`, `parking.reset`, `parking.freed` and `parking.evicted` in the logs. `parking.gate_failed` means the gate didn't open: the person keeps their spot and can run `/park` again.
+- **If `parking-bookings.yaml` is invalid,** no one can park and `/parking list` and `/admin parking status` say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
+- **The files:** `data/parking-spots.yaml` (the spots and settings), `data/parking-windows.yaml` (opening times) and `data/parking-bookings.yaml` (who's parked). Back up the spots file with the access files. None is safe to delete: deleting the spots file deletes the spots, deleting the windows file closes every borrowed spot until someone opens it again, and deleting the bookings file frees spots that have cars in them.
 - **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 - **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
 
@@ -667,6 +672,7 @@ Under GDPR, someone can ask what Pixel holds about them, or ask for it to be del
 | `admins.yaml` (host file, and Azure Key Vault) | Admin Discord IDs | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
 | `data/parking-windows.yaml` | ID and name of the admin who set each opening or closure | Until it ends (the daily reset at the latest) |
+| `data/parking-bookings.yaml` | ID and name of who is parked, which spot, since and until when | Until the booking ends (the daily reset at the latest) |
 | Azure Files backups of those files | The same files | 14 days |
 | Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | About 14 days (rotating file) |
 | Azure Log Analytics (`pixel-dev-logs`) | The same log lines, from the container | 30 days (`log_retention_days` in Terraform; Azure's floor) |
@@ -678,7 +684,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 **Access request ("what do you have on me?"):**
 
 1. `/admin level get user:<person>` for their tier, note and capabilities, or read their entry in `members.yaml`.
-2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules.
+2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules, and `data/parking-bookings.yaml` (`by.ref`) and `data/parking-windows.yaml` (`setBy.ref`) for a booking or opening times they set.
 3. Search the logs by their ID (see [Moderation](#moderation)): the rotating file, Sentry **Logs**, and Azure Log Analytics when Pixel is in the cloud.
 4. In Sentry, search Issues, Logs and User Feedback for their ID.
 5. Send them a copy of what you found, and no one else's data.
@@ -687,7 +693,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart).
+3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.

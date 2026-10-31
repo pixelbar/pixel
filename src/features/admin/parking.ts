@@ -1,4 +1,4 @@
-import { actorLogFields, actorRef } from "../../core/access.ts";
+import { actorLogFields, actorRef, type Principal } from "../../core/access.ts";
 import type {
 	Args,
 	SubcommandDefinition,
@@ -7,8 +7,11 @@ import type {
 } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
+import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
 import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
+import { cutBookings } from "../../services/parking-allocate.ts";
+import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
 import {
 	MAX_DURATIONS,
 	MAX_GRACE_MINUTES,
@@ -22,6 +25,7 @@ import {
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import {
 	clipToReset,
+	fitEntries,
 	openUntil,
 	type ParkingEntries,
 	type ParkingEntry,
@@ -45,6 +49,7 @@ export type ParkingAdminDeps = {
 		"all" | "get" | "settings" | "add" | "update" | "remove" | "setSettings" | "problem"
 	>;
 	windows: Pick<ParkingWindowStore, "entries" | "replace" | "reconcile" | "problem">;
+	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "problem">;
 	timezone: string;
 	now?: () => Date;
 };
@@ -107,6 +112,7 @@ export function describeSpot(
 	now: Date,
 	reset: Date,
 	zone: string,
+	booking?: ParkingBooking,
 ): string {
 	const at = (d: Date) => describeInstant(d, now, zone);
 	const head = `**${spot.name}** (${spot.permanent ? "permanent" : "borrowed"})${
@@ -128,6 +134,9 @@ export function describeSpot(
 		for (const w of mine(entries.windows).filter((w) => w.from > now)) {
 			parts.push(`open ${at(w.from)} to ${at(w.until)}`);
 		}
+	}
+	if (booking) {
+		parts.push(`taken by ${escapeMarkdown(booking.by.name)} until about ${at(booking.until)}`);
 	}
 	return `${head}\n  ${parts.join(" · ")}`;
 }
@@ -186,6 +195,58 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		required: true,
 		suggest: async ({ typed }: { typed: string }) => suggestSpots(names(), typed),
 	};
+	const evictOption = {
+		name: "evict",
+		description: "End the booking of anyone parked where this cuts in (default: no)",
+		type: "boolean" as const,
+	};
+
+	/**
+	 * The bookings in `affected` spots a change would cut into. Refuses the change unless
+	 * `evict` is on. Other spots' bookings are left alone, even ones that no longer fit.
+	 */
+	const cuts = (
+		args: Args,
+		affected: readonly string[],
+		spotsAfter: readonly ParkingSpot[],
+		entriesAfter: ParkingEntries,
+		at: Date,
+	): ParkingBooking[] => {
+		const bookings = deps.bookings.all().filter((b) => affected.includes(b.spot));
+		const cut = cutBookings(bookings, spotsAfter, entriesAfter, at, resetAfter(at));
+		if (cut.length > 0 && args.evict !== true) {
+			const who = cut.map((b) => `**${b.spot}** until about ${describeInstant(b.until, at, zone)}`);
+			throw new UserFacingError(
+				`Someone is parked in ${who.join(", ")}. Add \`evict:True\` to end ${cut.length === 1 ? "their booking" : "those bookings"}.`,
+			);
+		}
+		return cut;
+	};
+
+	/** Ends bookings an admin's change cut into; returns a line for each. */
+	const evict = (
+		cut: readonly ParkingBooking[],
+		principal: Principal,
+		logger: Logger,
+	): string[] => {
+		if (cut.length === 0) return [];
+		const ids = new Set(cut.map((b) => b.id));
+		return deps.bookings
+			.end((b) => ids.has(b.id))
+			.map((b) => {
+				logger.warn(
+					{
+						event: "parking.evicted",
+						spot: b.spot,
+						parkedUser: b.by.ref,
+						parkedUserName: b.by.name,
+						...actorLogFields(principal),
+					},
+					"ended a parking booking an admin's change cut into",
+				);
+				return `Ended ${escapeMarkdown(b.by.name)}'s booking in **${b.spot}**.`;
+			});
+	};
 
 	const status: SubcommandDefinition = {
 		name: "status",
@@ -198,6 +259,9 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			if (deps.spots.problem) {
 				lines.push(`⚠️ Parking is off: the spots file is invalid (${deps.spots.problem}).`);
 			}
+			if (deps.bookings.problem) {
+				lines.push(`⚠️ No one can park: the bookings file is invalid (${deps.bookings.problem}).`);
+			}
 			if (deps.windows.problem) {
 				lines.push(
 					`⚠️ The opening times file couldn't be read, so borrowed spots are closed. The next \`open\` or \`close\` starts a new one (${deps.windows.problem}).`,
@@ -209,7 +273,19 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			} else {
 				const entries = deps.windows.entries(at);
 				const reset = resetAfter(at);
-				lines.push(...spots.map((s) => describeSpot(s, entries, at, reset, zone)));
+				const bookings = deps.bookings.all();
+				lines.push(
+					...spots.map((s) =>
+						describeSpot(
+							s,
+							entries,
+							at,
+							reset,
+							zone,
+							bookings.find((b) => b.spot === s.name),
+						),
+					),
+				);
 			}
 			lines.push("", describeSettings(deps.spots.settings()));
 			return { text: lines.join("\n"), private: true };
@@ -270,6 +346,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			spotOption,
 			{ name: "description", description: "Where it is; '-' removes it", type: "string" },
 			{ name: "permanent", description: "Pixelbar's own spot (open every day)", type: "boolean" },
+			evictOption,
 		],
 		handler: async ({ args, principal, logger }) => {
 			usable();
@@ -284,6 +361,17 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			if (!target || (description === undefined && permanent === undefined)) {
 				throw new UserFacingError("Give a new `description`, or say whether it's `permanent`.");
 			}
+			const at = now();
+			const spotsAfter = deps.spots
+				.all()
+				.map((s) => (s.name === target.name ? { ...s, permanent: permanent ?? s.permanent } : s));
+			const cut = cuts(
+				args,
+				[target.name],
+				spotsAfter,
+				fitEntries(deps.windows.entries(at), spotsAfter),
+				at,
+			);
 			const changed = deps.spots.update(target.name, {
 				...(description !== undefined ? { description } : {}),
 				...(permanent !== undefined ? { permanent } : {}),
@@ -291,7 +379,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			if (!changed) throw new UserFacingError("That spot no longer exists.");
 			const lines = [`Changed **${target.name}**.`];
 			if (changed.before.permanent !== changed.after.permanent) {
-				const dropped = deps.windows.reconcile(deps.spots.all(), now());
+				const dropped = deps.windows.reconcile(deps.spots.all(), at);
 				lines.push(
 					changed.after.permanent
 						? "It's now permanent: open every day until the reset."
@@ -308,6 +396,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				},
 				"changed a parking spot",
 			);
+			lines.push(...evict(cut, principal, logger));
 			return { text: lines.join("\n"), private: true };
 		},
 	};
@@ -317,18 +406,29 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		description: "Remove a parking spot, and its opening times",
 		access: { minTier: "admin" },
 		private: true,
-		options: [spotOption],
+		options: [spotOption, evictOption],
 		handler: async ({ args, principal, logger }) => {
 			usable();
+			const at = now();
 			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
-			const removed = target ? deps.spots.remove(target.name) : undefined;
+			if (!target) throw new UserFacingError("That spot no longer exists.");
+			const spotsAfter = deps.spots.all().filter((s) => s.name !== target.name);
+			const cut = cuts(
+				args,
+				[target.name],
+				spotsAfter,
+				fitEntries(deps.windows.entries(at), spotsAfter),
+				at,
+			);
+			const removed = deps.spots.remove(target.name);
 			if (!removed) throw new UserFacingError("That spot no longer exists.");
-			deps.windows.reconcile(deps.spots.all(), now());
+			deps.windows.reconcile(deps.spots.all(), at);
 			logger.info(
 				{ event: "parking.spot_removed", spot: removed.name, ...actorLogFields(principal) },
 				"removed a parking spot",
 			);
-			return { text: `Removed **${removed.name}**.`, private: true };
+			const lines = [`Removed **${removed.name}**.`, ...evict(cut, principal, logger)];
+			return { text: lines.join("\n"), private: true };
 		},
 	};
 
@@ -349,6 +449,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				description: "Borrowed spots: when it closes (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
 			},
+			evictOption,
 		],
 		handler: async ({ args, principal, logger }) => {
 			usable();
@@ -372,16 +473,21 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const entries = deps.windows.entries(at);
 			const setBy = { ref: actorRef(principal), name: principal.displayName };
 			const lifted = entries.blocks.filter((b) => permanent.includes(b.spot));
-			deps.windows.replace(
-				{
-					windows: [
-						...entries.windows.filter((w) => !(borrowed.includes(w.spot) && onDayEnding(w, cap))),
-						...borrowed.map((spot) => ({ spot, from, until, setBy })),
-					],
-					blocks: entries.blocks.filter((b) => !permanent.includes(b.spot)),
-				},
+			const next = {
+				windows: [
+					...entries.windows.filter((w) => !(borrowed.includes(w.spot) && onDayEnding(w, cap))),
+					...borrowed.map((spot) => ({ spot, from, until, setBy })),
+				],
+				blocks: entries.blocks.filter((b) => !permanent.includes(b.spot)),
+			};
+			const cut = cuts(
+				args,
+				targets.map((s) => s.name),
+				deps.spots.all(),
+				next,
 				at,
 			);
+			deps.windows.replace(next, at);
 			logger.info(
 				{
 					event: "parking.opened",
@@ -403,6 +509,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const alreadyOpen = permanent.filter((n) => !liftedNames.includes(n));
 			if (liftedNames.length > 0) lines.push(`${bold(liftedNames)} open again.`);
 			if (alreadyOpen.length > 0) lines.push(`${bold(alreadyOpen)} wasn't closed.`);
+			lines.push(...evict(cut, principal, logger));
 			return { text: lines.join("\n"), private: true };
 		},
 	};
@@ -421,6 +528,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 					"Permanent spots: when it opens again (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
 			},
+			evictOption,
 		],
 		handler: async ({ args, principal, logger }) => {
 			usable();
@@ -447,16 +555,21 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				entries.windows.some((w) => w.spot === n && onDayEnding(w, cap)),
 			);
 			const setBy = { ref: actorRef(principal), name: principal.displayName };
-			deps.windows.replace(
-				{
-					windows: entries.windows.filter((w) => !today(w, borrowed)),
-					blocks: [
-						...entries.blocks.filter((b) => !today(b, permanent)),
-						...permanent.map((spot) => ({ spot, from: at, until, setBy })),
-					],
-				},
+			const next = {
+				windows: entries.windows.filter((w) => !today(w, borrowed)),
+				blocks: [
+					...entries.blocks.filter((b) => !today(b, permanent)),
+					...permanent.map((spot) => ({ spot, from: at, until, setBy })),
+				],
+			};
+			const cut = cuts(
+				args,
+				targets.map((s) => s.name),
+				deps.spots.all(),
+				next,
 				at,
 			);
+			deps.windows.replace(next, at);
 			logger.info(
 				{
 					event: "parking.closed",
@@ -473,7 +586,35 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			if (permanent.length > 0) {
 				lines.push(`${bold(permanent)} closed until ${describeInstant(until, at, zone)}.`);
 			}
+			lines.push(...evict(cut, principal, logger));
 			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const free: SubcommandDefinition = {
+		name: "free",
+		description: "End the booking in a spot, for someone who left without /parking leave",
+		access: { minTier: "admin" },
+		private: true,
+		options: [spotOption],
+		handler: async ({ args, principal, logger }) => {
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			const [ended] = deps.bookings.end((b) => b.spot === target?.name);
+			if (!ended) return { text: `Nobody is parked in **${target?.name}**.`, private: true };
+			logger.info(
+				{
+					event: "parking.freed",
+					spot: ended.spot,
+					parkedUser: ended.by.ref,
+					parkedUserName: ended.by.name,
+					...actorLogFields(principal),
+				},
+				"an admin ended a parking booking",
+			);
+			return {
+				text: `Ended ${escapeMarkdown(ended.by.name)}'s booking: **${ended.spot}** is free again.`,
+				private: true,
+			};
 		},
 	};
 
@@ -567,6 +708,20 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 						);
 					}
 				}
+				// Bookings too, so a reminder still comes before the reset ends them.
+				const late = deps.bookings.all().filter((b) => b.until > resetAfter(b.since));
+				try {
+					for (const b of late) {
+						const until = resetAfter(b.since);
+						const remindAt = until.getTime() - next.remindMinutes * 60_000;
+						deps.bookings.update(b.id, { until, remindedAt: remindAt > at.getTime() ? null : at });
+					}
+					if (late.length > 0) lines.push(`${late.length} booking(s) now end at the new reset.`);
+				} catch {
+					lines.push(
+						"⚠️ I couldn't shorten the bookings that run past the new reset. See the logs.",
+					);
+				}
 			}
 			return { text: lines.join("\n"), private: true };
 		},
@@ -576,6 +731,6 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		name: "parking",
 		description: "Parking spots and when they're open (admins only)",
 		access: { minTier: "admin" },
-		subcommands: [status, open, close, addSpot, editSpot, removeSpot, settings],
+		subcommands: [status, open, close, free, addSpot, editSpot, removeSpot, settings],
 	};
 }
