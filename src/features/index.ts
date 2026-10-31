@@ -9,9 +9,10 @@ import type { Home } from "../core/home.ts";
 import { createInterpolator } from "../core/interpolate.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
+import type { DoorSystem } from "../core/ports/door-system.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
-import type { Gate } from "../core/ports/gate.ts";
+import { type Gate, notConnectedGate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
@@ -32,6 +33,7 @@ import { createFishbotFeature } from "./fishbot/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
+import { createOpenrFeature, type OpenrDoor, openrGate } from "./openr/index.ts";
 import { createParkingFeature } from "./parking/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
@@ -66,8 +68,16 @@ export type FeatureDeps = {
 	parkingWindows: ParkingWindowStore;
 	/** Who is parked where (`data/parking-bookings.yaml`). */
 	parkingBookings: ParkingBookingStore;
-	/** Opens the parking gate; never opens anything until its API is connected. */
-	gate: Gate;
+	/**
+	 * Opens the parking gate. Defaults to the OpenR gate door when there is one, and
+	 * otherwise to a gate that never opens.
+	 */
+	gate?: Gate;
+	/** The building's doors (OpenR). Undefined when OpenR isn't configured. */
+	doorSystem: DoorSystem | undefined;
+	/** The doors `/openr open` offers, and the parking gate's door, from the config. */
+	openrDoors: readonly OpenrDoor[];
+	openrGateDoor: string | undefined;
 	/** DMs for features (parking reminders), once the platform adapter is ready. */
 	directMessages: DirectMessages;
 	/** Where every parking change is posted for admins. Undefined: off (still counted in Sentry). */
@@ -95,6 +105,11 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		logger: deps.logger,
 		timezone: deps.timezone,
 	});
+	const gate =
+		deps.gate ??
+		(deps.doorSystem && deps.openrGateDoor !== undefined
+			? openrGate({ doors: deps.doorSystem, gateDoor: deps.openrGateDoor, switches: deps.switches })
+			: notConnectedGate);
 	const closingTime = createClosingTimeFeature({
 		announcer: deps.announcer,
 		enabled: deps.closingTime.enabled,
@@ -132,7 +147,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			spots: deps.parkingSpots,
 			windows: deps.parkingWindows,
 			bookings: deps.parkingBookings,
-			gate: deps.gate,
+			gate,
 			notices: parkingNotices,
 			activity: parkingActivity,
 			timezone: deps.timezone,
@@ -144,6 +159,12 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			homeDevices: deps.homeDevices,
 			reporter: deps.reporter,
 			switches: deps.switches,
+		}),
+		createOpenrFeature({
+			doors: deps.doorSystem,
+			list: deps.openrDoors,
+			switches: deps.switches,
+			reporter: deps.reporter,
 		}),
 		createAdminFeature({
 			version: deps.version,
@@ -165,6 +186,11 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 				notices: parkingNotices,
 				activity: parkingActivity,
 				timezone: deps.timezone,
+			},
+			openr: {
+				system: deps.doorSystem,
+				doors: deps.openrDoors,
+				gateDoor: deps.openrGateDoor,
 			},
 		}),
 	];

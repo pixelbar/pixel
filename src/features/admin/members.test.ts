@@ -85,6 +85,7 @@ function setup(ops = nodeFileOps) {
 			reporter,
 			closingTimeFile: "data/closing-time.md",
 			parking: inMemoryParking(),
+			openr: { system: undefined, doors: [], gateDoor: undefined },
 		}),
 	);
 	const dispatcher = new Dispatcher({

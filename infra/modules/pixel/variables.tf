@@ -190,6 +190,34 @@ variable "spacestate_api_url" {
   }
 }
 
+variable "openr_building_id" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_BUILDING_ID: the OpenR building whose doors Pixel opens. Not a secret. The account is Key Vault secrets (openr-email, openr-password). Set it to turn OpenR on; then set openr_doors, openr_gate_door or both."
+
+  validation {
+    condition     = var.openr_building_id == null || can(regex("^\\d{1,10}$", var.openr_building_id))
+    error_message = "openr_building_id must be an OpenR ID (digits) or unset."
+  }
+}
+
+variable "openr_doors" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_DOORS: the doors /openr open offers, as Name=ID pairs separated by commas (Entrance=103, Living room=203). Never the parking gate."
+}
+
+variable "openr_gate_door" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_GATE_DOOR: the OpenR ID of the parking gate, which only /park opens."
+
+  validation {
+    condition     = var.openr_gate_door == null || can(regex("^\\d{1,10}$", var.openr_gate_door))
+    error_message = "openr_gate_door must be an OpenR ID (digits) or unset."
+  }
+}
+
 variable "sentry_enabled" {
   type        = bool
   default     = false

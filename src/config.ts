@@ -50,6 +50,45 @@ const extraHeaders = z.string().transform((raw, ctx) => {
 	return Object.fromEntries(entries.map(([name, value]) => [name, String(value).trim()]));
 });
 
+/** An OpenR ID (a building or a door): digits. */
+const openrId = z
+	.string()
+	.trim()
+	.regex(/^\d{1,10}$/, { error: "must be an OpenR ID (digits)" });
+
+/**
+ * The doors `/openr open` offers, as `Name=ID` pairs separated by commas, like
+ * `Entrance=103, Living room=203`. Names are what people pick in Discord; IDs are
+ * OpenR's. Neither may repeat. Errors never echo the value.
+ */
+const openrDoors = z.string().transform((raw, ctx) => {
+	const doors: { name: string; id: string }[] = [];
+	const problem = (message: string) => {
+		ctx.issues.push({ code: "custom", message, input: undefined });
+		return z.NEVER;
+	};
+	for (const part of raw.split(",")) {
+		if (part.trim() === "") continue;
+		const at = part.lastIndexOf("=");
+		const name = part.slice(0, at).trim();
+		const id = part.slice(at + 1).trim();
+		if (at < 0 || !/^[^=]{1,50}$/.test(name) || !/^\d{1,10}$/.test(id)) {
+			return problem(
+				"must be Name=ID pairs separated by commas, like Entrance=103, Living room=203",
+			);
+		}
+		doors.push({ name, id });
+	}
+	if (doors.length === 0) return problem("must list at least one door, or be left unset");
+	if (doors.length > 25) return problem("can list at most 25 doors");
+	const names = new Set(doors.map((d) => d.name.toLowerCase()));
+	const ids = new Set(doors.map((d) => d.id));
+	if (names.size !== doors.length || ids.size !== doors.length) {
+		return problem("names a door twice");
+	}
+	return doors;
+});
+
 const pixelEnv = z.enum(["local", "dev", "prod"]).default("local");
 const pixelRuntime = z.enum(["local", "cloud"]).default("local");
 
@@ -127,6 +166,15 @@ const envSchema = z
 		// Public handle for logs only. Never used to post; the token decides the account.
 		MASTODON_ACCOUNT: optional(z.string().trim().min(1).max(100)),
 		MASTODON_VISIBILITY: optional(z.enum(["public", "unlisted"])),
+
+		// OpenR, the building's doors. Off unless OPENR_BUILDING_ID is set; then the email and
+		// password must be set too, and at least one of OPENR_DOORS and OPENR_GATE_DOOR.
+		OPENR_URL: z.url({ protocol: /^https$/ }).default("https://dashboard.openr.nl/api/v4"),
+		OPENR_BUILDING_ID: optional(openrId),
+		OPENR_EMAIL: optional(z.string().trim().min(3).max(200)),
+		OPENR_PASSWORD: optional(z.string().min(1)),
+		OPENR_DOORS: optional(openrDoors),
+		OPENR_GATE_DOOR: optional(openrId),
 		// Unset → space.status. off / none / empty list turns toots off even with credentials.
 		MASTODON_ANNOUNCE_KINDS: z.preprocess((v) => {
 			if (typeof v !== "string") return v;
@@ -147,6 +195,40 @@ const envSchema = z
 		path: ["MASTODON_INSTANCE"],
 		error: "set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither",
 	})
+	.refine(
+		(e) =>
+			[e.OPENR_BUILDING_ID, e.OPENR_EMAIL, e.OPENR_PASSWORD].every((v) => v === undefined) ||
+			[e.OPENR_BUILDING_ID, e.OPENR_EMAIL, e.OPENR_PASSWORD].every((v) => v !== undefined),
+		{
+			path: ["OPENR_BUILDING_ID"],
+			error: "set OPENR_BUILDING_ID, OPENR_EMAIL and OPENR_PASSWORD together, or none of them",
+		},
+	)
+	.refine(
+		(e) =>
+			e.OPENR_BUILDING_ID === undefined ||
+			e.OPENR_DOORS !== undefined ||
+			e.OPENR_GATE_DOOR !== undefined,
+		{ path: ["OPENR_DOORS"], error: "set OPENR_DOORS, OPENR_GATE_DOOR or both when OpenR is on" },
+	)
+	.refine(
+		(e) =>
+			e.OPENR_BUILDING_ID !== undefined ||
+			(e.OPENR_DOORS === undefined && e.OPENR_GATE_DOOR === undefined),
+		{
+			path: ["OPENR_BUILDING_ID"],
+			error: "OPENR_DOORS and OPENR_GATE_DOOR need OPENR_BUILDING_ID",
+		},
+	)
+	.refine(
+		(e) =>
+			e.OPENR_GATE_DOOR === undefined ||
+			!(e.OPENR_DOORS ?? []).some((door) => door.id === e.OPENR_GATE_DOOR),
+		{
+			path: ["OPENR_DOORS"],
+			error: "must not include the parking gate: only /park opens OPENR_GATE_DOOR",
+		},
+	)
 	.refine(
 		(e) =>
 			[e.SPACESTATE_API_URL, e.SPACESTATE_USER, e.SPACESTATE_TOKEN].every((v) => v === undefined) ||
@@ -248,6 +330,21 @@ export type Config = {
 		  }
 		| undefined;
 	/**
+	 * OpenR, the building's doors: where its API is, the building, the account Pixel logs
+	 * in as (the email and password are secrets), the doors `/openr open` offers, and the
+	 * parking gate's door, which only `/park` opens. Undefined means OpenR is off.
+	 */
+	openr:
+		| {
+				url: string;
+				buildingId: string;
+				email: string;
+				password: string;
+				doors: readonly { name: string; id: string }[];
+				gateDoor: string | undefined;
+		  }
+		| undefined;
+	/**
 	 * Operator-authored closing-time body. Default `{dataDir}/closing-time.md`.
 	 * Missing or empty file → the built-in default. Not a secret.
 	 */
@@ -324,7 +421,50 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 						kinds: e.MASTODON_ANNOUNCE_KINDS ?? ["space.status"],
 					}
 				: undefined,
+		openr:
+			e.OPENR_BUILDING_ID !== undefined &&
+			e.OPENR_EMAIL !== undefined &&
+			e.OPENR_PASSWORD !== undefined
+				? {
+						url: e.OPENR_URL,
+						buildingId: e.OPENR_BUILDING_ID,
+						email: e.OPENR_EMAIL,
+						password: e.OPENR_PASSWORD,
+						doors: e.OPENR_DOORS ?? [],
+						gateDoor: e.OPENR_GATE_DOOR,
+					}
+				: undefined,
 		closingTimeFile: e.PIXEL_CLOSING_TIME_FILE ?? `${e.PIXEL_DATA_DIR}/closing-time.md`,
+	};
+}
+
+const openrAccountSchema = z.object({
+	OPENR_URL: z.url({ protocol: /^https$/ }).default("https://dashboard.openr.nl/api/v4"),
+	OPENR_EMAIL: z.string().trim().min(3).max(200),
+	OPENR_PASSWORD: z.string().min(1),
+});
+
+/**
+ * Just the OpenR account, for `just openr-doors`, which lists the buildings and doors
+ * so the rest of the OpenR settings can be filled in. Errors name the variable but
+ * never echo its value.
+ */
+export function loadOpenrAccount(env: NodeJS.ProcessEnv = process.env): {
+	url: string;
+	email: string;
+	password: string;
+} {
+	const result = openrAccountSchema.safeParse(
+		Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")),
+	);
+	if (!result.success) {
+		const names = [...new Set(result.error.issues.map((issue) => issue.path.join(".")))];
+		throw new ConfigError(`Set ${names.join(" and ")} (see .env.example, OpenR)`);
+	}
+	return {
+		url: result.data.OPENR_URL,
+		email: result.data.OPENR_EMAIL,
+		password: result.data.OPENR_PASSWORD,
 	};
 }
 

@@ -12,8 +12,12 @@ export type Gate = {
 
 export type GateResult =
 	| { opened: true }
-	/** `not-connected`: Pixel can't open the gate at all (yet). `failed`: it tried and couldn't. */
-	| { opened: false; reason: "not-connected" | "failed" };
+	/**
+	 * `not-connected`: Pixel can't open the gate at all right now (not set up, or not
+	 * logged in). `off`: an admin has switched door control off (`/admin doors off`).
+	 * `failed`: it tried and couldn't.
+	 */
+	| { opened: false; reason: "not-connected" | "off" | "failed" };
 
 /** Until the gate's API is connected: never opens anything. */
 export const notConnectedGate: Gate = {

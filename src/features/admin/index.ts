@@ -18,6 +18,7 @@ import { createClosingTimeSubgroup } from "./closing-time.ts";
 import { createDoorsSubgroup, describeDoors } from "./doors.ts";
 import { describeHome, homeLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
+import { createOpenrSubgroup, describeOpenr, type OpenrAdminDeps } from "./openr.ts";
 import { createParkingSubgroup, type ParkingAdminDeps } from "./parking.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
@@ -39,6 +40,8 @@ export type AdminDeps = {
 	closingTimeFile: string;
 	/** Parking spots and opening times (`/admin parking`). */
 	parking: Omit<ParkingAdminDeps, "now">;
+	/** Pixel's OpenR login (`/admin openr`). */
+	openr: Omit<OpenrAdminDeps, "now" | "reporter">;
 };
 
 function describeCounts(counts: AccessStore["view"]["counts"]): string {
@@ -78,11 +81,14 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 										{ name: "Discord roles", value: describeStates(await deps.roles.states()) },
 										{
 											name: "Home Assistant",
-											value: [
-												describeHome(deps.home.status(), deps.homeDevices),
-												...(deps.homeDevices.configured ? [describeDoors(deps.switches)] : []),
-											].join("\n"),
+											value: describeHome(deps.home.status(), deps.homeDevices),
 										},
+										...(deps.openr.system
+											? [{ name: "OpenR", value: describeOpenr(deps.openr.system.status(), now()) }]
+											: []),
+										...(deps.homeDevices.configured || deps.openr.system
+											? [{ name: "Doors", value: describeDoors(deps.switches) }]
+											: []),
 									],
 								},
 							],
@@ -131,6 +137,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 					createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile }),
 					createAnnouncementsSubgroup({ routes: deps.announcementRoutes }),
 					createParkingSubgroup({ ...deps.parking, now }),
+					createOpenrSubgroup({ ...deps.openr, reporter: deps.reporter, now }),
 				],
 			},
 		],

@@ -3,6 +3,7 @@ import * as Sentry from "@sentry/node";
 import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
+import { createOpenr } from "./adapters/openr/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -30,6 +31,13 @@ async function main(): Promise<void> {
 	const logger = createLogger(config);
 	logProcessFailures(logger);
 	const reporter = createSentryReporter();
+	// Sends nothing until an admin logs in, or `start()` refreshes a saved session.
+	const openr = createOpenr({
+		openr: config.openr,
+		sessionFile: join(config.dataDir, "openr-session.json"),
+		logger,
+		reporter,
+	});
 	const {
 		access,
 		dispatcher,
@@ -46,7 +54,10 @@ async function main(): Promise<void> {
 		home,
 		homeDevices,
 		features,
-	} = buildCore(config, logger, reporter, { feedback: createSentryFeedback() });
+	} = buildCore(config, logger, reporter, {
+		feedback: createSentryFeedback(),
+		...(openr ? { doorSystem: openr } : {}),
+	});
 
 	logger.info(
 		{ event: "startup", commands: registry.all().length, access: access.view.counts },
@@ -137,6 +148,8 @@ async function main(): Promise<void> {
 	// Outbound only. Missing config leaves it off; a later outage is reported and never
 	// blocks Discord. Registered before Discord connects so it exists when features start.
 	startMastodonPublisher({ mastodon: config.mastodon, announcer, logger });
+	// Keeps a saved OpenR session alive from the start, so the doors work as soon as Discord does.
+	const stopOpenr = openr?.start();
 	const health = startHealthServer(config.healthPort, () => discord.isReady());
 	// Check in with Sentry while healthy, so it can alert when Pixel goes quiet (a crash, a
 	// hang, the host going down). Only with Sentry set up, and never from a laptop.
@@ -164,6 +177,7 @@ async function main(): Promise<void> {
 		stopRoleSync();
 		heartbeat?.stop();
 		spaceStatus.stop();
+		stopOpenr?.();
 		homeAssistant?.close();
 		await discord.stop();
 		health.close();
