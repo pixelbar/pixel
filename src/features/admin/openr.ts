@@ -43,7 +43,7 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 
 	const status: SubcommandDefinition = {
 		name: "status",
-		description: "Whether Pixel is logged in to OpenR, and each door's status",
+		description: "OpenR login and each door's status",
 		access: admin,
 		private: true,
 		placeholder: { text: "Checking…", private: true },
@@ -93,7 +93,7 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 
 	const code: SubcommandDefinition = {
 		name: "code",
-		description: "Finish the OpenR login with the emailed code",
+		description: "Finish logging in with the emailed code",
 		access: admin,
 		private: true,
 		placeholder: { text: "Checking the code…", private: true },
@@ -148,7 +148,7 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 
 	return {
 		name: "openr",
-		description: "OpenR login for the doors (admins only)",
+		description: "OpenR login for the doors",
 		access: admin,
 		subcommands: [status, login, code, logout],
 	};
