@@ -34,6 +34,11 @@ export function endedText(booking: ParkingBooking, reason: EndReason, context: C
 	}
 }
 
+/** The DM sent when an admin gives someone a spot (they were found parked there). */
+export function assignedText(booking: ParkingBooking, context: Context): string {
+	return `An admin gave you **${booking.spot}**, until ${describeInstant(booking.until, context.now, context.zone)}. Run \`/parking leave\` when you go.`;
+}
+
 /**
  * The reminder before someone's end. `openUntil` is until when their spot stays open
  * (never past the reset), which says whether they can extend.
@@ -80,7 +85,11 @@ export class ParkingNotices {
 	}
 
 	/** DMs the person who holds `booking`. Logs a failure (never the text); never throws. */
-	async send(booking: ParkingBooking, kind: "reminder" | EndReason, text: string): Promise<void> {
+	async send(
+		booking: ParkingBooking,
+		kind: "reminder" | "assigned" | EndReason,
+		text: string,
+	): Promise<void> {
 		const fields = { kind, spot: booking.spot, user: booking.by.ref, userName: booking.by.name };
 		const { platform, userId } = splitRef(booking.by.ref);
 		if (platform !== "discord") return;
