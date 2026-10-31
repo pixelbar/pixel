@@ -14,6 +14,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - Times can be typed as `now` (the next whole minute) or `now+<duration>`, such as `now+30m`, `now + 2h30` or `now+1 day`: in `/schedule`'s `when` and in `/admin parking open|close`'s `from` and `until`. In `until`, `now` is the real now, not the opening's start.
 - `/admin parking` (admins only) manages Pixelbar's parking spots, the first part of assigning spots at the gate with `/park` (#150). `add-spot`, `edit-spot` and `remove-spot` keep the list of spots: **permanent** ones (our own, open every day until the reset) and **borrowed** ones (open only when an admin opens them). `open` opens borrowed spots for a while (`from` defaults to now, `until` to the reset, and a second `open` that day replaces the first) or lifts a permanent spot's closure; `close` ends a borrowed spot's opening for today or closes a permanent spot until a time. Nothing runs past the daily reset (23:59 by default). `settings` sets the reminder, grace period, reset and the durations `/park` will offer, and `status` shows it all. Spots and settings are saved in `data/parking-spots.yaml`, opening times in `data/parking-windows.yaml`; neither is safe to delete ([ADR 0021](docs/adr/0021-parking-files.md)). Run `just register dev` / `just register prod` after deploying.
 
+### Changed
+
+- `/admin capabilities`' `capability` option suggests names as you type (with their descriptions) instead of a fixed picker. Discord counts every picker entry towards `/admin`'s 4000-character limit, once per subcommand, so each new capability made `/admin` bigger and parking would have pushed it over. Names are still checked: an unknown one is refused with "That capability doesn't exist." Run `just register dev` / `just register prod` after deploying.
+
 ## [0.22.0] - 2026-10-28
 
 ### Added
