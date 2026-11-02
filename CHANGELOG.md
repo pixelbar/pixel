@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- **`/admin parking` is one panel** instead of nine subcommands. It shows every spot, whether it's open, who's in it and the settings. **Manage a spot…** opens one spot: **Open…** / **Close for today** (borrowed) or **Close…** / **Open again** (permanent), **Edit…**, **Remove…**, **Free the spot…** and **Give it to someone…** (with a person picker). **Open spots…** and **Close spots…** do several at once, asking for times only when they apply; **Add a spot** and **Settings** are forms filled in with what's saved. Instead of `evict:True`, a change that would end someone's booking says whose and asks first. Run `just register dev` / `just register prod` after deploying.
+
 - **`/park` is one command with buttons** instead of `/park for:` and four `/parking` subcommands. `/park` opens a private panel that shows who's in which spot. When you're not parked, pick how long (**Park for 1h**, **Park until 23:59**, … from the durations in the settings, greyed out when they won't fit) or **Another length…**. When you are, **Open the gate**, **Leave**, **Stay 1h longer** / **Stay until 17:00** (only what fits before the spot closes), and **Someone's in my spot**, which shows whether it will move you or end your booking before it does. Problems are explained on the panel. `/park for:` still books straight away. The reminder DM now points to `/park`. Run `just register dev` / `just register prod` after deploying, so Discord drops `/parking`.
 
 ### Added

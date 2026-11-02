@@ -1,10 +1,5 @@
 import { actorLogFields, actorRef, type Principal } from "../../core/access.ts";
-import type {
-	Args,
-	SubcommandDefinition,
-	SubgroupDefinition,
-	Suggestion,
-} from "../../core/command.ts";
+import type { Args, SubcommandDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
@@ -62,27 +57,9 @@ export type ParkingAdminDeps = {
 
 const SPOTS_HELP = "One spot, or several separated by spaces";
 
-/** Spot names for a `spot` option: the ones that contain what's typed. */
-export function suggestSpot(names: readonly string[], typed: string): Suggestion[] {
-	const needle = typed.trim().toLowerCase();
-	return names
-		.filter((n) => n.includes(needle))
-		.slice(0, 25)
-		.map((n) => ({ name: n, value: n }));
-}
-
-/** Completes the last name in a `spots` option, keeping the ones already typed. */
-export function suggestSpots(names: readonly string[], typed: string): Suggestion[] {
-	const words = typed.toLowerCase().split(/[\s,]+/);
-	const last = words.pop() ?? "";
-	const before = words.filter((w) => w !== "");
-	const prefix = before.length > 0 ? `${before.join(" ")} ` : "";
-	return names
-		.filter((n) => !before.includes(n) && n.includes(last))
-		.map((n) => `${prefix}${n}`)
-		.filter((v) => v.length <= 100)
-		.slice(0, 25)
-		.map((v) => ({ name: v, value: v }));
+/** A change would end someone's booking, and `evict` wasn't given: ask first. */
+export class EvictNeeded extends UserFacingError {
+	override name = "EvictNeeded";
 }
 
 /** The spots named in `typed`, in the order given. Throws if any doesn't exist. */
@@ -102,9 +79,7 @@ export function resolveSpots(
 	const found = names.map((n) => ({ name: n, spot: spots.get(n) }));
 	const unknown = found.filter((f) => !f.spot).map((f) => inlineCode(f.name, 32));
 	if (unknown.length > 0) {
-		throw new UserFacingError(
-			`There's no spot called ${unknown.join(", ")}. \`/admin parking status\` lists them.`,
-		);
+		throw new UserFacingError(`There's no spot called ${unknown.join(", ")}.`);
 	}
 	return found.map((f) => f.spot as ParkingSpot);
 }
@@ -167,10 +142,14 @@ export function describeSettings(settings: ParkingSettings): string {
 	].join("\n");
 }
 
-export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinition {
+/**
+ * What admins can do with parking, as plain operations: the panel's actions run these.
+ * They aren't commands, so nothing reaches them but the actions, which have the admin
+ * floor. Each returns its reply; problems are thrown.
+ */
+export function parkingOperations(deps: ParkingAdminDeps) {
 	const now = deps.now ?? (() => new Date());
 	const zone = deps.timezone;
-	const names = () => deps.spots.all().map((s) => s.name);
 	const resetAfter = (instant: Date) => nextReset(instant, resetClock(deps.spots.settings()), zone);
 	/** Whether an entry belongs to the day that ends at `reset`. */
 	const onDayEnding = (entry: ParkingEntry, reset: Date) =>
@@ -192,7 +171,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		const local = parseWhen(typed, after, zone, { now: now() });
 		if (!local) {
 			throw new UserFacingError(
-				`I couldn't understand \`${name}\`, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\`, \`tomorrow 8\` or \`now+2h\`.`,
+				`I couldn't understand **${name === "from" ? "From" : "Until"}**, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\`, \`tomorrow 8\` or \`now+2h\`.`,
 			);
 		}
 		return toInstant(local, zone);
@@ -203,14 +182,12 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		description: "The spot",
 		type: "string" as const,
 		required: true,
-		suggest: async ({ typed }: { typed: string }) => suggestSpot(names(), typed),
 	};
 	const spotsOption = {
 		name: "spots",
 		description: SPOTS_HELP,
 		type: "string" as const,
 		required: true,
-		suggest: async ({ typed }: { typed: string }) => suggestSpots(names(), typed),
 	};
 	const evictOption = {
 		name: "evict",
@@ -233,8 +210,8 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		const cut = cutBookings(bookings, spotsAfter, entriesAfter, at, resetAfter(at));
 		if (cut.length > 0 && args.evict !== true) {
 			const who = cut.map((b) => `**${b.spot}** until about ${describeInstant(b.until, at, zone)}`);
-			throw new UserFacingError(
-				`Someone is parked in ${who.join(", ")}. Add \`evict:True\` to end ${cut.length === 1 ? "their booking" : "those bookings"}.`,
+			throw new EvictNeeded(
+				`Someone is parked in ${who.join(", ")}. Going ahead ends ${cut.length === 1 ? "their booking" : "those bookings"}.`,
 			);
 		}
 		return cut;
@@ -302,7 +279,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			}
 			const spots = deps.spots.all();
 			if (spots.length === 0) {
-				lines.push("There are no parking spots yet. Add one with `/admin parking add-spot`.");
+				lines.push("There are no parking spots yet. Add one with **Add a spot**.");
 			} else {
 				const entries = deps.windows.entries(at);
 				const reset = resetAfter(at);
@@ -368,8 +345,8 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const reset = deps.spots.settings().resetAt;
 			return {
 				text: spot.permanent
-					? `Added **${spot.name}**, a permanent spot: it's open every day until ${reset}. \`/admin parking close\` shuts it for a while.`
-					: `Added **${spot.name}**, a borrowed spot. It's closed until you open it with \`/admin parking open\`.`,
+					? `Added **${spot.name}**, a permanent spot: it's open every day until ${reset}. **Close…** shuts it for a while.`
+					: `Added **${spot.name}**, a borrowed spot. It's closed until you open it with **Open…**.`,
 				private: true,
 			};
 		},
@@ -421,7 +398,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				lines.push(
 					changed.after.permanent
 						? "It's now permanent: open every day until the reset."
-						: "It's now borrowed: closed until you open it with `/admin parking open`.",
+						: "It's now borrowed: closed until you open it with **Open…**.",
 				);
 				if (dropped > 0) lines.push(`Its ${dropped} earlier opening time(s) no longer apply.`);
 			}
@@ -507,7 +484,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const borrowed = targets.filter((s) => !s.permanent).map((s) => s.name);
 			if ((args.from !== undefined || args.until !== undefined) && permanent.length > 0) {
 				throw new UserFacingError(
-					`\`from\` and \`until\` only apply to borrowed spots. ${bold(permanent)} ${permanent.length === 1 ? "is" : "are"} permanent, so \`open\` just lifts a closure.`,
+					`A time only applies to borrowed spots. ${bold(permanent)} ${permanent.length === 1 ? "is" : "are"} permanent, so opening just lifts a closure. Open ${permanent.length === 1 ? "it" : "them"} on ${permanent.length === 1 ? "its" : "their"} own.`,
 				);
 			}
 			const from = timeArg(args, "from", at) ?? at;
@@ -515,7 +492,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const until = timeArg(args, "until", from) ?? cap;
 			if (until > cap) {
 				throw new UserFacingError(
-					`Opening times can't run past the reset (${describeInstant(cap, at, zone)}). Leave out \`until\` to open until then.`,
+					`Opening times can't run past the reset (${describeInstant(cap, at, zone)}). Leave **Until** empty to open until then.`,
 				);
 			}
 			const entries = deps.windows.entries(at);
@@ -591,14 +568,14 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const borrowed = targets.filter((s) => !s.permanent).map((s) => s.name);
 			if (args.until !== undefined && borrowed.length > 0) {
 				throw new UserFacingError(
-					`\`until\` only applies to permanent spots. ${bold(borrowed)} ${borrowed.length === 1 ? "is" : "are"} borrowed: closing ends today's opening, and \`open\` sets a new one.`,
+					`A time only applies to permanent spots. ${bold(borrowed)} ${borrowed.length === 1 ? "is" : "are"} borrowed: closing ends today's opening. Close ${borrowed.length === 1 ? "it" : "them"} on ${borrowed.length === 1 ? "its" : "their"} own.`,
 				);
 			}
 			const cap = resetAfter(at);
 			const until = timeArg(args, "until", at) ?? cap;
 			if (until > cap) {
 				throw new UserFacingError(
-					`A closure can't run past the reset (${describeInstant(cap, at, zone)}). Leave out \`until\` to close until then.`,
+					`A closure can't run past the reset (${describeInstant(cap, at, zone)}). Leave **Until** empty to close until then.`,
 				);
 			}
 			const entries = deps.windows.entries(at);
@@ -689,13 +666,6 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				name: "for",
 				description: "How long (default: until the spot closes)",
 				type: "string",
-				suggest: async ({ typed }) => {
-					const needle = typed.trim().toLowerCase();
-					return deps.spots
-						.settings()
-						.durations.filter((d) => d.includes(needle))
-						.map((d) => ({ name: d, value: d }));
-				},
 			},
 			{
 				...evictOption,
@@ -721,9 +691,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			};
 			const openTill = openUntil(target, entries, at, reset);
 			if (!openTill) {
-				throw new UserFacingError(
-					`**${target.name}** is closed right now. Open it first with \`/admin parking open\`.`,
-				);
+				throw new UserFacingError(`**${target.name}** is closed right now. Open it first.`);
 			}
 			let until = openTill;
 			if (typeof args.for === "string") {
@@ -739,7 +707,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 						: new Date(at.getTime() + duration.minutes * 60_000);
 				if (until > openTill) {
 					throw new UserFacingError(
-						`**${target.name}** is only open until ${when(openTill)}. Leave out \`for\` to give it until then.`,
+						`**${target.name}** is only open until ${when(openTill)}. Leave **How long** empty to give it until then.`,
 					);
 				}
 			}
@@ -749,8 +717,8 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const holder = deps.bookings.all().find((b) => b.spot === target.name && b.by.ref !== ref);
 			// Pixel doesn't move whoever holds the spot: Someone's in my spot in `/park` gets them a new one.
 			if (holder && args.evict !== true) {
-				throw new UserFacingError(
-					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with Someone's in my spot in \`/park\`; or add \`evict:True\` to end their booking.`,
+				throw new EvictNeeded(
+					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with Someone's in my spot in \`/park\`, or going ahead ends their booking.`,
 				);
 			}
 
@@ -873,7 +841,9 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 				const value = args[name];
 				if (value === undefined) return undefined;
 				if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
-					throw new UserFacingError(`\`${name}\` is a whole number of minutes from 0 to ${max}.`);
+					throw new UserFacingError(
+						`**${name === "remind" ? "Remind" : "End after"}** is a whole number of minutes from 0 to ${max}.`,
+					);
 				}
 				return value;
 			};
@@ -883,7 +853,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			if (grace !== undefined) change.graceMinutes = grace;
 			if (typeof args.reset === "string") {
 				const clock = parseTimeOfDay(args.reset);
-				if (!clock) throw new UserFacingError("`reset` is a time like `23:59` or `11:59pm`.");
+				if (!clock) throw new UserFacingError("**Reset** is a time like `23:59` or `11:59pm`.");
 				change.resetAt = formatTimeOfDay(clock);
 			}
 			if (typeof args.durations === "string") {
@@ -955,9 +925,16 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 	};
 
 	return {
-		name: "parking",
-		description: "Parking spots and when they're open (admins only)",
-		access: { minTier: "admin" },
-		subcommands: [status, open, close, assign, free, addSpot, editSpot, removeSpot, settings],
+		status,
+		open,
+		close,
+		assign,
+		free,
+		"add-spot": addSpot,
+		"edit-spot": editSpot,
+		"remove-spot": removeSpot,
+		settings,
 	};
 }
+
+export type ParkingOperation = keyof ReturnType<typeof parkingOperations>;

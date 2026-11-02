@@ -80,7 +80,9 @@ export type FormInput =
 	/** Any number of 1 to 10 options, submitted space-separated. */
 	| (InputBase & { kind: "checkboxes"; options: readonly ChoiceOption[] })
 	/** A channel. The argument is its ID, and `ctx.channels` says what the person may do there. */
-	| (InputBase & { kind: "channel"; value?: string });
+	| (InputBase & { kind: "channel"; value?: string })
+	/** A server member. The argument is their immutable ID, and `ctx.users` has who they are. */
+	| (InputBase & { kind: "user"; value?: string });
 
 /** A form (a modal on Discord). Submitting it runs `submit` with the fields as extra arguments. */
 export type Form = {
