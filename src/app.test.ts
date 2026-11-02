@@ -60,6 +60,7 @@ describe("buildCore", () => {
 				announce: {
 					botChannelId: undefined,
 					closingTimeChannelId: undefined,
+					parkingChannelId: undefined,
 				},
 				roles: { member: undefined, friend: undefined },
 				roleSync: false,

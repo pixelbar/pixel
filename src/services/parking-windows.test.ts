@@ -156,6 +156,17 @@ describe("ParkingWindowStore", () => {
 			expect(open().entries(NOW)).toEqual(expected);
 		});
 
+		it("keeps a reported-taken closure for any spot that exists, and saves the reason", () => {
+			const store = open();
+			const taken = { ...entry("borrowed", "09:00", "10:00"), reason: "taken" as const };
+			store.replace(
+				{ windows: [], blocks: [taken, { ...entry("gone", "09:00", "10:00"), reason: "taken" }] },
+				NOW,
+			);
+			expect(store.reconcile(spots, NOW)).toBe(1);
+			expect(open().entries(NOW).blocks).toEqual([taken]);
+		});
+
 		it("does nothing when everything fits", () => {
 			const store = open();
 			expect(store.reconcile(spots, NOW)).toBe(0);
@@ -214,6 +225,15 @@ describe("openUntil", () => {
 		expect(openUntil(ours, entries, at("13:00"), reset)).toBeUndefined();
 		expect(openUntil(ours, entries, at("14:00"), reset)).toEqual(at("16:00"));
 		expect(openUntil(ours, entries, at("17:00"), reset)).toEqual(reset);
+	});
+
+	it("closes a borrowed spot reported taken, even in its window, and stops before one", () => {
+		const entries = {
+			windows: [entry("borrowed", "07:00", "15:00")],
+			blocks: [{ ...entry("borrowed", "10:00", "21:59"), reason: "taken" as const }],
+		};
+		expect(openUntil(borrowed, entries, NOW, reset)).toEqual(at("10:00"));
+		expect(openUntil(borrowed, entries, at("11:00"), reset)).toBeUndefined();
 	});
 
 	it("opens a borrowed spot only in a window, and never past the reset", () => {

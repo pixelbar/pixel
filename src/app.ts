@@ -221,6 +221,7 @@ export function buildCore(
 		// Until the gate API is connected (#154), /park never opens anything.
 		gate: notConnectedGate,
 		directMessages,
+		parkingChannelId: config.discord.announce.parkingChannelId,
 		canSchedule,
 		infoTopics,
 		timezone: config.timezone,

@@ -3,6 +3,7 @@ import type { Principal } from "../../core/access.ts";
 import { type Args, isGroup, type SuggestContext } from "../../core/command.ts";
 import { silentLogger } from "../../core/logger.ts";
 import type { Gate } from "../../core/ports/gate.ts";
+import type { ParkingActivityEvent } from "../../services/parking-activity.ts";
 import { type ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { ParkingWindowStore } from "../../services/parking-windows.ts";
@@ -28,6 +29,10 @@ function setup(
 	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
 	const gate = options.gate ?? { open: vi.fn(async () => ({ opened: true as const })) };
 	const reporter = { captureBackground: vi.fn() };
+	const activity = {
+		record: vi.fn(async (_event: ParkingActivityEvent, _now: Date) => true),
+		posting: true,
+	};
 	const notices = {
 		send: vi.fn(async (_booking: ParkingBooking, _kind: string, _text: string) => {}),
 	};
@@ -38,6 +43,7 @@ function setup(
 		bookings,
 		gate,
 		notices,
+		activity,
 		timezone: ZONE,
 		logger: silentLogger,
 		reporter,
@@ -66,6 +72,7 @@ function setup(
 		gate,
 		reporter,
 		notices,
+		activity,
 		feature,
 		park,
 		parking,
@@ -121,6 +128,7 @@ describe("parking", () => {
 		expect(parking.subcommands.map((s) => [s.name, s.access])).toEqual([
 			["list", access],
 			["extend", access],
+			["taken", access],
 			["leave", access],
 		]);
 	});
@@ -542,6 +550,153 @@ describe("reminders and ending bookings", () => {
 		release();
 		await tick();
 		expect(t.notices.send).toHaveBeenCalledTimes(2);
+		stop?.();
+	});
+});
+
+describe("/parking taken", () => {
+	const taken = async (t: ReturnType<typeof setup>, args: Args = {}, who: Principal = member()) => {
+		const parking = t.parking;
+		if (!isGroup(parking)) throw new Error("group");
+		const sub = parking.subcommands.find((s) => s.name === "taken");
+		if (!sub || !("handler" in sub)) throw new Error("no taken");
+		const reply = await sub.handler(context({ principal: who, args }));
+		expect(reply.private).toBe(true);
+		return reply.text ?? "";
+	};
+	const recorded = (t: ReturnType<typeof setup>) => t.activity.record.mock.calls.map(([e]) => e);
+
+	it("offers another free spot first, and changes nothing without confirm", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		expect(await taken(t)).toBe(
+			"Sorry about that. **neighbour-1** is free for the rest of your time, until 11:00. Run `/parking taken confirm:True` to move there, and I'll close **ours** and tell the admins.",
+		);
+		expect(t.bookings.all()[0]?.spot).toBe("ours");
+		expect(t.windows.entries(NOW).blocks).toEqual([]);
+	});
+
+	it("moves them with confirm, closes the taken spot until the reset, and tells the admins", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		expect(await taken(t, { confirm: true })).toBe(
+			"Park in **neighbour-1** instead, until 11:00. I've closed **ours** and told the admins.",
+		);
+		expect(t.bookings.all()).toMatchObject([{ spot: "neighbour-1", until: utc("09:00") }]);
+		expect(t.windows.entries(NOW).blocks).toMatchObject([
+			{ spot: "ours", from: NOW, until: RESET, reason: "taken", setBy: { name: "Alice" } },
+		]);
+		expect(recorded(t).at(-1)).toEqual({
+			kind: "moved",
+			from: "ours",
+			to: "neighbour-1",
+			who: "Alice",
+			closedUntil: RESET,
+		});
+		// Nobody else is sent to the taken spot.
+		expect(await t.run({ for: "1h" }, member(BOB, "Bob"))).toContain("**neighbour-2**");
+	});
+
+	it("never says the admins were told when they weren't", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		t.activity.posting = false;
+		expect(await taken(t)).toContain("and I'll close **ours**.");
+		t.activity.record.mockResolvedValueOnce(false);
+		expect(await taken(t, { confirm: true })).toBe(
+			"Park in **neighbour-1** instead, until 11:00. I've closed **ours**, but I couldn't tell the admins, so please tell the board yourself.",
+		);
+	});
+
+	it("asks them to leave when nothing else is free, and reports it to the board", async () => {
+		const t = setup();
+		t.spots.add({ name: "ours", permanent: true });
+		await t.run({ for: "1h" });
+		expect(await taken(t)).toBe(
+			"Sorry: someone else is in **ours** and no other spot is free right now, so please leave. I've ended your booking.\nI've reported it to the board.",
+		);
+		expect(t.bookings.all()).toEqual([]);
+		expect(t.windows.entries(NOW).blocks).toMatchObject([{ spot: "ours", reason: "taken" }]);
+		expect(recorded(t).at(-1)).toEqual({
+			kind: "taken",
+			spot: "ours",
+			who: "Alice",
+			closedUntil: RESET,
+		});
+	});
+
+	it("says so when it couldn't reach the board", async () => {
+		const t = setup();
+		t.spots.add({ name: "ours", permanent: true });
+		await t.run({ for: "1h" });
+		t.activity.record.mockResolvedValueOnce(false);
+		expect(await taken(t)).toContain(
+			"I couldn't report it to the board, so please tell them yourself.",
+		);
+	});
+
+	it("asks them to leave when the offered spot went meanwhile", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		Object.assign(t.bookings, { move: () => undefined });
+		expect(await taken(t, { confirm: true })).toContain("so please leave");
+	});
+
+	it("still reports it when the taken spot can't be closed", async () => {
+		const t = setup();
+		t.spots.add({ name: "ours", permanent: true });
+		await t.run({ for: "1h" });
+		Object.assign(t.windows, {
+			replace: () => {
+				throw new Error("disk full");
+			},
+		});
+		expect(await taken(t)).toContain("I've reported it to the board.");
+	});
+
+	it("needs a booking", async () => {
+		expect(await taken(withSpots())).toBe("You're not parked anywhere. `/park` gets you a spot.");
+	});
+});
+
+describe("parking activity", () => {
+	const kinds = (t: ReturnType<typeof setup>) => t.activity.record.mock.calls.map(([e]) => e.kind);
+
+	it("records booking, a failed park, extending and leaving", async () => {
+		const t = withSpots();
+		await t.run({ for: "1h" });
+		await t.run({ for: "1h" }, member(BOB, "Bob"));
+		await t.run({ for: "rest of day" }, member("100000000000000006", "Carol"));
+		await t.run({ for: "rest of day" }, member("100000000000000007", "Dan"));
+		const parking = t.parking;
+		if (!isGroup(parking)) throw new Error("group");
+		const extend = parking.subcommands.find((s) => s.name === "extend");
+		if (!extend || !("handler" in extend)) throw new Error("no extend");
+		await extend.handler(context({ principal: member(), args: { for: "30m" } }));
+		await t.leave();
+		expect(kinds(t)).toEqual(["booked", "booked", "none-free", "none-free", "extended", "left"]);
+		expect(t.activity.record.mock.calls[0]?.[0]).toEqual({
+			kind: "booked",
+			spot: "ours",
+			who: "Alice",
+			until: utc("09:00"),
+		});
+	});
+
+	it("records bookings Pixel ends", async () => {
+		vi.useFakeTimers();
+		const t = withSpots();
+		await t.run({ for: "rest of day" });
+		await t.run({ for: "1h" }, member(BOB, "Bob"));
+		t.setNow(utc("09:05"));
+		const stop = t.feature.start?.();
+		await vi.advanceTimersByTimeAsync(0);
+		t.setNow(utc("22:00"));
+		await vi.advanceTimersByTimeAsync(TICK_MS);
+		expect(t.activity.record.mock.calls.map(([e]) => e).filter((e) => e.kind === "ended")).toEqual([
+			{ kind: "ended", spot: "neighbour-1", who: "Bob", reason: "over" },
+			{ kind: "ended", spot: "ours", who: "Alice", reason: "reset" },
+		]);
 		stop?.();
 	});
 });

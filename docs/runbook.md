@@ -281,6 +281,9 @@ Members with the `parking` capability get a spot at the gate with `/park for:` (
 | See what's open | `/admin parking status` |
 | Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
 | Free a spot someone left without `/parking leave` | `/admin parking free spot:` |
+| Watch parking | Set `DISCORD_PARKING_CHANNEL_ID` to a private admin channel (local `.env`; on Azure, `discord_parking_channel_id` in that env's `terraform.tfvars`, then apply). Pixel posts every booking, leave, extension, ending, taken-spot report and admin change there. The bot needs View Channel and Send Messages. `parking.channel_failed` in the logs means a post didn't go through |
+| See how much parking is used | Sentry, Explore → Metrics: `pixel.parking`, split by `event` (and `spot`). Counted whether or not the channel is set |
+| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin parking status` shows "reported taken"). Once it's clear, `/admin parking open spots:` opens it again. If nothing else was free, Pixel asked them to leave and ended their booking |
 | Close or remove a spot someone's parked in | Pixel refuses and says who's there until when. Add `evict:True` to end their booking |
 | Stop someone parking | Revoke their `parking` capability. A booking they already hold stays until they leave, an admin frees it, or the reset |
 

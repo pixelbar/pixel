@@ -83,6 +83,22 @@ describe("ParkingBookingStore", () => {
 		expect(store.all()).toEqual([]);
 	});
 
+	it("moves a booking to the spot `pick` chooses, given the spots others hold", () => {
+		const store = open();
+		const claim = store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		store.claim(bob, NOW, () => ({ spot: "neighbour-1", until: LATER }));
+		const id = claim.kind === "booked" ? claim.booking.id : "";
+		const moved = store.move(id, (taken) => {
+			expect([...taken]).toEqual(["neighbour-1"]);
+			return "neighbour-2";
+		});
+		expect(moved).toMatchObject({ spot: "neighbour-2", by: alice, until: LATER });
+		expect(open().byPerson(alice.ref)?.spot).toBe("neighbour-2");
+		expect(store.move(id, () => undefined)).toBeUndefined();
+		expect(store.move("nope00", () => "x")).toBeUndefined();
+		expect(() => store.move(id, () => "neighbour-1")).toThrow(/already taken/);
+	});
+
 	it("reads a reminder back", () => {
 		const store = open();
 		const claim = store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));

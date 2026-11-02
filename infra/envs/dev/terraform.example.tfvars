@@ -26,6 +26,7 @@ discord_guild_id = "100000000000000002"
 # Optional. Leave null / commented until the test-guild channels exist.
 # discord_announcements_channel_id = "100000000000000003"
 # discord_closing_time_channel_id  = "100000000000000004"
+# discord_parking_channel_id       = "100000000000000005"
 
 # Nabu Casa still works without Tailscale. Set the matching Key Vault secret
 # home-assistant-token as well, or leave both unset (HA off).

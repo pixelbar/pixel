@@ -15,6 +15,7 @@ module "pixel" {
   discord_announcements_channel_id      = var.discord_announcements_channel_id
   discord_announce_bot_channel_id       = var.discord_announce_bot_channel_id
   discord_closing_time_channel_id       = var.discord_closing_time_channel_id
+  discord_parking_channel_id            = var.discord_parking_channel_id
   discord_role_member                   = var.discord_role_member
   discord_role_friend                   = var.discord_role_friend
   discord_role_sync                     = var.discord_role_sync

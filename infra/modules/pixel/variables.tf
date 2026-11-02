@@ -123,6 +123,17 @@ variable "discord_closing_time_channel_id" {
   }
 }
 
+variable "discord_parking_channel_id" {
+  type        = string
+  default     = null
+  description = "Optional. DISCORD_PARKING_CHANNEL_ID: where every parking change is posted for admins. Null: off."
+
+  validation {
+    condition     = var.discord_parking_channel_id == null || can(regex("^\\d{17,20}$", var.discord_parking_channel_id))
+    error_message = "discord_parking_channel_id must be a Discord ID or unset."
+  }
+}
+
 variable "discord_role_member" {
   type        = string
   default     = null

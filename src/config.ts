@@ -104,6 +104,11 @@ const envSchema = z
 			if (typeof v === "string" && /^(off|none)$/i.test(v.trim())) return undefined;
 			return v;
 		}, optional(snowflake)),
+		// Unset, empty, "off" or "none" turns parking activity posts off.
+		DISCORD_PARKING_CHANNEL_ID: z.preprocess((v) => {
+			if (typeof v === "string" && /^(off|none)$/i.test(v.trim())) return undefined;
+			return v;
+		}, optional(snowflake)),
 		PIXEL_CLOSING_TIME_FILE: optional(z.string().trim().min(1)),
 		// A role name, or its ID. Unset means that tier isn't mirrored to a Discord role.
 		DISCORD_ROLE_MEMBER: optional(z.string().trim().min(1).max(100)),
@@ -209,6 +214,8 @@ export type Config = {
 			botChannelId: string | undefined;
 			/** Closing-time reminder. Undefined means off. */
 			closingTimeChannelId: string | undefined;
+			/** Every parking change, for admins to watch. Undefined means off. */
+			parkingChannelId: string | undefined;
 		};
 		/**
 		 * The Discord role each tier is mirrored to, by name or ID. Pixel pushes tiers
@@ -298,6 +305,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			announce: {
 				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
+				parkingChannelId: e.DISCORD_PARKING_CHANNEL_ID,
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },
 			roleSync: e.DISCORD_ROLE_SYNC === "on",

@@ -16,6 +16,7 @@ import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
+import { ParkingActivity } from "../services/parking-activity.ts";
 import type { ParkingBookingStore } from "../services/parking-bookings.ts";
 import { ParkingNotices } from "../services/parking-notices.ts";
 import type { ParkingSpotStore } from "../services/parking-spots.ts";
@@ -69,6 +70,8 @@ export type FeatureDeps = {
 	gate: Gate;
 	/** DMs for features (parking reminders), once the platform adapter is ready. */
 	directMessages: DirectMessages;
+	/** Where every parking change is posted for admins. Undefined: off (still counted in Sentry). */
+	parkingChannelId: string | undefined;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -85,6 +88,13 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 	// (space state, Home Assistant, …) — do not add an if/else in each feature.
 	const interpolator = createInterpolator({ timezone: deps.timezone });
 	const parkingNotices = new ParkingNotices({ messages: deps.directMessages, logger: deps.logger });
+	const parkingActivity = new ParkingActivity({
+		posts: deps.channelPosts,
+		channelId: deps.parkingChannelId,
+		reporter: deps.reporter,
+		logger: deps.logger,
+		timezone: deps.timezone,
+	});
 	const closingTime = createClosingTimeFeature({
 		announcer: deps.announcer,
 		enabled: deps.closingTime.enabled,
@@ -124,6 +134,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			bookings: deps.parkingBookings,
 			gate: deps.gate,
 			notices: parkingNotices,
+			activity: parkingActivity,
 			timezone: deps.timezone,
 			logger: deps.logger,
 			reporter: deps.reporter,
@@ -152,6 +163,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 				windows: deps.parkingWindows,
 				bookings: deps.parkingBookings,
 				notices: parkingNotices,
+				activity: parkingActivity,
 				timezone: deps.timezone,
 			},
 		}),
