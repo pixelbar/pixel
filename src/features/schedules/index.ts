@@ -112,6 +112,7 @@ export const SCHEDULE_MESSAGES = {
 	emptyMessage: "The message can't be empty.",
 	emptyQuestion: "The question can't be empty.",
 	draftGone: "That draft has expired, so nothing was saved. Start again.",
+	saving: "That's already being saved.",
 	scheduleGone: "That schedule doesn't exist any more.",
 	notYours: "Only the person who made a schedule can change it.",
 	cantResume: "Its time has passed while it was paused, so it can't be resumed. Delete it instead.",
@@ -152,6 +153,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const zone = deps.timezone;
 	const drafts = new Drafts(() => now().getTime());
+	/** Drafts being saved. Checks wait on Discord, so a double click mustn't save twice. */
+	const saving = new Set<string>();
 
 	// ── Reading what's typed ─────────────────────────────────────────────
 
@@ -678,6 +681,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	// ── Saving ───────────────────────────────────────────────────────────
 
 	async function save(ctx: ActionContext, draft: Draft): Promise<Reply> {
+		if (saving.has(draft.id)) throw new UserFacingError(SCHEDULE_MESSAGES.saving);
+		saving.add(draft.id);
+		try {
+			return await saveOnce(ctx, draft);
+		} finally {
+			saving.delete(draft.id);
+		}
+	}
+
+	async function saveOnce(ctx: ActionContext, draft: Draft): Promise<Reply> {
 		let ready: Ready;
 		try {
 			ready = await evaluate(draft);

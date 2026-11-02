@@ -1060,6 +1060,24 @@ describe("drafts", () => {
 		);
 	});
 
+	it("are saved once, even when Schedule is clicked twice while Pixel checks the channel", async () => {
+		const { draftMessage, click, poster, store } = setup();
+		const reply = replyOf(await draftMessage());
+		let release: (check: ChannelCheck) => void = () => {};
+		poster.check.mockImplementationOnce(
+			() => new Promise<ChannelCheck>((resolve) => (release = resolve)),
+		);
+		const first = click(reply, "Schedule");
+		const second = await click(reply, "Schedule");
+		release({ ok: true, name: "general" });
+		expect(said(replyOf(await first).embeds?.[0])).toContain("✅ **Scheduled.**");
+		expect(second).toEqual({
+			kind: "refused",
+			reply: { text: SCHEDULE_MESSAGES.saving, private: true },
+		});
+		expect(store.all()).toHaveLength(1);
+	});
+
 	it("are kept to a hundred, dropping the oldest", async () => {
 		const { newForm, act } = setup();
 		const first = await newForm("message");
