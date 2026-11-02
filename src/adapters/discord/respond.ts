@@ -1,6 +1,7 @@
 import { MessageFlags } from "discord.js";
 import type { DispatchResult } from "../../core/dispatcher.ts";
 import {
+	type ControlsRenderer,
 	type DiscordEditPayload,
 	type DiscordReplyPayload,
 	renderEdit,
@@ -25,6 +26,8 @@ export type RespondOptions = {
 	/** Discord requires an acknowledgement within 3 s; defer well before that. */
 	deferAfterMs: number;
 	work: (showPending: ShowPending) => Promise<DispatchResult>;
+	/** Draws buttons and select menus on the reply, if it has any. */
+	controls?: ControlsRenderer;
 };
 
 /**
@@ -44,7 +47,7 @@ export type RespondOptions = {
  */
 export async function respond(
 	interaction: Respondable,
-	{ defaultPrivate, deferAfterMs, work }: RespondOptions,
+	{ defaultPrivate, deferAfterMs, work, controls }: RespondOptions,
 ): Promise<void> {
 	let acknowledged: Promise<unknown> | undefined;
 	let acknowledgedPrivate = defaultPrivate;
@@ -63,11 +66,11 @@ export async function respond(
 		if (acknowledged) {
 			// Already deferred: show the placeholder in the deferred message.
 			await acknowledged;
-			await interaction.editReply(renderEdit(pending.reply));
+			await interaction.editReply(renderEdit(pending.reply, controls));
 			return;
 		}
 		acknowledgedPrivate = pending.private;
-		acknowledged = interaction.reply(renderReply(pending.reply, pending.private));
+		acknowledged = interaction.reply(renderReply(pending.reply, pending.private, controls));
 		await acknowledged;
 	};
 
@@ -79,15 +82,15 @@ export async function respond(
 	}
 
 	if (!acknowledged) {
-		await interaction.reply(renderReply(result.reply, result.private));
+		await interaction.reply(renderReply(result.reply, result.private, controls));
 		return;
 	}
 
 	await acknowledged;
 	if (result.private && !acknowledgedPrivate) {
 		await interaction.deleteReply();
-		await interaction.followUp(renderReply(result.reply, true));
+		await interaction.followUp(renderReply(result.reply, true, controls));
 		return;
 	}
-	await interaction.editReply(renderEdit(result.reply));
+	await interaction.editReply(renderEdit(result.reply, controls));
 }

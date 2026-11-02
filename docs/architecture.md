@@ -114,7 +114,18 @@ type Reply = {
   text?: string;
   embeds?: Embed[];              // Embed.accent: brand | positive | negative | warning | neutral
   private?: boolean;             // Discord: ephemeral
+  controls?: ControlRow[];       // buttons and selects (core/ui.ts), each running an action
 };
+
+// core/ui.ts: what controls and forms run (ADR 0023)
+type ActionCall = { action: string; args?: Record<string, string | number | boolean> };
+type ActionDefinition = {
+  name: string;                  // "schedule.pause": not a slash command, only reached through controls
+  access: Access;                // required, like a command's
+  options?: CommandOption[];     // what the dispatcher validates
+  handler: (ctx: ActionContext) => Promise<{ reply: Reply } | { form: Form }>;
+};
+type Form = { title: string; submit: ActionCall; fields: FormInput[] };   // text, radio, checkboxes, channel
 
 // core/announcement.ts: what features announce and publishers receive
 type Announcement = SpaceStatusAnnouncement | BotStatusAnnouncement | ClosingTimeAnnouncement;
@@ -141,13 +152,14 @@ type Publisher = {
 type Feature = {
   name: string;
   commands?: CommandDefinition[];
+  actions?: ActionDefinition[];  // what this feature's controls and forms run
   start?: () => Stop;            // background work, started once the adapters are ready
 };
 ```
 
 ### Pieces of the core
 
-- **Registry** collects features. It refuses to register a command without `access.minTier` and refuses duplicate names.
+- **Registry** collects features. It refuses to register a command or an action without `access.minTier` and refuses duplicate names.
 - **IdentityService** asks each `TierSource` for a tier and keeps the highest. Phase 1 has only the config source.
 - **Dispatcher** handles each command in order:
   1. rate-limit, which is cheap and protects the tier sources
@@ -158,6 +170,8 @@ type Feature = {
   6. call the handler
   7. map errors to replies, reporting unexpected ones to Sentry with the command's tags
   8. log every executed command as an action (`command.executed`), recording who did it (ID, display name, handle), their tier, the outcome and the duration
+
+  `Dispatcher.act` does the same for a button, select or form: rate limit, identity, the action's access, its declared options, the handler, error mapping and `action.executed`. The actor is whoever used the control ([ADR 0023](adr/0023-components-and-actions.md)).
 - **Interpolator** (`core/interpolate.ts`) fills `{{tokens}}` in **user-set** posts at post time. Features call it right before send. The date family is built in (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`, in `PIXEL_TIMEZONE`). A known date token may take a whole-day offset (`{{date+2}}`, `{{day-1}}`), from the scheduled occurrence for `/schedule` (so a Monday post can talk about Wednesday, even if Pixel sends a bit late). A later token (space state, a Home Assistant device, …) is a named provider registered on the same interpolator — not an if/else in each feature. Unknown tokens and bad offsets are left as written. No expressions, no eval. This is not the `/info` load-time placeholders, which fail startup on a typo. Never log the template or the filled body.
 - **Announcer** sends each announcement to every registered publisher. Adapters register their publishers once they're ready. One publisher failing never blocks the others and never throws: the failure is logged and reported to Sentry, tagged `announcer:<publisher id>`. Calls run one at a time, in order, so a startup `reconcile` can't interleave with an announcement. Discord publishers ignore kinds they don't handle (channel IDs decide which are on). Mastodon posts only the kinds in `MASTODON_ANNOUNCE_KINDS` (default `space.status`).
 - **Background work:** a feature can declare `start()`. The bot calls every feature's `start()` once Discord is ready, so the publishers already exist, and calls the returned stop function on shutdown. There's deliberately no generic scheduler yet: the status service already polls on its own, and one will make sense when a second job appears (such as the nightly role check in #14).
@@ -172,6 +186,7 @@ type Feature = {
 - **Feature DMs:** the same messenger is also plugged into the core `DirectMessages` (`core/direct-messages.ts`), which features use for private messages (parking reminders). Until Discord is connected, a send fails, and features log that and carry on.
 - **Capability DMs:** when `AccessStore.apply` actually grants or revokes capabilities, Pixel DMs that Discord user ID through a `DirectMessenger` port (`core/ports/direct-message.ts`, implemented here). Mentions stay off. A closed inbox or other send failure is logged (`capability.dm_failed`, IDs only) and never fails the `/admin` command or tells the target why.
 - **Mapping:** `CommandDefinition.options` become Discord slash command options. A group becomes native subcommands (`/admin status`), and a `user` option becomes Discord's user picker. The handler gets the picked user's immutable ID as the arg, and the adapter resolves their name and whether they are a bot. Bots are refused unless the option sets `allowBots`. Targets are identified by ID only, never by name. `Reply` becomes the message content plus embeds, truncated to Discord's limits. `private` becomes the ephemeral flag. **Mentions are always disabled** (`allowedMentions: { parse: [] }`), so no reply can ping `@everyone`.
+- **Buttons, select menus and forms** ([guide](discord-components.md), [ADR 0023](adr/0023-components-and-actions.md)): `Reply.controls` become action rows under the message (legacy components, not Components V2), and a `Form` becomes a modal with every input in a Label. `controls.ts` holds what each control and form runs under a random token in its `custom_id`, for the person the reply was for, for 15 minutes; a restart drops them. `ui-handlers.ts` checks the guild, the token, the owner, and that chosen values and submitted fields match what was shown, then calls `Dispatcher.act` as the person who used it. An action's reply replaces the message (`update`), a form opens a modal, and a refusal is a private reply that leaves the message alone. If an action takes over 1.5 s the update is deferred; a form can't open after that, so the person is asked to try again.
 - **Acknowledging within 3 seconds:** Discord requires a response within 3 s. Pixel acknowledges with whichever comes first:
   - the command's placeholder, which is posted straight away
   - `deferReply()`, if the handler is still running after 1.5 s (this uses the command's default visibility)

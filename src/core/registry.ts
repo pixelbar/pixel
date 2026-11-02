@@ -11,13 +11,22 @@ import {
 	type SubgroupDefinition,
 } from "./command.ts";
 import type { Feature } from "./feature.ts";
+import type { ActionDefinition } from "./ui.ts";
 
 export type RegisteredCommand = {
 	feature: string;
 	definition: CommandDefinition;
 };
 
+export type RegisteredAction = {
+	feature: string;
+	definition: ActionDefinition;
+};
+
 const NAME_PATTERN = /^[-_a-z0-9]{1,32}$/;
+/** `feature.verb`, e.g. `schedule.pause`. */
+const ACTION_PATTERN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+const MAX_ACTION_NAME = 64;
 
 export class RegistryError extends Error {
 	override name = "RegistryError";
@@ -30,6 +39,7 @@ export class RegistryError extends Error {
  */
 export class CommandRegistry {
 	readonly #commands = new Map<string, RegisteredCommand>();
+	readonly #actions = new Map<string, RegisteredAction>();
 	readonly #capabilities: Pick<CapabilityRegistry, "has">;
 
 	/** `capabilities` is what commands may require. Without it, none exist. */
@@ -47,6 +57,19 @@ export class CommandRegistry {
 			}
 			this.#commands.set(definition.name, { feature: feature.name, definition });
 		}
+		for (const definition of feature.actions ?? []) {
+			validateAction(feature.name, definition, this.#capabilities);
+			if (this.#actions.has(definition.name)) {
+				throw new RegistryError(
+					`Duplicate action "${definition.name}" in feature "${feature.name}"`,
+				);
+			}
+			this.#actions.set(definition.name, { feature: feature.name, definition });
+		}
+	}
+
+	action(name: string): RegisteredAction | undefined {
+		return this.#actions.get(name);
 	}
 
 	get(name: string): RegisteredCommand | undefined {
@@ -62,6 +85,42 @@ const MAX_SUBCOMMANDS = 25;
 const MAX_OPTIONS = 25;
 
 type Known = Pick<CapabilityRegistry, "has">;
+
+/**
+ * An action is held to a command's rules: access is required and checked the same
+ * way, and its options are declared so the dispatcher can validate what arrives.
+ */
+function validateAction(feature: string, def: ActionDefinition, known: Known): void {
+	const where = `action "${def.name}" in feature "${feature}"`;
+	if (
+		typeof def.name !== "string" ||
+		def.name.length > MAX_ACTION_NAME ||
+		!ACTION_PATTERN.test(def.name)
+	) {
+		throw new RegistryError(`Invalid name for ${where}`);
+	}
+	validateAccess(where, def.access, known);
+	if (typeof def.handler !== "function") throw new RegistryError(`Missing handler for ${where}`);
+	if ((def.options?.length ?? 0) > MAX_OPTIONS) {
+		throw new RegistryError(`At most ${MAX_OPTIONS} options allowed for ${where}`);
+	}
+	const seen = new Set<string>();
+	for (const option of def.options ?? []) {
+		if (!NAME_PATTERN.test(option.name)) {
+			throw new RegistryError(`Invalid option name "${option.name}" for ${where}`);
+		}
+		if (seen.has(option.name)) {
+			throw new RegistryError(`Duplicate option "${option.name}" for ${where}`);
+		}
+		seen.add(option.name);
+		const extra = option as { form?: unknown; suggest?: unknown };
+		if (extra.form !== undefined || extra.suggest !== undefined) {
+			throw new RegistryError(
+				`Action option "${option.name}" can't have a form or suggestions for ${where}`,
+			);
+		}
+	}
+}
 
 function validate(feature: string, def: CommandDefinition, known: Known): void {
 	const where = `command "${def.name}" in feature "${feature}"`;
@@ -126,13 +185,17 @@ function validateCommon(
 	if (def.description.length < 1 || def.description.length > 100) {
 		throw new RegistryError(`Description must be 1–100 characters for ${where}`);
 	}
+	validateAccess(where, def.access, known);
+}
+
+function validateAccess(where: string, access: Access, known: Known): void {
 	// Types already require this, but features are code and code has bugs:
 	// check at runtime too, because a missing tier must never mean "open".
-	const minTier: unknown = (def.access as { minTier?: unknown } | undefined)?.minTier;
+	const minTier: unknown = (access as { minTier?: unknown } | undefined)?.minTier;
 	if (!TIERS.includes(minTier as Tier)) {
 		throw new RegistryError(`Missing or invalid access.minTier for ${where}`);
 	}
-	const capability: unknown = def.access.capability;
+	const capability: unknown = access.capability;
 	if (capability !== undefined) {
 		// A typo here would otherwise lock everyone out, or worse, match nothing silently.
 		if (typeof capability !== "string" || !known.has(capability)) {

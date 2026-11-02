@@ -7,7 +7,7 @@ Pixel has to know **who** is talking to it and **what they may do**. This docume
 ## Principles
 
 1. **Deny by default.** Every command declares the minimum tier it needs. A command that declares none cannot be registered.
-2. **One enforcement point.** Authorisation happens in the core dispatcher, never in adapters or feature handlers. Adapters cannot skip it.
+2. **One enforcement point.** Authorisation happens in the core dispatcher, never in adapters or feature handlers. Adapters cannot skip it. Buttons, select menus and forms run registered actions, which the dispatcher checks the same way, as whoever used them ([ADR 0023](adr/0023-components-and-actions.md)).
 3. **Identify by immutable platform IDs only** (Discord snowflakes). Never use usernames, display names or nicknames. Those can be changed or spoofed.
 4. **Tier sources are explicit and few.** In phase 1, the only sources are two config files that operators control.
 5. **Fail closed.** If the access config is missing or invalid, Pixel refuses to start. It never runs with "everyone is a guest" by accident, or worse, "everyone is an admin".
@@ -229,8 +229,9 @@ Access is decided from Pixel's own data. Where the Discord server uses roles, Pi
   - an empty admin list
   - a missing file
 - Tier resolution: guest by default, friend and member from the file, admin overrides, highest across sources.
-- Registry: every registered command has `access.minTier`.
-- Dispatcher: a denied command never calls its handler, the denial is logged, and context restrictions are enforced.
+- Registry: every registered command and action has `access.minTier`.
+- Dispatcher: a denied command or action never calls its handler, the denial is logged, and context restrictions are enforced.
+- Controls: someone else's or an expired control never reaches the dispatcher, and select values or form fields that weren't offered are refused.
 - Discord adapter: an interaction from the wrong guild is refused, and ephemeral flags are set for private replies.
 
 ---
