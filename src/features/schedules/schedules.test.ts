@@ -1043,6 +1043,23 @@ describe("drafts", () => {
 		expect(store.all()).toEqual([]);
 	});
 
+	it("drop the least recently touched one at the cap, not one still being worked on", async () => {
+		const { newForm, draftMessage, act } = setup();
+		const kept = button(replyOf(await draftMessage()), "Rename")?.call.args as Record<
+			string,
+			string
+		>;
+		const idle = (await newForm("message")).submit.args as Record<string, string>;
+		for (let i = 0; i < 98; i++) await newForm("message");
+		// The first draft is touched, so the idle one is now the least recent.
+		await act(ACTIONS.renamed, { ...kept, name: "Kept" });
+		await newForm("message");
+		expect((await act(ACTIONS.details, kept)).kind).toBe("form");
+		expect(said(replyOf(await act(ACTIONS.details, idle)).embeds?.[0])).toContain(
+			SCHEDULE_MESSAGES.draftGone,
+		);
+	});
+
 	it("are kept to a hundred, dropping the oldest", async () => {
 		const { newForm, act } = setup();
 		const first = await newForm("message");

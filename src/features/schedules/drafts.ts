@@ -74,6 +74,8 @@ export class Drafts {
 	/** Changes a draft and gives it more time. */
 	update(draft: Draft, change: Partial<Omit<Draft, "id" | "owner">>): Draft {
 		const updated = { ...draft, ...change };
+		// Re-inserted, so the cap drops the least recently touched draft, not the oldest made.
+		this.#drafts.delete(draft.id);
 		this.#drafts.set(draft.id, { draft: updated, expires: this.#now() + DRAFT_MS });
 		return updated;
 	}
