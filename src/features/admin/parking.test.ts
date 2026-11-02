@@ -739,7 +739,7 @@ describe("/admin parking assign", () => {
 			[
 				"ours",
 				"assigned",
-				"An admin gave you **ours**, until 23:59. Run `/parking leave` when you go.",
+				"An admin gave you **ours**, until 23:59. Run `/park` and press **Leave** when you go.",
 			],
 		]);
 		expect(recorded(t).at(-1)).toEqual({
@@ -756,7 +756,7 @@ describe("/admin parking assign", () => {
 		await t.run("open", { spots: "neighbour-1" });
 		t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: utc("10:00") }));
 		await expect(assign(t, { spot: "ours" })).rejects.toThrow(
-			"Alice is still booked into **ours**, until about 12:00. They get a new spot with `/parking taken`; or add `evict:True` to end their booking.",
+			"Alice is still booked into **ours**, until about 12:00. They get a new spot with Someone's in my spot in `/park`; or add `evict:True` to end their booking.",
 		);
 		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Alice", "ours"]]);
 

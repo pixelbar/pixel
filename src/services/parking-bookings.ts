@@ -8,7 +8,7 @@ import { MAX_SPOTS, ParkingError, SPOT_NAME } from "./parking-spots.ts";
 
 /**
  * Who is parked where, kept in `data/parking-bookings.yaml` and changed on every
- * `/park`, `/parking leave` and admin `free`. A booking is deleted when it ends, so
+ * `/park` (and its Leave button) and admin `free`. A booking is deleted when it ends, so
  * there's no parking history. Not safe to delete: that frees spots that have cars in
  * them.
  *

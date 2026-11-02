@@ -36,7 +36,7 @@ export function endedText(booking: ParkingBooking, reason: EndReason, context: C
 
 /** The DM sent when an admin gives someone a spot (they were found parked there). */
 export function assignedText(booking: ParkingBooking, context: Context): string {
-	return `An admin gave you **${booking.spot}**, until ${describeInstant(booking.until, context.now, context.zone)}. Run \`/parking leave\` when you go.`;
+	return `An admin gave you **${booking.spot}**, until ${describeInstant(booking.until, context.now, context.zone)}. Run \`/park\` and press **Leave** when you go.`;
 }
 
 /**
@@ -55,10 +55,9 @@ export function reminderText(
 		? Math.floor((openUntil.getTime() - booking.until.getTime()) / 60_000)
 		: 0;
 	if (openUntil && spare >= 1) {
-		const example = formatParkingDuration({ kind: "minutes", minutes: Math.min(60, spare) });
 		const most = formatParkingDuration({ kind: "minutes", minutes: spare });
 		lines.push(
-			`The spot is open until ${at(openUntil)}, so you can stay longer: \`/parking extend for:${example}\` (up to ${most}).`,
+			`The spot is open until ${at(openUntil)}, so you can stay up to ${most} longer: run \`/park\` and pick how long.`,
 		);
 	} else if (booking.until.getTime() >= reset.getTime()) {
 		lines.push(`Parking ends at ${context.settings.resetAt} every day, so it can't be extended.`);
@@ -69,8 +68,8 @@ export function reminderText(
 	const endsAt = new Date(booking.until.getTime() + grace * 60_000);
 	lines.push(
 		grace > 0
-			? `If you haven't left or extended by ${at(endsAt)}, I'll end it. Leaving? \`/parking leave\`.`
-			: "If you haven't left or extended by then, I'll end it. Leaving? `/parking leave`.",
+			? `If you haven't left or extended by ${at(endsAt)}, I'll end it. Leaving? Run \`/park\` and press **Leave**.`
+			: "If you haven't left or extended by then, I'll end it. Leaving? Run `/park` and press **Leave**.",
 	);
 	return lines.join("\n");
 }

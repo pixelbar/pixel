@@ -140,7 +140,7 @@ describe("buildFeatures with OpenR", () => {
 			context({ args: { for: "1h" }, principal: parker }),
 		);
 		expect(doorSystem.open).toHaveBeenCalledWith("125");
-		expect(reply.text).toContain("The gate is opening.");
+		expect(reply.embeds?.[0]?.description).toContain("The gate is opening.");
 	});
 
 	it("keeps the gate shut without a gate door", async () => {
@@ -149,7 +149,7 @@ describe("buildFeatures with OpenR", () => {
 			context({ args: { for: "1h" }, principal: parker }),
 		);
 		expect(doorSystem.open).not.toHaveBeenCalled();
-		expect(reply.text).toContain("Pixel can't open the gate right now");
+		expect(reply.embeds?.[0]?.description).toContain("Pixel can't open the gate right now");
 	});
 
 	it("opens the configured doors with /openr open", async () => {
@@ -192,7 +192,6 @@ describe("buildFeatures", () => {
 			"info",
 			"openr",
 			"park",
-			"parking",
 			"ping",
 			"schedule",
 			"status",

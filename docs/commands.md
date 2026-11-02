@@ -147,33 +147,14 @@ The buttons stop working after 15 minutes or when Pixel restarts: run `/schedule
 
 Getting a parking spot at the gate. These need the `parking` capability. Every reply is private, and every booking ends at 23:59.
 
-<PxCommand :level="4" sig="/park for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How long, such as 30m, 2h, 2h30 or rest of day.' }">
+<PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h, 2h30 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
 
-Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixel DMs you 15 minutes before your time is up (with `/parking extend` if the spot has more time), and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
+Opens your parking panel, with who's in which spot and until when. Everything else is buttons:
 
-</PxCommand>
+- **Not parked:** pick how long (**Park for 1h**, **Park until 23:59**, … from the durations an admin set; ones that won't fit right now are greyed out), or **Another length…** for any other. Pixel gives you a spot that's free for that whole time, opens the gate, and says where to park: Pixelbar's own spot first, then the borrowed spot that fits most tightly. If nothing fits, the gate stays shut and Pixel offers the longest stay that would.
+- **Parked:** **Open the gate** (if it didn't open, or you need it again), **Leave** when you go, ways to stay longer (**Stay 1h longer**, **Stay until 17:00**, never past the spot's close or 23:59), and **Someone's in my spot**. That shows what Pixel will do before it does it: move you to another free spot for the rest of your time, or, if none is free, end your booking and report it to the board. Either way the taken spot is closed until the end of the day, so nobody else is sent there.
 
-<PxCommand :level="4" sig="/parking list" tier="member" reply="private" :caps="['parking']">
-
-Which spots are open, who's in each, since when and until about when, and how long each spot stays open.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/parking extend for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How much longer, such as 30m, 1h or rest of day.' }">
-
-Stays longer in your spot, as long as it's open that long and it's before 23:59. It adds to your end (or to now, if that's passed), and Pixel reminds you again before the new end. If the spot doesn't have that much time, Pixel says how much it has.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/parking taken [confirm:]" tier="member" reply="private" :caps="['parking']" :options="{ '[confirm:]': 'Move to the spot Pixel offers. Without it, Pixel only shows you the spot.' }">
-
-Someone else is in your spot. If another spot is free for the rest of your time, Pixel shows it, and `confirm:True` moves you there. If nothing else is free, Pixel ends your booking, asks you to leave and reports it to the board. Either way, your spot is closed until the end of the day and the admins are told.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/parking leave" tier="member" reply="private" :caps="['parking']">
-
-Frees your spot.
+`/park for:` books straight away, for when you're at the gate and know how long. Pixel DMs you 15 minutes before your time is up, saying how much longer you could stay, and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on.
 
 </PxCommand>
 
@@ -347,13 +328,13 @@ Closes spots: a borrowed spot until it's opened again, a permanent one for a whi
 
 <PxCommand sig="/admin parking assign user: spot: [for:] [evict:]" tier="admin" reply="private" :options="{ 'user:': 'Who is parked there.', 'spot:': 'The spot they are in.', '[for:]': 'How long, such as 2h or rest of day. Default: until the spot closes.', '[evict:]': 'End the booking of whoever still holds the spot. Without it, Pixel refuses while someone holds it.' }">
 
-Gives someone the spot they're parked in, for when someone parked in the wrong spot. Any booking they had elsewhere ends and a "reported taken" closure on the spot is lifted. Pixel doesn't move whoever was booked into it: they get a new spot themselves with `/parking taken`. If they still hold it, Pixel refuses unless `evict:True` ends their booking. Everyone affected gets a DM.
+Gives someone the spot they're parked in, for when someone parked in the wrong spot. Any booking they had elsewhere ends and a "reported taken" closure on the spot is lifted. Pixel doesn't move whoever was booked into it: they get a new spot themselves with **Someone's in my spot** in `/park`. If they still hold it, Pixel refuses unless `evict:True` ends their booking. Everyone affected gets a DM.
 
 </PxCommand>
 
 <PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
 
-Ends the booking in a spot, for someone who left without `/parking leave`. Pixel DMs them that an admin ended it.
+Ends the booking in a spot, for someone who left without pressing **Leave** in `/park`. Pixel DMs them that an admin ended it.
 
 </PxCommand>
 
