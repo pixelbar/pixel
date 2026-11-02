@@ -41,6 +41,13 @@ discord_guild_id = "100000000000000002"
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
 
+# OpenR doors and the parking gate. Set the Key Vault secrets openr-email and
+# openr-password as well, or leave all unset (off). Then an admin logs in with
+# /admin openr login. The parking gate is never one of openr_doors.
+# openr_building_id = "1"
+# openr_doors       = "Entrance=2, Living room=3"
+# openr_gate_door   = "4"
+
 # Lets the Deploy dev workflow read discord-token (only) and register slash
 # commands (ADR 0018). az identity show -g pixel-bootstrap -n pixel-github-dev --query principalId -o tsv
 # github_register_principal_id = "00000000-0000-0000-0000-000000000000"

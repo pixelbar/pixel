@@ -20,9 +20,9 @@ import { HOME_KINDS } from "./core/home-kinds/index.ts";
 import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
+import type { DoorSystem } from "./core/ports/door-system.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { type FeedbackSink, nullFeedbackSink } from "./core/ports/feedback.ts";
-import { notConnectedGate } from "./core/ports/gate.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
 import { CommandRegistry } from "./core/registry.ts";
 import { RoleMirror } from "./core/role-mirror.ts";
@@ -84,6 +84,11 @@ export type BuildCoreOptions = {
 	capabilities?: readonly CapabilityDefinition[];
 	/** Where `/feedback` messages go. Without one, the command says feedback isn't set up. */
 	feedback?: FeedbackSink;
+	/**
+	 * The building's doors (OpenR), when it's configured. Without one, `/openr` says it
+	 * isn't set up and `/park` says to open the gate the usual way.
+	 */
+	doorSystem?: DoorSystem;
 };
 
 /**
@@ -218,8 +223,10 @@ export function buildCore(
 		parkingSpots,
 		parkingWindows,
 		parkingBookings,
-		// Until the gate API is connected (#154), /park never opens anything.
-		gate: notConnectedGate,
+		// The gate is OpenR's gate door when there is one; otherwise /park never opens anything.
+		doorSystem: options.doorSystem,
+		openrDoors: config.openr?.doors ?? [],
+		openrGateDoor: config.openr?.gateDoor,
 		directMessages,
 		parkingChannelId: config.discord.announce.parkingChannelId,
 		canSchedule,

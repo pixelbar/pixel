@@ -30,6 +30,10 @@ discord_guild_id = "100000000000000002"
 # /spacestate: also needs Key Vault secrets spacestate-user and spacestate-token.
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
+# OpenR doors and the gate: also needs Key Vault secrets openr-email and openr-password.
+# openr_building_id = "1"
+# openr_doors       = "Entrance=2, Living room=3"
+# openr_gate_door   = "4"
 
 # Lets the Release workflow read discord-token (only) and register slash
 # commands (ADR 0014). az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv

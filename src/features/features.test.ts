@@ -80,6 +80,9 @@ const deps = () => ({
 	parkingWindows: inMemoryParking().windows,
 	parkingBookings: inMemoryParking().bookings,
 	gate: notConnectedGate,
+	doorSystem: undefined,
+	openrDoors: [],
+	openrGateDoor: undefined,
 	directMessages: new DirectMessages(),
 	parkingChannelId: undefined,
 	canSchedule: async () => false,
@@ -99,6 +102,76 @@ function onlyCommand(feature: Feature) {
 	return plain(feature.commands?.[0]);
 }
 
+describe("buildFeatures with OpenR", () => {
+	const openr = (gateDoor: string | undefined) => {
+		const doorSystem = {
+			status: () => ({ state: "logged-out" }) as const,
+			startLogin: vi.fn(),
+			completeLogin: vi.fn(),
+			logout: vi.fn(),
+			open: vi.fn(async () => ({ opened: true }) as const),
+			doorStatus: vi.fn(async () => ({ kind: "failed" }) as const),
+		};
+		const { gate: _, ...rest } = deps();
+		const parking = inMemoryParking();
+		parking.spots.add({ name: "ours", permanent: true });
+		const features = buildFeatures({
+			...rest,
+			parkingSpots: parking.spots,
+			parkingBookings: parking.bookings,
+			doorSystem,
+			openrDoors: [{ name: "Entrance", id: "103" }],
+			openrGateDoor: gateDoor,
+		});
+		const sub = (feature: string, command: string, name?: string) => {
+			const def = features
+				.find((f) => f.name === feature)
+				?.commands?.find((c) => c.name === command);
+			const found = name ? def?.subcommands?.find((c) => c.name === name) : def;
+			return found as SubcommandDefinition;
+		};
+		return { doorSystem, sub };
+	};
+	const parker = principal("member", { userId: IDS.member }, ["parking"]);
+
+	it("opens OpenR's gate door for /park", async () => {
+		const { doorSystem, sub } = openr("125");
+		const reply = await sub("parking", "park").handler(
+			context({ args: { for: "1h" }, principal: parker }),
+		);
+		expect(doorSystem.open).toHaveBeenCalledWith("125");
+		expect(reply.text).toContain("The gate is opening.");
+	});
+
+	it("keeps the gate shut without a gate door", async () => {
+		const { doorSystem, sub } = openr(undefined);
+		const reply = await sub("parking", "park").handler(
+			context({ args: { for: "1h" }, principal: parker }),
+		);
+		expect(doorSystem.open).not.toHaveBeenCalled();
+		expect(reply.text).toContain("Pixel can't open the gate right now");
+	});
+
+	it("opens the configured doors with /openr open", async () => {
+		const { doorSystem, sub } = openr("125");
+		await sub("openr", "openr", "open").handler(
+			context({ args: { door: "Entrance" }, principal: principal("member", {}, ["openr"]) }),
+		);
+		expect(doorSystem.open).toHaveBeenCalledWith("103");
+	});
+
+	it("shows OpenR and the door switch on /admin status", async () => {
+		const { sub } = openr("125");
+		const reply = await sub("admin", "admin", "status").handler(context());
+		const fields = Object.fromEntries(
+			(reply.embeds?.[0]?.fields ?? []).map((f) => [f.name, f.value]),
+		);
+		expect(fields.OpenR).toBe("OpenR: **logged out**. Log in with `/admin openr login`.");
+		expect(fields.Doors).toBe("Door control: on");
+		expect(fields["Home Assistant"]).toBe("Not configured");
+	});
+});
+
 describe("buildFeatures", () => {
 	it("registers cleanly (every command declares access)", () => {
 		const registry = new CommandRegistry({ capabilities: new CapabilityRegistry(CAPABILITIES) });
@@ -117,6 +190,7 @@ describe("buildFeatures", () => {
 			"ha",
 			"help",
 			"info",
+			"openr",
 			"park",
 			"parking",
 			"ping",
@@ -160,6 +234,7 @@ describe("buildFeatures", () => {
 			["closing-time", "admin"],
 			["announcements", "admin"],
 			["parking", "admin"],
+			["openr", "admin"],
 		]);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
@@ -225,6 +300,7 @@ function adminSubcommand(
 		now: () => new Date(90 * 60_000),
 		closingTimeFile: "data/closing-time.md",
 		parking: inMemoryParking(),
+		openr: { system: undefined, doors: [], gateDoor: undefined },
 	}).commands?.[0];
 	const sub = admin?.subcommands?.find(
 		(s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name,
@@ -286,6 +362,7 @@ describe("admin", () => {
 			reporter: { ...nullErrorReporter, captureBackground },
 			closingTimeFile: "data/closing-time.md",
 			parking: inMemoryParking(),
+			openr: { system: undefined, doors: [], gateDoor: undefined },
 		}).commands?.[0];
 		const reload = admin?.subcommands?.find((s) => s.name === "reload");
 		if (!reload || isSubgroup(reload)) throw new Error("no /admin reload");

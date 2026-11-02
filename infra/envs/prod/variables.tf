@@ -131,6 +131,24 @@ variable "spacestate_api_url" {
   description = "Optional. The API /spacestate calls to set the space open or closed. Not a secret. The user and token are ephemeral inputs / Key Vault secrets. Set the URL to turn /spacestate on."
 }
 
+variable "openr_building_id" {
+  type        = string
+  default     = null
+  description = "Optional. The OpenR building whose doors Pixel opens. Not a secret. The account is Key Vault secrets openr-email and openr-password. Set it to turn OpenR on."
+}
+
+variable "openr_doors" {
+  type        = string
+  default     = null
+  description = "Optional. The doors /openr open offers, as Name=ID pairs separated by commas. Never the parking gate."
+}
+
+variable "openr_gate_door" {
+  type        = string
+  default     = null
+  description = "Optional. The OpenR ID of the parking gate, which only /park opens."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false

@@ -74,9 +74,13 @@ export type ParkingDeps = {
 /** What to say about the gate after `/park`. */
 export function gateLine(result: GateResult): string {
 	if (result.opened) return "The gate is opening.";
-	return result.reason === "not-connected"
-		? "Pixel can't open the gate yet, so open it the usual way."
-		: "⚠️ The gate didn't open. Run `/park` again to try once more.";
+	if (result.reason === "not-connected") {
+		return "Pixel can't open the gate right now, so open it the usual way.";
+	}
+	if (result.reason === "off") {
+		return "Opening doors from Pixel is switched off right now, so open the gate the usual way.";
+	}
+	return "⚠️ The gate didn't open. Run `/park` again to try once more.";
 }
 
 /** `/park for:` with the longest stay a spot allows from `now`. */

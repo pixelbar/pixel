@@ -26,6 +26,8 @@ Pixel stores as little as it can. It has no database. It identifies people only 
 - Votes on polls Pixel posts (Discord counts those)
 - Anything Discord itself holds about your account or messages. That is Discord's data: see [Discord's privacy policy](https://discord.com/privacy)
 
+When you open a door with `/openr open` or the gate with `/park`, Pixel asks OpenR (the building's door system) as Pixel's own account. OpenR is told which door, never who asked: who opened what is only in Pixel's logs, like any other command.
+
 Pixel never logs secrets. Token-shaped strings are scrubbed from logs and Sentry. When someone sets the space open or closed with `/spacestate`, Sentry also receives what Pixel sent to the space's state API and what it answered (status and a short copy of the reply), with the credentials removed.
 
 ## Where it is kept, and for how long
