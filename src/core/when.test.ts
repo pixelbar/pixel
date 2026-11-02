@@ -1,6 +1,50 @@
 import { describe, expect, it } from "vitest";
 import { formatLocal } from "./recurrence.ts";
-import { describeWhen, formatDays, parseDays, parseWhen, suggestDays } from "./when.ts";
+import {
+	addDays,
+	describeWhen,
+	formatDays,
+	formatTimeOfDay,
+	parseDays,
+	parseTimeOfDay,
+	parseWhen,
+	suggestDays,
+} from "./when.ts";
+
+describe("parseTimeOfDay", () => {
+	it.each([
+		["23:59", 23, 59],
+		[" 07:05 ", 7, 5],
+		["2359", 23, 59],
+		["23.59", 23, 59],
+		["23u59", 23, 59],
+		["19", 19, 0],
+		["11pm", 23, 0],
+		["11:59 pm", 23, 59],
+		["12am", 0, 0],
+	])("reads %j", (typed, hour, minute) => {
+		expect(parseTimeOfDay(typed)).toEqual({ hour, minute });
+	});
+
+	it.each(["", "24:00", "23:60", "13pm", "tomorrow", "wed 19", "11 59 pm", "19 xx"])(
+		"refuses %j",
+		(typed) => {
+			expect(parseTimeOfDay(typed)).toBeUndefined();
+		},
+	);
+
+	it("writes a time of day as HH:MM", () => {
+		expect(formatTimeOfDay({ hour: 7, minute: 5 })).toBe("07:05");
+	});
+
+	it("adds days across months and years", () => {
+		expect(addDays({ year: 2026, month: 12, day: 31 }, 1)).toEqual({
+			year: 2027,
+			month: 1,
+			day: 1,
+		});
+	});
+});
 
 const AMS = "Europe/Amsterdam";
 // Monday 12 October 2026, 10:00 in Amsterdam.
@@ -9,6 +53,47 @@ const parsed = (typed: string) => {
 	const at = parseWhen(typed, NOW, AMS);
 	return at ? formatLocal(at) : undefined;
 };
+
+describe("parseWhen: now", () => {
+	// 10:00:30 in Amsterdam, half a minute past.
+	const at = new Date("2026-10-12T08:00:30Z");
+	const read = (typed: string, options?: { now?: Date }) => {
+		const local = parseWhen(typed, at, AMS, options);
+		return local ? formatLocal(local) : undefined;
+	};
+
+	it("reads now as the next whole minute, so it's still to come", () => {
+		expect(read("now")).toBe("2026-10-12T10:01");
+		expect(read(" NOW ")).toBe("2026-10-12T10:01");
+		expect(parseWhen("now", NOW, AMS)).toEqual({
+			year: 2026,
+			month: 10,
+			day: 12,
+			hour: 10,
+			minute: 1,
+		});
+	});
+
+	it("adds any duration the duration parser reads", () => {
+		expect(read("now+30m")).toBe("2026-10-12T10:30");
+		expect(read("now + 2h30")).toBe("2026-10-12T12:30");
+		expect(read("now+an hour")).toBe("2026-10-12T11:00");
+		expect(read("now+1 day")).toBe("2026-10-13T10:00");
+	});
+
+	it("refuses a duration it can't read", () => {
+		expect(read("now+soon")).toBeUndefined();
+		expect(read("now+")).toBeUndefined();
+		expect(read("nowish")).toBeUndefined();
+	});
+
+	it("counts from the real now when another reference is given, and refuses what's before it", () => {
+		const later = new Date("2026-10-12T12:00:00Z");
+		const local = parseWhen("now+5h", later, AMS, { now: at });
+		expect(local ? formatLocal(local) : undefined).toBe("2026-10-12T15:00");
+		expect(parseWhen("now+1h", later, AMS, { now: at })).toBeUndefined();
+	});
+});
 
 describe("parseWhen", () => {
 	it("reads a weekday and a time as the next one of those, not a list of dates", () => {

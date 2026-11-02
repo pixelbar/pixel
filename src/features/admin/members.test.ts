@@ -21,6 +21,7 @@ import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
+import { inMemoryParking } from "../../testing/parking.ts";
 import { createAdminFeature } from "./index.ts";
 import { createLevelSubgroup } from "./members.ts";
 
@@ -83,6 +84,7 @@ function setup(ops = nodeFileOps) {
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",
+			parking: inMemoryParking(),
 		}),
 	);
 	const dispatcher = new Dispatcher({

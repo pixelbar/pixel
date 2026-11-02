@@ -21,6 +21,8 @@ import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
+import { inMemoryParking } from "../../testing/parking.ts";
+import { suggestCapabilities } from "./capabilities.ts";
 import { createAdminFeature } from "./index.ts";
 
 const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
@@ -95,6 +97,7 @@ function setup(registry = REGISTRY, ops = nodeFileOps) {
 			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
 			reporter,
 			closingTimeFile: "data/closing-time.md",
+			parking: inMemoryParking(),
 		}),
 	);
 	const dispatcher = new Dispatcher({
@@ -282,7 +285,7 @@ describe("grant", () => {
 	it("refuses a capability that isn't in the registry", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "grant", { capability: "front-dor" }, human(IDS.member));
-		expect(result.reply.text).toMatch(/Invalid value for option "capability"/);
+		expect(result.reply.text).toBe("That capability doesn't exist.");
 		expect(openStore().view.records.get(IDS.member)?.capabilities).toEqual([]);
 	});
 
@@ -332,7 +335,7 @@ describe("grant", () => {
 		expect(list.reply.text).toBe("No capabilities are registered yet.");
 	});
 
-	it("offers the registered names as choices", () => {
+	it("suggests the registered names instead of listing them as choices", async () => {
 		const { commands } = setup();
 		const grant = commands
 			.get("admin")
@@ -340,9 +343,32 @@ describe("grant", () => {
 				"subcommands" in s && s.subcommands ? s.subcommands : [],
 			)
 			.find((s) => s.name === "grant");
-		expect(grant?.options?.find((o) => o.name === "capability")).toMatchObject({
-			choices: ["front-door", "workshop"],
-		});
+		const option = grant?.options?.find((o) => o.name === "capability");
+		expect(option).not.toHaveProperty("choices");
+		expect(option).toHaveProperty("suggest");
+	});
+
+	it("suggests capabilities by name or description, at most 25", () => {
+		const all = [
+			{ name: "front-door", description: "Open the front door" },
+			{ name: "workshop", description: "Use the workshop" },
+		];
+		expect(suggestCapabilities(all, "")).toEqual([
+			{ name: "front-door: Open the front door", value: "front-door" },
+			{ name: "workshop: Use the workshop", value: "workshop" },
+		]);
+		expect(suggestCapabilities(all, " SHOP ")).toEqual([
+			{ name: "workshop: Use the workshop", value: "workshop" },
+		]);
+		expect(suggestCapabilities(all, "door").map((s) => s.value)).toEqual(["front-door"]);
+		expect(suggestCapabilities(all, "laser")).toEqual([]);
+		const many = Array.from({ length: 30 }, (_, i) => ({
+			name: `c${i}`,
+			description: "x".repeat(100),
+		}));
+		const shown = suggestCapabilities(many, "");
+		expect(shown).toHaveLength(25);
+		expect(shown[0]?.name).toHaveLength(100);
 	});
 });
 
