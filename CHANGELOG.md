@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-02
+
 ### Added
 
 - Times can be typed as `now` (the next whole minute) or `now+<duration>`, such as `now+30m`, `now + 2h30` or `now+1 day`: in `/schedule`'s `when` and in `/admin parking open|close`'s `from` and `until`. In `until`, `now` is the real now, not the opening's start.
@@ -320,7 +322,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/pixelbar/pixel/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/pixelbar/pixel/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/pixelbar/pixel/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/pixelbar/pixel/compare/v0.19.1...v0.20.0
