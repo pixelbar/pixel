@@ -3,17 +3,25 @@ import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
 import type { ChannelPosts } from "../core/channel-posts.ts";
+import type { DirectMessages } from "../core/direct-messages.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Home } from "../core/home.ts";
 import { createInterpolator } from "../core/interpolate.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
+import type { DoorSystem } from "../core/ports/door-system.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
+import { type Gate, notConnectedGate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
+import { ParkingActivity } from "../services/parking-activity.ts";
+import type { ParkingBookingStore } from "../services/parking-bookings.ts";
+import { ParkingNotices } from "../services/parking-notices.ts";
+import type { ParkingSpotStore } from "../services/parking-spots.ts";
+import type { ParkingWindowStore } from "../services/parking-windows.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStateApi } from "../services/space-state-api.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
@@ -25,6 +33,8 @@ import { createFishbotFeature } from "./fishbot/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
+import { createOpenrFeature, type OpenrDoor, openrGate } from "./openr/index.ts";
+import { createParkingFeature } from "./parking/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
@@ -52,6 +62,26 @@ export type FeatureDeps = {
 	/** Where scheduled posts go, once the platform adapter is ready. */
 	channelPosts: ChannelPosts;
 	schedules: ScheduleStore;
+	/** Parking spots and settings (`data/parking-spots.yaml`). */
+	parkingSpots: ParkingSpotStore;
+	/** When parking spots are open or closed (`data/parking-windows.yaml`). */
+	parkingWindows: ParkingWindowStore;
+	/** Who is parked where (`data/parking-bookings.yaml`). */
+	parkingBookings: ParkingBookingStore;
+	/**
+	 * Opens the parking gate. Defaults to the OpenR gate door when there is one, and
+	 * otherwise to a gate that never opens.
+	 */
+	gate?: Gate;
+	/** The building's doors (OpenR). Undefined when OpenR isn't configured. */
+	doorSystem: DoorSystem | undefined;
+	/** The doors `/openr open` offers, and the parking gate's door, from the config. */
+	openrDoors: readonly OpenrDoor[];
+	openrGateDoor: string | undefined;
+	/** DMs for features (parking reminders), once the platform adapter is ready. */
+	directMessages: DirectMessages;
+	/** Where every parking change is posted for admins. Undefined: off (still counted in Sentry). */
+	parkingChannelId: string | undefined;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -67,6 +97,19 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 	// One interpolator for every user-set post. Register later tokens here
 	// (space state, Home Assistant, …) — do not add an if/else in each feature.
 	const interpolator = createInterpolator({ timezone: deps.timezone });
+	const parkingNotices = new ParkingNotices({ messages: deps.directMessages, logger: deps.logger });
+	const parkingActivity = new ParkingActivity({
+		posts: deps.channelPosts,
+		channelId: deps.parkingChannelId,
+		reporter: deps.reporter,
+		logger: deps.logger,
+		timezone: deps.timezone,
+	});
+	const gate =
+		deps.gate ??
+		(deps.doorSystem && deps.openrGateDoor !== undefined
+			? openrGate({ doors: deps.doorSystem, gateDoor: deps.openrGateDoor, switches: deps.switches })
+			: notConnectedGate);
 	const closingTime = createClosingTimeFeature({
 		announcer: deps.announcer,
 		enabled: deps.closingTime.enabled,
@@ -100,11 +143,28 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			logger: deps.logger,
 			reporter: deps.reporter,
 		}),
+		createParkingFeature({
+			spots: deps.parkingSpots,
+			windows: deps.parkingWindows,
+			bookings: deps.parkingBookings,
+			gate,
+			notices: parkingNotices,
+			activity: parkingActivity,
+			timezone: deps.timezone,
+			logger: deps.logger,
+			reporter: deps.reporter,
+		}),
 		createHomeFeature({
 			home: deps.home,
 			homeDevices: deps.homeDevices,
 			reporter: deps.reporter,
 			switches: deps.switches,
+		}),
+		createOpenrFeature({
+			doors: deps.doorSystem,
+			list: deps.openrDoors,
+			switches: deps.switches,
+			reporter: deps.reporter,
 		}),
 		createAdminFeature({
 			version: deps.version,
@@ -119,6 +179,19 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			switches: deps.switches,
 			reporter: deps.reporter,
 			closingTimeFile: deps.closingTime.file,
+			parking: {
+				spots: deps.parkingSpots,
+				windows: deps.parkingWindows,
+				bookings: deps.parkingBookings,
+				notices: parkingNotices,
+				activity: parkingActivity,
+				timezone: deps.timezone,
+			},
+			openr: {
+				system: deps.doorSystem,
+				doors: deps.openrDoors,
+				gateDoor: deps.openrGateDoor,
+			},
 		}),
 	];
 }

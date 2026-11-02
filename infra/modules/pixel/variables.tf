@@ -123,6 +123,17 @@ variable "discord_closing_time_channel_id" {
   }
 }
 
+variable "discord_parking_channel_id" {
+  type        = string
+  default     = null
+  description = "Optional. DISCORD_PARKING_CHANNEL_ID: where every parking change is posted for admins. Null: off."
+
+  validation {
+    condition     = var.discord_parking_channel_id == null || can(regex("^\\d{17,20}$", var.discord_parking_channel_id))
+    error_message = "discord_parking_channel_id must be a Discord ID or unset."
+  }
+}
+
 variable "discord_role_member" {
   type        = string
   default     = null
@@ -176,6 +187,34 @@ variable "spacestate_api_url" {
   validation {
     condition     = var.spacestate_api_url == null || can(regex("^https?://", var.spacestate_api_url))
     error_message = "spacestate_api_url must be an http(s) URL or unset."
+  }
+}
+
+variable "openr_building_id" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_BUILDING_ID: the OpenR building whose doors Pixel opens. Not a secret. The account is Key Vault secrets (openr-email, openr-password). Set it to turn OpenR on; then set openr_doors, openr_gate_door or both."
+
+  validation {
+    condition     = var.openr_building_id == null || can(regex("^\\d{1,10}$", var.openr_building_id))
+    error_message = "openr_building_id must be an OpenR ID (digits) or unset."
+  }
+}
+
+variable "openr_doors" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_DOORS: the doors /openr open offers, as Name=ID pairs separated by commas (Entrance=103, Living room=203). Never the parking gate."
+}
+
+variable "openr_gate_door" {
+  type        = string
+  default     = null
+  description = "Optional. OPENR_GATE_DOOR: the OpenR ID of the parking gate, which only /park opens."
+
+  validation {
+    condition     = var.openr_gate_door == null || can(regex("^\\d{1,10}$", var.openr_gate_door))
+    error_message = "openr_gate_door must be an OpenR ID (digits) or unset."
   }
 }
 

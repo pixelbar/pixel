@@ -20,6 +20,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Access lists](#access-lists)
 - [Moderation](#moderation)
 - [Home Assistant](#home-assistant) (setup and threat model: [`home-assistant.md`](home-assistant.md))
+- [OpenR doors and the gate](#openr-doors-and-the-gate)
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
@@ -104,7 +105,7 @@ docker run -d --name pixel \
   -p 8080:8080 pixel:local
 ```
 
-Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` is not safe to delete** (it is the scheduled posts). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
+Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` and the three `data/parking-*.yaml` files are not safe to delete** (the scheduled posts, and the parking spots, today's opening times and who is parked). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
@@ -268,6 +269,33 @@ After a deploy that adds `/schedule`, run **`just register dev`** or **`just reg
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 
+## Parking
+
+Members with the `parking` capability get a spot at the gate with `/park for:` (`/admin capabilities grant user: capability:parking`), see who's parked with `/parking list`, and free their spot with `/parking leave`. Admins manage the spots and when they're open with `/admin parking`. After deploying a version that adds these commands, run `just register dev` or `just register prod`. With [OpenR](#openr-doors-and-the-gate) set up and `OPENR_GATE_DOOR` set, `/park` opens the gate; without it, or while Pixel is logged out of OpenR or `/admin doors` is off, `/park` says to open it the usual way.
+
+| I want to… | Do this |
+| --- | --- |
+| Add our own spot | `/admin parking add-spot name:ours permanent:True description:…`. A permanent spot is open every day until the reset |
+| Add a borrowed spot | `/admin parking add-spot name:neighbour-1 description:…`. It's closed until it's opened |
+| Open borrowed spots for today | `/admin parking open spots:neighbour-1 neighbour-2 until:17:00`. `from` defaults to now and `until` to the reset. Running it again for a spot replaces that day's opening. `from:tomorrow 8` sets tomorrow's the evening before |
+| Close a spot | `/admin parking close spots:neighbour-1` ends a borrowed spot's opening for today. `/admin parking close spots:ours until:14:00` closes our own spot for a while (default: until the reset); `/admin parking open spots:ours` opens it again |
+| See what's open | `/admin parking status` |
+| Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
+| Free a spot someone left without `/parking leave` | `/admin parking free spot:` |
+| Watch parking | Set `DISCORD_PARKING_CHANNEL_ID` to a private admin channel (local `.env`; on Azure, `discord_parking_channel_id` in that env's `terraform.tfvars`, then apply). Pixel posts every booking, leave, extension, ending, taken-spot report and admin change there. The bot needs View Channel and Send Messages. `parking.channel_failed` in the logs means a post didn't go through |
+| See how much parking is used | Sentry, Explore → Metrics: `pixel.parking`, split by `event` (and `spot`). Counted whether or not the channel is set |
+| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin parking status` shows "reported taken"). If you find who parked there, `/admin parking assign user: spot:` gives them that spot (and lifts the closure). Pixel won't take it from someone still booked into it: they should run `/parking taken` to get a new spot, or you can end their booking with `evict:True`. Otherwise, once it's clear, `/admin parking open spots:` opens it again. If nothing else was free, Pixel asked the reporter to leave and ended their booking |
+| Close or remove a spot someone's parked in | Pixel refuses and says who's there until when. Add `evict:True` to end their booking |
+| Stop someone parking | Revoke their `parking` capability. A booking they already hold stays until they leave, an admin frees it, or the reset |
+
+- **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): every booking ends there, and openings and closures end there at the latest and are pruned from the file once they end. If Pixel was down at the reset, it ends those bookings when it starts. Moving the reset earlier shortens what's already set to match.
+- **Reminders:** Pixel DMs people `remindMinutes` (15) before their end, and ends a booking `graceMinutes` (5) after it if they haven't left or extended (`/admin parking settings` changes both). People need DMs from server members on. `parking.dm_failed` in the logs says who didn't get one and why (DMs closed, left the server); it never stops a booking ending. A reminder is never sent twice, even across a restart; one missed while Pixel was down isn't sent late once the booking has ended.
+- **Who's parked** is in `data/parking-bookings.yaml`. A booking is deleted when it ends. Look for `parking.booked`, `parking.left`, `parking.reset`, `parking.freed` and `parking.evicted` in the logs. `parking.gate_failed` means the gate didn't open (its `reason` is `not-connected`, `off` or `failed`; `openr.open_failed` just before it has OpenR's side): the person keeps their spot and can run `/park` again.
+- **If `parking-bookings.yaml` is invalid,** no one can park and `/parking list` and `/admin parking status` say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
+- **The files:** `data/parking-spots.yaml` (the spots and settings), `data/parking-windows.yaml` (opening times) and `data/parking-bookings.yaml` (who's parked). Back up the spots file with the access files. None is safe to delete: deleting the spots file deletes the spots, deleting the windows file closes every borrowed spot until someone opens it again, and deleting the bookings file frees spots that have cars in them.
+- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
+
 ## Closing-time
 
 Members can post a closing-time reminder with `/closing-time`, and Pixel posts the same message automatically after a confirmed space-closed announcement. Both paths no-op if posting is off.
@@ -303,6 +331,44 @@ Pixel can toot announcements to a configured Mastodon account. It is **outbound 
 
 The token is a secret. Never put an instance URL or handle in the code; never put the token in a chat, an issue or a log.
 
+## OpenR doors and the gate
+
+Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/park`) through OpenR, logged in as **one OpenR account of its own**. OpenR only sees that account; Pixel decides who may open what. Why: [ADR 0022](adr/0022-openr-doors.md). How it works: [`architecture.md`](architecture.md), "OpenR".
+
+**Turn it on:**
+
+1. Get an OpenR account for Pixel that can open the doors you want (and only those, if OpenR lets you choose). Its mailbox gets the login codes, so only admins should read it.
+2. Put `OPENR_EMAIL` and `OPENR_PASSWORD` in `.env.<env>` and `just secrets-push <env>` (Key Vault secrets `openr-email` and `openr-password`). Locally, put them in `.env`.
+3. Set the building and doors: `openr_building_id`, `openr_doors` (`Entrance=103, Living room=203`: the names people pick, and OpenR's door IDs) and `openr_gate_door` in that env's `terraform.tfvars`, then apply (locally: `OPENR_BUILDING_ID`, `OPENR_DOORS`, `OPENR_GATE_DOOR`). To find the IDs, put the account in the env file and run `just openr-doors <env>`: it logs in (asking for the code OpenR emails), lists the buildings and doors the account can see with their IDs, marks the ones it can open, prints a suggested `OPENR_BUILDING_ID` and `OPENR_DOORS`, and logs out again. It's read-only and leaves Pixel's own session alone. (The IDs are also in the OpenR dashboard's address bar, `/buildings/<building>/doors/<door>`.) Never list the gate in `openr_doors`: only `/park` opens it, and startup refuses it. On **dev**, think twice before setting real doors: dev would open the real building.
+4. Restart Pixel, and run `just register dev` (or `prod`) so Discord shows `/openr`.
+5. Log in: `/admin openr login`. OpenR emails a code to Pixel's account; pass it on with `/admin openr code code:` within 10 minutes. `/admin openr status` should say logged in.
+6. Grant the capability to the members who may open doors: `/admin capabilities grant user: capability:openr`. Being an admin is not enough. The gate needs only `parking`, and a booking.
+
+| I want to… | Do this |
+| --- | --- |
+| See whether Pixel can open doors | `/admin openr status`: logged in, when the session ends, whether refreshing is failing, and each door's and the gate's live status from OpenR (online or offline, and its errors). `/admin status` shows the session only |
+| Keep the session going | Nothing day to day: Pixel refreshes it every ~15 minutes. But OpenR ends it about **6 months after the login** whatever Pixel does; `/admin openr status` warns two weeks before. Log in again then |
+| Log Pixel in again | `/admin openr login`, then `/admin openr code code:` with the emailed code. A new login replaces the old session only once the code is accepted |
+| Stop every door and the gate now | `/admin doors off`. It also stops Home Assistant's doors. `/admin doors on` to undo |
+| Stop Pixel opening anything through OpenR at all | `/admin openr logout`: Pixel forgets the session and tells OpenR. Nothing opens until someone logs in again |
+| Stop one person | Revoke their `openr` capability (and `parking` for the gate) |
+| Add, rename or remove a door | Change `openr_doors` (or `OPENR_DOORS`) and apply, then restart. No re-registering: doors are autocompleted |
+
+- **When the session ends:** OpenR can end it (a refused refresh, a password change, an expiry). Pixel then can't open anything until an admin logs in again: Sentry gets an `openr` error saying so, the logs say `openr.session_ended`, and `/admin status` shows it. `/park` still books spots and says to open the gate the usual way.
+- **A door shows offline or errors** on `/admin openr status`: that's OpenR's own view of the door (its reader or controller), not Pixel's. Check it in the OpenR dashboard. `openr.status_failed` in the logs means the status couldn't be read at all.
+- **If OpenR is down:** opening fails at once (`openr.open_failed` with the HTTP status or `timeout`). Pixel keeps the session and keeps refreshing; `openr.refresh_failed` repeats in the logs and Sentry gets the first one. Nothing is retried or opened late.
+- **If OpenR starts refusing everything** after working before, OpenR may have changed its dashboard. Pixel copies the dashboard's version header (`APP_VERSION` in `src/adapters/openr/client.ts`); compare it with the version the dashboard sends (browser dev tools, any request's `yy-app-version`) and update it.
+- **Logs:** `openr.door_opened` / `openr.door_failed` / `openr.door_denied` (who, which door, why), `parking.gate_opened` / `parking.gate_failed`, and `openr.login_started`, `openr.login_completed`, `openr.logged_out` with the admin. Never the email, password, code or cookies.
+- **The session file** `data/openr-session.json` holds the session's cookies: anyone who has it can open the doors until the session ends. It's owner-only on a normal filesystem (on Azure, whoever can read the share can read it) and never mirrored by `just pull`; don't copy it anywhere. Deleting it logs Pixel out at the next restart. If it's unreadable, Pixel starts logged out (`openr.session_unreadable`) and the next login replaces it.
+
+### If a door or the gate opened when it shouldn't have
+
+1. **Stop it now:** `/admin doors off`. If you don't trust Pixel at all, also `/admin openr logout`, or change the OpenR account's password in the OpenR dashboard (that ends every session, including Pixel's, without depending on Pixel).
+2. **Find who Pixel opened it for:** search the logs for `openr.door_opened` and `parking.gate_opened`, and act on the Discord ID, never the name (see [Moderation](#moderation)). OpenR's own logs show only Pixel's account.
+3. **If that Discord account looks taken over:** ban or time it out, `/admin level set` to guest, and revoke `openr` and `parking`.
+4. **If the OpenR account or the session file may have leaked:** change the account's password in OpenR, then put the new one in `OPENR_PASSWORD` ([Secrets](#secrets)), restart and log in again.
+5. Tell the board what you stopped and which ID you found.
+
 ## Space state
 
 Members with the `spacestate` capability can set the space open or closed with `/spacestate set state:open|close`. Pixel POSTs to the space's state API with the user and token, and expects `SUCCESS` back.
@@ -334,6 +400,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | `HOME_ASSISTANT_TOKEN` | A long-lived token in HA; Key Vault `home-assistant-token` | It may have leaked, or the Pixel user changes |
 | `MASTODON_ACCESS_TOKEN` | Instance Development app (`write:statuses`); Key Vault `mastodon-access-token` when hosted | It may have leaked, the app is rotated, or you move instance |
 | `SPACESTATE_USER`, `SPACESTATE_TOKEN` | Whoever runs the space state API; Key Vault `spacestate-user` and `spacestate-token` when hosted | They may have leaked, or the API's credentials change |
+| `OPENR_EMAIL`, `OPENR_PASSWORD` | Pixel's own OpenR account; Key Vault `openr-email` and `openr-password` when hosted | The password may have leaked, someone who read the account's mail leaves, or the account changes |
 | `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
@@ -364,6 +431,12 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. Get the new user and token from whoever runs the API.
 2. Put them in the secret store as `SPACESTATE_USER` and `SPACESTATE_TOKEN`, and restart Pixel.
 3. Run `/spacestate set` with the state the space is already in. If Sentry shows `spacestate` with HTTP 401 or 403, the credentials are wrong.
+
+**Rotate the OpenR password:**
+
+1. In the OpenR dashboard, as Pixel's account, change the password. That ends Pixel's session (Sentry says so at the next refresh).
+2. Put the new one in the secret store as `OPENR_PASSWORD`, and restart Pixel.
+3. `/admin openr login`, then `/admin openr code` with the emailed code. `/admin openr status` should say logged in.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 
@@ -650,6 +723,8 @@ Under GDPR, someone can ask what Pixel holds about them, or ask for it to be del
 | `members.yaml` (and `members.yaml.bak`) | ID, tier, any note, capabilities | Until removed |
 | `admins.yaml` (host file, and Azure Key Vault) | Admin Discord IDs | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
+| `data/parking-windows.yaml` | ID and name of the admin who set each opening or closure | Until it ends (the daily reset at the latest) |
+| `data/parking-bookings.yaml` | ID and name of who is parked, which spot, since and until when | Until the booking ends (the daily reset at the latest) |
 | Azure Files backups of those files | The same files | 14 days |
 | Pixel's log file and console | ID, display name, handle, and what they did (commands, outcomes) | About 14 days (rotating file) |
 | Azure Log Analytics (`pixel-dev-logs`) | The same log lines, from the container | 30 days (`log_retention_days` in Terraform; Azure's floor) |
@@ -661,7 +736,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 **Access request ("what do you have on me?"):**
 
 1. `/admin level get user:<person>` for their tier, note and capabilities, or read their entry in `members.yaml`.
-2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules.
+2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules, and `data/parking-bookings.yaml` (`by.ref`) and `data/parking-windows.yaml` (`setBy.ref`) for a booking or opening times they set.
 3. Search the logs by their ID (see [Moderation](#moderation)): the rotating file, Sentry **Logs**, and Azure Log Analytics when Pixel is in the cloud.
 4. In Sentry, search Issues, Logs and User Feedback for their ID.
 5. Send them a copy of what you found, and no one else's data.
@@ -670,7 +745,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart).
+3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.
@@ -678,7 +753,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 ## Disaster recovery
 
-**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts). Not needed: the rest of `data/` (state and logs, safe to delete), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
+**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts) and `data/parking-spots.yaml` (the parking spots and settings). Not needed: the rest of `data/` (state and logs, safe to delete; don't back up `openr-session.json`, which is a door credential: after a restore an admin logs in to OpenR again), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
 
 **Rebuild from scratch (today):**
 

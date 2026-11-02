@@ -133,7 +133,7 @@ Messages and polls that Pixel posts in a channel, once or on a repeat. These nee
 
 <PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
 
-<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00 or tomorrow 9am.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
+<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00, tomorrow 9am, now or now+1h.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
 
 Schedules a message. A form opens for the text. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
@@ -178,6 +178,50 @@ Starts a paused schedule again. Nothing missed while paused is posted. A one-off
 <PxCommand :level="4" sig="/schedule delete schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
 
 Deletes a schedule.
+
+</PxCommand>
+
+### Parking
+
+Getting a parking spot at the gate. These need the `parking` capability. Every reply is private, and every booking ends at 23:59.
+
+<PxCommand :level="4" sig="/park for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How long, such as 30m, 2h, 2h30 or rest of day.' }">
+
+Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixel DMs you 15 minutes before your time is up (with `/parking extend` if the spot has more time), and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking list" tier="member" reply="private" :caps="['parking']">
+
+Which spots are open, who's in each, since when and until about when, and how long each spot stays open.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking extend for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How much longer, such as 30m, 1h or rest of day.' }">
+
+Stays longer in your spot, as long as it's open that long and it's before 23:59. It adds to your end (or to now, if that's passed), and Pixel reminds you again before the new end. If the spot doesn't have that much time, Pixel says how much it has.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking taken [confirm:]" tier="member" reply="private" :caps="['parking']" :options="{ '[confirm:]': 'Move to the spot Pixel offers. Without it, Pixel only shows you the spot.' }">
+
+Someone else is in your spot. If another spot is free for the rest of your time, Pixel shows it, and `confirm:True` moves you there. If nothing else is free, Pixel ends your booking, asks you to leave and reports it to the board. Either way, your spot is closed until the end of the day and the admins are told.
+
+</PxCommand>
+
+<PxCommand :level="4" sig="/parking leave" tier="member" reply="private" :caps="['parking']">
+
+Frees your spot.
+
+</PxCommand>
+
+### Doors
+
+The building's doors, through OpenR. This needs the `openr` capability. The parking gate isn't here: `/park` opens it.
+
+<PxCommand :level="4" sig="/openr open door:" tier="member" reply="private" autocomplete :caps="['openr']" :options="{ 'door:': 'Which door.' }">
+
+Opens one of the building's doors. Pixel asks once: if it doesn't open, try again in a moment. Refused while admins have switched door control off.
 
 </PxCommand>
 
@@ -287,12 +331,90 @@ Sets the closing-time reminder. A form opens for the text.
 
 <PxCommand sig="/admin doors off" tier="admin" reply="private">
 
-Switches door control from Pixel off for everyone, at once.
+Switches door control from Pixel off for everyone, at once: Home Assistant's doors, OpenR's doors and the parking gate.
 
 </PxCommand>
 
 <PxCommand sig="/admin doors on" tier="admin" reply="private">
 
 Switches door control from Pixel back on.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr status" tier="admin" reply="private">
+
+Whether Pixel is logged in to OpenR, when its session ends, and each door's live status: online or offline, and any errors OpenR reports.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr login" tier="admin" reply="private">
+
+Logs Pixel in to OpenR with its own account. OpenR then emails a code to that account.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr code code:" tier="admin" reply="private" :options="{ 'code:': 'The code from OpenR\'s email.' }">
+
+Finishes the login with the emailed code. Pixel then keeps the session going by itself.
+
+</PxCommand>
+
+<PxCommand sig="/admin openr logout" tier="admin" reply="private">
+
+Logs Pixel out of OpenR, so it can't open any door until someone logs in again.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking status" tier="admin" reply="private">
+
+The parking spots, whether each is open now and later today, who's parked in them, and the parking settings.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking open spots: [from:] [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked where this cuts in. Without it, the change is refused.' }">
+
+Opens borrowed spots for a while, replacing any opening they have that day. For a permanent spot, lifts its closure. Nothing runs past the reset.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking close spots: [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked there. Without it, the change is refused.' }">
+
+Closes spots: a borrowed spot until it's opened again, a permanent one for a while.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking assign user: spot: [for:] [evict:]" tier="admin" reply="private" :options="{ 'user:': 'Who is parked there.', 'spot:': 'The spot they are in.', '[for:]': 'How long, such as 2h or rest of day. Default: until the spot closes.', '[evict:]': 'End the booking of whoever still holds the spot. Without it, Pixel refuses while someone holds it.' }">
+
+Gives someone the spot they're parked in, for when someone parked in the wrong spot. Any booking they had elsewhere ends and a "reported taken" closure on the spot is lifted. Pixel doesn't move whoever was booked into it: they get a new spot themselves with `/parking taken`. If they still hold it, Pixel refuses unless `evict:True` ends their booking. Everyone affected gets a DM.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
+
+Ends the booking in a spot, for someone who left without `/parking leave`. Pixel DMs them that an admin ended it.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Lowercase words joined by -, such as neighbour-1.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
+
+Adds a parking spot. A borrowed spot is closed until it's opened.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:] [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.', '[evict:]': 'End the booking of anyone parked there if this cuts in.' }">
+
+Changes a spot. Changing whether it's permanent drops the openings or closures that no longer apply.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking remove-spot spot: [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[evict:]': 'End the booking of anyone parked there. Without it, a booked spot isn\'t removed.' }">
+
+Removes a spot and its opening times.
+
+</PxCommand>
+
+<PxCommand sig="/admin parking settings [remind:] [grace:] [reset:] [durations:]" tier="admin" reply="private" :options="{ '[remind:]': 'Minutes before someone\'s end to remind them (0–120).', '[grace:]': 'Minutes after it to end their booking (0–60).', '[reset:]': 'When every booking ends each day, such as 23:59.', '[durations:]': 'The durations offered, separated by commas, such as 30m, 1h, 2h30, rest of day.' }">
+
+Shows the parking settings, or changes them.
 
 </PxCommand>

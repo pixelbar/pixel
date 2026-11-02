@@ -74,5 +74,8 @@ export function createSentryReporter(): ErrorReporter {
 			Sentry.setContext(source, data);
 			Sentry.getActiveSpan()?.setAttributes(flatAttributes(source, data));
 		},
+		count(name, attributes) {
+			Sentry.metrics.count(name, 1, attributes ? { attributes } : undefined);
+		},
 	};
 }
