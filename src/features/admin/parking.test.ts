@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Args, SuggestContext } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { silentLogger } from "../../core/logger.ts";
@@ -31,8 +31,16 @@ function setup(
 	const spots = options.spots ?? new ParkingSpotStore({ logger: silentLogger });
 	const windows = options.windows ?? new ParkingWindowStore({ logger: silentLogger });
 	const bookings = options.bookings ?? new ParkingBookingStore({ logger: silentLogger });
+	const notices = { send: vi.fn(async () => {}) };
 	let now = NOW;
-	const group = createParkingSubgroup({ spots, windows, bookings, timezone: ZONE, now: () => now });
+	const group = createParkingSubgroup({
+		spots,
+		windows,
+		bookings,
+		notices,
+		timezone: ZONE,
+		now: () => now,
+	});
 	const sub = (name: string) => {
 		const found = group.subcommands.find((s) => s.name === name);
 		if (!found) throw new Error(`no ${name}`);
@@ -50,6 +58,7 @@ function setup(
 		spots,
 		windows,
 		bookings,
+		notices,
 		group,
 		sub,
 		run,
@@ -509,6 +518,11 @@ describe("/admin parking and bookings", () => {
 			"Ended Alice \\*A\\*'s booking: **ours** is free again.",
 		);
 		expect(t.bookings.all()).toEqual([]);
+		expect(t.notices.send).toHaveBeenCalledWith(
+			expect.objectContaining({ spot: "ours", by: alice }),
+			"admin",
+			"An admin ended your parking in **ours**.",
+		);
 		expect(await t.run("free", { spot: "ours" })).toBe("Nobody is parked in **ours**.");
 	});
 
@@ -549,6 +563,11 @@ describe("/admin parking and bookings", () => {
 			book(t, spot, utc("12:00"));
 			expect(await t.run(name, args)).toContain(`Ended Alice \\*A\\*'s booking in **${spot}**.`);
 			expect(t.bookings.all()).toEqual([]);
+			expect(t.notices.send).toHaveBeenCalledWith(
+				expect.objectContaining({ spot }),
+				"admin",
+				`An admin ended your parking in **${spot}**.`,
+			);
 		}
 	});
 

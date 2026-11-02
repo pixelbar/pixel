@@ -5,6 +5,7 @@ import { Calendar } from "../core/calendar.ts";
 import { CapabilityRegistry } from "../core/capabilities.ts";
 import { ChannelPosts } from "../core/channel-posts.ts";
 import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
+import { DirectMessages } from "../core/direct-messages.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
 import { formatDuration } from "../core/format.ts";
@@ -79,6 +80,7 @@ const deps = () => ({
 	parkingWindows: inMemoryParking().windows,
 	parkingBookings: inMemoryParking().bookings,
 	gate: notConnectedGate,
+	directMessages: new DirectMessages(),
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
