@@ -90,9 +90,13 @@ function setup(options: { check?: ChannelCheck } = {}) {
 	const posted: ChannelPost[] = [];
 	const clock = { now: NOW };
 	const poster = {
-		check: vi.fn(async (): Promise<ChannelCheck> => options.check ?? { ok: true, name: "general" }),
+		check: vi.fn(
+			async (_id: string, _post: ChannelPost): Promise<ChannelCheck> =>
+				options.check ?? { ok: true, name: "general" },
+		),
 		post: vi.fn(async (_id: string, post: ChannelPost) => {
 			posted.push(post);
+			return { url: `https://discord.com/channels/1/2/${posted.length}` };
 		}),
 	};
 	posts.use(poster);
@@ -694,6 +698,161 @@ describe("making a poll", () => {
 	});
 });
 
+describe("poll reminders", () => {
+	const remindersOf = async (ctx: ReturnType<typeof setup>, reply: Reply) =>
+		formOf(await ctx.click(reply, "Reminders"));
+	const remind = (
+		ctx: ReturnType<typeof setup>,
+		form: Form,
+		fields: Record<string, string>,
+		ch?: ResolvedChannel,
+	) =>
+		ctx.act(
+			form.submit.action,
+			{
+				...(form.submit.args as Record<string, string>),
+				...fields,
+				...(ch ? { "remind-in": ch.id } : {}),
+			},
+			ch ? { channels: { "remind-in": ch } } : {},
+		);
+
+	it("are off to begin with, and only offered on a poll", async () => {
+		const ctx = setup();
+		const poll = replyOf(await ctx.draftPoll());
+		expect(labels(poll)).toContain("Reminders: off");
+		expect(said(poll.embeds?.[0])).toContain("Reminders: None");
+		expect(labels(replyOf(await ctx.draftMessage()))).not.toContain("Reminders: off");
+		const message = replyOf(await ctx.draftMessage());
+		const draft = button(message, "Rename")?.call.args?.draft as string;
+		expect(await ctx.act(ACTIONS.reminders, { draft })).toEqual({
+			kind: "refused",
+			reply: { text: "Reminders only work for polls.", private: true },
+		});
+	});
+
+	it("are set on a form, shown on the draft, and saved with the poll", async () => {
+		const ctx = setup();
+		const form = await remindersOf(ctx, replyOf(await ctx.draftPoll()));
+		expect(form.title).toBe("Reminders");
+		expect(form.fields.map((f) => [f.kind, f.name, f.required])).toEqual([
+			["text", "remind-at", false],
+			["channel", "remind-in", false],
+		]);
+		const set = replyOf(
+			await remind(ctx, form, { "remind-at": "6pm" }, channel({}, OTHER_CHANNEL)),
+		);
+		expect(labels(set)).toContain("Reminders: daily at 18:00");
+		expect(said(set.embeds?.[0])).toContain(
+			`Reminders: Every day at 18:00 (${AMS}) in #general, while the poll is open`,
+		);
+		const reopened = await remindersOf(ctx, set);
+		expect(reopened.fields).toEqual([
+			expect.objectContaining({ name: "remind-at", value: "6pm" }),
+			expect.objectContaining({ name: "remind-in", value: OTHER_CHANNEL }),
+		]);
+		const saved = replyOf(await ctx.click(set, "Schedule"));
+		expect(ctx.store.all()[0]?.reminder).toEqual({
+			channelId: OTHER_CHANNEL,
+			channelName: "general",
+			at: "18:00",
+		});
+		expect(said(saved.embeds?.[0])).toContain("Reminders: Every day at 18:00");
+		expect(ctx.info).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.created", reminderChannelId: OTHER_CHANNEL }),
+			"scheduled a post",
+		);
+	});
+
+	it.each<[string, Record<string, string>, ResolvedChannel | undefined, string]>([
+		[
+			"a time it can't read",
+			{ "remind-at": "teatime" },
+			channel(),
+			"couldn't understand the reminder time",
+		],
+		["no channel", { "remind-at": "18:00" }, undefined, SCHEDULE_MESSAGES.noReminderChannel],
+		[
+			"a channel the person can't post in",
+			{ "remind-at": "18:00" },
+			channel({ canPost: false }),
+			SCHEDULE_MESSAGES.cantRemind,
+		],
+	])("explain %s on the draft", async (_, fields, ch, problem) => {
+		const ctx = setup();
+		const form = await remindersOf(ctx, replyOf(await ctx.draftPoll()));
+		const reply = replyOf(await remind(ctx, form, fields, ch));
+		expect(said(reply.embeds?.[0])).toContain(problem);
+		expect(said(reply.embeds?.[0])).toContain("Reminders: Not set up yet");
+		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		if (fields["remind-at"] === "teatime")
+			expect(labels(reply)).toContain("Reminders: daily at teatime");
+	});
+
+	it("say why Pixel itself can't post a reminder there", async () => {
+		const ctx = setup();
+		const form = await remindersOf(ctx, replyOf(await ctx.draftPoll()));
+		ctx.poster.check.mockImplementation(
+			async (id: string): Promise<ChannelCheck> =>
+				id === OTHER_CHANNEL
+					? { ok: false, problem: "it can't see the channel" }
+					: { ok: true, name: "general" },
+		);
+		const reply = replyOf(
+			await remind(ctx, form, { "remind-at": "18:00" }, channel({}, OTHER_CHANNEL)),
+		);
+		expect(said(reply.embeds?.[0])).toContain(
+			"I can't send reminders there: it can't see the channel.",
+		);
+	});
+
+	it("keep an unchanged reminder on an edit, and are turned off by clearing the time", async () => {
+		const ctx = setup();
+		const { id } = add(ctx.store, {
+			post: {
+				kind: "poll",
+				question: "Q?",
+				answers: ["a", "b"],
+				durationHours: 24,
+				multiple: false,
+			},
+			reminder: { channelId: OTHER_CHANNEL, channelName: "events", at: "18:00" },
+		});
+		expect(said(replyOf(await ctx.panel(id)).embeds?.[0])).toContain(
+			"Reminders: Every day at 18:00 (Europe/Amsterdam) in #events, while the poll is open",
+		);
+		const form = formOf(await ctx.click(replyOf(await ctx.panel(id)), "Edit"));
+		const draft = replyOf(
+			await ctx.submit(form, {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				question: "New?",
+				answers: "a\nb",
+			}),
+		);
+		expect(labels(draft)).toContain("Reminders: daily at 18:00");
+		// Unchanged, so the person isn't checked again; Pixel still is.
+		await ctx.click(draft, "Save changes");
+		expect(ctx.store.get(id)?.reminder).toEqual({
+			channelId: OTHER_CHANNEL,
+			channelName: "general",
+			at: "18:00",
+		});
+		const again = replyOf(
+			await ctx.submit(formOf(await ctx.click(replyOf(await ctx.panel(id)), "Edit")), {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				question: "New?",
+				answers: "a\nb",
+			}),
+		);
+		const off = replyOf(await remind(ctx, await remindersOf(ctx, again), {}));
+		expect(labels(off)).toContain("Reminders: off");
+		await ctx.click(off, "Save changes");
+		expect(ctx.store.get(id)?.reminder).toBeUndefined();
+	});
+});
+
 describe("a schedule's panel", () => {
 	it("shows the owner what it will post next, with Edit, Pause and Delete", async () => {
 		const { panel, store } = setup();
@@ -1096,7 +1255,7 @@ describe("the background runner", () => {
 	it("checks straight away and every 30 seconds, and stops when told", async () => {
 		const store = new ScheduleStore({ logger: silentLogger });
 		const posts = new ChannelPosts();
-		const post = vi.fn(async () => {});
+		const post = vi.fn(async () => ({ url: "https://discord.com/channels/1/2/3" }));
 		posts.use({ check: async () => ({ ok: true, name: "g" }), post });
 		add(store, { start: "2026-10-14T19:01" });
 		const feature = createSchedulesFeature({

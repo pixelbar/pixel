@@ -67,7 +67,8 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 		async post(channelId, post) {
 			const opened = await open(channelId, post);
 			if (!opened.ok) throw new Error(`Can't post a scheduled post: ${opened.problem}`);
-			await opened.channel.send(toDiscordMessage(post));
+			const sent = await opened.channel.send(toDiscordMessage(post));
+			return { url: sent.url };
 		},
 	};
 }

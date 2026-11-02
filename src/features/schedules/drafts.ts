@@ -35,6 +35,14 @@ export type Draft = {
 	multiple: boolean;
 	/** Unset means the start of the text. */
 	name?: string;
+	/**
+	 * For a poll: a reminder every day while it's open. `at` is as typed. The channel's
+	 * `caller` is set when it was picked on the form; an unchanged one from an edit has none.
+	 */
+	reminder?: {
+		at: string;
+		channel?: { id: string; name: string; caller?: ResolvedChannel["caller"] };
+	};
 };
 
 /** How long a draft lasts without being touched. */

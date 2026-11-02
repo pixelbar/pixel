@@ -31,12 +31,19 @@ import type {
 	ControlRow,
 	Form,
 } from "../../core/ui.ts";
-import { describeWhen, formatTimeOfDay, parseDays, parseWhen } from "../../core/when.ts";
+import {
+	describeWhen,
+	formatTimeOfDay,
+	parseDays,
+	parseTimeOfDay,
+	parseWhen,
+} from "../../core/when.ts";
 import {
 	MAX_MESSAGE_LENGTH,
 	MAX_POLL_ANSWER,
 	MAX_POLL_ANSWERS,
 	MAX_POLL_QUESTION,
+	type PollReminder,
 	type Schedule,
 	type ScheduleStore,
 } from "../../services/schedules.ts";
@@ -89,6 +96,8 @@ export const ACTIONS = {
 	days: "schedule.days",
 	duration: "schedule.duration",
 	toggle: "schedule.toggle",
+	reminders: "schedule.reminders",
+	reminded: "schedule.reminded",
 	rename: "schedule.rename",
 	renamed: "schedule.renamed",
 	save: "schedule.save",
@@ -116,6 +125,11 @@ export const SCHEDULE_MESSAGES = {
 	scheduleGone: "That schedule doesn't exist any more.",
 	notYours: "Only the person who made a schedule can change it.",
 	cantResume: "Its time has passed while it was paused, so it can't be resumed. Delete it instead.",
+	badReminderTime: (zone: string) =>
+		`I couldn't understand the reminder time. Type a time of day in ${zone}, for example \`18:00\` or \`6pm\`, in Reminders.`,
+	noReminderChannel: "Pick a channel to remind people in, in Reminders.",
+	cantRemind:
+		"You can only send reminders to channels where you can post yourself. Pick another one in Reminders.",
 } as const;
 
 export type SchedulesDeps = {
@@ -137,6 +151,7 @@ type Ready = {
 	post: ChannelPost;
 	channel: { id: string; name: string };
 	name: string;
+	reminder?: PollReminder;
 	/** Whether the time or repeat changed, for an edit. */
 	retimed: boolean;
 };
@@ -245,7 +260,30 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		checkFilledLength(post, timing, zone, now(), deps.interpolator);
 		const channel = await checkChannel(draft.channel, post);
 		const name = draft.name ?? cleanName(post.kind === "message" ? post.text : post.question);
-		return { ...timing, post, channel, name };
+		const reminder = post.kind === "poll" ? await checkReminder(draft) : undefined;
+		return { ...timing, post, channel, name, ...(reminder ? { reminder } : {}) };
+	}
+
+	/**
+	 * The poll's reminder, if it has one. A channel picked on the form must be one the
+	 * person can post in; Pixel must be able to post the reminder there either way.
+	 */
+	async function checkReminder(draft: Draft): Promise<PollReminder | undefined> {
+		if (!draft.reminder) return undefined;
+		const time = parseTimeOfDay(draft.reminder.at);
+		if (!time) throw new UserFacingError(SCHEDULE_MESSAGES.badReminderTime(zone));
+		const channel = draft.reminder.channel;
+		if (!channel) throw new UserFacingError(SCHEDULE_MESSAGES.noReminderChannel);
+		if (channel.caller && !channel.caller.canPost) {
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantRemind);
+		}
+		const check = await deps.posts.check(channel.id, {
+			kind: "message",
+			text: ".",
+			mentions: false,
+		});
+		if (!check.ok) throw new UserFacingError(`I can't send reminders there: ${check.problem}.`);
+		return { channelId: channel.id, channelName: check.name, at: formatTimeOfDay(time) };
 	}
 
 	// ── Whose is what ────────────────────────────────────────────────────
@@ -407,6 +445,9 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				{ name: "Channel", value: `#${escapeMarkdown(schedule.channelName)}`, inline: true },
 				{ name: "Repeats", value: capitalise(repeatLabel(schedule)), inline: true },
 				{ name: "What", value: describeWhat(schedule.post) },
+				...(schedule.reminder
+					? [{ name: "Reminders", value: describeReminder(schedule.reminder, zone) }]
+					: []),
 				...(times.length > 0
 					? [
 							{
@@ -498,6 +539,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			fields: [
 				{ name: "Name", value: escapeMarkdown(name), inline: true },
 				{ name: "What", value: describeWhat(postSettings(draft)), inline: true },
+				...(draft.kind === "poll"
+					? [
+							{
+								name: "Reminders",
+								value: ready?.reminder
+									? describeReminder(ready.reminder, zone)
+									: draft.reminder
+										? "Not set up yet: see above"
+										: "None",
+							},
+						]
+					: []),
 			],
 			accent: ready ? "brand" : "warning",
 		};
@@ -541,6 +594,13 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					draft: draft.id,
 					setting: "multiple",
 				}),
+				button(
+					draft.reminder
+						? `Reminders: daily at ${reminderClock(draft.reminder.at)}`
+						: "Reminders: off",
+					ACTIONS.reminders,
+					{ draft: draft.id },
+				),
 			]);
 		} else if (draft.mentions || draft.channel?.caller.canMentionEveryone) {
 			// Only offered where the person could ping everyone themselves, or to turn it off.
@@ -654,6 +714,35 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		};
 	}
 
+	function remindersForm(draft: Draft): Form {
+		const channel = draft.reminder?.channel;
+		return {
+			title: "Reminders",
+			submit: call(ACTIONS.reminded, { draft: draft.id }),
+			fields: [
+				{
+					kind: "text",
+					name: "remind-at",
+					label: "Remind every day at",
+					description: `A time of day in ${zone}, while the poll is open. Empty for no reminders.`,
+					style: "short",
+					maxLength: 20,
+					placeholder: "18:00",
+					required: false,
+					...(draft.reminder ? { value: draft.reminder.at } : {}),
+				},
+				{
+					kind: "channel",
+					name: "remind-in",
+					label: "Remind people in",
+					description: "Where to post the reminder. You need to be able to post there yourself.",
+					required: false,
+					...(channel ? { value: channel.id } : {}),
+				},
+			],
+		};
+	}
+
 	function renameForm(draft: Draft): Form {
 		return {
 			title: "Rename",
@@ -698,7 +787,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			if (error instanceof UserFacingError) return draftPanel(draft);
 			throw error;
 		}
-		const { start, recurrence, post, channel, name, retimed } = ready;
+		const { start, recurrence, post, channel, name, retimed, reminder } = ready;
 		if (draft.editing === undefined) {
 			const schedule = deps.store.add({
 				name,
@@ -711,6 +800,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				createdBy: { ref: actorRef(ctx.principal), name: ctx.principal.displayName },
 				createdAt: now().toISOString(),
 				lastRunAt: null,
+				...(reminder ? { reminder } : {}),
 			});
 			drafts.remove(draft.id);
 			ctx.logger.info(
@@ -720,6 +810,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					channelId: channel.id,
 					kind: post.kind,
 					recurrence: recurrence.kind,
+					reminderChannelId: reminder?.channelId,
 				},
 				"scheduled a post",
 			);
@@ -734,6 +825,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			channelName: channel.name,
 			start: formatLocal(start),
 			recurrence,
+			reminder,
 			// New timing counts from now, like resume: nothing it "missed" before the edit goes out.
 			...(retimed ? { lastRunAt: fromNow(schedule, now()) } : {}),
 		});
@@ -847,6 +939,14 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				durationHours: schedule.post.kind === "poll" ? schedule.post.durationHours : 24,
 				multiple: schedule.post.kind === "poll" && schedule.post.multiple,
 				name: schedule.name,
+				...(schedule.reminder
+					? {
+							reminder: {
+								at: schedule.reminder.at,
+								channel: { id: schedule.reminder.channelId, name: schedule.reminder.channelName },
+							},
+						}
+					: {}),
 			});
 			const form = detailsForm(draft);
 			// The channel picker opens on the schedule's channel.
@@ -930,6 +1030,34 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 						? { mentions: !draft.mentions }
 						: { multiple: !draft.multiple };
 				return { reply: await draftPanel(drafts.update(draft, change)) };
+			},
+		),
+		onDraft(ACTIONS.reminders, [], (_, draft) => {
+			if (draft.kind !== "poll") throw new UserFacingError("Reminders only work for polls.");
+			return { form: remindersForm(draft) };
+		}),
+		onDraft(
+			ACTIONS.reminded,
+			[
+				{ name: "remind-at", description: "When", type: "string" },
+				{ name: "remind-in", description: "Where", type: "channel" },
+			],
+			async (ctx, draft) => {
+				const at = typeof ctx.args["remind-at"] === "string" ? ctx.args["remind-at"].trim() : "";
+				const picked = ctx.channels["remind-in"];
+				const updated = drafts.update(draft, {
+					// No time means no reminders.
+					reminder:
+						at === ""
+							? undefined
+							: {
+									at,
+									...(picked
+										? { channel: { id: picked.id, name: picked.name, caller: picked.caller } }
+										: {}),
+								},
+				});
+				return { reply: await draftPanel(updated) };
 			},
 		),
 		onDraft(ACTIONS.rename, [], (_, draft) => ({ form: renameForm(draft) })),
@@ -1117,6 +1245,17 @@ function upcoming(schedule: Schedule, zone: string, now: Date, count: number): D
 		after = next;
 	}
 	return out;
+}
+
+/** A reminder time as Pixel reads it ("18:00"), or as typed if it can't. */
+function reminderClock(typed: string): string {
+	const time = parseTimeOfDay(typed);
+	return time ? formatTimeOfDay(time) : typed;
+}
+
+/** "Every day at 18:00 (Europe/Amsterdam) in #general, while the poll is open" */
+function describeReminder(reminder: PollReminder, zone: string): string {
+	return `Every day at ${reminder.at} (${zone}) in #${escapeMarkdown(reminder.channelName)}, while the poll is open`;
 }
 
 function durationLabel(hours: number): string {
