@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- The website's light mode has a new logo: the original glowing logo printed on paper, with vivid orbits and a white-hot star, in the nav bar and the landing page's animation. It replaces the flat pixel-art version.
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
