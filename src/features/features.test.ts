@@ -13,6 +13,7 @@ import { silentLogger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import { nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { nullFeedbackSink } from "../core/ports/feedback.ts";
+import { notConnectedGate } from "../core/ports/gate.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
 import { HomeDeviceStore } from "../services/home-devices.ts";
@@ -76,6 +77,8 @@ const deps = () => ({
 	schedules: new ScheduleStore({ logger: silentLogger }),
 	parkingSpots: inMemoryParking().spots,
 	parkingWindows: inMemoryParking().windows,
+	parkingBookings: inMemoryParking().bookings,
+	gate: notConnectedGate,
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
@@ -111,6 +114,8 @@ describe("buildFeatures", () => {
 			"ha",
 			"help",
 			"info",
+			"park",
+			"parking",
 			"ping",
 			"schedule",
 			"status",

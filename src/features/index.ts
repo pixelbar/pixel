@@ -10,10 +10,12 @@ import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
+import type { Gate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
+import type { ParkingBookingStore } from "../services/parking-bookings.ts";
 import type { ParkingSpotStore } from "../services/parking-spots.ts";
 import type { ParkingWindowStore } from "../services/parking-windows.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
@@ -27,6 +29,7 @@ import { createFishbotFeature } from "./fishbot/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
+import { createParkingFeature } from "./parking/index.ts";
 import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
@@ -58,6 +61,10 @@ export type FeatureDeps = {
 	parkingSpots: ParkingSpotStore;
 	/** When parking spots are open or closed (`data/parking-windows.yaml`). */
 	parkingWindows: ParkingWindowStore;
+	/** Who is parked where (`data/parking-bookings.yaml`). */
+	parkingBookings: ParkingBookingStore;
+	/** Opens the parking gate; never opens anything until its API is connected. */
+	gate: Gate;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -106,6 +113,15 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			logger: deps.logger,
 			reporter: deps.reporter,
 		}),
+		createParkingFeature({
+			spots: deps.parkingSpots,
+			windows: deps.parkingWindows,
+			bookings: deps.parkingBookings,
+			gate: deps.gate,
+			timezone: deps.timezone,
+			logger: deps.logger,
+			reporter: deps.reporter,
+		}),
 		createHomeFeature({
 			home: deps.home,
 			homeDevices: deps.homeDevices,
@@ -128,6 +144,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			parking: {
 				spots: deps.parkingSpots,
 				windows: deps.parkingWindows,
+				bookings: deps.parkingBookings,
 				timezone: deps.timezone,
 			},
 		}),

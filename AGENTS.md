@@ -69,7 +69,7 @@ src/
   adapters/mastodon/    # outbound publisher only (toots); HTTP client stays here
   observability/        # logger, Sentry helpers, secret scrubbing, health
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
-data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml, parking-spots.yaml and parking-windows.yaml
+data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml and parking-*.yaml
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
 scripts/                # envs (the one definition of dev/prod), register-commands, validate-config, changelog check/bump
 docs/                   # architecture, identity, infra, Home Assistant setup, ADRs, runbook;

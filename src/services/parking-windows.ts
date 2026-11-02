@@ -113,12 +113,8 @@ export class ParkingWindowStore {
 	 * Never throws: if the result can't be saved it still holds until a restart.
 	 */
 	reconcile(spots: readonly ParkingSpot[], now: Date): number {
-		const kind = new Map(spots.map((s) => [s.name, s.permanent]));
 		const current = this.entries(now);
-		const next = {
-			windows: current.windows.filter((w) => kind.get(w.spot) === false),
-			blocks: current.blocks.filter((b) => kind.get(b.spot) === true),
-		};
+		const next = fitEntries(current, spots);
 		const dropped =
 			current.windows.length + current.blocks.length - next.windows.length - next.blocks.length;
 		if (dropped === 0) return 0;
@@ -207,6 +203,18 @@ export function clipToReset(
 	const windows = clip(entries.windows);
 	const blocks = clip(entries.blocks);
 	return { entries: { windows, blocks }, changed };
+}
+
+/**
+ * The entries that still apply to `spots`: windows only for borrowed spots that exist,
+ * closures only for permanent ones.
+ */
+export function fitEntries(entries: ParkingEntries, spots: readonly ParkingSpot[]): ParkingEntries {
+	const kind = new Map(spots.map((s) => [s.name, s.permanent]));
+	return {
+		windows: entries.windows.filter((w) => kind.get(w.spot) === false),
+		blocks: entries.blocks.filter((b) => kind.get(b.spot) === true),
+	};
 }
 
 function prune(entries: ParkingEntries, now: Date): ParkingEntries {
