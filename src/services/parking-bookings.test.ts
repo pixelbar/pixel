@@ -99,6 +99,50 @@ describe("ParkingBookingStore", () => {
 		expect(() => store.move(id, () => "neighbour-1")).toThrow(/already taken/);
 	});
 
+	it("assigns a spot, replacing the person's own booking, and refuses someone else's", () => {
+		const store = open();
+		store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		const first = store.claim(bob, NOW, () => ({ spot: "neighbour-1", until: LATER }));
+		const { booking, replaced } = store.assign(
+			bob,
+			"neighbour-2",
+			LATER,
+			new Date("2026-10-24T12:00:00Z"),
+		);
+		expect(replaced?.spot).toBe("neighbour-1");
+		expect(booking).toMatchObject({ spot: "neighbour-2", since: LATER, remindedAt: null });
+		expect(booking.id).toBe(first.kind === "booked" ? first.booking.id : "");
+		expect(
+			open()
+				.all()
+				.map((b) => b.spot),
+		).toEqual(["ours", "neighbour-2"]);
+		expect(() => store.assign(bob, "ours", NOW, LATER)).toThrow(/already taken/);
+		const carol = { ref: "discord:100000000000000009", name: "Carol" };
+		expect(store.assign(carol, "neighbour-1", NOW, LATER).replaced).toBeUndefined();
+	});
+
+	it("evicts whoever holds the spot in the same save, when told to", () => {
+		const store = open();
+		store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		const result = store.assign(bob, "ours", NOW, LATER, { evict: true });
+		expect(result.evicted?.by).toEqual(alice);
+		expect(
+			open()
+				.all()
+				.map((b) => [b.by.name, b.spot]),
+		).toEqual([["Bob", "ours"]]);
+	});
+
+	it("changes nothing when an assignment can't be saved", () => {
+		const store = open();
+		store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));
+		// The temp file it writes through is a directory, so the save fails.
+		mkdirSync(`${file}.tmp`);
+		expect(() => store.assign(bob, "ours", NOW, LATER, { evict: true })).toThrow(/Couldn't save/);
+		expect(store.all().map((b) => b.by.name)).toEqual(["Alice"]);
+	});
+
 	it("reads a reminder back", () => {
 		const store = open();
 		const claim = store.claim(alice, NOW, () => ({ spot: "ours", until: LATER }));

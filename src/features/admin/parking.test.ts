@@ -92,6 +92,7 @@ describe("/admin parking", () => {
 			["status", "admin", true],
 			["open", "admin", true],
 			["close", "admin", true],
+			["assign", "admin", true],
 			["free", "admin", true],
 			["add-spot", "admin", true],
 			["edit-spot", "admin", true],
@@ -684,6 +685,208 @@ describe("/admin parking activity", () => {
 			NOW,
 		);
 		expect(await t.run("status")).toContain("closed until 23:59 (reported taken)");
+	});
+});
+
+describe("/admin parking assign", () => {
+	const BOB = { id: "100000000000000005", displayName: "Bob", isBot: false };
+	const alice = { ref: "discord:100000000000000002", name: "Alice" };
+	const bobRef = `discord:${BOB.id}`;
+	const assign = async (t: ReturnType<typeof setup>, args: Args, user = BOB) => {
+		const reply = await t.sub("assign").handler(
+			context({
+				principal: principal("admin", { userId: IDS.admin }),
+				args: { user: user.id, ...args },
+				users: { user },
+			}),
+		);
+		expect(reply.private).toBe(true);
+		return reply.text ?? "";
+	};
+	const takenClosure = (t: ReturnType<typeof setup>, spot: string) =>
+		t.windows.replace(
+			{
+				windows: t.entries().windows,
+				blocks: [{ spot, from: NOW, until: RESET, setBy: alice, reason: "taken" }],
+			},
+			NOW,
+		);
+	const sentKinds = (t: ReturnType<typeof setup>) =>
+		(t.notices.send.mock.calls as unknown as [{ spot: string }, string, string][]).map(
+			([b, kind, text]) => [b.spot, kind, text],
+		);
+	const recorded = (t: ReturnType<typeof setup>) =>
+		(t.activity.record.mock.calls as unknown as [Record<string, unknown>][]).map(([e]) => e);
+
+	it("gives the person found in a spot reported taken that spot, and lifts the closure", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		// Alice reported ours taken and was moved to neighbour-1.
+		t.bookings.claim(alice, NOW, () => ({ spot: "neighbour-1", until: utc("10:00") }));
+		takenClosure(t, "ours");
+		expect(await assign(t, { spot: "ours" })).toBe(
+			"Gave **ours** to Bob, until 23:59.\n**ours** is no longer closed as taken.",
+		);
+		expect(t.bookings.all().find((b) => b.by.ref === bobRef)).toMatchObject({
+			spot: "ours",
+			since: NOW,
+			until: RESET,
+			remindedAt: null,
+		});
+		expect(t.bookings.all().find((b) => b.by.ref === alice.ref)?.spot).toBe("neighbour-1");
+		expect(t.entries().blocks).toEqual([]);
+		expect(sentKinds(t)).toEqual([
+			[
+				"ours",
+				"assigned",
+				"An admin gave you **ours**, until 23:59. Run `/parking leave` when you go.",
+			],
+		]);
+		expect(recorded(t).at(-1)).toEqual({
+			kind: "assigned",
+			spot: "ours",
+			who: "Bob",
+			admin: "Test User",
+			until: RESET,
+		});
+	});
+
+	it("never moves whoever still holds the spot: they use /parking taken, or an admin evicts", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: utc("10:00") }));
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(
+			"Alice is still booked into **ours**, until about 12:00. They get a new spot with `/parking taken`; or add `evict:True` to end their booking.",
+		);
+		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Alice", "ours"]]);
+
+		expect(await assign(t, { spot: "ours", evict: true })).toBe(
+			"Gave **ours** to Bob, until 23:59.\nEnded Alice's booking.",
+		);
+		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Bob", "ours"]]);
+		expect(sentKinds(t)).toContainEqual([
+			"ours",
+			"admin",
+			"An admin ended your parking in **ours**.",
+		]);
+		expect(recorded(t)).toContainEqual({
+			kind: "evicted",
+			spot: "ours",
+			who: "Alice",
+			admin: "Test User",
+		});
+	});
+
+	it("ends the person's own booking elsewhere", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		t.bookings.claim({ ref: bobRef, name: "Bob" }, NOW, () => ({
+			spot: "neighbour-1",
+			until: utc("10:00"),
+		}));
+		expect(await assign(t, { spot: "ours", for: "1h" })).toBe(
+			"Gave **ours** to Bob, until 11:00.\nTheir booking in **neighbour-1** has ended.",
+		);
+		expect(t.bookings.all().map((b) => [b.by.name, b.spot, b.until])).toEqual([
+			["Bob", "ours", utc("09:00")],
+		]);
+	});
+
+	it("updates the end when they already hold that spot", async () => {
+		const t = withSpots();
+		t.bookings.claim({ ref: bobRef, name: "Bob" }, NOW, () => ({
+			spot: "ours",
+			until: utc("09:00"),
+		}));
+		expect(await assign(t, { spot: "ours", for: "rest of day" })).toBe(
+			"Gave **ours** to Bob, until 23:59.",
+		);
+		expect(t.bookings.all()).toHaveLength(1);
+	});
+
+	it("refuses a closed spot, a time past its close, and a duration it can't read", async () => {
+		const t = withSpots();
+		await expect(assign(t, { spot: "neighbour-1" })).rejects.toThrow(
+			"**neighbour-1** is closed right now. Open it first with `/admin parking open`.",
+		);
+		await t.run("close", { spots: "ours", until: "17:00" });
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/is closed right now/);
+		await t.run("open", { spots: "neighbour-1", until: "17:00" });
+		await expect(assign(t, { spot: "neighbour-1", for: "rest of day" })).rejects.toThrow(
+			"**neighbour-1** is only open until 17:00. Leave out `for` to give it until then.",
+		);
+		await expect(assign(t, { spot: "neighbour-1", for: "ages" })).rejects.toThrow(
+			/couldn't understand how long/,
+		);
+		expect(t.bookings.all()).toEqual([]);
+	});
+
+	it("needs a person, and suggests the durations", async () => {
+		const t = withSpots();
+		await t.fails("assign", { spot: "ours" }).toThrow("Pick who is parked there.");
+		const option = t.sub("assign").options?.find((o) => o.name === "for");
+		if (!option || !("suggest" in option) || !option.suggest) throw new Error("no suggest");
+		expect(await option.suggest({ typed: "rest" } as SuggestContext)).toEqual([
+			{ name: "rest of day", value: "rest of day" },
+		]);
+	});
+
+	it("puts the closure back, and changes no booking, when the booking can't be saved", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1" });
+		t.bookings.claim({ ref: bobRef, name: "Bob" }, NOW, () => ({
+			spot: "neighbour-1",
+			until: utc("10:00"),
+		}));
+		takenClosure(t, "ours");
+		const before = t.entries();
+		Object.assign(t.bookings, {
+			assign: () => {
+				throw new UserFacingError("Couldn't save the parking bookings, so nothing was changed.");
+			},
+		});
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/Couldn't save/);
+		expect(t.entries()).toEqual(before);
+		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Bob", "neighbour-1"]]);
+		expect(t.notices.send).not.toHaveBeenCalled();
+		expect(recorded(t).map((e) => e.kind)).not.toContain("assigned");
+	});
+
+	it("still fails cleanly when the closure can't be put back either", async () => {
+		const t = withSpots();
+		takenClosure(t, "ours");
+		const replace = t.windows.replace.bind(t.windows);
+		let calls = 0;
+		Object.assign(t.windows, {
+			replace: (...args: Parameters<typeof replace>) => {
+				calls++;
+				if (calls > 1) throw new Error("disk full");
+				replace(...args);
+			},
+		});
+		Object.assign(t.bookings, {
+			assign: () => {
+				throw new Error("disk full");
+			},
+		});
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow("disk full");
+	});
+
+	it("refuses before changing anything when the bookings file is invalid", async () => {
+		const bookings = Object.assign(new ParkingBookingStore({ logger: silentLogger }), {
+			problem: "bad",
+		});
+		const t = setup({ bookings });
+		t.spots.add({ name: "ours", permanent: true });
+		takenClosure(t, "ours");
+		const before = t.entries();
+		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/bookings file is invalid/);
+		expect(t.entries()).toEqual(before);
+	});
+
+	it("is off while the spots file is invalid", async () => {
+		const spots = Object.assign(new ParkingSpotStore({ logger: silentLogger }), { problem: "x" });
+		await expect(assign(setup({ spots }), { spot: "ours" })).rejects.toThrow(/parking is off/);
 	});
 });
 

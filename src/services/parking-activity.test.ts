@@ -66,6 +66,11 @@ const EVENTS: [ParkingActivityEvent, string, Record<string, string>][] = [
 		{ event: "evicted", spot: "ours" },
 	],
 	[
+		{ kind: "assigned", spot: "ours", who: "Bob", admin: "Admin", until: NOON },
+		"**Admin** gave **ours** to **Bob**, until about 12:00.",
+		{ event: "assigned", spot: "ours" },
+	],
+	[
 		{ kind: "admin", action: "opened", admin: "", text: "opened parking: **neighbour-1** open." },
 		"**Someone** opened parking: **neighbour-1** open.",
 		{ event: "admin", action: "opened" },

@@ -144,6 +144,41 @@ export class ParkingBookingStore {
 		return next;
 	}
 
+	/**
+	 * Gives someone a spot, for an admin who found them parked there: a new booking
+	 * from `now` until `until`, replacing any booking they held (here or elsewhere).
+	 * The spot must not be held by anyone else, unless `evict` ends their booking too.
+	 * All of it is one save, so nothing changes if it fails. Returns the booking, the one
+	 * it replaced, and the one it evicted, if any.
+	 */
+	assign(
+		by: ParkingBooking["by"],
+		spot: string,
+		now: Date,
+		until: Date,
+		options: { evict?: boolean } = {},
+	): {
+		booking: ParkingBooking;
+		replaced: ParkingBooking | undefined;
+		evicted: ParkingBooking | undefined;
+	} {
+		this.#writable();
+		const found = this.bySpot(spot);
+		const holder = found && found.by.ref !== by.ref ? found : undefined;
+		if (holder && !options.evict) throw new Error(`spot ${spot} is already taken`);
+		const replaced = this.byPerson(by.ref);
+		const booking: ParkingBooking = {
+			id: replaced?.id ?? this.#newId(),
+			spot,
+			by,
+			since: now,
+			until,
+			remindedAt: null,
+		};
+		this.#save([...this.#bookings.filter((b) => b.by.ref !== by.ref && b !== holder), booking]);
+		return { booking, replaced, evicted: holder };
+	}
+
 	/** Ends every booking that `ends` says to, and returns them. */
 	end(ends: (booking: ParkingBooking) => boolean): ParkingBooking[] {
 		this.#writable();

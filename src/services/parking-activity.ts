@@ -29,6 +29,8 @@ export type ParkingActivityEvent =
 	| { kind: "taken"; spot: string; who: Name; closedUntil: Date }
 	/** An admin ended someone's booking: `free`, or a change that cut into it (`evicted`). */
 	| { kind: "freed" | "evicted"; spot: string; who: Name; admin: Name }
+	/** An admin gave someone a spot (they were found parked there). */
+	| { kind: "assigned"; spot: string; who: Name; admin: Name; until: Date }
 	/**
 	 * An admin changed the spots, their opening times or the settings. `text` is what
 	 * they did, written by Pixel from validated names and times ("opened neighbour-1
@@ -79,6 +81,8 @@ export function activityText(event: ParkingActivityEvent, now: Date, zone: strin
 			return `${who(event.admin)} ended ${who(event.who)}'s booking in ${spot(event.spot)}.`;
 		case "evicted":
 			return `${who(event.admin)} changed ${spot(event.spot)}, which ended ${who(event.who)}'s booking there.`;
+		case "assigned":
+			return `${who(event.admin)} gave ${spot(event.spot)} to ${who(event.who)}, until about ${at(event.until)}.`;
 		case "admin":
 			return `${who(event.admin)} ${event.text}`;
 	}
