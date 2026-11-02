@@ -273,7 +273,7 @@ After a deploy that adds `/schedule`, run **`just register dev`** or **`just reg
 
 ## Parking
 
-Members with the `parking` capability get a spot at the gate with `/park for:` (`/admin capabilities grant user: capability:parking`), see who's parked with `/parking list`, and free their spot with `/parking leave`. Admins manage the spots and when they're open with `/admin parking`. After deploying a version that adds these commands, run `just register dev` or `just register prod`. With [OpenR](#openr-doors-and-the-gate) set up and `OPENR_GATE_DOOR` set, `/park` opens the gate; without it, or while Pixel is logged out of OpenR or `/admin doors` is off, `/park` says to open it the usual way.
+Members with the `parking` capability use `/park` (`/admin capabilities grant user: capability:parking`): a private panel that shows who's parked where, gets them a spot and opens the gate, and has Leave, Stay longer and Someone's in my spot once they're parked. `/park for:` books straight away. Admins manage the spots and when they're open with `/admin parking`. After deploying a version that adds these commands, run `just register dev` or `just register prod`. With [OpenR](#openr-doors-and-the-gate) set up and `OPENR_GATE_DOOR` set, `/park` opens the gate; without it, or while Pixel is logged out of OpenR or `/admin doors` is off, `/park` says to open it the usual way.
 
 | I want to… | Do this |
 | --- | --- |
