@@ -184,6 +184,10 @@ export default defineConfig({
 						{ text: "0020 · Two-way role sync", link: "/maintainers/adr/0020-two-way-role-sync" },
 						{ text: "0021 · Parking files", link: "/maintainers/adr/0021-parking-files" },
 						{ text: "0022 · OpenR doors", link: "/maintainers/adr/0022-openr-doors" },
+						{
+							text: "0023 · Components and actions",
+							link: "/maintainers/adr/0023-components-and-actions",
+						},
 					],
 				},
 			],

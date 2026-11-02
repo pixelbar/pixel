@@ -9,6 +9,7 @@ import type {
 } from "../../core/dispatcher.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { IDS } from "../../testing/fixtures.ts";
+import { CONTROL_PREFIX, HeldControls } from "./controls.ts";
 import {
 	createAutocompleteHandler,
 	createCommandHandler,
@@ -78,6 +79,34 @@ describe("pickFormFields", () => {
 });
 
 describe("createCommandHandler", () => {
+	it("draws a reply's controls, held for the person who ran the command", async () => {
+		const controls = new HeldControls();
+		const dispatcher = fakeDispatcher({
+			reply: {
+				text: "Pick",
+				controls: [[{ kind: "button", label: "Go", call: { action: "feat.go" } }]],
+			},
+			private: true,
+		});
+		const handler = createCommandHandler({
+			guildId: GUILD,
+			dispatcher,
+			deferAfterMs: 1500,
+			controls,
+		});
+		const i = fakeInteraction();
+		await handler(i);
+		const payload = vi.mocked(i.reply).mock.calls[0] as unknown as [
+			{ components: { components: { custom_id: string }[] }[] },
+		];
+		const id = payload[0].components[0]?.components[0]?.custom_id as string;
+		expect(id.startsWith(CONTROL_PREFIX)).toBe(true);
+		expect(controls.control(id, IDS.member)).toMatchObject({
+			control: { call: { action: "feat.go" } },
+		});
+		expect(controls.control(id, IDS.friend)).toBe("not-yours");
+	});
+
 	it.each([
 		["another guild", OTHER_GUILD],
 		["outside any guild (DM)", null],

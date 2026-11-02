@@ -45,6 +45,7 @@ Architecture decision records, newest last.
 | [0020](./adr/0020-two-way-role-sync) | Discord's member and friend roles are synced back into `members.yaml`, only through the access store. |
 | [0021](./adr/0021-parking-files) | Parking spots, opening times and bookings are three files in `PIXEL_DATA_DIR`, one per rate of change. |
 | [0022](./adr/0022-openr-doors) | OpenR doors and the parking gate: one Pixel account, logged in by an admin and kept alive by Pixel. |
+| [0023](./adr/0023-components-and-actions) | Buttons, select menus and forms run registered actions through the dispatcher. |
 
 ## Working on the site
 

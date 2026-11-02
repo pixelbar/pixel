@@ -6,7 +6,9 @@ How to use Discord's buttons, select menus, modals and layout components in Pixe
 
 ## Where Pixel is today
 
-Pixel uses one kind of component so far: the modal that slash commands with `form` fields open ([`forms.ts`](../src/adapters/discord/forms.ts), [`handlers.ts`](../src/adapters/discord/handlers.ts)). That modal still uses an Action Row around each Text Input, which Discord now marks as deprecated. Buttons and select menus on messages, and a core type to describe them, don't exist yet. The first pull request that adds them builds the plumbing in [the proposed design](#proposed-design) and writes an ADR for it. Later pull requests move commands over one at a time.
+Features can put buttons and select menus on a reply, and open forms with text, radio groups, checkboxes and channel pickers. Every one of them runs a registered action through the dispatcher ([ADR 0023](adr/0023-components-and-actions.md), and [how Pixel does it](#how-pixel-does-it) below). Commands move over one at a time.
+
+The older forms for slash command `form` fields ([`forms.ts`](../src/adapters/discord/forms.ts)) still put an Action Row around each Text Input, which Discord now marks as deprecated. Move them to Labels when that code is next changed.
 
 Sources: Discord's [components overview](https://docs.discord.com/developers/components/overview), [component reference](https://docs.discord.com/developers/components/reference), [using message components](https://docs.discord.com/developers/components/using-message-components), [using modal components](https://docs.discord.com/developers/components/using-modal-components) and [receiving and responding](https://docs.discord.com/developers/interactions/receiving-and-responding). The limits below were checked against those pages in November 2026, with discord.js 14.27, which has a builder for every component listed here. If Discord's page and this one disagree, Discord's page is right: fix this one.
 
@@ -149,7 +151,7 @@ V2 rules that catch people out:
 - **4000 characters of text and 40 components across the whole message.** The renderer must check the limits and truncate, as `render.ts` does for embeds.
 - **Mentions still follow `allowed_mentions`.** Always send `allowedMentions: { parse: [] }`.
 
-**Pixel's choice:** new interactive replies (panels, lists with actions, confirmations) use V2. A core `Reply` maps onto it simply: `text` becomes a Text Display, and each embed becomes a Container with the embed's accent colour, its title and description as Text Displays, and its fields as Text Displays (or Sections when a field has a button). Keep the existing embed replies and announcements as they are until a command is moved on purpose. Don't mix V2 and legacy in the steps of one flow, because a message can only become V2, never go back.
+**Pixel's choice, for now: legacy.** Replies with controls are content and embeds as before, with up to 5 action rows under them ([ADR 0023](adr/0023-components-and-actions.md)). That reuses the existing renderer and its limits, and every step of a flow can be any reply, without V2's one-way switch. If a layout needs V2 later, a core `Reply` maps onto it simply: `text` becomes a Text Display, and each embed becomes a Container with the embed's accent colour, its title and description as Text Displays, and its fields as Text Displays (or Sections when a field has a button). Don't mix V2 and legacy in the steps of one flow, because a message can only become V2, never go back.
 
 ## How interactions work
 
@@ -169,7 +171,7 @@ V2 rules that catch people out:
 
 These turn the [root `AGENTS.md`](../AGENTS.md) rules into rules for components. They aren't optional, and the files that carry them need tests and a human reviewer (rule 14).
 
-1. **Every click that does something is a dispatch.** A button or select that runs an action becomes a `DispatchRequest` for a real command or subcommand and goes through `Dispatcher.dispatch`: rate limit, identity, access (tier and capability), then the handler. Never run a handler, call `DeviceControl`, call the `DoorSystem` or change the `AccessStore` straight from a component handler. A component can never reach anything its command doesn't, with the same `minTier` and `capability`.
+1. **Every click runs a registered action through the dispatcher.** A button, select or form names an action (`Feature.actions`), and using it goes through `Dispatcher.act`: rate limit, identity, the action's access (tier, capability, context), its declared options, then the handler. Never run a handler, call `DeviceControl`, call the `DoorSystem` or change the `AccessStore` straight from a component handler. Give an action the same `minTier` and `capability` as the command it belongs to, never a looser one.
 2. **The clicker is the actor.** Build the actor from `interaction.user` with `discordActor()`, by ID. Never use the person who ran the original command, whoever is named in the message, or a user ID read from the `custom_id`.
 3. **Check the guild.** Refuse components from any guild other than the configured one, as the command and modal handlers do (`WRONG_GUILD_MESSAGE`).
 4. **The `custom_id` is public and untrusted.** Anyone who can see the message can read it, and a modified client can send any string. Never put secrets, tokens, codes or personal data in it, including names and other people's IDs on a public message. Parse it with an exact regular expression, and refuse anything that doesn't match, has expired or belongs to someone else.
@@ -179,7 +181,7 @@ These turn the [root `AGENTS.md`](../AGENTS.md) rules into rules for components.
 8. **One click, one action.** Physical actions (doors, the gate, Home Assistant) are never retried or queued. Remove or disable the buttons in the same response, and let the existing one-at-a-time locks refuse a second click. Check the `KindSwitch` before acting, as the commands do.
 9. **Text stays safe.** User-authored text is interpolated, then `escapeMarkdown`'d, before it goes in a Text Display, a label or an option, as it would in a reply. Mentions are always disabled.
 10. **Log the action, not the input.** Log the command path, the actor (`actorLogFields()`) and the outcome. Don't log a `custom_id`'s arguments, select values or anything typed in a modal, unless an ADR says so.
-11. **Discord stays in the adapter.** Components are built and parsed only in `src/adapters/discord/`. Features describe actions in core terms (see [the proposed design](#proposed-design)). Mastodon and announcement kinds never depend on a component existing, so every announcement has to make sense without its buttons.
+11. **Discord stays in the adapter.** Components are built and parsed only in `src/adapters/discord/`. Features describe controls and forms in core terms (see [how Pixel does it](#how-pixel-does-it)). Mastodon and announcement kinds never depend on a component existing, so every announcement has to make sense without its buttons.
 
 ## Keeping state
 
@@ -187,57 +189,61 @@ Pixel has no database, and every deploy restarts it, so state for a component ei
 
 | | Held (in memory) | Stateless (in the `custom_id`) |
 | --- | --- | --- |
-| **How** | A random token in the `custom_id` points to the waiting `DispatchRequest`, as `PendingForms` does | The `custom_id` names the command path and short ID-like arguments |
+| **How** | A random token in the `custom_id` points to what the control runs (`controls.ts`) | The `custom_id` names the action and short ID-like arguments |
 | **Survives a restart** | No: the click gets "That's expired" | Yes |
 | **Who can click** | Only the person it was made for (checked against the stored actor) | Anyone who can see it, as themselves |
 | **Expires** | At most 15 minutes, used once where it makes sense | Never; the dispatch decides each time |
 | **Use for** | Private flows, anything with typed text, anything with more than an ID or two | Public panels, and simple actions on stable IDs |
+| **Built** | Yes | Not yet: it needs its own decision |
 
 Rules for both:
 
-- **Prefix and version.** Every Pixel `custom_id` starts with `pixel-`, then names what it is, such as `pixel-form:<token>` (today), and a version for anything stateless so an old message's format can be refused after a change. Keep it under 100 characters, checked in a test.
-- **Bounded memory.** Held state has a cap and prunes expired entries, as `PendingForms` does (`MAX_PENDING`).
-- **The click carries nothing the dispatch trusts except the choice itself.** The command, subcommand and actor come from the held request or from parsing the `custom_id`, and the dispatcher checks everything again.
+- **Prefix and version.** Every Pixel `custom_id` starts with `pixel-`, then names what it is, such as `pixel-ui:<token>:<n>` for a control and `pixel-ui-form:<token>` for a form, and a version for anything stateless so an old message's format can be refused after a change. Keep it under 100 characters, checked in a test.
+- **Bounded memory.** Held state has a cap and prunes expired entries (`HeldControls` keeps at most 500).
+- **The click carries nothing the dispatch trusts except the choice itself.** The action and its arguments come from what's held, the actor is whoever clicked, and the dispatcher checks everything again.
 
-## Proposed design
+## How Pixel does it
 
-This is the proposal for the first pull request that adds message components. It belongs in an ADR, written with that PR. Change this section when the ADR decides otherwise.
+[ADR 0023](adr/0023-components-and-actions.md) has the reasons. In short:
 
-**Core describes actions, the adapter draws them.** A `Reply` gains optional, platform-neutral actions. Each one is a command invocation that's already filled in, so it's dispatched like any other command:
+**Features register actions and put controls on replies.** Nothing here mentions Discord:
 
 ```ts
-/** A follow-up the caller can take from a reply. Dispatched like the command it names. */
-export type ReplyAction =
-	| {
-			kind: "run";
-			label: string;
-			style?: "primary" | "secondary" | "danger";
-			/** The command it runs, with its arguments filled in. */
-			run: { command: string; subgroup?: string; subcommand?: string; args: Record<string, string> };
-			/** Replace this reply with the result, rather than sending a new one. */
-			replace?: boolean;
-	  }
-	| { kind: "link"; label: string; url: string }
-	| {
-			kind: "choose";
-			placeholder: string;
-			/** Which of `run`'s args the chosen value fills in. */
-			arg: string;
-			choices: { label: string; value: string; description?: string }[];
-			run: { command: string; subgroup?: string; subcommand?: string; args: Record<string, string> };
-	  };
+// In a feature: what the controls run. Access is required, like a command's.
+actions: [
+	{
+		name: "schedule.pause",
+		access: ACCESS,
+		options: [{ name: "id", description: "Which schedule", type: "string", required: true }],
+		handler: async (ctx) => ({ reply: panelFor(ctx.args.id, ctx.principal) }),
+	},
+],
+
+// In a reply: rows of buttons, links and selects, each naming an action and its arguments.
+return {
+	embeds: [summary],
+	private: true,
+	controls: [
+		[
+			{ kind: "button", label: "Pause", call: { action: "schedule.pause", args: { id } } },
+			{ kind: "button", label: "Delete", style: "danger", call: { action: "schedule.delete", args: { id } } },
+		],
+	],
+};
 ```
 
-- Features never mention Discord. They return `actions` the way they return `embeds`, and a platform without components shows them as text or leaves them out.
-- The Discord adapter renders actions as buttons and selects, holds each `run` under a token (or encodes it, for an approved stateless action), and handles the click by building a `DispatchRequest` with the **clicker** as actor and dispatching it. The same `respond()` path sends the result, using `update()` when `replace` is set.
-- Because an action is just a command, a feature can't create a button that does something its slash command doesn't, and there's nothing to authorise twice.
-- Modals get richer fields the same way: `FormField` grows from text to choices (radio, checkboxes, and selects for users and channels), and `formModal` draws them inside Labels.
+- An action returns `{ reply }`, which replaces the message the control was on, or `{ form }`, which opens a form. A form's `submit` names the action to run with the fields as extra arguments. A form must open within Discord's 3 seconds, so the handler that returns it should do no slow work.
+- A select's chosen value fills in its `arg`. With `max` above 1, the values are joined with spaces, so they can't contain whitespace. A form's checkbox group works the same way, and a channel field adds a `ResolvedChannel` to `ctx.channels`, like a `channel` option.
+- Refusals (no access, a `UserFacingError`) are sent as a private reply and leave the message as it was. To show a mistake inside the panel instead, catch it in the action and return a reply that explains it.
+- Limits come from `UI_LIMITS` in `core/ui.ts`: 5 rows, 5 buttons per row or one select, 25 options, 5 form fields, 2 to 10 radio options, 1 to 10 checkboxes. The adapter throws on a layout Discord would refuse, so a test catches it.
+
+**The Discord adapter draws and checks them.** `controls.ts` renders rows as legacy action rows and forms as modals with Labels, and holds what each runs (`HeldControls`). `ui-handlers.ts` takes a click or a submitted form, checks the guild, the token, the owner, and that the values match what was shown, then calls `Dispatcher.act` and answers: `update` for a reply, `showModal` for a form, a private reply for a refusal.
 
 ## Testing
 
-- Test the mapping as plain functions: core actions to the API's JSON shape, and a `custom_id` to a request. Use no live Discord and no discord.js client, as `handlers.test.ts` and `schedule-flow.test.ts` do.
+- Test a feature's actions as plain functions with a fake context, like its commands: what each returns, and which controls each reply offers to whom. The adapter's tests (`controls.test.ts`, `ui-handlers.test.ts`) already cover drawing and checking, so a feature doesn't repeat them.
 - For every component handler, test the refusals: the wrong guild, an expired token, someone else's token, a malformed `custom_id`, an unknown select value, a tier or capability that's missing at click time (not just when the message was sent), and a rate limit.
-- Test the limits: 25 options, 5 buttons per row, 5 modal components, 40 components and 4000 characters in a V2 message, and 100-character `custom_id`s.
+- Test that a feature's replies fit the limits, for example by rendering them with `renderControls` and `renderForm` in a test. A long list must page, not throw.
 - Test that what a select offers equals what the clicker could use, for each tier.
 - The coverage floors apply. Keep discord.js glue thin and put decisions in plain functions.
 
@@ -245,7 +251,7 @@ export type ReplyAction =
 
 1. Say in the PR what's confusing now and what the new flow is: the command, then each message and click.
 2. Keep the command name if you can, so people don't have to relearn it. Removing options is fine. Removing a command needs the commands registered again (`just register dev`, then the release registers prod).
-3. Put access on the command and on every command an action runs. Nothing new is public by accident.
+3. Put access on the command and on every action. Nothing new is public by accident.
 4. Update [`docs/commands.md`](commands.md) and the `CHANGELOG.md` (`Changed`).
 5. Try it on Pixel Dev with `just deploy dev`. Check it on mobile as well as desktop, since layouts and modal descriptions render differently.
 
