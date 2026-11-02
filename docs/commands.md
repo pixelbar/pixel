@@ -131,55 +131,15 @@ Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlock
 
 Messages and polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
 
-<PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
+<PxCommand :level="4" sig="/schedule" tier="member" reply="private" :caps="['schedule-posts']">
 
-<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00, tomorrow 9am, now or now+1h.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
+Opens your scheduled posts. Everything else is buttons, menus and forms in Pixel's reply, so there's nothing to remember:
 
-Schedules a message. A form opens for the text. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
+- **The list** shows every scheduled post, soonest first, with its channel, next post and repeat. Pick one from the menu to see it. **New message** and **New poll** make one.
+- **Making one:** a form asks for the channel, when (such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`), how often it repeats, and the text (or a poll's question and answers, one per line). Pixel then shows a **draft**: the time it understood, and exactly what it will post, with date tokens like <code v-pre>{{date}}</code> filled in. Choose the days for a weekly repeat, how long a poll stays open, whether it allows several answers, a poll's **Reminders** (a channel and a time of day: while the poll is open, Pixel reminds people there every day, with a link to it), and whether pings are on (only where you could ping everyone yourself). Nothing is saved until you press **Schedule**. If something's wrong, the draft says what and **Edit details** reopens the form with what you typed.
+- **One schedule** shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
 
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [remind-in:] [remind-at:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post it.', '[repeat:]': 'How often. Once if left out.', '[days:]': 'For weekly and fortnightly: which days.', '[duration:]': 'How long people can vote, from 1 hour to 2 weeks. 1 day if left out.', '[multiple:]': 'Let people pick more than one answer.', '[remind-in:]': 'A channel to remind people in every day while the poll is open.', '[remind-at:]': 'When to remind each day, such as 18:00 or 6pm.', '[name:]': 'A name to find it by later.' }">
-
-Schedules a native Discord poll. A form opens for the question and the answers, one per line (2 to 10).
-
-With `remind-in` and `remind-at`, Pixel also posts a reminder in that channel every day at that time while the poll is open, with a link to the poll and when it closes. Reminders stop when the poll closes, and start again with the next one. For example, a poll every Monday with `duration: 1 week`, `remind-in: #general` and `remind-at: 18:00` reminds #general every evening that week.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule list" tier="member" reply="private" :caps="['schedule-posts']">
-
-Every scheduled post, with where and when it goes out next.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [duration:] [remind-in:] [remind-at:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.', '[duration:]': 'For a poll: how long people can vote, from 1 hour to 2 weeks. Unchanged if left out; refused on a message.', '[remind-in:]': 'For a poll: the channel to remind people in.', '[remind-at:]': 'For a poll: when to remind each day, or off to stop the reminders.' }">
-
-Changes one of your own scheduled posts before it goes out: its content, and optionally when, how often and, for a poll, how long it stays open. A new time or repeat counts from now, so nothing it would have posted before the edit goes out late. Turning a repeat into a one-off needs a new `when`.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule preview schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Shows exactly what a scheduled post will look like.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule pause schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Stops a schedule from posting until it's resumed.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule resume schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Starts a paused schedule again. Nothing missed while paused is posted. A one-off whose time passed while it was paused can't be resumed: delete it.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule delete schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Deletes a schedule.
+The buttons stop working after 15 minutes or when Pixel restarts: run `/schedule` again.
 
 </PxCommand>
 

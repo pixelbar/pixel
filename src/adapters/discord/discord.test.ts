@@ -264,6 +264,27 @@ describe("parseOptions", () => {
 	});
 });
 
+describe("renderReply with controls", () => {
+	const reply = {
+		text: "Pick",
+		controls: [[{ kind: "button" as const, label: "Go", call: { action: "feat.go" } }]],
+	};
+	const rows = () => [{ type: 1 as const, components: [] }];
+
+	it("draws them with the renderer it's given", () => {
+		expect(renderReply(reply, true, rows).components).toEqual(rows());
+		expect(renderEdit(reply, rows).components).toEqual(rows());
+	});
+
+	it("refuses to drop them silently when there's no renderer", () => {
+		expect(() => renderReply(reply, true)).toThrow(/controls/);
+	});
+
+	it("leaves out components when there are none", () => {
+		expect(renderReply({ text: "x" }, true, rows)).not.toHaveProperty("components");
+	});
+});
+
 describe("renderReply", () => {
 	it("always disables mentions", () => {
 		expect(renderReply({ text: "@everyone hi" }, false).allowedMentions).toEqual({ parse: [] });
@@ -351,10 +372,11 @@ describe("renderEdit", () => {
 		});
 	});
 
-	it("clears embeds when the new reply is text-only", () => {
+	it("clears embeds and controls when the new reply is text-only", () => {
 		expect(renderEdit({ text: "hi" })).toEqual({
 			content: "hi",
 			embeds: [],
+			components: [],
 			allowedMentions: { parse: [] },
 		});
 	});
@@ -527,6 +549,7 @@ describe("respond", () => {
 			expect(i.editReply).toHaveBeenCalledWith({
 				content: null,
 				embeds: [expect.objectContaining({ title: "🟢 Pixelbar is open" })],
+				components: [],
 				allowedMentions: { parse: [] },
 			});
 		});

@@ -1,38 +1,42 @@
-import { type Access, actorLogFields, actorRef } from "../../core/access.ts";
+import { type Access, actorLogFields, actorRef, type Principal } from "../../core/access.ts";
 import type { ChannelPost, ChannelPosts } from "../../core/channel-posts.ts";
-import type {
-	BeforeFormContext,
-	BeforeFormResult,
-	CommandContext,
-	CommandOption,
-	SubcommandDefinition,
-	Suggestion,
-} from "../../core/command.ts";
+import type { CommandOption, ResolvedChannel } from "../../core/command.ts";
 import { formatMinutes, parseDurationMinutes } from "../../core/duration.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
-import { escapeMarkdown, inlineCode } from "../../core/format.ts";
+import { escapeMarkdown } from "../../core/format.ts";
 import { type Interpolate, interpolateChannelPost } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import {
-	describeRecurrence,
 	formatLocal,
 	type LocalDateTime,
+	listDays,
 	nextOccurrence,
 	parseLocal,
 	type Recurrence,
 	toLocal,
+	WEEKDAY_NAMES,
+	WEEKDAYS,
+	type Weekday,
 	weekdayOf,
 } from "../../core/recurrence.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
+import type {
+	ActionContext,
+	ActionDefinition,
+	ActionResult,
+	ChoiceOption,
+	Control,
+	ControlRow,
+	Form,
+} from "../../core/ui.ts";
 import {
 	describeWhen,
 	formatTimeOfDay,
 	parseDays,
 	parseTimeOfDay,
 	parseWhen,
-	suggestDays,
 } from "../../core/when.ts";
 import {
 	MAX_MESSAGE_LENGTH,
@@ -43,6 +47,7 @@ import {
 	type Schedule,
 	type ScheduleStore,
 } from "../../services/schedules.ts";
+import { type Draft, Drafts, REPEATS, type Repeat } from "./drafts.ts";
 import { checkFilledLength } from "./limits.ts";
 import { runDue } from "./runner.ts";
 
@@ -52,11 +57,8 @@ export const SCHEDULE_CAPABILITY = {
 	description: "Schedule messages and polls in channels they can post in",
 };
 
-/** Members (and admins) holding the capability. */
+/** Members (and admins) holding the capability. The command and every action share it. */
 const ACCESS: Access = { minTier: "member", capability: SCHEDULE_CAPABILITY.name };
-
-const REPEATS = ["once", "weekly", "fortnightly", "monthly", "every-2-months"] as const;
-type Repeat = (typeof REPEATS)[number];
 
 /** How long a poll can stay open, as offered. Read by `core/duration.ts`. */
 const DURATIONS = ["1 hour", "4 hours", "8 hours", "1 day", "3 days", "1 week", "2 weeks"] as const;
@@ -70,6 +72,66 @@ export function pollHours(typed: string): number | undefined {
 /** How often the runner looks for due posts. */
 export const TICK_MS = 30_000;
 
+/** Schedules on one page of the list (Discord shows 25 options in a select). */
+export const PAGE_SIZE = 25;
+
+const REPEAT_LABELS: Record<Repeat, string> = {
+	once: "Once",
+	weekly: "Weekly",
+	fortnightly: "Every 2 weeks",
+	monthly: "Monthly",
+	"every-2-months": "Every 2 months",
+};
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/** The actions behind `/schedule`'s buttons, select menus and forms. */
+export const ACTIONS = {
+	home: "schedule.home",
+	open: "schedule.open",
+	new: "schedule.new",
+	edit: "schedule.edit",
+	details: "schedule.details",
+	draft: "schedule.draft",
+	days: "schedule.days",
+	duration: "schedule.duration",
+	toggle: "schedule.toggle",
+	reminders: "schedule.reminders",
+	reminded: "schedule.reminded",
+	rename: "schedule.rename",
+	renamed: "schedule.renamed",
+	save: "schedule.save",
+	cancel: "schedule.cancel",
+	pause: "schedule.pause",
+	resume: "schedule.resume",
+	delete: "schedule.delete",
+	confirmDelete: "schedule.confirm-delete",
+} as const;
+
+export const SCHEDULE_MESSAGES = {
+	badTime: (zone: string) =>
+		`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
+	nothingLeft:
+		"That would leave it with nothing to post: a one-off needs a time that's still to come. Change **When** in Edit details.",
+	noChannel: "Pick a channel in Edit details.",
+	cantPost:
+		"You can only schedule posts in channels where you can post yourself. Pick another channel.",
+	cantPoll: "You can't create polls in that channel yourself, so I won't schedule one there.",
+	cantPing: "You can't ping everyone in that channel yourself, so turn pings off.",
+	emptyMessage: "The message can't be empty.",
+	emptyQuestion: "The question can't be empty.",
+	draftGone: "That draft has expired, so nothing was saved. Start again.",
+	saving: "That's already being saved.",
+	scheduleGone: "That schedule doesn't exist any more.",
+	notYours: "Only the person who made a schedule can change it.",
+	cantResume: "Its time has passed while it was paused, so it can't be resumed. Delete it instead.",
+	badReminderTime: (zone: string) =>
+		`I couldn't understand the reminder time. Type a time of day in ${zone}, for example \`18:00\` or \`6pm\`, in Reminders.`,
+	noReminderChannel: "Pick a channel to remind people in, in Reminders.",
+	cantRemind:
+		"You can only send reminders to channels where you can post yourself. Pick another one in Reminders.",
+} as const;
+
 export type SchedulesDeps = {
 	store: ScheduleStore;
 	posts: ChannelPosts;
@@ -82,395 +144,693 @@ export type SchedulesDeps = {
 	now?: () => Date;
 };
 
+/** A draft that's ready to save. */
+type Ready = {
+	start: LocalDateTime;
+	recurrence: Recurrence;
+	post: ChannelPost;
+	channel: { id: string; name: string };
+	name: string;
+	reminder?: PollReminder;
+	/** Whether the time or repeat changed, for an edit. */
+	retimed: boolean;
+};
+
 /**
  * `/schedule`: messages and polls posted in a channel at set times, once or on a
- * repeat. Long text goes in a form (a modal on Discord). `when` is free-form
- * text (Discord has no date picker); Pixel parses it and confirms the time.
- * People can only schedule into channels they can post in themselves, and pings
- * need their permission to ping everyone.
+ * repeat. The command opens a private panel; everything else is buttons, select
+ * menus and forms on it (see docs/discord-components.md). A new or changed post is
+ * a draft until it's saved, so the person sees exactly what will be posted first.
+ * People can only schedule into channels they can post in themselves, pings need
+ * their permission to ping everyone, and only whoever made a schedule can change it.
  */
 export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const zone = deps.timezone;
+	const drafts = new Drafts(() => now().getTime());
+	/** Drafts being saved. Checks wait on Discord, so a double click mustn't save twice. */
+	const saving = new Set<string>();
 
-	const channelOption: CommandOption = {
-		name: "channel",
-		description: "Where to post it",
-		type: "channel",
-		required: true,
-	};
-	const whenOption: CommandOption = {
-		name: "when",
-		description: `When to post (${zone}), e.g. wed 1900, 14 oct 19:00, tomorrow 9am, now+1h`,
-		type: "string",
-		required: true,
-	};
-	const repeatOption: CommandOption = {
-		name: "repeat",
-		description: "How often (default: once)",
-		type: "string",
-		choices: REPEATS,
-	};
-	const daysOption: CommandOption = {
-		name: "days",
-		description: "For weekly and fortnightly: which days, e.g. wed sat",
-		type: "string",
-		suggest: async ({ typed }) => suggestDays(typed),
-	};
-	const durationOption: CommandOption = {
-		name: "duration",
-		description: "How long people can vote (default: 1 day)",
-		type: "string",
-		choices: DURATIONS,
-	};
-	const nameOption: CommandOption = {
-		name: "name",
-		description: "A name to find it by later (default: the start of the text)",
-		type: "string",
-	};
-	const remindInOption: CommandOption = {
-		name: "remind-in",
-		description: "For a poll: a channel to remind people in every day while it's open",
-		type: "channel",
-	};
-	const remindAtOption: CommandOption = {
-		name: "remind-at",
-		description: `For a poll: when to remind each day (${zone}), e.g. 18:00`,
-		type: "string",
-	};
-	const scheduleOption: CommandOption = {
-		name: "schedule",
-		description: "Which schedule",
-		type: "string",
-		required: true,
-		suggest: async ({ typed }) => suggestSchedules(deps.store.all(), typed),
-	};
+	// ── Reading what's typed ─────────────────────────────────────────────
 
-	/** Turns the typed options into a start and a repeat, or says what's wrong. */
-	function timing(args: CommandContext["args"]): { start: LocalDateTime; recurrence: Recurrence } {
-		const start = parseWhen(String(args.when ?? ""), now(), zone);
-		if (!start) {
-			throw new UserFacingError(
-				`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
-			);
-		}
-		const repeat = (args.repeat ?? "once") as Repeat;
-		const daysText = typeof args.days === "string" ? args.days : undefined;
-		if (daysText !== undefined && repeat !== "weekly" && repeat !== "fortnightly") {
-			throw new UserFacingError("`days` only works with a weekly or fortnightly repeat.");
-		}
+	function recurrenceFor(
+		repeat: Repeat,
+		start: LocalDateTime,
+		days: readonly Weekday[] | undefined,
+	): Recurrence {
 		switch (repeat) {
 			case "weekly":
-			case "fortnightly": {
-				const days = daysText === undefined ? [weekdayOf(start)] : parseDays(daysText);
-				if (!days || days.length === 0)
-					throw new UserFacingError(
-						"I couldn't understand those days. Try something like `wed sat`.",
-					);
+			case "fortnightly":
 				return {
-					start,
-					recurrence: { kind: "weekly", everyWeeks: repeat === "weekly" ? 1 : 2, days },
+					kind: "weekly",
+					everyWeeks: repeat === "weekly" ? 1 : 2,
+					days: days && days.length > 0 ? [...days] : [weekdayOf(start)],
 				};
-			}
 			case "monthly":
-				return { start, recurrence: { kind: "monthly", everyMonths: 1 } };
+				return { kind: "monthly", everyMonths: 1 };
 			case "every-2-months":
-				return { start, recurrence: { kind: "monthly", everyMonths: 2 } };
+				return { kind: "monthly", everyMonths: 2 };
 			default:
-				return { start, recurrence: { kind: "once" } };
+				return { kind: "once" };
 		}
+	}
+
+	/** The timing a draft asks for: new, or on top of the schedule it changes. */
+	function timingOf(
+		draft: Draft,
+		schedule: Schedule | undefined,
+	): { start: LocalDateTime; recurrence: Recurrence; retimed: boolean } {
+		const whenChanged = !schedule || draft.when.trim() !== (draft.whenAsShown ?? "").trim();
+		const start = whenChanged
+			? parseWhen(draft.when, now(), zone)
+			: (parseLocal(schedule.start) as LocalDateTime);
+		if (!start) throw new UserFacingError(SCHEDULE_MESSAGES.badTime(zone));
+		const recurrence = recurrenceFor(draft.repeat, start, draft.days);
+		if (!schedule) return { start, recurrence, retimed: true };
+		const retimed =
+			formatLocal(start) !== schedule.start ||
+			JSON.stringify(recurrence) !== JSON.stringify(schedule.recurrence);
+		if (!nextRun({ ...schedule, start: formatLocal(start), recurrence }, zone, now())) {
+			throw new UserFacingError(SCHEDULE_MESSAGES.nothingLeft);
+		}
+		return { start, recurrence, retimed };
+	}
+
+	function postOf(draft: Draft): ChannelPost {
+		if (draft.kind === "message") {
+			const text = draft.text.trim();
+			if (text === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyMessage);
+			return { kind: "message", text, mentions: draft.mentions };
+		}
+		const question = draft.question.trim();
+		if (question === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyQuestion);
+		return {
+			kind: "poll",
+			question,
+			answers: parseAnswers(draft.answers),
+			durationHours: draft.durationHours,
+			multiple: draft.multiple,
+		};
 	}
 
 	/** Checks the person and Pixel may make this post in the picked channel. Returns its name. */
 	async function checkChannel(
-		ctx: Pick<CommandContext, "channels">,
+		channel: ResolvedChannel | undefined,
 		post: ChannelPost,
-		option = "channel",
 	): Promise<{ id: string; name: string }> {
-		const channel = ctx.channels[option];
-		if (!channel) throw new UserFacingError("Pick a channel.");
-		if (!channel.caller.canPost) {
-			throw new UserFacingError(
-				"You can only schedule posts in channels where you can post yourself.",
-			);
-		}
+		if (!channel) throw new UserFacingError(SCHEDULE_MESSAGES.noChannel);
+		if (!channel.caller.canPost) throw new UserFacingError(SCHEDULE_MESSAGES.cantPost);
 		if (post.kind === "poll" && !channel.caller.canCreatePolls) {
-			throw new UserFacingError(
-				"You can't create polls in that channel yourself, so I won't schedule one there.",
-			);
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantPoll);
 		}
 		if (post.kind === "message" && post.mentions && !channel.caller.canMentionEveryone) {
-			throw new UserFacingError(
-				"You can't ping everyone in that channel yourself, so `mentions` can't be on there.",
-			);
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantPing);
 		}
 		const check = await deps.posts.check(channel.id, post);
 		if (!check.ok) throw new UserFacingError(`I can't post there: ${check.problem}.`);
 		return { id: channel.id, name: check.name };
 	}
 
-	/**
-	 * The reminder from `remind-in` and `remind-at` on top of `current`: unchanged when
-	 * neither is given, none for `remind-at: off`. Checks the person and Pixel may post
-	 * in the reminder channel.
-	 */
-	async function reminderFrom(
-		ctx: Pick<CommandContext, "args" | "channels">,
-		post: ChannelPost,
-		current?: PollReminder,
-	): Promise<PollReminder | undefined> {
-		const inGiven = typeof ctx.args["remind-in"] === "string";
-		const atText =
-			typeof ctx.args["remind-at"] === "string" ? ctx.args["remind-at"].trim() : undefined;
-		if (!inGiven && atText === undefined) return current;
-		if (post.kind !== "poll") throw new UserFacingError("Reminders only work for polls.");
-		if (atText?.toLowerCase() === "off") {
-			if (inGiven) throw new UserFacingError("Leave out `remind-in` to turn reminders off.");
-			return undefined;
-		}
-		const typedAt = atText === undefined ? undefined : parseTimeOfDay(atText);
-		const at = atText === undefined ? current?.at : typedAt && formatTimeOfDay(typedAt);
-		if (atText !== undefined && at === undefined) {
-			throw new UserFacingError(
-				`I couldn't understand that time. Type a time of day in ${zone}, for example \`18:00\` or \`6pm\`.`,
-			);
-		}
-		if (at === undefined)
-			throw new UserFacingError("Add `remind-at`: the time to remind each day.");
-		if (!inGiven) {
-			if (!current) throw new UserFacingError("Add `remind-in`: the channel to remind people in.");
-			return { ...current, at };
-		}
-		const channel = await checkChannel(
-			ctx,
-			{ kind: "message", text: ".", mentions: false },
-			"remind-in",
-		);
-		return { channelId: channel.id, channelName: channel.name, at };
+	/** Everything a draft needs before it can be saved. Throws what's wrong. */
+	async function evaluate(draft: Draft): Promise<Ready> {
+		const schedule = draft.editing ? deps.store.get(draft.editing) : undefined;
+		if (draft.editing && !schedule) throw new UserFacingError(SCHEDULE_MESSAGES.scheduleGone);
+		const timing = timingOf(draft, schedule);
+		const post = postOf(draft);
+		checkFilledLength(post, timing, zone, now(), deps.interpolator);
+		const channel = await checkChannel(draft.channel, post);
+		const name = draft.name ?? cleanName(post.kind === "message" ? post.text : post.question);
+		const reminder = post.kind === "poll" ? await checkReminder(draft) : undefined;
+		return { ...timing, post, channel, name, ...(reminder ? { reminder } : {}) };
 	}
 
-	async function create(
-		ctx: CommandContext,
-		post: ChannelPost,
-		fallbackName: string,
-	): Promise<Reply> {
-		const { start, recurrence } = timing(ctx.args);
-		checkFilledLength(post, { start, recurrence }, zone, now(), deps.interpolator);
-		const channel = await checkChannel(ctx, post);
-		const reminder = await reminderFrom(ctx, post);
-		const name = cleanName(typeof ctx.args.name === "string" ? ctx.args.name : fallbackName);
-		const schedule = deps.store.add({
+	/**
+	 * The poll's reminder, if it has one. A channel picked on the form must be one the
+	 * person can post in; Pixel must be able to post the reminder there either way.
+	 */
+	async function checkReminder(draft: Draft): Promise<PollReminder | undefined> {
+		if (!draft.reminder) return undefined;
+		const time = parseTimeOfDay(draft.reminder.at);
+		if (!time) throw new UserFacingError(SCHEDULE_MESSAGES.badReminderTime(zone));
+		const channel = draft.reminder.channel;
+		if (!channel) throw new UserFacingError(SCHEDULE_MESSAGES.noReminderChannel);
+		if (channel.caller && !channel.caller.canPost) {
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantRemind);
+		}
+		const check = await deps.posts.check(channel.id, {
+			kind: "message",
+			text: ".",
+			mentions: false,
+		});
+		if (!check.ok) throw new UserFacingError(`I can't send reminders there: ${check.problem}.`);
+		return { channelId: channel.id, channelName: check.name, at: formatTimeOfDay(time) };
+	}
+
+	// ── Whose is what ────────────────────────────────────────────────────
+
+	const owns = (schedule: Schedule, principal: Principal) =>
+		schedule.createdBy.ref === actorRef(principal);
+
+	function ownSchedule(ctx: ActionContext): Schedule {
+		const schedule = deps.store.get(String(ctx.args.id ?? ""));
+		if (!schedule) throw new UserFacingError(SCHEDULE_MESSAGES.scheduleGone);
+		if (!owns(schedule, ctx.principal)) {
+			ctx.logger.info(
+				{ event: "schedule.edit_refused", id: schedule.id, ...actorLogFields(ctx.principal) },
+				"refused a change to someone else's schedule",
+			);
+			throw new UserFacingError(SCHEDULE_MESSAGES.notYours);
+		}
+		return schedule;
+	}
+
+	function ownDraft(ctx: ActionContext): Draft | undefined {
+		return drafts.get(String(ctx.args.draft ?? ""), actorRef(ctx.principal));
+	}
+
+	// ── Panels ───────────────────────────────────────────────────────────
+
+	const call = (action: string, args: Record<string, string | number> = {}) => ({ action, args });
+	const button = (
+		label: string,
+		action: string,
+		args: Record<string, string | number> = {},
+		style: "primary" | "secondary" | "success" | "danger" = "secondary",
+		disabled = false,
+	): Control => ({
+		kind: "button",
+		label,
+		style,
+		call: call(action, args),
+		...(disabled ? { disabled } : {}),
+	});
+
+	/** Soonest first; paused and finished ones last. */
+	function sorted(schedules: readonly Schedule[]): Schedule[] {
+		const at = new Date(now());
+		const key = (s: Schedule) => (s.paused ? undefined : nextRun(s, zone, at)?.getTime());
+		return [...schedules].sort((a, b) => {
+			const ka = key(a);
+			const kb = key(b);
+			if (ka === undefined || kb === undefined) {
+				return ka === kb ? 0 : ka === undefined ? 1 : -1;
+			}
+			return ka - kb;
+		});
+	}
+
+	function home(principal: Principal, page = 0, notice?: string): Reply {
+		const all = sorted(deps.store.all());
+		const pages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+		const current = Math.min(Math.max(0, page), pages - 1);
+		const shown = all.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+		const mine = all.filter((s) => owns(s, principal)).length;
+		const paused = all.filter((s) => s.paused).length;
+		const lines = [
+			...(notice ? [notice, ""] : []),
+			all.length === 0
+				? "Nothing is scheduled yet. Make a message or a poll with the buttons below."
+				: [
+						`**${all.length}** scheduled · **${mine}** yours${paused > 0 ? ` · **${paused}** paused` : ""}`,
+						"Choose one to see what it will post, change it or delete it.",
+					].join("\n"),
+			...(pages > 1 ? [`Page ${current + 1} of ${pages}.`] : []),
+			`Times are in ${zone}.`,
+		];
+		const rows: ControlRow[] = [];
+		if (shown.length > 0) {
+			rows.push([
+				{
+					kind: "select",
+					placeholder: "Choose a schedule…",
+					call: call(ACTIONS.open),
+					arg: "id",
+					options: shown.map((s) => scheduleOption(s, principal)),
+				},
+			]);
+		}
+		rows.push([
+			button("New message", ACTIONS.new, { kind: "message" }, "primary"),
+			button("New poll", ACTIONS.new, { kind: "poll" }),
+		]);
+		if (pages > 1) {
+			rows.push([
+				button("‹ Previous", ACTIONS.home, { page: current - 1 }, "secondary", current === 0),
+				button("Next ›", ACTIONS.home, { page: current + 1 }, "secondary", current >= pages - 1),
+			]);
+		}
+		return {
+			embeds: [{ title: "Scheduled posts", description: lines.join("\n"), accent: "brand" }],
+			private: true,
+			controls: rows,
+		};
+	}
+
+	/** One option in the list. Plain text: select menus don't show markdown. */
+	function scheduleOption(schedule: Schedule, principal: Principal): ChoiceOption {
+		const next = schedule.paused ? undefined : nextRun(schedule, zone, now());
+		const parts = [
+			`#${schedule.channelName}`,
+			schedule.paused ? "paused" : next ? `next ${describeWhen(toLocal(next, zone))}` : "finished",
+			repeatLabel(schedule),
+			...(owns(schedule, principal) ? [] : [`by ${schedule.createdBy.name}`]),
+		];
+		return {
+			label: `${schedule.post.kind === "poll" ? "🗳" : "💬"} ${schedule.name}`,
+			value: schedule.id,
+			description: parts.join(" · "),
+		};
+	}
+
+	function repeatLabel(schedule: Pick<Schedule, "start" | "recurrence">): string {
+		const start = parseLocal(schedule.start) as LocalDateTime;
+		const r = schedule.recurrence;
+		switch (r.kind) {
+			case "weekly":
+				return `${r.everyWeeks === 2 ? "every 2 weeks" : "weekly"} on ${listDays(r.days)}`;
+			case "monthly":
+				return `${r.everyMonths === 2 ? "every 2 months" : "monthly"} on the ${ordinal(start.day)}`;
+			default:
+				return "once";
+		}
+	}
+
+	function detail(schedule: Schedule, principal: Principal, notice?: string): Reply {
+		const mine = owns(schedule, principal);
+		const next = nextRun(schedule, zone, now());
+		const status = schedule.paused
+			? next
+				? "⏸ **Paused.** It won't post until it's resumed."
+				: `⏸ **Paused.** ${SCHEDULE_MESSAGES.cantResume}`
+			: next
+				? `Next post: **${describeWhen(toLocal(next, zone))}** (${zone}).`
+				: "It has nothing left to post.";
+		const post = filledPost(schedule, deps.interpolator, zone, now());
+		const description = [
+			...(notice ? [notice, ""] : []),
+			status,
+			mine
+				? "Made by you."
+				: `Made by ${escapeMarkdown(schedule.createdBy.name)}. Only they can change it.`,
+			"",
+			post.kind === "message"
+				? "Above is what it will post next time, with dates filled in. Pings don't fire here."
+				: "Below is the poll it will post next time, with dates filled in.",
+		].join("\n");
+		const times = schedule.paused ? [] : upcoming(schedule, zone, now(), 3);
+		const summary: Embed = {
+			title: `${post.kind === "poll" ? "🗳" : "💬"} ${escapeMarkdown(schedule.name)}`,
+			description,
+			fields: [
+				{ name: "Channel", value: `#${escapeMarkdown(schedule.channelName)}`, inline: true },
+				{ name: "Repeats", value: capitalise(repeatLabel(schedule)), inline: true },
+				{ name: "What", value: describeWhat(schedule.post) },
+				...(schedule.reminder
+					? [{ name: "Reminders", value: describeReminder(schedule.reminder, zone) }]
+					: []),
+				...(times.length > 0
+					? [
+							{
+								name: `Next posts (${zone})`,
+								value: times.map((t) => `• ${describeWhen(toLocal(t, zone))}`).join("\n"),
+							},
+						]
+					: []),
+			],
+			accent: schedule.paused || !next ? "neutral" : "brand",
+		};
+		const actions: Control[] = [];
+		if (mine) {
+			if (next) actions.push(button("Edit", ACTIONS.edit, { id: schedule.id }, "primary"));
+			if (schedule.paused) {
+				if (next) actions.push(button("Resume", ACTIONS.resume, { id: schedule.id }));
+			} else if (next) {
+				actions.push(button("Pause", ACTIONS.pause, { id: schedule.id }));
+			}
+			actions.push(button("Delete", ACTIONS.delete, { id: schedule.id }, "danger"));
+		}
+		const rows: ControlRow[] = [
+			...(actions.length > 0 ? [actions] : []),
+			[button("← All schedules", ACTIONS.home)],
+		];
+		if (post.kind === "message") {
+			return {
+				text: post.text.slice(0, 2000),
+				embeds: [summary],
+				private: true,
+				controls: rows,
+			};
+		}
+		return { embeds: [summary, pollPreviewEmbed(post)], private: true, controls: rows };
+	}
+
+	function confirmDelete(schedule: Schedule): Reply {
+		return {
+			embeds: [
+				{
+					title: `Delete ${escapeMarkdown(schedule.name)}?`,
+					description: "It won't post again. This can't be undone.",
+					accent: "warning",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Delete schedule", ACTIONS.confirmDelete, { id: schedule.id }, "danger"),
+					button("Cancel", ACTIONS.open, { id: schedule.id }),
+				],
+			],
+		};
+	}
+
+	async function draftPanel(draft: Draft): Promise<Reply> {
+		let ready: Ready | undefined;
+		let problem: string | undefined;
+		try {
+			ready = await evaluate(draft);
+		} catch (error) {
+			if (!(error instanceof UserFacingError)) throw error;
+			problem = error.message;
+		}
+		const editing = draft.editing !== undefined;
+		const saveLabel = editing ? "Save changes" : "Schedule";
+		const what = draft.kind === "message" ? "message" : "poll";
+		const lines: string[] = [];
+		let preview: ChannelPost | undefined;
+		if (ready) {
+			const first = nextOccurrence(ready.start, ready.recurrence, zone, now()) as Date;
+			const occurrence = editing && !ready.retimed ? nextRunOf(draft, first) : first;
+			preview = interpolateChannelPost(ready.post, (text) =>
+				deps.interpolator.interpolate(text, occurrence),
+			);
+			lines.push(
+				`Nothing is saved until you press **${saveLabel}**.`,
+				"",
+				`**#${escapeMarkdown(ready.channel.name)}** · ${editing ? "next" : "first"} post **${describeWhen(toLocal(occurrence, zone))}** (${zone}) · ${repeatLabel({ start: formatLocal(ready.start), recurrence: ready.recurrence })}`,
+			);
+		} else {
+			lines.push(`⚠️ ${problem}`, "", `Nothing is saved until you press **${saveLabel}**.`);
+		}
+		const name =
+			draft.name ?? cleanName(draft.kind === "message" ? draft.text.trim() : draft.question.trim());
+		const summary: Embed = {
+			title: editing ? `Changes to ${escapeMarkdown(name)}` : `New ${what}`,
+			description: lines.join("\n"),
+			fields: [
+				{ name: "Name", value: escapeMarkdown(name), inline: true },
+				{ name: "What", value: describeWhat(postSettings(draft)), inline: true },
+				...(draft.kind === "poll"
+					? [
+							{
+								name: "Reminders",
+								value: ready?.reminder
+									? describeReminder(ready.reminder, zone)
+									: draft.reminder
+										? "Not set up yet: see above"
+										: "None",
+							},
+						]
+					: []),
+			],
+			accent: ready ? "brand" : "warning",
+		};
+		const rows: ControlRow[] = [];
+		if (draft.repeat === "weekly" || draft.repeat === "fortnightly") {
+			const chosen = new Set(
+				ready?.recurrence.kind === "weekly" ? ready.recurrence.days : (draft.days ?? []),
+			);
+			rows.push([
+				{
+					kind: "select",
+					placeholder: "Which days?",
+					call: call(ACTIONS.days, { draft: draft.id }),
+					arg: "days",
+					min: 1,
+					max: WEEKDAYS.length,
+					options: WEEKDAYS.map((day) => ({
+						label: `Repeat on ${WEEKDAY_NAMES[day]}`,
+						value: day,
+						...(chosen.has(day) ? { selected: true } : {}),
+					})),
+				},
+			]);
+		}
+		if (draft.kind === "poll") {
+			rows.push([
+				{
+					kind: "select",
+					placeholder: "How long can people vote?",
+					call: call(ACTIONS.duration, { draft: draft.id }),
+					arg: "duration",
+					options: DURATIONS.map((d) => ({
+						label: `Open for ${d}`,
+						value: d,
+						...(pollHours(d) === draft.durationHours ? { selected: true } : {}),
+					})),
+				},
+			]);
+			rows.push([
+				button(`Several answers: ${draft.multiple ? "on" : "off"}`, ACTIONS.toggle, {
+					draft: draft.id,
+					setting: "multiple",
+				}),
+				button(
+					draft.reminder
+						? `Reminders: daily at ${reminderClock(draft.reminder.at)}`
+						: "Reminders: off",
+					ACTIONS.reminders,
+					{ draft: draft.id },
+				),
+			]);
+		} else if (draft.mentions || draft.channel?.caller.canMentionEveryone) {
+			// Only offered where the person could ping everyone themselves, or to turn it off.
+			rows.push([
+				button(`Pings: ${draft.mentions ? "on" : "off"}`, ACTIONS.toggle, {
+					draft: draft.id,
+					setting: "mentions",
+				}),
+			]);
+		}
+		rows.push([
+			button(saveLabel, ACTIONS.save, { draft: draft.id }, "success", !ready),
+			button("Edit details", ACTIONS.details, { draft: draft.id }, ready ? "secondary" : "primary"),
+			button("Rename", ACTIONS.rename, { draft: draft.id }),
+			button("Cancel", ACTIONS.cancel, { draft: draft.id }),
+		]);
+		if (preview?.kind === "message") {
+			return {
+				text: preview.text.slice(0, 2000),
+				embeds: [summary],
+				private: true,
+				controls: rows,
+			};
+		}
+		return {
+			...(draft.kind === "message" && draft.text.trim() !== ""
+				? { text: draft.text.trim().slice(0, 2000) }
+				: {}),
+			embeds: [summary, ...(preview?.kind === "poll" ? [pollPreviewEmbed(preview)] : [])],
+			private: true,
+			controls: rows,
+		};
+	}
+
+	/** For an unchanged edit, the occurrence the schedule itself would post next. */
+	function nextRunOf(draft: Draft, fallback: Date): Date {
+		const schedule = deps.store.get(draft.editing as string);
+		return (schedule && nextRun(schedule, zone, now())) ?? fallback;
+	}
+
+	function detailsForm(draft: Draft): Form {
+		const editing = draft.editing !== undefined;
+		const what = draft.kind === "message" ? "message" : "poll";
+		const body =
+			draft.kind === "message"
+				? [
+						{
+							kind: "text" as const,
+							name: "text",
+							label: "Message",
+							style: "paragraph" as const,
+							maxLength: MAX_MESSAGE_LENGTH,
+							placeholder:
+								"What to post. Markdown works. {{date}} and {{date+2}} fill in when it's posted.",
+							...(draft.text ? { value: draft.text } : {}),
+						},
+					]
+				: [
+						{
+							kind: "text" as const,
+							name: "question",
+							label: "Question",
+							style: "short" as const,
+							maxLength: MAX_POLL_QUESTION,
+							placeholder: "Who's coming? {{date}} fills in when it's posted.",
+							...(draft.question ? { value: draft.question } : {}),
+						},
+						{
+							kind: "text" as const,
+							name: "answers",
+							label: `Answers, one per line (2 to ${MAX_POLL_ANSWERS})`,
+							style: "paragraph" as const,
+							maxLength: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
+							placeholder: "Yes\nNo\nMaybe",
+							...(draft.answers ? { value: draft.answers } : {}),
+						},
+					];
+		return {
+			title: editing ? `Edit ${what}` : `New ${what}`,
+			submit: call(ACTIONS.draft, { draft: draft.id }),
+			fields: [
+				{
+					kind: "channel",
+					name: "channel",
+					label: "Channel",
+					description: "Where to post it. You need to be able to post there yourself.",
+					...(draft.channel ? { value: draft.channel.id } : {}),
+				},
+				{
+					kind: "text",
+					name: "when",
+					label: editing ? "When (leave it to keep the timing)" : "When",
+					description: `In ${zone}. A day, a time or both.`,
+					style: "short",
+					maxLength: 100,
+					placeholder: "wed 1900 · tomorrow 9am · 14 oct 19:00 · now+1h",
+					...(draft.when ? { value: draft.when } : {}),
+				},
+				{
+					kind: "radio",
+					name: "repeat",
+					label: "Repeat",
+					options: REPEATS.map((r) => ({
+						label: REPEAT_LABELS[r],
+						value: r,
+						...(r === draft.repeat ? { selected: true } : {}),
+					})),
+				},
+				...body,
+			],
+		};
+	}
+
+	function remindersForm(draft: Draft): Form {
+		const channel = draft.reminder?.channel;
+		return {
+			title: "Reminders",
+			submit: call(ACTIONS.reminded, { draft: draft.id }),
+			fields: [
+				{
+					kind: "text",
+					name: "remind-at",
+					label: "Remind every day at",
+					description: `A time of day in ${zone}, while the poll is open. Empty for no reminders.`,
+					style: "short",
+					maxLength: 20,
+					placeholder: "18:00",
+					required: false,
+					...(draft.reminder ? { value: draft.reminder.at } : {}),
+				},
+				{
+					kind: "channel",
+					name: "remind-in",
+					label: "Remind people in",
+					description: "Where to post the reminder. You need to be able to post there yourself.",
+					required: false,
+					...(channel ? { value: channel.id } : {}),
+				},
+			],
+		};
+	}
+
+	function renameForm(draft: Draft): Form {
+		return {
+			title: "Rename",
+			submit: call(ACTIONS.renamed, { draft: draft.id }),
+			fields: [
+				{
+					kind: "text",
+					name: "name",
+					label: "Name",
+					description: "How it shows in the list. Leave it empty to use the start of the text.",
+					style: "short",
+					maxLength: 60,
+					required: false,
+					...(draft.name ? { value: draft.name } : {}),
+				},
+			],
+		};
+	}
+
+	/** Back to the home list, saying why, when a draft has gone. */
+	const draftGone = (ctx: ActionContext): ActionResult => ({
+		reply: home(ctx.principal, 0, `⚠️ ${SCHEDULE_MESSAGES.draftGone}`),
+	});
+
+	// ── Saving ───────────────────────────────────────────────────────────
+
+	async function save(ctx: ActionContext, draft: Draft): Promise<Reply> {
+		if (saving.has(draft.id)) throw new UserFacingError(SCHEDULE_MESSAGES.saving);
+		saving.add(draft.id);
+		try {
+			return await saveOnce(ctx, draft);
+		} finally {
+			saving.delete(draft.id);
+		}
+	}
+
+	async function saveOnce(ctx: ActionContext, draft: Draft): Promise<Reply> {
+		let ready: Ready;
+		try {
+			ready = await evaluate(draft);
+		} catch (error) {
+			if (error instanceof UserFacingError) return draftPanel(draft);
+			throw error;
+		}
+		const { start, recurrence, post, channel, name, retimed, reminder } = ready;
+		if (draft.editing === undefined) {
+			const schedule = deps.store.add({
+				name,
+				channelId: channel.id,
+				channelName: channel.name,
+				post,
+				start: formatLocal(start),
+				recurrence,
+				paused: false,
+				createdBy: { ref: actorRef(ctx.principal), name: ctx.principal.displayName },
+				createdAt: now().toISOString(),
+				lastRunAt: null,
+				...(reminder ? { reminder } : {}),
+			});
+			drafts.remove(draft.id);
+			ctx.logger.info(
+				{
+					event: "schedule.created",
+					id: schedule.id,
+					channelId: channel.id,
+					kind: post.kind,
+					recurrence: recurrence.kind,
+					reminderChannelId: reminder?.channelId,
+				},
+				"scheduled a post",
+			);
+			deps.reporter.breadcrumb("schedule", `created ${schedule.id}`, { id: schedule.id });
+			return detail(schedule, ctx.principal, "✅ **Scheduled.**");
+		}
+		const schedule = ownSchedule({ ...ctx, args: { id: draft.editing } });
+		const updated = deps.store.update(schedule.id, {
+			post,
 			name,
 			channelId: channel.id,
 			channelName: channel.name,
-			post,
 			start: formatLocal(start),
 			recurrence,
-			paused: false,
-			createdBy: { ref: actorRef(ctx.principal), name: ctx.principal.displayName },
-			createdAt: now().toISOString(),
-			lastRunAt: null,
-			...(reminder ? { reminder } : {}),
-		});
-		ctx.logger.info(
-			{
-				event: "schedule.created",
-				id: schedule.id,
-				channelId: channel.id,
-				kind: post.kind,
-				recurrence: recurrence.kind,
-				reminderChannelId: reminder?.channelId,
-			},
-			"scheduled a post",
-		);
-		deps.reporter.breadcrumb("schedule", `created ${schedule.id}`, { id: schedule.id });
-		return confirm(schedule, "✅ Scheduled");
-	}
-
-	/** Summary plus the post filled as of the next occurrence — same clock as preview. */
-	function confirm(schedule: Schedule, title: string): Reply {
-		const filled = filledPost(schedule, deps.interpolator, zone, now());
-		const summary = describeSchedule(schedule, zone, now(), title);
-		if (filled.kind === "message") {
-			return { text: filled.text.slice(0, 2000), embeds: [summary], private: true };
-		}
-		return {
-			embeds: [summary, pollPreviewEmbed(filled)],
-			private: true,
-		};
-	}
-
-	/** Parse `when` (and days) and the channel before the body form opens. */
-	async function prepareBodyForm(
-		ctx: Pick<CommandContext, "args" | "channels">,
-		post: ChannelPost,
-	): Promise<{ title: string }> {
-		const { start } = timing(ctx.args);
-		await checkChannel(ctx, post);
-		await reminderFrom(ctx, post);
-		return { title: describeWhen(start) };
-	}
-
-	const CANT_EDIT = "I can't edit that schedule.";
-
-	function ownEditable(principal: { platform: "discord"; userId: string }): Schedule[] {
-		const ref = actorRef(principal);
-		return deps.store
-			.all()
-			.filter((schedule) => schedule.createdBy.ref === ref && nextRun(schedule, zone, now()));
-	}
-
-	function findOwnEditable(
-		principal: { platform: "discord"; userId: string },
-		typed: string,
-	): Schedule | undefined {
-		return findSchedule(ownEditable(principal), typed);
-	}
-
-	function refuseEdit(ctx: {
-		logger: CommandContext["logger"];
-		principal: CommandContext["principal"];
-	}): never {
-		ctx.logger.info(
-			{ event: "schedule.edit_refused", ...actorLogFields(ctx.principal) },
-			"refused a schedule edit",
-		);
-		throw new UserFacingError(CANT_EDIT);
-	}
-
-	/**
-	 * Apply optional `when` / `repeat` / `days` on top of what's already stored. Refuses a
-	 * change that would leave nothing to post (a one-off whose start has passed).
-	 */
-	function editTiming(
-		schedule: Schedule,
-		args: CommandContext["args"],
-	): {
-		start: LocalDateTime;
-		recurrence: Recurrence;
-	} {
-		const change = parseEditTiming(schedule, args);
-		const edited = { ...schedule, start: formatLocal(change.start), recurrence: change.recurrence };
-		if (!nextRun(edited, zone, now())) {
-			throw new UserFacingError(
-				"That would leave it with nothing to post: a one-off needs a time that's still to come. Add `when` with the new time.",
-			);
-		}
-		return change;
-	}
-
-	function parseEditTiming(
-		schedule: Schedule,
-		args: CommandContext["args"],
-	): {
-		start: LocalDateTime;
-		recurrence: Recurrence;
-	} {
-		const hasWhen = typeof args.when === "string" && args.when !== "";
-		const hasRepeat = typeof args.repeat === "string";
-		const hasDays = typeof args.days === "string";
-		const start = hasWhen ? parseWhen(String(args.when), now(), zone) : parseLocal(schedule.start);
-		if (!start) {
-			throw new UserFacingError(
-				`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
-			);
-		}
-		const repeat = (hasRepeat ? args.repeat : repeatOf(schedule.recurrence)) as Repeat;
-		const daysText = hasDays ? String(args.days) : undefined;
-		if (daysText !== undefined && repeat !== "weekly" && repeat !== "fortnightly") {
-			throw new UserFacingError("`days` only works with a weekly or fortnightly repeat.");
-		}
-		if (!hasWhen && !hasRepeat && !hasDays) {
-			return { start, recurrence: schedule.recurrence };
-		}
-		switch (repeat) {
-			case "weekly":
-			case "fortnightly": {
-				const days =
-					daysText === undefined
-						? schedule.recurrence.kind === "weekly"
-							? schedule.recurrence.days
-							: [weekdayOf(start)]
-						: parseDays(daysText);
-				if (!days || days.length === 0)
-					throw new UserFacingError(
-						"I couldn't understand those days. Try something like `wed sat`.",
-					);
-				return {
-					start,
-					recurrence: { kind: "weekly", everyWeeks: repeat === "weekly" ? 1 : 2, days },
-				};
-			}
-			case "monthly":
-				return { start, recurrence: { kind: "monthly", everyMonths: 1 } };
-			case "every-2-months":
-				return { start, recurrence: { kind: "monthly", everyMonths: 2 } };
-			default:
-				return { start, recurrence: { kind: "once" } };
-		}
-	}
-
-	async function prepareEditForm(ctx: BeforeFormContext): Promise<BeforeFormResult> {
-		const typed = typeof ctx.args.schedule === "string" ? ctx.args.schedule : "";
-		if (typed === "") return { fields: [] };
-		const schedule = findOwnEditable(ctx.principal, typed);
-		if (!schedule) refuseEdit(ctx);
-		if (
-			typeof ctx.args.when === "string" ||
-			typeof ctx.args.repeat === "string" ||
-			typeof ctx.args.days === "string"
-		) {
-			editTiming(schedule, ctx.args);
-		}
-		// The form's fields aren't sent yet, so this only checks `duration` before the form opens.
-		editedPost(schedule.post, ctx.args);
-		await reminderFrom(ctx, schedule.post, schedule.reminder);
-		const next = nextRun(schedule, zone, now());
-		const title = next ? `Edit · ${describeWhen(toLocal(next, zone))}` : "Edit schedule";
-		if (schedule.post.kind === "message") {
-			return { title, values: { text: schedule.post.text }, fields: ["text"] };
-		}
-		return {
-			title,
-			values: {
-				question: schedule.post.question,
-				answers: schedule.post.answers.join("\n"),
-			},
-			fields: ["question", "answers"],
-		};
-	}
-
-	async function edit(ctx: CommandContext): Promise<Reply> {
-		const typed = typeof ctx.args.schedule === "string" ? ctx.args.schedule : "";
-		if (typed === "") {
-			return { embeds: [describeOwnList(ownEditable(ctx.principal), zone, now())], private: true };
-		}
-		const schedule = findOwnEditable(ctx.principal, typed);
-		if (!schedule) refuseEdit(ctx);
-		const timingChange =
-			typeof ctx.args.when === "string" ||
-			typeof ctx.args.repeat === "string" ||
-			typeof ctx.args.days === "string"
-				? editTiming(schedule, ctx.args)
-				: { start: parseLocal(schedule.start) as LocalDateTime, recurrence: schedule.recurrence };
-		const post = editedPost(schedule.post, ctx.args);
-		checkFilledLength(post, timingChange, zone, now(), deps.interpolator);
-		const reminder = await reminderFrom(ctx, post, schedule.reminder);
-		const name = typeof ctx.args.name === "string" ? cleanName(ctx.args.name) : schedule.name;
-		const start = formatLocal(timingChange.start);
-		const retimed =
-			start !== schedule.start ||
-			JSON.stringify(timingChange.recurrence) !== JSON.stringify(schedule.recurrence);
-		const updated = deps.store.update(schedule.id, {
-			post,
-			start,
-			recurrence: timingChange.recurrence,
-			name,
 			reminder,
 			// New timing counts from now, like resume: nothing it "missed" before the edit goes out.
 			...(retimed ? { lastRunAt: fromNow(schedule, now()) } : {}),
 		});
-		if (!updated) refuseEdit(ctx);
+		drafts.remove(draft.id);
+		if (!updated) throw new UserFacingError(SCHEDULE_MESSAGES.scheduleGone);
 		ctx.logger.info(
 			{
 				event: "schedule.edited",
@@ -481,258 +841,289 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			"edited a schedule",
 		);
 		deps.reporter.breadcrumb("schedule", `edited ${updated.id}`, { id: updated.id });
-		return confirm(updated, "✅ Updated");
+		return detail(updated, ctx.principal, "✅ **Saved.**");
 	}
 
-	const manage = (
+	// ── Actions ──────────────────────────────────────────────────────────
+
+	const id: CommandOption = {
+		name: "id",
+		description: "Which schedule",
+		type: "string",
+		required: true,
+	};
+	const draftId: CommandOption = {
+		name: "draft",
+		description: "Which draft",
+		type: "string",
+		required: true,
+	};
+	const action = (
 		name: string,
-		description: string,
-		run: (schedule: Schedule, ctx: CommandContext) => Promise<Reply> | Reply,
-	): SubcommandDefinition => ({
-		name,
-		description,
-		access: ACCESS,
-		private: true,
-		options: [scheduleOption],
-		handler: async (ctx) => {
-			const schedule = findSchedule(deps.store.all(), String(ctx.args.schedule ?? ""));
-			if (!schedule)
-				throw new UserFacingError("I can't find that schedule. `/schedule list` shows them all.");
-			return run(schedule, ctx);
-		},
-	});
+		options: readonly CommandOption[],
+		handler: (ctx: ActionContext) => Promise<ActionResult> | ActionResult,
+	): ActionDefinition => ({ name, access: ACCESS, options, handler: async (ctx) => handler(ctx) });
+	/** An action on one of the caller's drafts; an expired one goes back to the list. */
+	const onDraft = (
+		name: string,
+		options: readonly CommandOption[],
+		handler: (ctx: ActionContext, draft: Draft) => Promise<ActionResult> | ActionResult,
+	) =>
+		action(name, [draftId, ...options], (ctx) => {
+			const draft = ownDraft(ctx);
+			return draft ? handler(ctx, draft) : draftGone(ctx);
+		});
+	/** An action on a schedule; one that's gone goes back to the list. */
+	const onSchedule = (
+		name: string,
+		handler: (ctx: ActionContext) => Promise<ActionResult> | ActionResult,
+	) =>
+		action(name, [id], (ctx) =>
+			deps.store.get(String(ctx.args.id))
+				? handler(ctx)
+				: { reply: home(ctx.principal, 0, `⚠️ ${SCHEDULE_MESSAGES.scheduleGone}`) },
+		);
+
+	const actions: ActionDefinition[] = [
+		action(ACTIONS.home, [{ name: "page", description: "Which page", type: "integer" }], (ctx) => ({
+			reply: home(ctx.principal, Number(ctx.args.page ?? 0)),
+		})),
+		onSchedule(ACTIONS.open, (ctx) => ({
+			reply: detail(deps.store.get(String(ctx.args.id)) as Schedule, ctx.principal),
+		})),
+		action(
+			ACTIONS.new,
+			[
+				{
+					name: "kind",
+					description: "Message or poll",
+					type: "string",
+					required: true,
+					choices: ["message", "poll"],
+				},
+			],
+			(ctx) => {
+				const draft = drafts.create({
+					owner: actorRef(ctx.principal),
+					kind: ctx.args.kind === "poll" ? "poll" : "message",
+					when: "",
+					repeat: "once",
+					text: "",
+					mentions: false,
+					question: "",
+					answers: "",
+					durationHours: 24,
+					multiple: false,
+				});
+				return { form: detailsForm(draft) };
+			},
+		),
+		onSchedule(ACTIONS.edit, (ctx) => {
+			const schedule = ownSchedule(ctx);
+			const next = nextRun(schedule, zone, now());
+			if (!next) throw new UserFacingError(SCHEDULE_MESSAGES.nothingLeft);
+			const when = typedWhen(toLocal(next, zone));
+			const draft = drafts.create({
+				owner: actorRef(ctx.principal),
+				editing: schedule.id,
+				kind: schedule.post.kind,
+				// Picked again on the form, which says what the person may do there now.
+				when,
+				whenAsShown: when,
+				repeat: repeatOf(schedule.recurrence),
+				...(schedule.recurrence.kind === "weekly" ? { days: schedule.recurrence.days } : {}),
+				text: schedule.post.kind === "message" ? schedule.post.text : "",
+				mentions: schedule.post.kind === "message" && schedule.post.mentions,
+				question: schedule.post.kind === "poll" ? schedule.post.question : "",
+				answers: schedule.post.kind === "poll" ? schedule.post.answers.join("\n") : "",
+				durationHours: schedule.post.kind === "poll" ? schedule.post.durationHours : 24,
+				multiple: schedule.post.kind === "poll" && schedule.post.multiple,
+				name: schedule.name,
+				...(schedule.reminder
+					? {
+							reminder: {
+								at: schedule.reminder.at,
+								channel: { id: schedule.reminder.channelId, name: schedule.reminder.channelName },
+							},
+						}
+					: {}),
+			});
+			const form = detailsForm(draft);
+			// The channel picker opens on the schedule's channel.
+			return {
+				form: {
+					...form,
+					fields: form.fields.map((f) =>
+						f.kind === "channel" ? { ...f, value: schedule.channelId } : f,
+					),
+				},
+			};
+		}),
+		onDraft(ACTIONS.details, [], (_, draft) => ({ form: detailsForm(draft) })),
+		onDraft(
+			ACTIONS.draft,
+			[
+				{ name: "channel", description: "Where", type: "channel", required: true },
+				{ name: "when", description: "When", type: "string", required: true },
+				{ name: "repeat", description: "Repeat", type: "string", required: true, choices: REPEATS },
+				{ name: "text", description: "Message", type: "string" },
+				{ name: "question", description: "Question", type: "string" },
+				{ name: "answers", description: "Answers", type: "string" },
+			],
+			async (ctx, draft) => {
+				const repeat = ctx.args.repeat as Repeat;
+				const updated = drafts.update(draft, {
+					channel: ctx.channels.channel,
+					when: String(ctx.args.when),
+					repeat,
+					// Days only mean something for a weekly repeat.
+					...(repeat === "weekly" || repeat === "fortnightly" ? {} : { days: undefined }),
+					...(draft.kind === "message"
+						? { text: String(ctx.args.text ?? "") }
+						: {
+								question: String(ctx.args.question ?? ""),
+								answers: String(ctx.args.answers ?? ""),
+							}),
+				});
+				return { reply: await draftPanel(updated) };
+			},
+		),
+		onDraft(
+			ACTIONS.days,
+			[{ name: "days", description: "Which days", type: "string", required: true }],
+			async (ctx, draft) => {
+				const days = parseDays(String(ctx.args.days));
+				if (!days || days.length === 0) throw new UserFacingError("Choose at least one day.");
+				return { reply: await draftPanel(drafts.update(draft, { days })) };
+			},
+		),
+		onDraft(
+			ACTIONS.duration,
+			[
+				{
+					name: "duration",
+					description: "How long",
+					type: "string",
+					required: true,
+					choices: DURATIONS,
+				},
+			],
+			async (ctx, draft) => {
+				const durationHours = pollHours(String(ctx.args.duration)) as number;
+				return { reply: await draftPanel(drafts.update(draft, { durationHours })) };
+			},
+		),
+		onDraft(
+			ACTIONS.toggle,
+			[
+				{
+					name: "setting",
+					description: "Which setting",
+					type: "string",
+					required: true,
+					choices: ["mentions", "multiple"],
+				},
+			],
+			async (ctx, draft) => {
+				const change =
+					ctx.args.setting === "mentions"
+						? { mentions: !draft.mentions }
+						: { multiple: !draft.multiple };
+				return { reply: await draftPanel(drafts.update(draft, change)) };
+			},
+		),
+		onDraft(ACTIONS.reminders, [], (_, draft) => {
+			if (draft.kind !== "poll") throw new UserFacingError("Reminders only work for polls.");
+			return { form: remindersForm(draft) };
+		}),
+		onDraft(
+			ACTIONS.reminded,
+			[
+				{ name: "remind-at", description: "When", type: "string" },
+				{ name: "remind-in", description: "Where", type: "channel" },
+			],
+			async (ctx, draft) => {
+				const at = typeof ctx.args["remind-at"] === "string" ? ctx.args["remind-at"].trim() : "";
+				const picked = ctx.channels["remind-in"];
+				const updated = drafts.update(draft, {
+					// No time means no reminders.
+					reminder:
+						at === ""
+							? undefined
+							: {
+									at,
+									...(picked
+										? { channel: { id: picked.id, name: picked.name, caller: picked.caller } }
+										: {}),
+								},
+				});
+				return { reply: await draftPanel(updated) };
+			},
+		),
+		onDraft(ACTIONS.rename, [], (_, draft) => ({ form: renameForm(draft) })),
+		onDraft(
+			ACTIONS.renamed,
+			[{ name: "name", description: "Name", type: "string" }],
+			async (ctx, draft) => {
+				const typed = typeof ctx.args.name === "string" ? ctx.args.name.trim() : "";
+				const updated = drafts.update(draft, { name: typed === "" ? undefined : cleanName(typed) });
+				return { reply: await draftPanel(updated) };
+			},
+		),
+		onDraft(ACTIONS.save, [], async (ctx, draft) => ({ reply: await save(ctx, draft) })),
+		onDraft(ACTIONS.cancel, [], (ctx, draft) => {
+			drafts.remove(draft.id);
+			const schedule = draft.editing ? deps.store.get(draft.editing) : undefined;
+			return {
+				reply: schedule
+					? detail(schedule, ctx.principal, "Nothing was changed.")
+					: home(ctx.principal, 0, "Nothing was saved."),
+			};
+		}),
+		onSchedule(ACTIONS.pause, (ctx) => {
+			const schedule = ownSchedule(ctx);
+			const paused = deps.store.update(schedule.id, { paused: true }) as Schedule;
+			ctx.logger.info({ event: "schedule.paused", id: schedule.id }, "paused a schedule");
+			return {
+				reply: detail(paused, ctx.principal, "⏸ **Paused.** It won't post until you resume it."),
+			};
+		}),
+		onSchedule(ACTIONS.resume, (ctx) => {
+			const schedule = ownSchedule(ctx);
+			// Counts from the same instant as the lastRunAt saved below, so it's the post it will make.
+			if (!nextRun(schedule, zone, now())) throw new UserFacingError(SCHEDULE_MESSAGES.cantResume);
+			// From now on: nothing missed while it was paused is posted.
+			const resumed = deps.store.update(schedule.id, {
+				paused: false,
+				lastRunAt: fromNow(schedule, now()),
+			}) as Schedule;
+			ctx.logger.info({ event: "schedule.resumed", id: schedule.id }, "resumed a schedule");
+			return { reply: detail(resumed, ctx.principal, "▶️ **Resumed.**") };
+		}),
+		onSchedule(ACTIONS.delete, (ctx) => ({ reply: confirmDelete(ownSchedule(ctx)) })),
+		onSchedule(ACTIONS.confirmDelete, (ctx) => {
+			const schedule = ownSchedule(ctx);
+			deps.store.remove(schedule.id);
+			ctx.logger.info({ event: "schedule.deleted", id: schedule.id }, "deleted a schedule");
+			deps.reporter.breadcrumb("schedule", `deleted ${schedule.id}`, { id: schedule.id });
+			return {
+				reply: home(ctx.principal, 0, `🗑 Deleted **${escapeMarkdown(schedule.name)}**.`),
+			};
+		}),
+	];
 
 	return {
 		name: "schedules",
 		commands: [
 			{
 				name: "schedule",
-				description: "Schedule messages and polls",
+				description: "Schedule messages and polls, and manage them",
 				access: ACCESS,
-				subcommands: [
-					{
-						name: "message",
-						description: "Schedule a message",
-						access: ACCESS,
-						private: true,
-						options: [
-							channelOption,
-							whenOption,
-							{
-								name: "text",
-								description: "Message",
-								type: "string",
-								required: true,
-								form: {
-									style: "paragraph",
-									maxLength: MAX_MESSAGE_LENGTH,
-									placeholder:
-										"What to post. Markdown works. {{date}} and {{date+2}} fill when posted.",
-								},
-							},
-							repeatOption,
-							daysOption,
-							{
-								name: "mentions",
-								description: "Let @everyone, @here and role mentions ping (default: off)",
-								type: "boolean",
-							},
-							nameOption,
-						],
-						beforeForm: (ctx) =>
-							prepareBodyForm(ctx, {
-								kind: "message",
-								text: ".",
-								mentions: ctx.args.mentions === true,
-							}),
-						handler: async (ctx) => {
-							const text = String(ctx.args.text ?? "").trim();
-							if (text === "") throw new UserFacingError("The message can't be empty.");
-							return create(
-								ctx,
-								{ kind: "message", text, mentions: ctx.args.mentions === true },
-								text,
-							);
-						},
-					},
-					{
-						name: "poll",
-						description: "Schedule a poll",
-						access: ACCESS,
-						private: true,
-						options: [
-							channelOption,
-							whenOption,
-							{
-								name: "question",
-								description: "Question",
-								type: "string",
-								required: true,
-								form: {
-									style: "short",
-									maxLength: MAX_POLL_QUESTION,
-									placeholder: "Question. {{date}} / {{date+2}} fill when posted.",
-								},
-							},
-							{
-								name: "answers",
-								description: "Answers, one per line (2 to 10)",
-								type: "string",
-								required: true,
-								form: {
-									style: "paragraph",
-									maxLength: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
-									placeholder: "Yes\nNo\nMaybe",
-								},
-							},
-							repeatOption,
-							daysOption,
-							durationOption,
-							{
-								name: "multiple",
-								description: "Let people pick more than one answer",
-								type: "boolean",
-							},
-							remindInOption,
-							remindAtOption,
-							nameOption,
-						],
-						beforeForm: (ctx) =>
-							prepareBodyForm(ctx, {
-								kind: "poll",
-								question: ".",
-								answers: ["a", "b"],
-								durationHours: 1,
-								multiple: ctx.args.multiple === true,
-							}),
-						handler: async (ctx) => {
-							const question = String(ctx.args.question ?? "").trim();
-							if (question === "") throw new UserFacingError("The question can't be empty.");
-							const answers = parseAnswers(String(ctx.args.answers ?? ""));
-							const durationHours = pollHours(String(ctx.args.duration ?? "1 day"));
-							// Discord keeps a poll open for at most 32 days (768 hours).
-							if (durationHours === undefined || durationHours > 768) {
-								throw new UserFacingError("Pick how long the poll stays open from the list.");
-							}
-							return create(
-								ctx,
-								{
-									kind: "poll",
-									question,
-									answers,
-									durationHours,
-									multiple: ctx.args.multiple === true,
-								},
-								question,
-							);
-						},
-					},
-					{
-						name: "list",
-						description: "See every scheduled post",
-						access: ACCESS,
-						private: true,
-						handler: async () => ({
-							embeds: [describeList(deps.store.all(), zone, now())],
-							private: true,
-						}),
-					},
-					{
-						name: "edit",
-						description: "Edit one of your scheduled posts before it goes out",
-						access: ACCESS,
-						private: true,
-						options: [
-							{
-								name: "schedule",
-								description: "Which of your schedules",
-								type: "string",
-								suggest: async ({ typed, principal }) =>
-									suggestSchedules(ownEditable(principal), typed),
-							},
-							{ ...whenOption, required: false },
-							repeatOption,
-							daysOption,
-							{
-								...durationOption,
-								description: "For a poll: how long people can vote (default: unchanged)",
-							},
-							remindInOption,
-							{
-								...remindAtOption,
-								description: `For a poll: when to remind each day (${zone}), or off`,
-							},
-							nameOption,
-							{
-								name: "text",
-								description: "Message",
-								type: "string",
-								form: {
-									style: "paragraph",
-									maxLength: MAX_MESSAGE_LENGTH,
-									placeholder: "What to post. Markdown works. {{date}} fills in when posted.",
-								},
-							},
-							{
-								name: "question",
-								description: "Question",
-								type: "string",
-								form: {
-									style: "short",
-									maxLength: MAX_POLL_QUESTION,
-									placeholder: "Question. {{date}} fills in when posted.",
-								},
-							},
-							{
-								name: "answers",
-								description: "Answers, one per line (2 to 10)",
-								type: "string",
-								form: {
-									style: "paragraph",
-									maxLength: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
-									placeholder: "Yes\nNo\nMaybe",
-								},
-							},
-						],
-						beforeForm: (ctx) => prepareEditForm(ctx),
-						handler: (ctx) => edit(ctx),
-					},
-					manage("preview", "See exactly what a scheduled post will look like", (schedule) =>
-						preview(schedule, zone, now(), deps.interpolator),
-					),
-					manage("pause", "Stop a schedule from posting until it's resumed", (schedule, ctx) => {
-						deps.store.update(schedule.id, { paused: true });
-						ctx.logger.info({ event: "schedule.paused", id: schedule.id }, "paused a schedule");
-						return {
-							text: `Paused ${label(schedule)}. \`/schedule resume\` starts it again.`,
-							private: true,
-						};
-					}),
-					manage("resume", "Start a paused schedule again", (schedule, ctx) => {
-						// Counts from the same instant as the lastRunAt saved below, so it's the post it will make.
-						const next = nextRun(schedule, zone, now());
-						if (!next) {
-							throw new UserFacingError(
-								`${label(schedule)} has nothing left to post: its time passed. \`/schedule delete\` removes it.`,
-							);
-						}
-						// From now on: nothing missed while it was paused is posted.
-						deps.store.update(schedule.id, { paused: false, lastRunAt: fromNow(schedule, now()) });
-						ctx.logger.info({ event: "schedule.resumed", id: schedule.id }, "resumed a schedule");
-						return {
-							text: `Resumed ${label(schedule)}. Next post: ${describeWhen(toLocal(next, zone))}.`,
-							private: true,
-						};
-					}),
-					manage("delete", "Delete a schedule", (schedule, ctx) => {
-						deps.store.remove(schedule.id);
-						ctx.logger.info({ event: "schedule.deleted", id: schedule.id }, "deleted a schedule");
-						deps.reporter.breadcrumb("schedule", `deleted ${schedule.id}`, { id: schedule.id });
-						return { text: `Deleted ${label(schedule)}.`, private: true };
-					}),
-				],
+				private: true,
+				handler: async (ctx) => home(ctx.principal),
 			},
 		],
+		actions,
 		start: () => {
 			const handled = new Set<string>();
 			let running = false;
@@ -756,27 +1147,28 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	};
 }
 
-/** The stored body after an edit: only the fields that were sent change. */
-function editedPost(post: ChannelPost, args: CommandContext["args"]): ChannelPost {
-	if (post.kind === "message") {
-		if (args.duration !== undefined) {
-			throw new UserFacingError(
-				"`duration` only works on a poll: it's how long people can vote. Leave it out to edit a message.",
-			);
-		}
-		const text = typeof args.text === "string" ? args.text.trim() : post.text;
-		if (text === "") throw new UserFacingError("The message can't be empty.");
-		return { ...post, text };
-	}
-	const question = typeof args.question === "string" ? args.question.trim() : post.question;
-	if (question === "") throw new UserFacingError("The question can't be empty.");
-	const answers = typeof args.answers === "string" ? parseAnswers(args.answers) : [...post.answers];
-	// `duration` is one of the choices (the dispatcher refuses anything else).
-	const durationHours =
-		args.duration === undefined
-			? post.durationHours
-			: (pollHours(String(args.duration)) ?? post.durationHours);
-	return { ...post, question, answers, durationHours };
+/** The settings part of a draft, as a post, for describing it. */
+function postSettings(draft: Draft): ChannelPost {
+	return draft.kind === "message"
+		? { kind: "message", text: draft.text, mentions: draft.mentions }
+		: {
+				kind: "poll",
+				question: draft.question,
+				answers: [],
+				durationHours: draft.durationHours,
+				multiple: draft.multiple,
+			};
+}
+
+function describeWhat(post: ChannelPost): string {
+	return post.kind === "message"
+		? `A message, pings ${post.mentions ? "on" : "off"}`
+		: `A poll open for ${durationLabel(post.durationHours)}, ${post.multiple ? "several answers allowed" : "one answer each"}`;
+}
+
+/** A time as someone would type it, and `parseWhen` reads back: "6 nov 2026 19:00". */
+function typedWhen(t: LocalDateTime): string {
+	return `${t.day} ${MONTHS[t.month - 1]} ${t.year} ${formatTimeOfDay(t)}`;
 }
 
 function repeatOf(recurrence: Recurrence): Repeat {
@@ -789,6 +1181,14 @@ function repeatOf(recurrence: Recurrence): Repeat {
 			return "once";
 	}
 }
+
+function ordinal(n: number): string {
+	const tens = n % 100;
+	if (tens >= 11 && tens <= 13) return `${n}th`;
+	return `${n}${{ 1: "st", 2: "nd", 3: "rd" }[n % 10] ?? "th"}`;
+}
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** Answers from the form: one per line, trimmed, no blanks or repeats. */
 export function parseAnswers(text: string): string[] {
@@ -817,24 +1217,6 @@ function cleanName(text: string): string {
 	return name === "" ? "Scheduled post" : name;
 }
 
-/** "**Weekly poll** (`ab2c3d`)", with the name made inert. */
-function label(schedule: Pick<Schedule, "name" | "id">): string {
-	return `**${escapeMarkdown(schedule.name)}** (${inlineCode(schedule.id)})`;
-}
-
-function findSchedule(schedules: readonly Schedule[], typed: string): Schedule | undefined {
-	const key = typed.trim().toLowerCase();
-	return schedules.find((s) => s.id === key) ?? schedules.find((s) => s.name.toLowerCase() === key);
-}
-
-function suggestSchedules(schedules: readonly Schedule[], typed: string): Suggestion[] {
-	const key = typed.trim().toLowerCase();
-	return schedules
-		.filter((s) => key === "" || s.id.includes(key) || s.name.toLowerCase().includes(key))
-		.slice(0, 25)
-		.map((s) => ({ name: `${s.name} (${s.id})${s.paused ? " · paused" : ""}`, value: s.id }));
-}
-
 /** `lastRunAt` for a schedule that should only post from `now` on (the stored one if later). */
 function fromNow(schedule: Schedule, now: Date): string {
 	return schedule.lastRunAt && new Date(schedule.lastRunAt) > now
@@ -851,10 +1233,9 @@ export function nextRun(schedule: Schedule, zone: string, now: Date): Date | und
 	return nextOccurrence(start, schedule.recurrence, zone, after);
 }
 
-/** The next few times, for the preview. */
+/** The next few times, for the summary. */
 function upcoming(schedule: Schedule, zone: string, now: Date, count: number): Date[] {
-	const start = parseLocal(schedule.start);
-	if (!start) return [];
+	const start = parseLocal(schedule.start) as LocalDateTime;
 	const out: Date[] = [];
 	let after = now;
 	for (let i = 0; i < count; i++) {
@@ -866,28 +1247,10 @@ function upcoming(schedule: Schedule, zone: string, now: Date, count: number): D
 	return out;
 }
 
-function describeSchedule(schedule: Schedule, zone: string, now: Date, title: string): Embed {
-	const start = parseLocal(schedule.start) as LocalDateTime;
-	const times = upcoming(schedule, zone, now, 3).map((t) => `• ${describeWhen(toLocal(t, zone))}`);
-	const what =
-		schedule.post.kind === "message"
-			? `A message${schedule.post.mentions ? ", with pings allowed" : ""}`
-			: `A poll open for ${durationLabel(schedule.post.durationHours)}${schedule.post.multiple ? ", several answers allowed" : ""}`;
-	return {
-		title: `${title}: ${escapeMarkdown(schedule.name)}`,
-		description: `Understood as **${describeWhen(start)}** (${zone}).`,
-		fields: [
-			{ name: "Channel", value: `#${escapeMarkdown(schedule.channelName)}`, inline: true },
-			{ name: "ID", value: inlineCode(schedule.id), inline: true },
-			{ name: "What", value: what },
-			{ name: "Repeats", value: describeRecurrence(start, schedule.recurrence) },
-			{ name: `Next posts (${zone})`, value: times.length > 0 ? times.join("\n") : "None" },
-			...(schedule.reminder
-				? [{ name: "Reminders", value: describeReminder(schedule.reminder, zone) }]
-				: []),
-		],
-		accent: "positive",
-	};
+/** A reminder time as Pixel reads it ("18:00"), or as typed if it can't. */
+function reminderClock(typed: string): string {
+	const time = parseTimeOfDay(typed);
+	return time ? formatTimeOfDay(time) : typed;
 }
 
 /** "Every day at 18:00 (Europe/Amsterdam) in #general, while the poll is open" */
@@ -897,48 +1260,6 @@ function describeReminder(reminder: PollReminder, zone: string): string {
 
 function durationLabel(hours: number): string {
 	return DURATIONS.find((d) => pollHours(d) === hours) ?? formatMinutes(hours * 60);
-}
-
-function describeOwnList(schedules: readonly Schedule[], zone: string, now: Date): Embed {
-	if (schedules.length === 0) {
-		return {
-			title: "Your scheduled posts",
-			description:
-				"You have no scheduled posts left to edit. `/schedule message` and `/schedule poll` create them.",
-			accent: "neutral",
-		};
-	}
-	const listed = describeList(schedules, zone, now);
-	return { ...listed, title: `Your scheduled posts (${zone})` };
-}
-
-function describeList(schedules: readonly Schedule[], zone: string, now: Date): Embed {
-	if (schedules.length === 0) {
-		return {
-			title: "Scheduled posts",
-			description: "Nothing is scheduled. Use `/schedule message` or `/schedule poll`.",
-			accent: "neutral",
-		};
-	}
-	const lines = schedules.map((s) => {
-		const start = parseLocal(s.start) as LocalDateTime;
-		const next = s.paused ? undefined : nextRun(s, zone, now);
-		const when = s.paused
-			? "⏸ paused"
-			: next
-				? `next ${describeWhen(toLocal(next, zone))}`
-				: "no more posts";
-		const kind = s.post.kind === "poll" ? "🗳" : "💬";
-		const reminds = s.reminder
-			? ` · reminds daily at ${s.reminder.at} in #${escapeMarkdown(s.reminder.channelName)}`
-			: "";
-		return `${kind} ${label(s)} in #${escapeMarkdown(s.channelName)}\n${describeRecurrence(start, s.recurrence)} · ${when}${reminds}`;
-	});
-	return {
-		title: `Scheduled posts (${zone})`,
-		description: lines.join("\n\n").slice(0, 4000),
-		accent: "brand",
-	};
 }
 
 /** The stored post with tokens filled as of the next occurrence (or `now`). */
@@ -952,35 +1273,14 @@ function filledPost(
 	return interpolateChannelPost(schedule.post, (text) => interpolator.interpolate(text, at));
 }
 
-function pollPreviewEmbed(post: Extract<ChannelPost, { kind: "poll" }>) {
+function pollPreviewEmbed(post: Extract<ChannelPost, { kind: "poll" }>): Embed {
 	return {
 		title: `🗳 ${escapeMarkdown(post.question)}`,
 		description: post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n"),
 		fields: [
 			{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
-			{
-				name: "Answers",
-				value: post.multiple ? "Several allowed" : "One",
-				inline: true,
-			},
+			{ name: "Answers", value: post.multiple ? "Several allowed" : "One", inline: true },
 		],
-		accent: "brand" as const,
-	};
-}
-
-function preview(schedule: Schedule, zone: string, now: Date, interpolator: Interpolate): Reply {
-	const next = nextRun(schedule, zone, now);
-	const shownNext = schedule.paused ? undefined : next;
-	const post = filledPost(schedule, interpolator, zone, now);
-	const header = `Preview of ${label(schedule)} in #${escapeMarkdown(schedule.channelName)}${
-		shownNext ? `, next on ${describeWhen(toLocal(shownNext, zone))}` : ""
-	}. Pings don't fire in a preview. Tokens are filled as of that post.`;
-	if (post.kind === "message") {
-		return { text: `${header}\n\n${post.text}`.slice(0, 2000), private: true };
-	}
-	return {
-		text: header,
-		embeds: [pollPreviewEmbed(post)],
-		private: true,
+		accent: "brand",
 	};
 }

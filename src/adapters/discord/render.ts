@@ -1,5 +1,10 @@
 import { type APIEmbed, MessageFlags } from "discord.js";
 import type { Accent, Embed, Reply } from "../../core/reply.ts";
+import type { ControlRow } from "../../core/ui.ts";
+import type { RowJson } from "./controls.ts";
+
+/** Draws a reply's controls and holds what they run; see `controls.ts`. */
+export type ControlsRenderer = (rows: readonly ControlRow[]) => RowJson[];
 
 /** Discord's documented limits. */
 const LIMITS = {
@@ -28,6 +33,7 @@ export type DiscordReplyPayload = {
 	content?: string;
 	embeds?: APIEmbed[];
 	flags?: MessageFlags.Ephemeral;
+	components?: RowJson[];
 	allowedMentions: { parse: [] };
 };
 
@@ -39,6 +45,8 @@ export type DiscordReplyPayload = {
 export type DiscordEditPayload = {
 	content: string | null;
 	embeds: APIEmbed[];
+	/** Always set, so an edit without controls removes the old ones. */
+	components: RowJson[];
 	allowedMentions: { parse: [] };
 };
 
@@ -47,19 +55,37 @@ export type DiscordEditPayload = {
  * disabled so that no reply — whatever text it echoes — can ping @everyone,
  * roles or users.
  */
-export function renderReply(reply: Reply, isPrivate: boolean): DiscordReplyPayload {
+export function renderReply(
+	reply: Reply,
+	isPrivate: boolean,
+	controls?: ControlsRenderer,
+): DiscordReplyPayload {
 	const { content, embeds } = renderParts(reply);
+	const components = renderRows(reply, controls);
 	return {
 		...(content !== null ? { content } : {}),
 		...(embeds.length > 0 ? { embeds } : {}),
 		...(isPrivate ? { flags: MessageFlags.Ephemeral } : {}),
+		...(components.length > 0 ? { components } : {}),
 		allowedMentions: { parse: [] },
 	};
 }
 
 /** Renders a core Reply as an edit that fully replaces the previous message. */
-export function renderEdit(reply: Reply): DiscordEditPayload {
-	return { ...renderParts(reply), allowedMentions: { parse: [] } };
+export function renderEdit(reply: Reply, controls?: ControlsRenderer): DiscordEditPayload {
+	return {
+		...renderParts(reply),
+		components: renderRows(reply, controls),
+		allowedMentions: { parse: [] },
+	};
+}
+
+function renderRows(reply: Reply, controls: ControlsRenderer | undefined): RowJson[] {
+	const rows = reply.controls ?? [];
+	if (rows.length === 0) return [];
+	// Dropping them would leave a reply that says "choose below" with nothing below.
+	if (!controls) throw new Error("this reply has controls, but nothing here can draw them");
+	return controls(rows);
 }
 
 function renderParts(reply: Reply): { content: string | null; embeds: APIEmbed[] } {
