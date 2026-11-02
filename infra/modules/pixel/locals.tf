@@ -27,6 +27,7 @@ locals {
     mastodon           = var.mastodon_instance != null
     spacestate         = var.spacestate_api_url != null
     spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
+    openr              = var.openr_building_id != null
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null
@@ -68,12 +69,16 @@ locals {
     var.discord_announcements_channel_id != null ? { DISCORD_ANNOUNCEMENTS_CHANNEL_ID = var.discord_announcements_channel_id } : {},
     var.discord_announce_bot_channel_id != null ? { DISCORD_ANNOUNCE_BOT_CHANNEL_ID = var.discord_announce_bot_channel_id } : {},
     var.discord_closing_time_channel_id != null ? { DISCORD_CLOSING_TIME_CHANNEL_ID = var.discord_closing_time_channel_id } : {},
+    var.discord_parking_channel_id != null ? { DISCORD_PARKING_CHANNEL_ID = var.discord_parking_channel_id } : {},
     var.discord_role_member != null ? { DISCORD_ROLE_MEMBER = var.discord_role_member } : {},
     var.discord_role_friend != null ? { DISCORD_ROLE_FRIEND = var.discord_role_friend } : {},
     var.discord_role_sync != null ? { DISCORD_ROLE_SYNC = var.discord_role_sync } : {},
     var.home_assistant_url != null ? { HOME_ASSISTANT_URL = var.home_assistant_url } : {},
     var.mastodon_instance != null ? { MASTODON_INSTANCE = var.mastodon_instance } : {},
     var.spacestate_api_url != null ? { SPACESTATE_API_URL = var.spacestate_api_url } : {},
+    var.openr_building_id != null ? { OPENR_BUILDING_ID = var.openr_building_id } : {},
+    var.openr_doors != null ? { OPENR_DOORS = var.openr_doors } : {},
+    var.openr_gate_door != null ? { OPENR_GATE_DOOR = var.openr_gate_door } : {},
   )
 
   # Environment variable => Key Vault secret name, for what the Pixel container reads from its

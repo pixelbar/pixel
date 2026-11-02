@@ -100,6 +100,7 @@ flowchart LR
     HA["Home Assistant<br/>Nabu Casa today"]
     SPACE["SpaceAPI spaceapi.pixelbar.nl"]
     SENTRY["Sentry org/project"]
+    OPENR["OpenR dashboard.openr.nl<br/>doors + parking gate"]
     TS["Pixelbar tailnet<br/>sidecar stub off"]
   end
 
@@ -107,6 +108,7 @@ flowchart LR
   APP -->|HTTPS + WS| HA
   APP --> SPACE
   APP --> SENTRY
+  APP -->|HTTPS, when configured| OPENR
   TS -.->|not wired| APP
 ```
 
@@ -125,7 +127,7 @@ flowchart TB
   SECVOL --> PIXEL
   FILEVOL --> INIT
   FILEVOL --> PIXEL
-  PIXEL -->|Discord, SpaceAPI, Sentry, KV, GHCR| EGRESS["Azure egress"]
+  PIXEL -->|Discord, SpaceAPI, OpenR, Sentry, KV, GHCR| EGRESS["Azure egress"]
   PIXEL -->|HA token + Nabu Casa URL| NABU["*.ui.nabu.casa"]
 ```
 
@@ -174,7 +176,7 @@ How to seed the share and vault: [dev README](../infra/envs/dev/README.md).
 
 Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy dev` and the Deploy dev workflow re-assert that, and `just deploy prod` refuses (prod ships from the Release workflow). The Release prod job re-asserts the same on `pixel-prod`.
 
-Ingress is off. Discord, SpaceAPI, Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
+Ingress is off. Discord, SpaceAPI, OpenR (when configured), Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
 
 ## What is not in Azure
 

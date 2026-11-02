@@ -15,6 +15,7 @@ module "pixel" {
   discord_announcements_channel_id      = var.discord_announcements_channel_id
   discord_announce_bot_channel_id       = var.discord_announce_bot_channel_id
   discord_closing_time_channel_id       = var.discord_closing_time_channel_id
+  discord_parking_channel_id            = var.discord_parking_channel_id
   discord_role_member                   = var.discord_role_member
   discord_role_friend                   = var.discord_role_friend
   discord_role_sync                     = var.discord_role_sync
@@ -22,6 +23,9 @@ module "pixel" {
   mastodon_instance                     = var.mastodon_instance
   spacestate_api_url                    = var.spacestate_api_url
   spacestate_additional_headers_enabled = var.spacestate_additional_headers_enabled
+  openr_building_id                     = var.openr_building_id
+  openr_doors                           = var.openr_doors
+  openr_gate_door                       = var.openr_gate_door
   sentry_enabled                        = var.sentry_enabled
   tailscale_enabled                     = var.tailscale_enabled
   tailscale_image                       = var.tailscale_image

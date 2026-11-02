@@ -1,0 +1,963 @@
+import { actorLogFields, actorRef, type Principal } from "../../core/access.ts";
+import type {
+	Args,
+	SubcommandDefinition,
+	SubgroupDefinition,
+	Suggestion,
+} from "../../core/command.ts";
+import { UserFacingError } from "../../core/errors.ts";
+import { escapeMarkdown, inlineCode } from "../../core/format.ts";
+import type { Logger } from "../../core/logger.ts";
+import { toInstant } from "../../core/recurrence.ts";
+import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
+import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
+import { cutBookings } from "../../services/parking-allocate.ts";
+import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { assignedText, endedText, type ParkingNotices } from "../../services/parking-notices.ts";
+import {
+	MAX_DURATIONS,
+	MAX_GRACE_MINUTES,
+	MAX_REMIND_MINUTES,
+	normaliseDurations,
+	type ParkingSettings,
+	type ParkingSpot,
+	type ParkingSpotStore,
+	resetClock,
+} from "../../services/parking-spots.ts";
+import { describeInstant, nextReset, parseDuration } from "../../services/parking-time.ts";
+import {
+	clipToReset,
+	fitEntries,
+	openUntil,
+	type ParkingEntries,
+	type ParkingEntry,
+	type ParkingWindowStore,
+} from "../../services/parking-windows.ts";
+
+/**
+ * `/admin parking`: the spots, when they're open, and the parking settings. Admins
+ * only, private. Spots rarely change and live in `data/parking-spots.yaml`; opening
+ * times change daily and live in `data/parking-windows.yaml`.
+ *
+ * A **permanent** spot (Pixelbar's own) is open every day until the reset; `close`
+ * shuts it for a while and `open` lifts that. A **borrowed** spot is only open in a
+ * window: `open` sets one (replacing any it has that day) and `close` ends it. No
+ * window or closure runs past the reset on the day it starts.
+ */
+
+export type ParkingAdminDeps = {
+	spots: Pick<
+		ParkingSpotStore,
+		"all" | "get" | "settings" | "add" | "update" | "remove" | "setSettings" | "problem"
+	>;
+	windows: Pick<ParkingWindowStore, "entries" | "replace" | "reconcile" | "problem">;
+	bookings: Pick<ParkingBookingStore, "all" | "end" | "update" | "assign" | "problem">;
+	/** DMs people whose booking an admin ends. */
+	notices: Pick<ParkingNotices, "send">;
+	/** Posts every change to the parking channel and counts it in Sentry. */
+	activity: Pick<ParkingActivity, "record">;
+	timezone: string;
+	now?: () => Date;
+};
+
+const SPOTS_HELP = "One spot, or several separated by spaces";
+
+/** Spot names for a `spot` option: the ones that contain what's typed. */
+export function suggestSpot(names: readonly string[], typed: string): Suggestion[] {
+	const needle = typed.trim().toLowerCase();
+	return names
+		.filter((n) => n.includes(needle))
+		.slice(0, 25)
+		.map((n) => ({ name: n, value: n }));
+}
+
+/** Completes the last name in a `spots` option, keeping the ones already typed. */
+export function suggestSpots(names: readonly string[], typed: string): Suggestion[] {
+	const words = typed.toLowerCase().split(/[\s,]+/);
+	const last = words.pop() ?? "";
+	const before = words.filter((w) => w !== "");
+	const prefix = before.length > 0 ? `${before.join(" ")} ` : "";
+	return names
+		.filter((n) => !before.includes(n) && n.includes(last))
+		.map((n) => `${prefix}${n}`)
+		.filter((v) => v.length <= 100)
+		.slice(0, 25)
+		.map((v) => ({ name: v, value: v }));
+}
+
+/** The spots named in `typed`, in the order given. Throws if any doesn't exist. */
+export function resolveSpots(
+	spots: Pick<ParkingSpotStore, "get">,
+	typed: string,
+): readonly ParkingSpot[] {
+	const names = [
+		...new Set(
+			typed
+				.toLowerCase()
+				.split(/[\s,]+/)
+				.filter(Boolean),
+		),
+	];
+	if (names.length === 0) throw new UserFacingError("Name at least one spot.");
+	const found = names.map((n) => ({ name: n, spot: spots.get(n) }));
+	const unknown = found.filter((f) => !f.spot).map((f) => inlineCode(f.name, 32));
+	if (unknown.length > 0) {
+		throw new UserFacingError(
+			`There's no spot called ${unknown.join(", ")}. \`/admin parking status\` lists them.`,
+		);
+	}
+	return found.map((f) => f.spot as ParkingSpot);
+}
+
+const bold = (names: readonly string[]) => names.map((n) => `**${n}**`).join(", ");
+
+/** One spot for `/admin parking status`: what it is, and when it's open. */
+export function describeSpot(
+	spot: ParkingSpot,
+	entries: ParkingEntries,
+	now: Date,
+	reset: Date,
+	zone: string,
+	booking?: ParkingBooking,
+): string {
+	const at = (d: Date) => describeInstant(d, now, zone);
+	const head = `**${spot.name}** (${spot.permanent ? "permanent" : "borrowed"})${
+		spot.description ? `: ${escapeMarkdown(spot.description)}` : ""
+	}`;
+	const mine = (list: readonly ParkingEntry[]) =>
+		list.filter((e) => e.spot === spot.name).sort((a, b) => a.from.getTime() - b.from.getTime());
+	const until = openUntil(spot, entries, now, reset);
+	const parts: string[] = [];
+	if (spot.permanent) {
+		const blocks = mine(entries.blocks);
+		const current = blocks.find((b) => b.from <= now);
+		parts.push(
+			current
+				? `closed until ${at(current.until)}${current.reason === "taken" ? " (reported taken)" : ""}`
+				: `open until ${at(until ?? reset)}`,
+		);
+		for (const b of blocks.filter((b) => b.from > now)) {
+			parts.push(`closed ${at(b.from)} to ${at(b.until)}`);
+		}
+	} else {
+		const taken = entries.blocks.find((b) => b.spot === spot.name && b.from <= now);
+		parts.push(
+			until
+				? `open until ${at(until)}`
+				: taken
+					? `closed until ${at(taken.until)} (reported taken)`
+					: "closed",
+		);
+		for (const w of mine(entries.windows).filter((w) => w.from > now)) {
+			parts.push(`open ${at(w.from)} to ${at(w.until)}`);
+		}
+	}
+	if (booking) {
+		parts.push(`taken by ${escapeMarkdown(booking.by.name)} until about ${at(booking.until)}`);
+	}
+	return `${head}\n  ${parts.join(" · ")}`;
+}
+
+export function describeSettings(settings: ParkingSettings): string {
+	return [
+		`Reminder: ${settings.remindMinutes}m before someone's end`,
+		`Ended automatically: ${settings.graceMinutes}m after it`,
+		`Reset: ${settings.resetAt} every day`,
+		`Durations offered: ${settings.durations.join(", ")}`,
+	].join("\n");
+}
+
+export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinition {
+	const now = deps.now ?? (() => new Date());
+	const zone = deps.timezone;
+	const names = () => deps.spots.all().map((s) => s.name);
+	const resetAfter = (instant: Date) => nextReset(instant, resetClock(deps.spots.settings()), zone);
+	/** Whether an entry belongs to the day that ends at `reset`. */
+	const onDayEnding = (entry: ParkingEntry, reset: Date) =>
+		resetAfter(entry.from).getTime() === reset.getTime();
+
+	const usable = () => {
+		if (deps.spots.problem) {
+			throw new UserFacingError(
+				"The parking spots file is invalid, so parking is off until an admin fixes it. See the logs.",
+			);
+		}
+	};
+
+	/** A typed time as an instant, read relative to `after`; throws if it isn't understood. */
+	const timeArg = (args: Args, name: string, after: Date): Date | undefined => {
+		const typed = args[name];
+		if (typeof typed !== "string") return undefined;
+		// "now+2h" is from the real now, even when the rest is read after `from`.
+		const local = parseWhen(typed, after, zone, { now: now() });
+		if (!local) {
+			throw new UserFacingError(
+				`I couldn't understand \`${name}\`, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\`, \`tomorrow 8\` or \`now+2h\`.`,
+			);
+		}
+		return toInstant(local, zone);
+	};
+
+	const spotOption = {
+		name: "spot",
+		description: "The spot",
+		type: "string" as const,
+		required: true,
+		suggest: async ({ typed }: { typed: string }) => suggestSpot(names(), typed),
+	};
+	const spotsOption = {
+		name: "spots",
+		description: SPOTS_HELP,
+		type: "string" as const,
+		required: true,
+		suggest: async ({ typed }: { typed: string }) => suggestSpots(names(), typed),
+	};
+	const evictOption = {
+		name: "evict",
+		description: "End any booking this cuts into",
+		type: "boolean" as const,
+	};
+
+	/**
+	 * The bookings in `affected` spots a change would cut into. Refuses the change unless
+	 * `evict` is on. Other spots' bookings are left alone, even ones that no longer fit.
+	 */
+	const cuts = (
+		args: Args,
+		affected: readonly string[],
+		spotsAfter: readonly ParkingSpot[],
+		entriesAfter: ParkingEntries,
+		at: Date,
+	): ParkingBooking[] => {
+		const bookings = deps.bookings.all().filter((b) => affected.includes(b.spot));
+		const cut = cutBookings(bookings, spotsAfter, entriesAfter, at, resetAfter(at));
+		if (cut.length > 0 && args.evict !== true) {
+			const who = cut.map((b) => `**${b.spot}** until about ${describeInstant(b.until, at, zone)}`);
+			throw new UserFacingError(
+				`Someone is parked in ${who.join(", ")}. Add \`evict:True\` to end ${cut.length === 1 ? "their booking" : "those bookings"}.`,
+			);
+		}
+		return cut;
+	};
+
+	/** Tells someone an admin ended their booking. Never throws, so it isn't awaited. */
+	const tell = (booking: ParkingBooking) => {
+		const context = { now: now(), zone, settings: deps.spots.settings() };
+		void deps.notices.send(booking, "admin", endedText(booking, "admin", context));
+	};
+
+	/** Posts an admin's change to the parking channel. Never throws, so it isn't awaited. */
+	const record = (principal: Principal, action: AdminAction, text: string) => {
+		void deps.activity.record({ kind: "admin", action, admin: principal.displayName, text }, now());
+	};
+
+	/** Ends bookings an admin's change cut into; returns a line for each. */
+	const evict = (
+		cut: readonly ParkingBooking[],
+		principal: Principal,
+		logger: Logger,
+	): string[] => {
+		if (cut.length === 0) return [];
+		const ids = new Set(cut.map((b) => b.id));
+		return deps.bookings
+			.end((b) => ids.has(b.id))
+			.map((b) => {
+				logger.warn(
+					{
+						event: "parking.evicted",
+						spot: b.spot,
+						parkedUser: b.by.ref,
+						parkedUserName: b.by.name,
+						...actorLogFields(principal),
+					},
+					"ended a parking booking an admin's change cut into",
+				);
+				tell(b);
+				void deps.activity.record(
+					{ kind: "evicted", spot: b.spot, who: b.by.name, admin: principal.displayName },
+					now(),
+				);
+				return `Ended ${escapeMarkdown(b.by.name)}'s booking in **${b.spot}**.`;
+			});
+	};
+
+	const status: SubcommandDefinition = {
+		name: "status",
+		description: "The parking spots, when they're open, and the settings",
+		access: { minTier: "admin" },
+		private: true,
+		handler: async () => {
+			const at = now();
+			const lines: string[] = [];
+			if (deps.spots.problem) {
+				lines.push(`⚠️ Parking is off: the spots file is invalid (${deps.spots.problem}).`);
+			}
+			if (deps.bookings.problem) {
+				lines.push(`⚠️ No one can park: the bookings file is invalid (${deps.bookings.problem}).`);
+			}
+			if (deps.windows.problem) {
+				lines.push(
+					`⚠️ The opening times file couldn't be read, so borrowed spots are closed. The next \`open\` or \`close\` starts a new one (${deps.windows.problem}).`,
+				);
+			}
+			const spots = deps.spots.all();
+			if (spots.length === 0) {
+				lines.push("There are no parking spots yet. Add one with `/admin parking add-spot`.");
+			} else {
+				const entries = deps.windows.entries(at);
+				const reset = resetAfter(at);
+				const bookings = deps.bookings.all();
+				lines.push(
+					...spots.map((s) =>
+						describeSpot(
+							s,
+							entries,
+							at,
+							reset,
+							zone,
+							bookings.find((b) => b.spot === s.name),
+						),
+					),
+				);
+			}
+			lines.push("", describeSettings(deps.spots.settings()));
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const addSpot: SubcommandDefinition = {
+		name: "add-spot",
+		description: "Add a parking spot",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			{
+				name: "name",
+				description: "Lowercase words joined by '-', e.g. neighbour-1",
+				type: "string",
+				required: true,
+			},
+			{ name: "description", description: "Where it is (shown to people)", type: "string" },
+			{
+				name: "permanent",
+				description: "Pixelbar's own spot, open every day (default: no)",
+				type: "boolean",
+			},
+		],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const spot = deps.spots.add({
+				name: String(args.name ?? "").trim(),
+				permanent: args.permanent === true,
+				...(typeof args.description === "string" ? { description: args.description.trim() } : {}),
+			});
+			logger.info(
+				{
+					event: "parking.spot_added",
+					spot: spot.name,
+					permanent: spot.permanent,
+					...actorLogFields(principal),
+				},
+				"added a parking spot",
+			);
+			record(
+				principal,
+				"spot-added",
+				`added the spot **${spot.name}** (${spot.permanent ? "permanent" : "borrowed"}).`,
+			);
+			const reset = deps.spots.settings().resetAt;
+			return {
+				text: spot.permanent
+					? `Added **${spot.name}**, a permanent spot: it's open every day until ${reset}. \`/admin parking close\` shuts it for a while.`
+					: `Added **${spot.name}**, a borrowed spot. It's closed until you open it with \`/admin parking open\`.`,
+				private: true,
+			};
+		},
+	};
+
+	const editSpot: SubcommandDefinition = {
+		name: "edit-spot",
+		description: "Change a spot's description, or whether it's permanent",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			spotOption,
+			{ name: "description", description: "Where it is; '-' removes it", type: "string" },
+			{ name: "permanent", description: "Pixelbar's own spot (open every day)", type: "boolean" },
+			evictOption,
+		],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			const description =
+				typeof args.description === "string"
+					? args.description.trim() === "-"
+						? null
+						: args.description.trim()
+					: undefined;
+			const permanent = typeof args.permanent === "boolean" ? args.permanent : undefined;
+			if (!target || (description === undefined && permanent === undefined)) {
+				throw new UserFacingError("Give a new `description`, or say whether it's `permanent`.");
+			}
+			const at = now();
+			const spotsAfter = deps.spots
+				.all()
+				.map((s) => (s.name === target.name ? { ...s, permanent: permanent ?? s.permanent } : s));
+			const cut = cuts(
+				args,
+				[target.name],
+				spotsAfter,
+				fitEntries(deps.windows.entries(at), spotsAfter),
+				at,
+			);
+			const changed = deps.spots.update(target.name, {
+				...(description !== undefined ? { description } : {}),
+				...(permanent !== undefined ? { permanent } : {}),
+			});
+			if (!changed) throw new UserFacingError("That spot no longer exists.");
+			const lines = [`Changed **${target.name}**.`];
+			if (changed.before.permanent !== changed.after.permanent) {
+				const dropped = deps.windows.reconcile(deps.spots.all(), at);
+				lines.push(
+					changed.after.permanent
+						? "It's now permanent: open every day until the reset."
+						: "It's now borrowed: closed until you open it with `/admin parking open`.",
+				);
+				if (dropped > 0) lines.push(`Its ${dropped} earlier opening time(s) no longer apply.`);
+			}
+			logger.info(
+				{
+					event: "parking.spot_edited",
+					spot: target.name,
+					permanent: changed.after.permanent,
+					...actorLogFields(principal),
+				},
+				"changed a parking spot",
+			);
+			record(
+				principal,
+				"spot-edited",
+				`changed the spot **${target.name}**${
+					changed.before.permanent !== changed.after.permanent
+						? ` (now ${changed.after.permanent ? "permanent" : "borrowed"})`
+						: ""
+				}.`,
+			);
+			lines.push(...evict(cut, principal, logger));
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const removeSpot: SubcommandDefinition = {
+		name: "remove-spot",
+		description: "Remove a parking spot, and its opening times",
+		access: { minTier: "admin" },
+		private: true,
+		options: [spotOption, evictOption],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const at = now();
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			if (!target) throw new UserFacingError("That spot no longer exists.");
+			const spotsAfter = deps.spots.all().filter((s) => s.name !== target.name);
+			const cut = cuts(
+				args,
+				[target.name],
+				spotsAfter,
+				fitEntries(deps.windows.entries(at), spotsAfter),
+				at,
+			);
+			const removed = deps.spots.remove(target.name);
+			if (!removed) throw new UserFacingError("That spot no longer exists.");
+			deps.windows.reconcile(deps.spots.all(), at);
+			logger.info(
+				{ event: "parking.spot_removed", spot: removed.name, ...actorLogFields(principal) },
+				"removed a parking spot",
+			);
+			record(principal, "spot-removed", `removed the spot **${removed.name}**.`);
+			const lines = [`Removed **${removed.name}**.`, ...evict(cut, principal, logger)];
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const open: SubcommandDefinition = {
+		name: "open",
+		description: "Open spots for a while, or lift a closure",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			spotsOption,
+			{
+				name: "from",
+				description: "When it opens (default: now), e.g. 8:00 or tomorrow 8",
+				type: "string",
+			},
+			{
+				name: "until",
+				description: "When it closes (default: the reset), e.g. 17:00 or now+2h",
+				type: "string",
+			},
+			evictOption,
+		],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const at = now();
+			const targets = resolveSpots(deps.spots, String(args.spots ?? ""));
+			const permanent = targets.filter((s) => s.permanent).map((s) => s.name);
+			const borrowed = targets.filter((s) => !s.permanent).map((s) => s.name);
+			if ((args.from !== undefined || args.until !== undefined) && permanent.length > 0) {
+				throw new UserFacingError(
+					`\`from\` and \`until\` only apply to borrowed spots. ${bold(permanent)} ${permanent.length === 1 ? "is" : "are"} permanent, so \`open\` just lifts a closure.`,
+				);
+			}
+			const from = timeArg(args, "from", at) ?? at;
+			const cap = resetAfter(from);
+			const until = timeArg(args, "until", from) ?? cap;
+			if (until > cap) {
+				throw new UserFacingError(
+					`Opening times can't run past the reset (${describeInstant(cap, at, zone)}). Leave out \`until\` to open until then.`,
+				);
+			}
+			const entries = deps.windows.entries(at);
+			const setBy = { ref: actorRef(principal), name: principal.displayName };
+			const names = targets.map((s) => s.name);
+			// Any closure, including one for a spot reported taken.
+			const lifted = entries.blocks.filter((b) => names.includes(b.spot));
+			const next = {
+				windows: [
+					...entries.windows.filter((w) => !(borrowed.includes(w.spot) && onDayEnding(w, cap))),
+					...borrowed.map((spot) => ({ spot, from, until, setBy })),
+				],
+				blocks: entries.blocks.filter((b) => !names.includes(b.spot)),
+			};
+			const cut = cuts(
+				args,
+				targets.map((s) => s.name),
+				deps.spots.all(),
+				next,
+				at,
+			);
+			deps.windows.replace(next, at);
+			logger.info(
+				{
+					event: "parking.opened",
+					spots: targets.map((s) => s.name),
+					from: from.toISOString(),
+					until: until.toISOString(),
+					...actorLogFields(principal),
+				},
+				"opened parking spots",
+			);
+			const lines: string[] = [];
+			if (borrowed.length > 0) {
+				const start = from.getTime() === at.getTime() ? "now" : describeInstant(from, at, zone);
+				lines.push(
+					`${bold(borrowed)} open from ${start} until ${describeInstant(until, at, zone)}.`,
+				);
+			}
+			const liftedNames = permanent.filter((n) => lifted.some((b) => b.spot === n));
+			const alreadyOpen = permanent.filter((n) => !liftedNames.includes(n));
+			if (liftedNames.length > 0) lines.push(`${bold(liftedNames)} open again.`);
+			if (alreadyOpen.length > 0) lines.push(`${bold(alreadyOpen)} wasn't closed.`);
+			const reopened = borrowed.filter((n) => lifted.some((b) => b.spot === n));
+			if (reopened.length > 0) {
+				lines.push(`${bold(reopened)} ${reopened.length === 1 ? "is" : "are"} no longer closed.`);
+			}
+			record(principal, "opened", `opened parking: ${lines.join(" ")}`);
+			lines.push(...evict(cut, principal, logger));
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const close: SubcommandDefinition = {
+		name: "close",
+		description: "Close spots: borrowed ones for today, ours for a while",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			spotsOption,
+			{
+				name: "until",
+				description: "Permanent spots: when it reopens (default: the reset)",
+				type: "string",
+			},
+			evictOption,
+		],
+		handler: async ({ args, principal, logger }) => {
+			usable();
+			const at = now();
+			const targets = resolveSpots(deps.spots, String(args.spots ?? ""));
+			const permanent = targets.filter((s) => s.permanent).map((s) => s.name);
+			const borrowed = targets.filter((s) => !s.permanent).map((s) => s.name);
+			if (args.until !== undefined && borrowed.length > 0) {
+				throw new UserFacingError(
+					`\`until\` only applies to permanent spots. ${bold(borrowed)} ${borrowed.length === 1 ? "is" : "are"} borrowed: closing ends today's opening, and \`open\` sets a new one.`,
+				);
+			}
+			const cap = resetAfter(at);
+			const until = timeArg(args, "until", at) ?? cap;
+			if (until > cap) {
+				throw new UserFacingError(
+					`A closure can't run past the reset (${describeInstant(cap, at, zone)}). Leave out \`until\` to close until then.`,
+				);
+			}
+			const entries = deps.windows.entries(at);
+			const today = (e: ParkingEntry, names: readonly string[]) =>
+				names.includes(e.spot) && onDayEnding(e, cap);
+			const ended = borrowed.filter((n) =>
+				entries.windows.some((w) => w.spot === n && onDayEnding(w, cap)),
+			);
+			const setBy = { ref: actorRef(principal), name: principal.displayName };
+			const next = {
+				windows: entries.windows.filter((w) => !today(w, borrowed)),
+				blocks: [
+					...entries.blocks.filter((b) => !today(b, permanent)),
+					...permanent.map((spot) => ({ spot, from: at, until, setBy })),
+				],
+			};
+			const cut = cuts(
+				args,
+				targets.map((s) => s.name),
+				deps.spots.all(),
+				next,
+				at,
+			);
+			deps.windows.replace(next, at);
+			logger.info(
+				{
+					event: "parking.closed",
+					spots: targets.map((s) => s.name),
+					until: until.toISOString(),
+					...actorLogFields(principal),
+				},
+				"closed parking spots",
+			);
+			const lines: string[] = [];
+			if (ended.length > 0) lines.push(`${bold(ended)} closed for today.`);
+			const notOpen = borrowed.filter((n) => !ended.includes(n));
+			if (notOpen.length > 0) lines.push(`${bold(notOpen)} wasn't open today.`);
+			if (permanent.length > 0) {
+				lines.push(`${bold(permanent)} closed until ${describeInstant(until, at, zone)}.`);
+			}
+			record(principal, "closed", `closed parking: ${lines.join(" ")}`);
+			lines.push(...evict(cut, principal, logger));
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const free: SubcommandDefinition = {
+		name: "free",
+		description: "End the booking in a spot",
+		access: { minTier: "admin" },
+		private: true,
+		options: [spotOption],
+		handler: async ({ args, principal, logger }) => {
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			const [ended] = deps.bookings.end((b) => b.spot === target?.name);
+			if (!ended) return { text: `Nobody is parked in **${target?.name}**.`, private: true };
+			logger.info(
+				{
+					event: "parking.freed",
+					spot: ended.spot,
+					parkedUser: ended.by.ref,
+					parkedUserName: ended.by.name,
+					...actorLogFields(principal),
+				},
+				"an admin ended a parking booking",
+			);
+			tell(ended);
+			void deps.activity.record(
+				{ kind: "freed", spot: ended.spot, who: ended.by.name, admin: principal.displayName },
+				now(),
+			);
+			return {
+				text: `Ended ${escapeMarkdown(ended.by.name)}'s booking: **${ended.spot}** is free again.`,
+				private: true,
+			};
+		},
+	};
+
+	const assign: SubcommandDefinition = {
+		name: "assign",
+		description: "Give someone the spot they're parked in",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			{ name: "user", description: "Who is parked there", type: "user", required: true },
+			spotOption,
+			{
+				name: "for",
+				description: "How long (default: until the spot closes)",
+				type: "string",
+				suggest: async ({ typed }) => {
+					const needle = typed.trim().toLowerCase();
+					return deps.spots
+						.settings()
+						.durations.filter((d) => d.includes(needle))
+						.map((d) => ({ name: d, value: d }));
+				},
+			},
+			{
+				...evictOption,
+				description: "End the booking of whoever still holds the spot",
+			},
+		],
+		handler: async ({ args, users, principal, logger }) => {
+			usable();
+			const person = users.user;
+			if (!person) throw new UserFacingError("Pick who is parked there.");
+			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
+			if (!target) throw new UserFacingError("That spot no longer exists.");
+			const at = now();
+			const reset = resetAfter(at);
+			const when = (d: Date) => describeInstant(d, at, zone);
+
+			// Someone being found there is what clears a "reported taken" closure.
+			const current = deps.windows.entries(at);
+			const lifted = current.blocks.filter((b) => b.spot === target.name && b.reason === "taken");
+			const entries = {
+				windows: current.windows,
+				blocks: current.blocks.filter((b) => !lifted.includes(b)),
+			};
+			const openTill = openUntil(target, entries, at, reset);
+			if (!openTill) {
+				throw new UserFacingError(
+					`**${target.name}** is closed right now. Open it first with \`/admin parking open\`.`,
+				);
+			}
+			let until = openTill;
+			if (typeof args.for === "string") {
+				const duration = parseDuration(args.for);
+				if (!duration) {
+					throw new UserFacingError(
+						"I couldn't understand how long. Try something like `2h`, `2h30` or `rest of day`.",
+					);
+				}
+				until =
+					duration.kind === "rest-of-day"
+						? reset
+						: new Date(at.getTime() + duration.minutes * 60_000);
+				if (until > openTill) {
+					throw new UserFacingError(
+						`**${target.name}** is only open until ${when(openTill)}. Leave out \`for\` to give it until then.`,
+					);
+				}
+			}
+
+			const ref = actorRef({ platform: principal.platform, userId: person.id });
+			const own = deps.bookings.all().find((b) => b.by.ref === ref);
+			const holder = deps.bookings.all().find((b) => b.spot === target.name && b.by.ref !== ref);
+			// Pixel doesn't move whoever holds the spot: `/parking taken` gets them a new one.
+			if (holder && args.evict !== true) {
+				throw new UserFacingError(
+					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with \`/parking taken\`; or add \`evict:True\` to end their booking.`,
+				);
+			}
+
+			// Checked: now change things. The bookings change is one save (the person's other
+			// booking, an evicted holder and the new booking together). The closure is lifted
+			// first and put back if that save fails, so a failure leaves everything as it was.
+			if (deps.bookings.problem) {
+				throw new UserFacingError(
+					"The parking bookings file is invalid, so nothing can be assigned until an admin fixes it. See the logs.",
+				);
+			}
+			if (lifted.length > 0) deps.windows.replace(entries, at);
+			let assigned: ReturnType<typeof deps.bookings.assign>;
+			try {
+				assigned = deps.bookings.assign({ ref, name: person.displayName }, target.name, at, until, {
+					evict: holder !== undefined,
+				});
+			} catch (error) {
+				if (lifted.length > 0) {
+					try {
+						deps.windows.replace(current, at);
+					} catch {
+						logger.error(
+							{ event: "parking.assign_rollback_failed", spot: target.name },
+							"couldn't put a reported-taken closure back after a failed assign",
+						);
+					}
+				}
+				throw error;
+			}
+			const { booking, evicted } = assigned;
+
+			logger.warn(
+				{
+					event: "parking.assigned",
+					spot: booking.spot,
+					until: booking.until.toISOString(),
+					parkedUser: ref,
+					parkedUserName: person.displayName,
+					...actorLogFields(principal),
+				},
+				"an admin gave someone a parking spot",
+			);
+			const context = { now: at, zone, settings: deps.spots.settings() };
+			void deps.notices.send(booking, "assigned", assignedText(booking, context));
+			void deps.activity.record(
+				{
+					kind: "assigned",
+					spot: booking.spot,
+					who: person.displayName,
+					admin: principal.displayName,
+					until: booking.until,
+				},
+				at,
+			);
+			const lines = [
+				`Gave **${booking.spot}** to ${escapeMarkdown(person.displayName)}, until ${when(booking.until)}.`,
+			];
+			if (lifted.length > 0) lines.push(`**${target.name}** is no longer closed as taken.`);
+			if (own && own.spot !== target.name) {
+				lines.push(`Their booking in **${own.spot}** has ended.`);
+			}
+			if (evicted) {
+				logger.warn(
+					{
+						event: "parking.evicted",
+						spot: evicted.spot,
+						parkedUser: evicted.by.ref,
+						parkedUserName: evicted.by.name,
+						...actorLogFields(principal),
+					},
+					"ended a parking booking an admin's assignment cut into",
+				);
+				tell(evicted);
+				void deps.activity.record(
+					{
+						kind: "evicted",
+						spot: evicted.spot,
+						who: evicted.by.name,
+						admin: principal.displayName,
+					},
+					at,
+				);
+				lines.push(`Ended ${escapeMarkdown(evicted.by.name)}'s booking.`);
+			}
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	const settings: SubcommandDefinition = {
+		name: "settings",
+		description: "See or change the parking settings",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			{
+				name: "remind",
+				description: `Minutes before the end to remind (0–${MAX_REMIND_MINUTES})`,
+				type: "integer",
+			},
+			{
+				name: "grace",
+				description: `Minutes after the end to end it (0–${MAX_GRACE_MINUTES})`,
+				type: "integer",
+			},
+			{
+				name: "reset",
+				description: "When every booking ends each day, e.g. 23:59",
+				type: "string",
+			},
+			{
+				name: "durations",
+				description: "Durations to offer, comma-separated, e.g. 30m, 1h, rest of day",
+				type: "string",
+			},
+		],
+		handler: async ({ args, principal, logger }) => {
+			const change: Partial<ParkingSettings> = {};
+			const minutes = (name: string, max: number): number | undefined => {
+				const value = args[name];
+				if (value === undefined) return undefined;
+				if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+					throw new UserFacingError(`\`${name}\` is a whole number of minutes from 0 to ${max}.`);
+				}
+				return value;
+			};
+			const remind = minutes("remind", MAX_REMIND_MINUTES);
+			if (remind !== undefined) change.remindMinutes = remind;
+			const grace = minutes("grace", MAX_GRACE_MINUTES);
+			if (grace !== undefined) change.graceMinutes = grace;
+			if (typeof args.reset === "string") {
+				const clock = parseTimeOfDay(args.reset);
+				if (!clock) throw new UserFacingError("`reset` is a time like `23:59` or `11:59pm`.");
+				change.resetAt = formatTimeOfDay(clock);
+			}
+			if (typeof args.durations === "string") {
+				const typed = args.durations
+					.split(",")
+					.map((d) => d.trim())
+					.filter(Boolean);
+				const durations = normaliseDurations(typed);
+				if (!durations || durations.length === 0) {
+					throw new UserFacingError(
+						"I couldn't understand those durations. Separate them with commas, like `30m, 1h, 2h30, rest of day`.",
+					);
+				}
+				if (durations.length > MAX_DURATIONS) {
+					throw new UserFacingError(`Offer at most ${MAX_DURATIONS} durations.`);
+				}
+				change.durations = durations;
+			}
+			if (Object.keys(change).length === 0) {
+				return { text: describeSettings(deps.spots.settings()), private: true };
+			}
+			usable();
+			const next = deps.spots.setSettings(change);
+			logger.info(
+				{
+					event: "parking.settings_changed",
+					changed: Object.keys(change),
+					...actorLogFields(principal),
+				},
+				"changed the parking settings",
+			);
+			record(
+				principal,
+				"settings",
+				`changed the parking settings: reminder ${next.remindMinutes}m before, ended ${next.graceMinutes}m after, reset ${next.resetAt}, durations ${next.durations.join(", ")}.`,
+			);
+			const lines = [`Saved.\n${describeSettings(next)}`];
+			if (change.resetAt !== undefined) {
+				// An earlier reset: nothing already set may run past it.
+				const at = now();
+				const clipped = clipToReset(deps.windows.entries(at), resetAfter);
+				if (clipped.changed > 0) {
+					try {
+						deps.windows.replace(clipped.entries, at);
+						lines.push(`${clipped.changed} opening time(s) now end at the new reset.`);
+					} catch {
+						lines.push(
+							"⚠️ I couldn't shorten the opening times that run past the new reset. See the logs.",
+						);
+					}
+				}
+				// Bookings too, so a reminder still comes before the reset ends them.
+				const late = deps.bookings.all().filter((b) => b.until > resetAfter(b.since));
+				try {
+					for (const b of late) {
+						const until = resetAfter(b.since);
+						const remindAt = until.getTime() - next.remindMinutes * 60_000;
+						deps.bookings.update(b.id, { until, remindedAt: remindAt > at.getTime() ? null : at });
+					}
+					if (late.length > 0) lines.push(`${late.length} booking(s) now end at the new reset.`);
+				} catch {
+					lines.push(
+						"⚠️ I couldn't shorten the bookings that run past the new reset. See the logs.",
+					);
+				}
+			}
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
+	return {
+		name: "parking",
+		description: "Parking spots and when they're open (admins only)",
+		access: { minTier: "admin" },
+		subcommands: [status, open, close, assign, free, addSpot, editSpot, removeSpot, settings],
+	};
+}

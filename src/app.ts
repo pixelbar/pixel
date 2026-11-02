@@ -12,6 +12,7 @@ import {
 } from "./core/capabilities.ts";
 import { CapabilityNotifier } from "./core/capability-notify.ts";
 import { ChannelPosts } from "./core/channel-posts.ts";
+import { DirectMessages } from "./core/direct-messages.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
 import type { Feature } from "./core/feature.ts";
 import { Home } from "./core/home.ts";
@@ -19,6 +20,7 @@ import { HOME_KINDS } from "./core/home-kinds/index.ts";
 import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
+import type { DoorSystem } from "./core/ports/door-system.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { type FeedbackSink, nullFeedbackSink } from "./core/ports/feedback.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
@@ -34,6 +36,9 @@ import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
+import { ParkingBookingStore } from "./services/parking-bookings.ts";
+import { ParkingSpotStore } from "./services/parking-spots.ts";
+import { ParkingWindowStore } from "./services/parking-windows.ts";
 import { ScheduleStore } from "./services/schedules.ts";
 import { HttpSpaceStateApi } from "./services/space-state-api.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
@@ -44,6 +49,8 @@ export type Core = {
 	capabilities: CapabilityRegistry;
 	/** DMs someone when a capability is granted or revoked, once Discord has plugged in. */
 	capabilityNotify: CapabilityNotifier;
+	/** DMs for features (parking reminders), once Discord has plugged in. */
+	directMessages: DirectMessages;
 	/** Mirrors tiers to Discord roles once the Discord adapter has plugged its backend in. */
 	roles: RoleMirror;
 	/** Reads and controls Home Assistant once its adapter has plugged a backend in. */
@@ -77,6 +84,11 @@ export type BuildCoreOptions = {
 	capabilities?: readonly CapabilityDefinition[];
 	/** Where `/feedback` messages go. Without one, the command says feedback isn't set up. */
 	feedback?: FeedbackSink;
+	/**
+	 * The building's doors (OpenR), when it's configured. Without one, `/openr` says it
+	 * isn't set up and `/park` says to open the gate the usual way.
+	 */
+	doorSystem?: DoorSystem;
 };
 
 /**
@@ -92,6 +104,7 @@ export function buildCore(
 	// Capabilities are declared in code. Names in the file that aren't are ignored, but reported.
 	const capabilities = new CapabilityRegistry(options.capabilities ?? CAPABILITIES);
 	const capabilityNotify = new CapabilityNotifier({ logger, capabilities });
+	const directMessages = new DirectMessages();
 	// Missing or invalid files throw here, so Pixel never starts with "everyone is a guest".
 	const access = FileAccessStore.open({
 		paths: config.access,
@@ -149,6 +162,24 @@ export function buildCore(
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
 	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
 	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
+	// Invalid parking files don't stop Pixel either: parking (or its borrowed spots) is off until fixed.
+	const parkingSpots = new ParkingSpotStore({
+		file: join(config.dataDir, "parking-spots.yaml"),
+		logger,
+	});
+	const parkingWindows = new ParkingWindowStore({
+		file: join(config.dataDir, "parking-windows.yaml"),
+		logger,
+	});
+	const parkingBookings = new ParkingBookingStore({
+		file: join(config.dataDir, "parking-bookings.yaml"),
+		logger,
+	});
+	for (const problem of [parkingSpots.problem, parkingWindows.problem, parkingBookings.problem]) {
+		if (problem) reporter.captureBackground(new Error(problem), "parking");
+	}
+	// Opening times for spots removed or changed by hand no longer apply.
+	if (!parkingSpots.problem) parkingWindows.reconcile(parkingSpots.all(), new Date());
 	const identity = new IdentityService(
 		[new ConfigTierSource(access)],
 		[new StoreCapabilitySource(access)],
@@ -189,6 +220,15 @@ export function buildCore(
 		calendar,
 		channelPosts,
 		schedules,
+		parkingSpots,
+		parkingWindows,
+		parkingBookings,
+		// The gate is OpenR's gate door when there is one; otherwise /park never opens anything.
+		doorSystem: options.doorSystem,
+		openrDoors: config.openr?.doors ?? [],
+		openrGateDoor: config.openr?.gateDoor,
+		directMessages,
+		parkingChannelId: config.discord.announce.parkingChannelId,
 		canSchedule,
 		infoTopics,
 		timezone: config.timezone,
@@ -213,6 +253,7 @@ export function buildCore(
 		access,
 		capabilities,
 		capabilityNotify,
+		directMessages,
 		roles,
 		home,
 		homeDevices,

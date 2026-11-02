@@ -26,6 +26,8 @@ Pixel stores as little as it can. It has no database. It identifies people only 
 - Votes on polls Pixel posts (Discord counts those)
 - Anything Discord itself holds about your account or messages. That is Discord's data: see [Discord's privacy policy](https://discord.com/privacy)
 
+When you open a door with `/openr open` or the gate with `/park`, Pixel asks OpenR (the building's door system) as Pixel's own account. OpenR is told which door, never who asked: who opened what is only in Pixel's logs, like any other command.
+
 Pixel never logs secrets. Token-shaped strings are scrubbed from logs and Sentry. When someone sets the space open or closed with `/spacestate`, Sentry also receives what Pixel sent to the space's state API and what it answered (status and a short copy of the reply), with the credentials removed.
 
 ## Where it is kept, and for how long
@@ -34,6 +36,9 @@ Pixel never logs secrets. Token-shaped strings are scrubbed from logs and Sentry
 | --- | --- |
 | Access lists (`config/members.yaml`, `config/admins.yaml`) on the host, and the previous `members.yaml.bak` | Until you are removed. Admin IDs also live in Azure Key Vault |
 | Scheduled posts (`data/schedules.yaml`) | Until that schedule is deleted |
+| Parking opening times (`data/parking-windows.yaml`): the admin who set each one | Until it ends, the same day at the latest |
+| Parking bookings (`data/parking-bookings.yaml`): who is parked, where, since and until when | Until the booking ends, 23:59 the same day at the latest. No history is kept |
+| Parking channel posts (when the channel is set): the display name of who parked, left, extended or reported a spot taken, and which spot | Until someone deletes them in Discord. Only admins should see that channel |
 | Azure Files backups of those files (when Pixel runs in Azure) | 14 days |
 | Pixel's rotating log file | About 14 days |
 | Azure Log Analytics (cloud console logs) | 30 days (already set in Terraform; Azure's minimum) |

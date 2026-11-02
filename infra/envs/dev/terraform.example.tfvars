@@ -26,6 +26,7 @@ discord_guild_id = "100000000000000002"
 # Optional. Leave null / commented until the test-guild channels exist.
 # discord_announcements_channel_id = "100000000000000003"
 # discord_closing_time_channel_id  = "100000000000000004"
+# discord_parking_channel_id       = "100000000000000005"
 
 # Nabu Casa still works without Tailscale. Set the matching Key Vault secret
 # home-assistant-token as well, or leave both unset (HA off).
@@ -39,6 +40,13 @@ discord_guild_id = "100000000000000002"
 # secrets spacestate-user and spacestate-token as well, or leave all unset (off).
 # spacestate_api_url = "https://space.example/api/state"
 # spacestate_additional_headers_enabled = true   # also needs Key Vault secret spacestate-additional-headers
+
+# OpenR doors and the parking gate. Set the Key Vault secrets openr-email and
+# openr-password as well, or leave all unset (off). Then an admin logs in with
+# /admin openr login. The parking gate is never one of openr_doors.
+# openr_building_id = "1"
+# openr_doors       = "Entrance=2, Living room=3"
+# openr_gate_door   = "4"
 
 # Lets the Deploy dev workflow read discord-token (only) and register slash
 # commands (ADR 0018). az identity show -g pixel-bootstrap -n pixel-github-dev --query principalId -o tsv

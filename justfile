@@ -218,6 +218,15 @@ command-access env:
 ha-devices env:
     pnpm exec tsx scripts/ha-devices.ts {{env}}
 
+# List the OpenR buildings and doors an env's OpenR account can see, with their IDs,
+# to fill in OPENR_BUILDING_ID, OPENR_DOORS and OPENR_GATE_DOOR. Logs in with
+# OPENR_EMAIL/PASSWORD from that env's file, asks for the emailed code, logs out.
+# Read-only: opens nothing, and leaves Pixel's own session alone.
+[group('environments')]
+[doc("List OpenR buildings and doors with their IDs: `just openr-doors dev|prod`")]
+openr-doors env:
+    pnpm exec tsx scripts/openr-doors.ts {{env}}
+
 # Pulls terraform-tfvars into infra/envs/<env>/terraform.tfvars, the app secrets (as
 # secrets-pull), and read-only mirrors of members.yaml, devices.yaml and announcement-routes.yaml.
 # Pull everything for an env (tfvars, secrets, share config) to edit, plan or sync: `just pull dev|prod`
