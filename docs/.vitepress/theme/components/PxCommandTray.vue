@@ -66,11 +66,7 @@ const COMMANDS: readonly Command[] = [
 	{ name: "/ha status", description: "The live state of one device" },
 	{ name: "/ha set", description: "Change a device, such as switching a light on or off" },
 	{ name: "/ha open", description: "Unlock a door" },
-	{ name: "/schedule message", description: "Schedule a message" },
-	{ name: "/schedule poll", description: "Schedule a poll" },
-	{ name: "/schedule list", description: "See every scheduled post" },
-	{ name: "/schedule edit", description: "Edit one of your scheduled posts before it goes out" },
-	{ name: "/schedule preview", description: "See exactly what a scheduled post will look like" },
+	{ name: "/schedule", description: "Schedule messages and polls, and manage them" },
 ];
 
 const root = ref<HTMLElement>();

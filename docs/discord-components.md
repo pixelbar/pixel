@@ -71,10 +71,10 @@ Keep the slash command as the way in. People find features by typing `/`, and co
 
 Anti-patterns to remove as commands move over:
 
-- **Options that conflict.** `/schedule message … repeat: once days: wed` mixes options that only make sense together. A modal with a Radio Group for the repeat and a Checkbox Group for the days asks for both together and makes the conflict visible.
+- **Options that conflict.** `/schedule message … repeat: once days: wed` used to mix options that only make sense together. Now the repeat is a Radio Group on the form, and the days only appear on the draft when the repeat is weekly.
 - **Boolean "are you sure" options.** `/parking taken confirm:` and `evict:` on the `/admin parking` commands ask for confirmation before the person can see what will happen. Reply with what will happen and a Danger button instead.
 - **Two-command flows.** `/admin openr login` followed by `/admin openr code code:` is one task split in two. A reply with an "Enter code" button that opens a modal keeps it in one place.
-- **Listing, then retyping.** `/schedule list` followed by `/schedule pause schedule:` makes the person carry a name between two commands. A list with a select and action buttons doesn't.
+- **Listing, then retyping.** `/schedule list` followed by `/schedule pause schedule:` used to make the person carry a name between two commands. Now `/schedule` lists them in a select, with action buttons on the one picked.
 
 ## Patterns
 
@@ -95,7 +95,7 @@ For anything hard to undo (evicting someone, deleting a schedule, revoking a cap
 
 ### Pick from a list
 
-A private reply with a String Select of what the person may act on, then buttons for what to do with it. For example, `/schedule list` shows your schedules in a select. Choosing one edits the message to show its details with **Edit**, **Preview**, **Pause** or **Resume**, and **Delete** buttons.
+A private reply with a String Select of what the person may act on, then buttons for what to do with it. For example, `/schedule` shows every schedule in a select. Choosing one edits the message to show it, with **Edit**, **Pause** or **Resume**, and **Delete** buttons for its owner.
 
 - Up to 25 options. If a list can grow past 25, use autocomplete on the command, or page it, and say so. Never cut a list off without saying.
 - A select's value is a key Pixel looks up again on the click (a schedule's ID). Don't put the thing itself in the value.
@@ -257,12 +257,10 @@ return {
 
 ## Candidates
 
-The commands that would gain most, roughly in order. Each is its own PR.
+The commands that would gain most, roughly in order. Each is its own PR. `/schedule` has moved: it's one command that opens a panel, a good example to copy (`src/features/schedules/index.ts`).
 
 | Command | Today | With components |
 | --- | --- | --- |
-| `/schedule message`, `/schedule poll`, `/schedule edit` | Up to six options that interact (`repeat` and `days`), then a modal for the text | A modal with a Channel Select, the text, a Radio Group for the repeat and a Checkbox Group for the days. `when` stays typed, since it's free-form |
-| `/schedule list`, `preview`, `pause`, `resume`, `delete` | Five commands that each need a schedule name | `/schedule list` with a select, then Preview, Pause or Resume, Edit and Delete (with a confirmation) buttons |
 | `/park`, `/parking extend`, `/parking leave` | Three commands | `/park`'s reply has Extend and Leave buttons. Buttons on the reminder DM need a decision first: the guild check refuses anything from outside the server today |
 | `/parking taken confirm:`, `/admin parking … evict:` | Boolean options that make the person confirm before they can see what will happen | A reply that says what will happen, with a Danger button |
 | `/admin openr login`, `/admin openr code` | Two commands | One reply with an "Enter code" button that opens a modal |
