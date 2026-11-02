@@ -3,7 +3,7 @@ import type { ChannelPost } from "../../core/channel-posts.ts";
 import { createInterpolator } from "../../core/interpolate.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { type Schedule, ScheduleStore } from "../../services/schedules.ts";
-import { dueOccurrence, LATE_LIMIT_MS, runDue } from "./runner.ts";
+import { dueOccurrence, dueReminder, LATE_LIMIT_MS, runDue } from "./runner.ts";
 
 const AMS = "Europe/Amsterdam";
 const sample = (over: Partial<Omit<Schedule, "id">> = {}): Omit<Schedule, "id"> => ({
@@ -32,6 +32,7 @@ function setup(options: { allowed?: boolean; fail?: boolean; ready?: boolean } =
 		post: vi.fn(async (channelId: string, post: ChannelPost) => {
 			if (options.fail) throw new Error("discord down");
 			posted.push([channelId, post]);
+			return { url: `https://example.test/m/${posted.length}` };
 		}),
 	};
 	const warn = vi.fn();
@@ -276,6 +277,7 @@ describe("runDue", () => {
 			ctx.posts.post.mockImplementationOnce(async (channelId: string, post: ChannelPost) => {
 				ctx.posted.push([channelId, post]);
 				change(ctx.store, second.id);
+				return { url: "https://example.test/m/1" };
 			});
 			await ctx.run(plus(10_000));
 			return { ...ctx, second };
@@ -363,5 +365,199 @@ describe("runDue", () => {
 		Object.defineProperty(broken.store, "problem", { value: "invalid" });
 		await broken.run(plus(10_000));
 		expect(broken.posts.post).not.toHaveBeenCalled();
+	});
+});
+
+describe("poll reminders", () => {
+	const REMIND = "100000000000000051";
+	const POLL: ChannelPost = {
+		kind: "poll",
+		question: "Who's *coming*?",
+		answers: ["Yes", "No"],
+		durationHours: 72,
+		multiple: false,
+	};
+	// Amsterdam is UTC+2 until 25 October.
+	const at = (iso: string) => new Date(`${iso}Z`);
+	const withReminder = (time = "18:00", over: Partial<Omit<Schedule, "id">> = {}) =>
+		sample({
+			post: POLL,
+			recurrence: { kind: "weekly", everyWeeks: 1, days: ["wed"] },
+			reminder: { channelId: REMIND, channelName: "chat", at: time },
+			...over,
+		});
+
+	it("remembers the poll it posted, and reminds every day it's open with a link", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		expect(ctx.store.get(id)?.lastPoll).toEqual({
+			question: "Who's *coming*?",
+			url: "https://example.test/m/1",
+			postedAt: WED_19.toISOString(),
+			closesAt: plus(10_000 + 72 * 3_600_000).toISOString(),
+		});
+		// Wed 18:00 was before the poll: the first reminder is Thursday's.
+		await ctx.run(at("2026-10-15T15:59:00"));
+		expect(ctx.posted).toHaveLength(1);
+		await ctx.run(at("2026-10-15T16:00:05"));
+		await ctx.run(at("2026-10-15T16:00:35"));
+		expect(ctx.posted.slice(1)).toEqual([
+			[
+				REMIND,
+				{
+					kind: "message",
+					text: "🗳️ Reminder: vote on **Who's \\*coming\\*?** before Sat 17 Oct 2026, 19:00: https://example.test/m/1",
+					mentions: false,
+				},
+			],
+		]);
+		await ctx.run(at("2026-10-16T16:00:05"));
+		await ctx.run(at("2026-10-17T16:00:05"));
+		// Closed Saturday at 19:00: nothing on Sunday.
+		await ctx.run(at("2026-10-18T16:00:05"));
+		expect(ctx.posted.map(([channel]) => channel)).toEqual([
+			"100000000000000050",
+			REMIND,
+			REMIND,
+			REMIND,
+		]);
+	});
+
+	it("reminds the same day when the time comes after the poll", async () => {
+		const ctx = setup();
+		ctx.store.add(withReminder("20:00"));
+		await ctx.run(plus(10_000));
+		await ctx.run(at("2026-10-14T18:00:05"));
+		expect(ctx.posted.at(-1)?.[0]).toBe(REMIND);
+		// Saturday's 20:00 is after it closes at 19:00.
+		await ctx.run(at("2026-10-17T18:00:05"));
+		expect(ctx.posted.filter(([channel]) => channel === REMIND)).toHaveLength(1);
+	});
+
+	it("has nothing due without a reminder or a posted poll", () => {
+		const reminder = { channelId: REMIND, channelName: "chat", at: "18:00" };
+		const lastPoll = {
+			question: "Q",
+			url: "https://example.test/m/1",
+			postedAt: WED_19.toISOString(),
+			closesAt: plus(72 * 3_600_000).toISOString(),
+		};
+		const now = at("2026-10-15T16:00:05");
+		expect(dueReminder({ lastPoll }, AMS, now)).toBeUndefined();
+		expect(dueReminder({ reminder }, AMS, now)).toBeUndefined();
+		expect(dueReminder({ reminder, lastPoll }, AMS, now)?.at).toEqual(at("2026-10-15T16:00:00"));
+	});
+
+	it("skips a reminder more than an hour late, and remembers it", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		await ctx.run(at("2026-10-15T17:30:00"));
+		expect(ctx.posted).toHaveLength(1);
+		expect(ctx.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.reminder_skipped" }),
+			expect.any(String),
+		);
+		expect(ctx.store.get(id)?.lastReminderAt).toBe(at("2026-10-15T16:00:00").toISOString());
+	});
+
+	it("doesn't remind while paused", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		ctx.store.update(id, { paused: true });
+		await ctx.run(at("2026-10-15T16:00:05"));
+		expect(ctx.posted).toHaveLength(1);
+	});
+
+	it("pauses instead of reminding when its creator lost access", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		ctx.stillAllowed.mockResolvedValue(false);
+		await ctx.run(at("2026-10-15T16:00:05"));
+		expect(ctx.posted).toHaveLength(1);
+		expect(ctx.store.get(id)?.paused).toBe(true);
+	});
+
+	it("doesn't remind when the reminder was turned off while it checked", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		ctx.stillAllowed.mockImplementation(async () => {
+			ctx.store.update(id, { reminder: undefined });
+			return true;
+		});
+		await ctx.run(at("2026-10-15T16:00:05"));
+		expect(ctx.posted).toHaveLength(1);
+	});
+
+	it("reports a reminder that fails, and doesn't try it again", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		ctx.posts.post.mockRejectedValueOnce(new Error("discord down"));
+		await ctx.run(at("2026-10-15T16:00:05"));
+		expect(ctx.error).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.reminder_failed" }),
+			expect.any(String),
+		);
+		expect(ctx.reporter.captureBackground).toHaveBeenCalled();
+		expect(ctx.store.get(id)?.lastReminderAt).toBe(at("2026-10-15T16:00:00").toISOString());
+	});
+
+	it("keeps a one-off poll with reminders until it closes, then removes it", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder("18:00", { recurrence: { kind: "once" } }));
+		const plain = ctx.store.add(sample({ post: POLL, recurrence: { kind: "once" } }));
+		await ctx.run(plus(10_000));
+		expect(ctx.store.get(plain.id)).toBeUndefined();
+		await ctx.run(at("2026-10-15T16:00:05"));
+		expect(ctx.posted.at(-1)?.[0]).toBe(REMIND);
+		await ctx.run(at("2026-10-17T17:00:11"));
+		expect(ctx.store.get(id)).toBeUndefined();
+	});
+
+	it("keeps a repeat edited into a one-off until that one-off has posted", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		// Edited (as /schedule edit does) into a one-off after the old poll closed.
+		ctx.store.update(id, {
+			recurrence: { kind: "once" },
+			start: "2026-10-28T19:00",
+			lastRunAt: at("2026-10-20T08:00:00").toISOString(),
+		});
+		await ctx.run(at("2026-10-20T08:00:05"));
+		expect(ctx.store.get(id)).toBeDefined();
+		await ctx.run(at("2026-10-28T18:00:05"));
+		expect(ctx.posted.at(-1)?.[1]).toEqual(POLL);
+		expect(ctx.store.get(id)?.lastPoll?.postedAt).toBe(at("2026-10-28T18:00:00").toISOString());
+	});
+
+	it("drops a one-off whose start can't be read once its poll closed", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder("18:00", { recurrence: { kind: "once" } }));
+		await ctx.run(plus(10_000));
+		ctx.store.update(id, { start: "not a time" });
+		await ctx.run(at("2026-10-17T17:00:11"));
+		expect(ctx.store.get(id)).toBeUndefined();
+	});
+
+	it("logs a reminder it can't record or a finished one-off it can't remove", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder("18:00", { recurrence: { kind: "once" } }));
+		await ctx.run(plus(10_000));
+		vi.spyOn(ctx.store, "update").mockImplementation(() => {
+			throw new Error("disk full");
+		});
+		vi.spyOn(ctx.store, "remove").mockImplementation(() => {
+			throw new Error("disk full");
+		});
+		await ctx.run(at("2026-10-15T16:00:05"));
+		await ctx.run(at("2026-10-17T17:00:11"));
+		expect(ctx.error).toHaveBeenCalledTimes(2);
+		expect(ctx.store.get(id)).toBeDefined();
 	});
 });
