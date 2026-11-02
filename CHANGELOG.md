@@ -9,8 +9,13 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- **Poll reminders:** on a poll's draft in `/schedule`, **Reminders** sets a channel and a time of day. While the poll is open, Pixel posts a reminder there every day at that time, with the question, when it closes and a link to the poll. It never pings. Reminders stop when the poll closes, so a weekly Monday poll open for a week reminds every day that week. You need to be able to post in the reminder channel yourself. Edit the poll to change them, or clear the time to turn them off. Schedules gain optional `reminder`, `lastPoll` and `lastReminderAt` fields in `data/schedules.yaml`; existing files load unchanged.
+
 ### Changed
 
+- **`/schedule` is one command with buttons, menus and forms** instead of eight subcommands with options. It opens a private list of every scheduled post; pick one to see exactly what it will post next and, if you made it, **Edit**, **Pause**/**Resume** or **Delete** it (Pixel asks first). **New message** and **New poll** open a form for the channel, when, the repeat and the text, then show a draft with the time Pixel understood and the post filled in; weekly days, a poll's duration and several answers, and pings are chosen on the draft, only when they apply. Nothing is saved until you press **Schedule**, and anything wrong is explained on the draft. Editing can now move a schedule to another channel. Only the person who made a schedule can pause, resume or delete it (before, anyone with `schedule-posts` could). Buttons last 15 minutes and a restart drops them, along with any unsaved draft. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
 - The website's light mode has a new logo: the original glowing logo printed on paper, with vivid orbits and a white-hot star, in the nav bar and the landing page's animation. It replaces the flat pixel-art version.
 
 ## [0.23.0] - 2026-11-02

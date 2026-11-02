@@ -8,7 +8,7 @@ For the bot itself, see the [root `AGENTS.md`](../AGENTS.md). Its rules still ap
 
 - **Site work only touches `docs/`.** Don't change `src/`, `config/`, `infra/` or the bot's `package.json` and lockfile in the same change. If the site needs a fact the code doesn't give it, ask; don't change the bot to suit the site.
 - **The only exceptions:** the `docs-*` recipes in `justfile`, the docs entries in `.gitignore`, the `docs/**` overrides in `biome.json`, and a `CHANGELOG.md` entry.
-- **The maintainer docs are separate.** `architecture.md`, `identity-and-access.md`, `infra.md`, `home-assistant.md`, `runbook.md`, `discord-command-visibility.md` and `adr/` belong to the bot. Edit them only when the bot changes, following the root `AGENTS.md`. A site change never rewrites them to fit the theme.
+- **The maintainer docs are separate.** `architecture.md`, `identity-and-access.md`, `infra.md`, `home-assistant.md`, `runbook.md`, `discord-command-visibility.md`, `discord-components.md` and `adr/` belong to the bot. Edit them only when the bot changes, following the root `AGENTS.md`. A site change never rewrites them to fit the theme.
 
 ## Commands
 

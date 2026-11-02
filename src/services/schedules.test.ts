@@ -81,6 +81,57 @@ describe("ScheduleStore", () => {
 		expect(ids.size).toBe(30);
 	});
 
+	it("keeps a poll's reminder and the poll it last posted across a restart, and drops a removed one", () => {
+		const store = new ScheduleStore({ file, logger: silentLogger });
+		const { id } = store.add(
+			sample({
+				post: {
+					kind: "poll",
+					question: "In?",
+					answers: ["Yes", "No"],
+					durationHours: 24,
+					multiple: false,
+				},
+				reminder: { channelId: "100000000000000051", channelName: "chat", at: "18:00" },
+				lastPoll: {
+					question: "In?",
+					url: "https://discord.com/channels/1/2/3",
+					postedAt: "2026-10-14T17:00:00.000Z",
+					closesAt: "2026-10-15T17:00:00.000Z",
+				},
+				lastReminderAt: "2026-10-15T16:00:00.000Z",
+			}),
+		);
+		expect(new ScheduleStore({ file, logger: silentLogger }).all()).toEqual(store.all());
+		store.update(id, { reminder: undefined });
+		expect(readFileSync(file, "utf8")).not.toContain("reminder:");
+		expect(new ScheduleStore({ file, logger: silentLogger }).get(id)?.reminder).toBeUndefined();
+	});
+
+	it.each([
+		[
+			"a reminder on a message",
+			"    reminder: { channelId: '100000000000000051', channelName: c, at: '18:00' }\n",
+		],
+		[
+			"a reminder time that isn't a time of day",
+			"    post: { kind: poll, question: q, answers: [a, b], durationHours: 1, multiple: false }\n    reminder: { channelId: '100000000000000051', channelName: c, at: '24:00' }\n",
+		],
+		[
+			"a poll link that isn't https",
+			"    lastPoll: { question: q, url: 'javascript:alert(1)', postedAt: 2026-10-14T17:00:00.000Z, closesAt: 2026-10-15T17:00:00.000Z }\n",
+		],
+	])("refuses %s", (_label, extra) => {
+		mkdirSync(join(dir, "data"), { recursive: true });
+		const base =
+			"schedules:\n  - id: abc234\n    name: n\n    channelId: '100000000000000050'\n    channelName: g\n    start: 2026-10-14T19:00\n    recurrence: { kind: once }\n    paused: false\n    createdBy: { ref: 'discord:1', name: A }\n    createdAt: 2026-10-12T08:00:00.000Z\n    lastRunAt: null\n";
+		const post = extra.includes("post:")
+			? ""
+			: "    post: { kind: message, text: hi, mentions: false }\n";
+		writeFileSync(file, base + post + extra);
+		expect(new ScheduleStore({ file, logger: logs().logger }).problem).toBeDefined();
+	});
+
 	it("refuses more than the limit", () => {
 		const store = new ScheduleStore({ logger: silentLogger });
 		for (let i = 0; i < MAX_SCHEDULES; i++) store.add(sample());

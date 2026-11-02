@@ -40,6 +40,29 @@ export type Schedule = {
 	createdAt: string;
 	/** The last occurrence handled (posted or skipped), so nothing is posted twice. */
 	lastRunAt: string | null;
+	/** For a poll: a reminder posted every day while it's open, in another channel. */
+	reminder?: PollReminder;
+	/** The poll posted last, so reminders can link to it and stop when it closes. */
+	lastPoll?: PostedPoll;
+	/** The last reminder handled (posted or skipped), so none is posted twice. */
+	lastReminderAt?: string;
+};
+
+export type PollReminder = {
+	channelId: string;
+	/** For display; the channel may have been renamed since. */
+	channelName: string;
+	/** Wall clock in the configured zone, every day: "18:00". */
+	at: string;
+};
+
+export type PostedPoll = {
+	/** The question as it was posted, tokens filled. */
+	question: string;
+	url: string;
+	/** The occurrence it was posted for. */
+	postedAt: string;
+	closesAt: string;
 };
 
 const ID = /^[a-z0-9]{6}$/;
@@ -73,21 +96,44 @@ const recurrenceSchema = z.discriminatedUnion("kind", [
 	}),
 ]);
 
-const scheduleSchema = z.strictObject({
-	id: z.string().regex(ID),
-	name: z.string().min(1).max(100),
+export const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const reminderSchema = z.strictObject({
 	channelId: snowflake,
 	channelName: z.string().max(100),
-	post: postSchema,
-	start: z
-		.string()
-		.refine((s) => parseLocal(s) !== undefined, { error: "must be like 2026-10-14T19:00" }),
-	recurrence: recurrenceSchema,
-	paused: z.boolean(),
-	createdBy: z.strictObject({ ref: z.string().min(1).max(64), name: z.string().max(100) }),
-	createdAt: z.iso.datetime(),
-	lastRunAt: z.iso.datetime().nullable(),
+	at: z.string().regex(CLOCK),
 });
+
+const postedPollSchema = z.strictObject({
+	question: z.string().min(1).max(MAX_POLL_QUESTION),
+	url: z.url({ protocol: /^https$/ }).max(500),
+	postedAt: z.iso.datetime(),
+	closesAt: z.iso.datetime(),
+});
+
+const scheduleSchema = z
+	.strictObject({
+		id: z.string().regex(ID),
+		name: z.string().min(1).max(100),
+		channelId: snowflake,
+		channelName: z.string().max(100),
+		post: postSchema,
+		start: z
+			.string()
+			.refine((s) => parseLocal(s) !== undefined, { error: "must be like 2026-10-14T19:00" }),
+		recurrence: recurrenceSchema,
+		paused: z.boolean(),
+		createdBy: z.strictObject({ ref: z.string().min(1).max(64), name: z.string().max(100) }),
+		createdAt: z.iso.datetime(),
+		lastRunAt: z.iso.datetime().nullable(),
+		reminder: reminderSchema.optional(),
+		lastPoll: postedPollSchema.optional(),
+		lastReminderAt: z.iso.datetime().optional(),
+	})
+	.refine((s) => s.reminder === undefined || s.post.kind === "poll", {
+		error: "only a poll can have a reminder",
+		path: ["reminder"],
+	});
 
 const fileSchema = z.strictObject({ schedules: z.array(scheduleSchema).max(MAX_SCHEDULES) });
 

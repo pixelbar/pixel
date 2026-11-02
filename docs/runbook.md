@@ -258,14 +258,16 @@ That restarts the running revision (`az containerapp revision restart`); it does
 
 ## Scheduled posts
 
-Members with the `schedule-posts` capability schedule messages and polls with `/schedule` (`/admin capabilities grant user: capability:schedule-posts`). `/schedule list` shows them all, with who made each in the file.
+Members with the `schedule-posts` capability schedule messages and polls with `/schedule` (`/admin capabilities grant user: capability:schedule-posts`). `/schedule` opens a private panel that lists them all; who made each is in the file.
 
 After a deploy that adds `/schedule`, run **`just register dev`** or **`just register prod`** so Discord lists the commands, then grant the capability. No new environment variables: times use `PIXEL_TIMEZONE` (Europe/Amsterdam). The bot needs Send Messages in the target channel, and Send Polls if it will post polls.
 
 - **They live in `data/schedules.yaml`.** Back it up with the access files; deleting it deletes every schedule.
 - **Tokens** in the message, poll question or answers (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`) fill in when the post goes out, in `PIXEL_TIMEZONE`. A whole-day offset (`{{date+2}}`, `{{day+2}}`) is from the scheduled day, so a Monday post can say Wednesday. A name Pixel doesn't know is left as written. Discord's limits (2000 characters for a message, 300 for a poll question, 55 for an answer) count the filled text, so `/schedule` refuses a post its tokens would push over. `schedule.clipped` in the logs means one still came out too long and was cut to fit. Don't put secrets in a scheduled post.
-- **Change one before it posts:** `/schedule edit` (only the person who scheduled it). Without a schedule it lists theirs; with one it opens the same compose modal, prefilled. One-offs that already went out, and other people's schedules, get a generic refusal.
-- **Stop one now:** `/schedule pause` or `/schedule delete`. To stop someone's schedules, revoke their capability: each of theirs pauses the next time it's due.
+- **Change one before it posts:** pick it in `/schedule` and press **Edit** (only the person who scheduled it sees Edit, Pause and Delete). Nothing changes until they press **Save changes**.
+- **Stop one now:** the person who made it presses **Pause** or **Delete** on it in `/schedule`. Nobody else can, admins included: to stop someone's schedules, revoke their capability (each of theirs pauses the next time it's due), or remove the entry from `data/schedules.yaml` and restart.
+- **Poll reminders:** a poll with a reminder (set with **Reminders** on its draft) gets a daily reminder in that channel while it's open, linking to it. `schedule.reminded` in the logs means one went out; `schedule.reminder_failed` (Pixel can't post in the reminder channel) and `schedule.reminder_skipped` (more than an hour late) mean it didn't. To stop them, its creator edits the poll and clears the time in **Reminders**, or pauses it.
+- **"That's expired. Run the command again."** The panel's buttons last 15 minutes from the last click, and a deploy or restart drops them and any unsaved draft. Nothing that was saved is lost.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 
@@ -743,7 +745,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
+3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.

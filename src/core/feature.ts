@@ -1,4 +1,5 @@
 import type { CommandDefinition } from "./command.ts";
+import type { ActionDefinition } from "./ui.ts";
 
 /** Stops background work started by a feature. */
 export type Stop = () => void;
@@ -10,6 +11,8 @@ export type Stop = () => void;
 export type Feature = {
 	name: string;
 	commands?: readonly CommandDefinition[];
+	/** What this feature's buttons, select menus and forms run. See `core/ui.ts`. */
+	actions?: readonly ActionDefinition[];
 	/**
 	 * Starts background work (e.g. watching the space and announcing changes).
 	 * Called once, when the platform adapters are ready. Returns a function that
