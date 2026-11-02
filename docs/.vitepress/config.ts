@@ -43,6 +43,7 @@ const MAINTAINER_DOCS = [
 	"home-assistant",
 	"runbook",
 	"discord-command-visibility",
+	"discord-components",
 ];
 
 /**
@@ -132,6 +133,7 @@ export default defineConfig({
 						{ text: "Home Assistant", link: "/maintainers/home-assistant" },
 						{ text: "Operations runbook", link: "/maintainers/runbook" },
 						{ text: "Hiding commands in Discord", link: "/maintainers/discord-command-visibility" },
+						{ text: "Discord components", link: "/maintainers/discord-components" },
 					],
 				},
 				{

@@ -17,6 +17,7 @@ Read the [operations runbook](./runbook) first. It covers access lists, moderati
 | [Operations runbook](./runbook) | Day-to-day tasks and what to do when something breaks. |
 | [Privacy notice](/privacy) | What Pixel stores about people, why, where and for how long, and how to ask for a copy or deletion. |
 | [Hiding commands in Discord](./discord-command-visibility) | Showing admin commands only to admins. |
+| [Discord components](./discord-components) | Buttons, select menus and modals: when to use them, UX, and the security rules for clicks. |
 
 ## Decisions
 
