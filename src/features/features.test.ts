@@ -345,7 +345,9 @@ describe("admin", () => {
 			ids: [`discord:${IDS.member}`],
 			tier: "member" as const,
 			capabilities,
+			revoked: [],
 		});
+
 		const store = {
 			view: {
 				...access.view,

@@ -12,7 +12,12 @@ import {
 import { dirname } from "node:path";
 import { isMap, isSeq, parseDocument, type Scalar, type YAMLMap, type YAMLSeq } from "yaml";
 import { actorLogFields, actorRef, type PlatformActor, splitRef } from "../core/access.ts";
-import { CAPABILITY_NAME } from "../core/capabilities.ts";
+import {
+	CAPABILITY_NAME,
+	heldCapabilities,
+	withGrantedCapabilities,
+	withRevokedCapabilities,
+} from "../core/capabilities.ts";
 import type { CapabilityNotifier } from "../core/capability-notify.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
@@ -25,6 +30,7 @@ import type {
 	ReloadResult,
 	TierCapabilityChange,
 	TierCapabilityResult,
+	TierGrants,
 } from "../core/ports/access-store.ts";
 import { MAX_REASON_LENGTH } from "../core/ports/access-store.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
@@ -143,11 +149,14 @@ export class FileAccessStore implements AccessStore {
 	async apply(change: AccessChange, by: PlatformActor): Promise<AccessChangeResult> {
 		const result = this.#apply(change, by);
 		if (change.kind === "set-capabilities" && result.before !== result.after) {
+			// What they actually hold, so a grant their level already gave, or a revocation of
+			// something they never had, sends nothing.
+			const grants = this.#view.tierCapabilities;
 			try {
 				await this.#notify?.notify(
 					change.id,
-					result.before?.capabilities ?? [],
-					result.after.capabilities,
+					result.before ? heldCapabilities(result.before, grants) : [],
+					heldCapabilities(result.after, grants),
 					by,
 				);
 			} catch (error) {
@@ -217,7 +226,8 @@ export class FileAccessStore implements AccessStore {
 
 		const raw = this.#read(file);
 		const doc = parseDocument(raw);
-		const current = this.#parseCurrent(raw, file).members;
+		const parsed = this.#parseCurrent(raw, file);
+		const current = parsed.members;
 		const index = current.findIndex((entry) => entry.ids.includes(ref));
 		const before = index >= 0 ? toRecord(current[index] as (typeof current)[number]) : null;
 
@@ -231,15 +241,21 @@ export class FileAccessStore implements AccessStore {
 		if (before && change.kind === "set-tier" && before.tier === change.tier && note === undefined) {
 			return { before, after: before };
 		}
+		const capabilityWrite =
+			change.kind === "set-capabilities" && before
+				? resolveCapabilityWrite(change, before, parsed.tiers)
+				: undefined;
 		if (
 			before &&
-			change.kind === "set-capabilities" &&
-			sameCapabilities(before.capabilities, change.capabilities)
+			capabilityWrite &&
+			sameCapabilities(before.capabilities, capabilityWrite.capabilities) &&
+			(capabilityWrite.revoked === undefined ||
+				sameCapabilities(before.revoked, capabilityWrite.revoked))
 		) {
 			return { before, after: before };
 		}
 
-		edit(doc, change, index, note);
+		edit(doc, change, index, note, capabilityWrite);
 		const nextFile = this.#save(doc, raw);
 		const updated = nextFile.members.find((entry) => entry.ids.includes(ref));
 		const after = toRecord(updated as NonNullable<typeof updated>);
@@ -371,6 +387,7 @@ export class FileAccessStore implements AccessStore {
 			before: before?.tier ?? "none",
 			after: after.tier,
 			capabilities: after.capabilities.join(","),
+			revoked: after.revoked.join(","),
 		});
 	}
 
@@ -404,7 +421,9 @@ export class FileAccessStore implements AccessStore {
 
 /** Tier and capabilities only. Notes are free text about a person and stay out of logs. */
 function summarise(record: MemberRecord | null) {
-	return record ? { tier: record.tier, capabilities: record.capabilities } : null;
+	return record
+		? { tier: record.tier, capabilities: record.capabilities, revoked: record.revoked }
+		: null;
 }
 
 function sameCapabilities(left: readonly string[], right: readonly string[]): boolean {
@@ -414,7 +433,40 @@ function sameCapabilities(left: readonly string[], right: readonly string[]): bo
 function validateChange(change: AccessChange): void {
 	if (!DISCORD_ID.test(change.id)) throw new AccessStoreError("That isn't a valid user ID.");
 	validateReason(change.reason);
-	if (change.kind === "set-capabilities") validateCapabilities(change.capabilities);
+	if (change.kind === "set-capabilities") {
+		const modes = [change.capabilities, change.grant, change.revoke].filter(
+			(list) => list !== undefined,
+		);
+		if (modes.length !== 1) {
+			throw new AccessStoreError("That isn't a valid list of capabilities.");
+		}
+		if (change.revoked !== undefined && change.capabilities === undefined) {
+			throw new AccessStoreError("That isn't a valid list of capabilities.");
+		}
+		if (change.capabilities !== undefined) validateCapabilities(change.capabilities);
+		if (change.revoked !== undefined) validateCapabilities(change.revoked);
+		if (change.grant !== undefined) validateCapabilities(change.grant);
+		if (change.revoke !== undefined) validateCapabilities(change.revoke);
+	}
+}
+
+/**
+ * The lists to write for a capability change. `grant` / `revoke` are applied to
+ * `before` (the file just read) and that file's level grants, not the in-memory
+ * view.
+ */
+function resolveCapabilityWrite(
+	change: Extract<AccessChange, { kind: "set-capabilities" }>,
+	before: MemberRecord,
+	grants: TierGrants,
+): { capabilities: readonly string[]; revoked: readonly string[] | undefined } {
+	if (change.grant !== undefined) {
+		return withGrantedCapabilities(before, change.grant, grants);
+	}
+	if (change.revoke !== undefined) {
+		return withRevokedCapabilities(before, change.revoke, grants);
+	}
+	return { capabilities: change.capabilities ?? [], revoked: change.revoked };
 }
 
 function validateReason(reason: string | undefined): void {
@@ -446,21 +498,36 @@ function editTier(doc: ReturnType<typeof parseDocument>, change: TierCapabilityC
 	if (isMap(tiers) && tiers.items.length === 0) doc.delete("tiers");
 }
 
+/** Sets a list in the document, or removes the key when the list is empty. */
+function setList(
+	doc: ReturnType<typeof parseDocument>,
+	path: readonly (string | number)[],
+	names: readonly string[],
+): void {
+	if (names.length === 0) doc.deleteIn(path);
+	else doc.setIn(path, doc.createNode([...names]));
+}
+
 /** Edits the YAML document in place, keeping comments, order and quoting. `note` is new only. */
 function edit(
 	doc: ReturnType<typeof parseDocument>,
 	change: AccessChange,
 	index: number,
 	note: string | undefined,
+	capabilityWrite:
+		| { capabilities: readonly string[]; revoked: readonly string[] | undefined }
+		| undefined,
 ): void {
 	const members = doc.get("members", true);
 	if (!isSeq(members)) throw new Error("members is not a list"); // unreachable: validated above
 	const seq = members as YAMLSeq;
 
 	if (change.kind === "set-capabilities") {
-		const path = ["members", index, "capabilities"];
-		if (change.capabilities.length === 0) doc.deleteIn(path);
-		else doc.setIn(path, doc.createNode([...change.capabilities]));
+		if (!capabilityWrite) throw new Error("missing capability write"); // unreachable: resolved above
+		setList(doc, ["members", index, "capabilities"], capabilityWrite.capabilities);
+		if (capabilityWrite.revoked !== undefined) {
+			setList(doc, ["members", index, "revoked"], capabilityWrite.revoked);
+		}
 		return;
 	}
 

@@ -3,10 +3,13 @@ import {
 	CapabilityError,
 	CapabilityRegistry,
 	grantedLists,
+	heldCapabilities,
 	MAX_REGISTERED_CAPABILITIES,
 	reportUnknownCapabilities,
 	tierGrantsFor,
 	unknownCapabilities,
+	withGrantedCapabilities,
+	withRevokedCapabilities,
 } from "./capabilities.ts";
 import { silentLogger } from "./logger.ts";
 import { nullErrorReporter } from "./ports/error-reporter.ts";
@@ -132,9 +135,97 @@ describe("tierGrantsFor", () => {
 	});
 });
 
+describe("heldCapabilities", () => {
+	const grants = { friend: ["workshop"], member: ["ha-lights"] };
+
+	it("is their own grants plus their level's, once each", () => {
+		expect(
+			heldCapabilities(
+				{ tier: "member", capabilities: ["ha-doors", "workshop"], revoked: [] },
+				grants,
+			),
+		).toEqual(["ha-doors", "workshop", "ha-lights"]);
+	});
+
+	it("leaves out what was revoked from them, wherever it came from", () => {
+		expect(
+			heldCapabilities(
+				{ tier: "member", capabilities: ["ha-doors"], revoked: ["ha-lights", "ha-doors"] },
+				grants,
+			),
+		).toEqual(["workshop"]);
+	});
+
+	it("gives a guest no level grants", () => {
+		expect(heldCapabilities({ tier: "guest", capabilities: ["a"], revoked: [] }, grants)).toEqual([
+			"a",
+		]);
+	});
+});
+
+describe("withGrantedCapabilities", () => {
+	const grants = { friend: ["workshop"], member: ["ha-lights"] };
+
+	it("adds an own grant only for names their level doesn't already give", () => {
+		expect(
+			withGrantedCapabilities(
+				{ tier: "member", capabilities: ["front-door"], revoked: ["workshop"] },
+				["ha-lights", "ha-doors", "workshop"],
+				grants,
+			),
+		).toEqual({
+			capabilities: ["front-door", "ha-doors"],
+			revoked: [],
+		});
+	});
+
+	it("lifts a revocation without adding an own grant the level already gives", () => {
+		expect(
+			withGrantedCapabilities(
+				{ tier: "member", capabilities: [], revoked: ["ha-lights"] },
+				["ha-lights"],
+				grants,
+			),
+		).toEqual({ capabilities: [], revoked: [] });
+	});
+});
+
+describe("withRevokedCapabilities", () => {
+	const grants = { friend: ["workshop"], member: ["ha-lights"] };
+
+	it("removes an own grant and records a revocation when the level still gives it", () => {
+		expect(
+			withRevokedCapabilities(
+				{ tier: "member", capabilities: ["ha-lights", "front-door"], revoked: [] },
+				["ha-lights", "front-door"],
+				grants,
+			),
+		).toEqual({
+			capabilities: [],
+			revoked: ["ha-lights"],
+		});
+	});
+
+	it("keeps existing revocations and does not repeat one", () => {
+		expect(
+			withRevokedCapabilities(
+				{ tier: "member", capabilities: [], revoked: ["ha-lights"] },
+				["ha-lights"],
+				grants,
+			),
+		).toEqual({ capabilities: [], revoked: ["ha-lights"] });
+	});
+});
+
 describe("grantedLists", () => {
 	it("lists each person's capabilities, then each level's", () => {
-		const record = { ids: ["discord:1"], tier: "member" as const, capabilities: ["a"] };
+		const record = {
+			ids: ["discord:1"],
+			tier: "member" as const,
+			capabilities: ["a"],
+			revoked: [],
+		};
+
 		expect(
 			grantedLists({
 				records: new Map([["1", record]]),

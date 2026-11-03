@@ -188,6 +188,10 @@ export default defineConfig({
 							text: "0023 · Components and actions",
 							link: "/maintainers/adr/0023-components-and-actions",
 						},
+						{
+							text: "0024 · Capability revocation",
+							link: "/maintainers/adr/0024-capability-revocation",
+						},
 					],
 				},
 			],
