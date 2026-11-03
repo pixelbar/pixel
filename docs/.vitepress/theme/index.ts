@@ -11,6 +11,8 @@ import PxHome from "./components/PxHome.vue";
 import PxMark from "./components/PxMark.vue";
 import PxMarkIntro from "./components/PxMarkIntro.vue";
 import PxMermaid from "./components/PxMermaid.vue";
+import PxModal from "./components/PxModal.vue";
+import PxPanel from "./components/PxPanel.vue";
 import PxSpectrum from "./components/PxSpectrum.vue";
 import PxStatus from "./components/PxStatus.vue";
 import PxTierBadge from "./components/PxTierBadge.vue";
@@ -35,6 +37,8 @@ export default {
 		app.component("PxMark", PxMark);
 		app.component("PxMarkIntro", PxMarkIntro);
 		app.component("PxMermaid", PxMermaid);
+		app.component("PxModal", PxModal);
+		app.component("PxPanel", PxPanel);
 		app.component("PxSpectrum", PxSpectrum);
 		app.component("PxStatus", PxStatus);
 		app.component("PxTierBadge", PxTierBadge);

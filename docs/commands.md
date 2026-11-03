@@ -133,15 +133,51 @@ Messages and polls that Pixel posts in a channel, once or on a repeat. These nee
 
 <PxCommand :level="4" sig="/schedule" tier="member" reply="private" :caps="['schedule-posts']">
 
-Opens your scheduled posts. Everything else is buttons, menus and forms in Pixel's reply, so there's nothing to remember:
-
-- **The list** shows every scheduled post, soonest first, with its channel, next post and repeat. Pick one from the menu to see it. **New message** and **New poll** make one.
-- **Making one:** a form asks for the channel, when (such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`), how often it repeats, and the text (or a poll's question and answers, one per line). Pixel then shows a **draft**: the time it understood, and exactly what it will post, with date tokens like <code v-pre>{{date}}</code> filled in. Choose the days for a weekly repeat, how long a poll stays open, whether it allows several answers, a poll's **Reminders** (a channel and a time of day: while the poll is open, Pixel reminds people there every day, with a link to it), and whether pings are on (only where you could ping everyone yourself). Nothing is saved until you press **Schedule**. If something's wrong, the draft says what and **Edit details** reopens the form with what you typed.
-- **One schedule** shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
-
-The buttons stop working after 15 minutes or when Pixel restarts: run `/schedule` again.
+Opens your scheduled posts. Everything else is buttons, menus and forms in Pixel's reply, so there's nothing to remember. The buttons stop working after 15 minutes or when Pixel restarts: run `/schedule` again.
 
 </PxCommand>
+
+Every scheduled post is in the menu, soonest first, with its channel, its next post and how often it repeats. Pick one to see it, or make a new one.
+
+<PxPanel
+	command="/schedule"
+	:embeds="[{ title: 'Scheduled posts', lines: ['**3** scheduled · **2** yours · **1** paused', 'Choose one to see what it will post, change it or delete it.', 'Times are in Europe/Amsterdam.'] }]"
+	:rows="[[{ select: 'Choose a schedule…' }], [{ label: 'New message', style: 'primary' }, { label: 'New poll' }]]"
+	caption="The list: a menu of every scheduled post, and New message and New poll."
+/>
+
+**New message** and **New poll** open a form. When is a day, a time or both, such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
+
+<PxModal
+	title="New message"
+	:fields="[
+		{ label: 'Channel', hint: 'Where to post it. You need to be able to post there yourself.', kind: 'picker', value: '#general' },
+		{ label: 'When', hint: 'In Europe/Amsterdam. A day, a time or both.', kind: 'text', value: 'wed 1900 · tomorrow 9am · 14 oct 19:00 · now+1h' },
+		{ label: 'Repeat', kind: 'radio', choices: ['Once', 'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months'], picked: 'Weekly' },
+		{ label: 'Message', kind: 'paragraph', value: 'What to post. Markdown works. {{date}} and {{date+2}} fill in when it\'s posted.' },
+	]"
+	caption="The form for a new message: the channel, when, how often, and the text."
+/>
+
+Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders**; and **Pings**, only where you could ping everyone yourself. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
+
+<PxPanel
+	command="/schedule"
+	:content="['Pizza night tonight! Doors open at 19:00.']"
+	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Schedule**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message, pings off', inline: true }] }]"
+	:rows="[[{ select: 'Which days?' }], [{ label: 'Schedule', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
+	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Schedule to save it."
+/>
+
+**Schedule** saves it and shows it. A schedule shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
+
+<PxPanel
+	command="/schedule"
+	:content="['Pizza night tonight! Doors open at 19:00.']"
+	:embeds="[{ title: 'Pizza night tonight! Doors open at 19:00.', lines: ['Next post: **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam).', 'Made by you.', '', 'Above is what it will post next time, with dates filled in. Pings don\'t fire here.'], fields: [{ name: 'Channel', value: '#general', inline: true }, { name: 'Repeats', value: 'Weekly on Wednesday', inline: true }, { name: 'What', value: 'A message, pings off' }] }]"
+	:rows="[[{ label: 'Edit', style: 'primary' }, { label: 'Pause' }, { label: 'Delete', style: 'danger' }], [{ label: '← All schedules' }]]"
+	caption="One of your schedules: what it will post next, with Edit, Pause and Delete."
+/>
 
 ### Parking
 
@@ -149,14 +185,38 @@ Getting a parking spot at the gate. These need the `parking` capability. Every r
 
 <PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h, 2h30 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
 
-Opens your parking panel, with who's in which spot and until when. Everything else is buttons:
-
-- **Not parked:** pick how long (**Park for 1h**, **Park until 23:59**, … from the durations an admin set; ones that won't fit right now are greyed out), or **Another length…** for any other. Pixel gives you a spot that's free for that whole time, opens the gate, and says where to park: Pixelbar's own spot first, then the borrowed spot that fits most tightly. If nothing fits, the gate stays shut and Pixel offers the longest stay that would.
-- **Parked:** **Open the gate** (if it didn't open, or you need it again), **Leave** when you go, ways to stay longer (**Stay 1h longer**, **Stay until 17:00**, never past the spot's close or 23:59), and **Someone's in my spot**. That shows what Pixel will do before it does it: move you to another free spot for the rest of your time, or, if none is free, end your booking and report it to the board. Either way the taken spot is closed until the end of the day, so nobody else is sent there.
-
-`/park for:` books straight away, for when you're at the gate and know how long. Pixel DMs you 15 minutes before your time is up, saying how much longer you could stay, and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on.
+Opens your parking panel. Everything else is buttons. `/park for:` books straight away, for when you're at the gate and know how long.
 
 </PxCommand>
+
+When you're not parked, pick how long. The lengths come from the parking settings, and ones that won't fit right now are greyed out. **Another length…** takes any other. Pixel gives you a spot that's free for that whole time, opens the gate and says where to park: Pixelbar's own spot first, then the borrowed spot that fits most tightly. If nothing fits, the gate stays shut and Pixel offers the longest stay that would. Every panel shows who's in which spot.
+
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)', '**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
+	:rows="[[{ label: 'Park for 30m' }, { label: 'Park for 1h' }, { label: 'Park for 2h' }, { label: 'Park for 4h' }, { label: 'Park until 23:59' }], [{ label: 'Another length…' }], [{ label: 'Refresh' }]]"
+	caption="Not parked: a button for each length, and who's in which spot."
+/>
+
+Once you're parked, the panel says where. **Open the gate** opens it again, if it didn't open or you need it again. **Leave** frees your spot when you go. The **Stay … longer** buttons only offer what fits before the spot closes, or 23:59.
+
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)', '**neighbour-1**: free · open until 14:00 (4h left)'] }]"
+	:rows="[[{ label: 'Open the gate', style: 'primary' }, { label: 'Leave' }, { label: 'Someone\'s in my spot' }], [{ label: 'Stay 30m longer' }, { label: 'Stay 1h longer' }, { label: 'Stay 2h longer' }, { label: 'Stay 4h longer' }, { label: 'Stay until 23:59' }], [{ label: 'Refresh' }]]"
+	caption="Parked: where to park, the gate, staying longer, a taken spot and leaving."
+/>
+
+If someone else is in your spot, **Someone's in my spot** shows what Pixel will do before it does it. If another spot is free for the rest of your time, it moves you there. If none is, it ends your booking and reports it to the board. Either way your spot is closed until the end of the day, so nobody else is sent there.
+
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['Sorry about that. **neighbour-1** is free for the rest of your time, until 12:00.', 'Move there, and I\'ll close **ours** until 23:59 and tell the admins.'] }]"
+	:rows="[[{ label: 'Move to neighbour-1', style: 'primary' }, { label: 'Cancel' }]]"
+	caption="Someone's in my spot: Pixel offers a free spot before moving you."
+/>
+
+Pixel DMs you 15 minutes before your time is up, saying how much longer you could stay, and ends your booking 5 minutes after it if you haven't left or stayed longer, so keep DMs from server members on.
 
 ### Doors
 
@@ -310,13 +370,6 @@ Logs Pixel out of OpenR, so it can't open any door until someone logs in again.
 
 <PxCommand sig="/admin parking" tier="admin" reply="private">
 
-Opens the parking panel: every spot, whether it's open now and later today, who's in it, and the settings. Everything else is menus and buttons:
-
-- **Manage a spot…** shows one spot with what you can do to it: **Open…** a borrowed spot for a while (a form asks from and until when; empty means now and 23:59) or **Close for today**; **Close…** our own spot until a time, or **Open again**; **Edit…** where it is and whether it's permanent; **Remove…**; **Free the spot…** when someone's in it; and **Give it to someone…**, for when someone parked in the wrong spot (pick who's there, and for how long; any booking they had elsewhere ends, a "reported taken" closure is lifted, and they get a DM).
-- **Open spots…** and **Close spots…** do several spots at once. Pixel only asks for times when they apply.
-- **Add a spot** asks for its name (lowercase words joined by `-`), where it is, and whether it's **permanent** (Pixelbar's own, open every day) or **borrowed** (closed until it's opened).
-- **Settings** changes the reminder, how long after someone's end Pixel ends their booking, the daily reset and the durations `/park` offers.
-
-Anything that would end someone's booking says whose, and asks first. Pixel DMs them when it does.
+Opens a panel of the parking spots, when they're open, who's in them and the settings, with buttons and menus to manage them.
 
 </PxCommand>
