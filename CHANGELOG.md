@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- **`/park` is one command with buttons** instead of `/park for:` and four `/parking` subcommands. `/park` opens a private panel that shows who's in which spot. When you're not parked, pick how long (**Park for 1h**, **Park until 23:59**, … from the durations in the settings, greyed out when they won't fit) or **Another length…**. When you are, **Open the gate**, **Leave**, **Stay 1h longer** / **Stay until 17:00** (only what fits before the spot closes), and **Someone's in my spot**, which shows whether it will move you or end your booking before it does. Problems are explained on the panel. `/park for:` still books straight away. The reminder DM now points to `/park`. Run `just register dev` / `just register prod` after deploying, so Discord drops `/parking`.
+
 ### Added
 
 - **Poll reminders:** on a poll's draft in `/schedule`, **Reminders** sets a channel and a time of day. While the poll is open, Pixel posts a reminder there every day at that time, with the question, when it closes and a link to the poll. It never pings. Reminders stop when the poll closes, so a weekly Monday poll open for a week reminds every day that week. You need to be able to post in the reminder channel yourself. Edit the poll to change them, or clear the time to turn them off. Schedules gain optional `reminder`, `lastPoll` and `lastReminderAt` fields in `data/schedules.yaml`; existing files load unchanged.

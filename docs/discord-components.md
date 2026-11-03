@@ -257,12 +257,10 @@ return {
 
 ## Candidates
 
-The commands that would gain most, roughly in order. Each is its own PR. `/schedule` has moved: it's one command that opens a panel, a good example to copy (`src/features/schedules/index.ts`).
+The commands that would gain most, roughly in order. Each is its own PR. `/schedule` and `/park` have moved: each is one command that opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`).
 
 | Command | Today | With components |
 | --- | --- | --- |
-| `/park`, `/parking extend`, `/parking leave` | Three commands | `/park`'s reply has Extend and Leave buttons. Buttons on the reminder DM need a decision first: the guild check refuses anything from outside the server today |
-| `/parking taken confirm:`, `/admin parking … evict:` | Boolean options that make the person confirm before they can see what will happen | A reply that says what will happen, with a Danger button |
 | `/admin openr login`, `/admin openr code` | Two commands | One reply with an "Enter code" button that opens a modal |
 | `/ha status`, `/ha set` | Type the device, then type the state | `/ha status`'s reply has buttons for the actions the person may take |
 | `/admin announcements set`, `remove`, `list` | Three commands | `list` with a Channel Select and a style select, and Remove buttons |

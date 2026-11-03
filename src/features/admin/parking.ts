@@ -747,10 +747,10 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 			const ref = actorRef({ platform: principal.platform, userId: person.id });
 			const own = deps.bookings.all().find((b) => b.by.ref === ref);
 			const holder = deps.bookings.all().find((b) => b.spot === target.name && b.by.ref !== ref);
-			// Pixel doesn't move whoever holds the spot: `/parking taken` gets them a new one.
+			// Pixel doesn't move whoever holds the spot: Someone's in my spot in `/park` gets them a new one.
 			if (holder && args.evict !== true) {
 				throw new UserFacingError(
-					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with \`/parking taken\`; or add \`evict:True\` to end their booking.`,
+					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with Someone's in my spot in \`/park\`; or add \`evict:True\` to end their booking.`,
 				);
 			}
 
