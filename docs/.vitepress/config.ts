@@ -109,7 +109,7 @@ export default defineConfig({
 	},
 
 	themeConfig: {
-		// The logo on its black tile in dark; the pixel-art mark printed in ink in light.
+		// The original logo on its black tile in dark; its light version printed on paper in light.
 		logo: { light: "/pixel-mark-light-96.png", dark: "/pixel-mark-96.png", alt: "" },
 		siteTitle: "Pixel",
 

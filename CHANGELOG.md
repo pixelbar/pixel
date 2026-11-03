@@ -24,6 +24,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - **`/schedule` is one command with buttons, menus and forms** instead of eight subcommands with options. It opens a private list of every scheduled post; pick one to see exactly what it will post next and, if you made it, **Edit**, **Pause**/**Resume** or **Delete** it (Pixel asks first). **New message** and **New poll** open a form for the channel, when, the repeat and the text, then show a draft with the time Pixel understood and the post filled in; weekly days, a poll's duration and several answers, and pings are chosen on the draft, only when they apply. Nothing is saved until you press **Schedule**, and anything wrong is explained on the draft. Editing can now move a schedule to another channel. Only the person who made a schedule can pause, resume or delete it (before, anyone with `schedule-posts` could). Buttons last 15 minutes and a restart drops them, along with any unsaved draft. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
+- The website's light mode has a new logo: the original glowing logo printed on paper, with vivid orbits and a white-hot star, in the nav bar and the landing page's animation. It replaces the flat pixel-art version.
 
 ## [0.23.0] - 2026-11-02
 
