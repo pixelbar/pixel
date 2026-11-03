@@ -40,7 +40,7 @@ Discord roles can't tell Pixel's `member` from `friend` when there is one role f
 
 ## Things to know
 
-- Each command is set up separately. A new command (or a renamed one) needs the steps repeated. Subcommands such as `/admin status` follow their group.
+- Each command is set up separately. A new command (or a renamed one) needs the steps repeated. Subcommands such as `/admin` follow their group.
 - Re-running `just register` may reset a command's overrides (Discord's docs don't say), so run `just command-access` for the same env after it. A **new** admin-tier command always starts hidden.
 - Administrators and the server owner always see every command.
 - Secret commands (such as the future door control) should be admin-tier or hidden this way **and** protected by a capability. The name is still discoverable by anyone who can see it.

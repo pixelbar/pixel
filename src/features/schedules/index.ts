@@ -51,7 +51,7 @@ import { type Draft, Drafts, REPEATS, type Repeat } from "./drafts.ts";
 import { checkFilledLength } from "./limits.ts";
 import { runDue } from "./runner.ts";
 
-/** Lets someone schedule messages and polls. Granted with `/admin capabilities`. */
+/** Lets someone schedule messages and polls. Granted with `/admin` → Capabilities. */
 export const SCHEDULE_CAPABILITY = {
 	name: "schedule-posts",
 	description: "Schedule messages and polls in channels they can post in",

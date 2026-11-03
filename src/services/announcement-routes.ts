@@ -31,7 +31,7 @@ const fileSchema = z.strictObject({
 });
 
 const HEADER =
-	"# Where Pixel posts open/closed announcements (/admin announcements). Written by Pixel.\n";
+	"# Where Pixel posts open/closed announcements (/admin → Announcements). Written by Pixel.\n";
 
 export class AnnouncementRouteStore {
 	readonly #file: string | undefined;

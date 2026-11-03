@@ -32,7 +32,7 @@ export type HomeFeatureDeps = {
 	/** Runs the actions. Defaults to one that talks to `home`. */
 	control?: Pick<DeviceControl, "run" | "timeoutMs">;
 	/**
-	 * Emergency switches (`/admin doors`): a kind that is switched off can't be acted
+	 * Emergency switches (`/admin` → Doors): a kind that is switched off can't be acted
 	 * on by anyone, whatever they hold. Everything is on when this is left out.
 	 */
 	switches?: Pick<KindSwitch, "isOn">;

@@ -5,7 +5,7 @@ import type { SubcommandDefinition, SubgroupDefinition } from "../../core/comman
 import { UserFacingError } from "../../core/errors.ts";
 
 /**
- * `/admin announcements`: where the open/closed announcements go. Each channel has
+ * `/admin` → Announcements: where the open/closed announcements go. Each channel has
  * one style, and any number of channels can be set, for example a timeline in
  * #announcements and a live post in #general:
  *
@@ -27,7 +27,7 @@ const STYLE_HELP: Record<SpaceAnnounceStyle, string> = {
 // A channel ID is digits from the platform, so it is safe to embed; Discord shows it as a link.
 const channelLink = (channelId: string): string => `<#${channelId}>`;
 
-/** One line for `/admin announcements list`. */
+/** One line for `/admin` → Announcements. */
 export function describeRoute(route: AnnouncementRoute): string {
 	const problem = route.problem ? ` ⚠️ not posting: ${route.problem}` : "";
 	return `${channelLink(route.channelId)}: **${route.style}**${problem}`;
@@ -141,7 +141,7 @@ export function createAnnouncementsSubgroup(deps: {
 			const routes = deps.routes.list();
 			if (routes.length === 0) {
 				return {
-					text: "No channels get open/closed announcements. Set one with `/admin announcements set`.",
+					text: "No channels get open/closed announcements. Set one with `/admin` → Announcements → **Add a channel…**.",
 					private: true,
 				};
 			}

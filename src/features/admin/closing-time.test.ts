@@ -8,7 +8,7 @@ import { context, IDS, principal } from "../../testing/fixtures.ts";
 import { closingTimeMessage } from "../closing-time/index.ts";
 import { createClosingTimeSubgroup } from "./closing-time.ts";
 
-describe("/admin closing-time set", () => {
+describe("/admin → Closing time → **Change the message…**", () => {
 	let dir: string;
 	afterEach(() => {
 		if (dir) rmSync(dir, { recursive: true, force: true });

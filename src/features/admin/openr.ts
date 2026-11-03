@@ -12,9 +12,9 @@ import type { Reply } from "../../core/reply.ts";
 import type { OpenrDoor } from "../openr/index.ts";
 
 /**
- * `/admin openr`: logs Pixel in to OpenR and shows how its session is doing. Pixel logs
+ * `/admin` → OpenR: logs Pixel in to OpenR and shows how its session is doing. Pixel logs
  * in with its own account (`OPENR_EMAIL`, `OPENR_PASSWORD`); OpenR then emails a code to
- * that account, which an admin passes back with `/admin openr code`. From then on Pixel
+ * that account, which an admin passes back with `/admin` → OpenR → **Enter the code…**. From then on Pixel
  * keeps the session alive by itself. Admins only, private, and logged.
  */
 
@@ -32,7 +32,7 @@ const NOT_SET_UP: Reply = {
 	private: true,
 };
 
-/** How long before the session ends `/admin openr status` warns about it. */
+/** How long before the session ends `/admin` → OpenR warns about it. */
 const ENDING_SOON_MS = 14 * 24 * 60 * 60_000;
 
 /** A code as OpenR emails it: digits, maybe typed with spaces. */
@@ -140,7 +140,7 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 			);
 			deps.reporter.breadcrumb("openr.logout", "logged out", { user: actorRef(principal) });
 			return {
-				text: "Pixel is logged out of OpenR and can't open any door. Log in again with `/admin openr login`.",
+				text: "Pixel is logged out of OpenR and can't open any door. Log in again with `/admin` → OpenR → **Log in**.",
 				private: true,
 			};
 		},
@@ -154,7 +154,7 @@ export function createOpenrSubgroup(deps: OpenrAdminDeps): SubgroupDefinition {
 	};
 }
 
-/** One line about Pixel's OpenR session, for `/admin openr status` and `/admin status`. */
+/** One line about Pixel's OpenR session, for `/admin` → OpenR and `/admin`. */
 export function describeOpenr(status: DoorSystemStatus, now: Date): string {
 	switch (status.state) {
 		case "logged-in": {
@@ -164,7 +164,7 @@ export function describeOpenr(status: DoorSystemStatus, now: Date): string {
 			// OpenR ends a session about six months after the login, whatever Pixel does.
 			if (status.sessionUntil.getTime() - now.getTime() < ENDING_SOON_MS) {
 				lines.push(
-					"⚠️ The session ends soon: log in again with `/admin openr login` before it does.",
+					"⚠️ The session ends soon: log in again with `/admin` → OpenR → **Log in** before it does.",
 				);
 			}
 			if (status.refreshFailingSince) {
@@ -175,15 +175,15 @@ export function describeOpenr(status: DoorSystemStatus, now: Date): string {
 			return lines.join("\n");
 		}
 		case "awaiting-code":
-			return `OpenR: waiting for the emailed code (\`/admin openr code\`) for another ${formatDuration(status.codeUntil.getTime() - now.getTime())}`;
+			return `OpenR: waiting for the emailed code (\`/admin\` → OpenR → **Enter the code…**) for another ${formatDuration(status.codeUntil.getTime() - now.getTime())}`;
 		case "logged-out":
 			return status.endedAt
-				? `OpenR: **logged out**: OpenR ended the session ${formatAgo(now, status.endedAt)}. Log in with \`/admin openr login\`.`
-				: "OpenR: **logged out**. Log in with `/admin openr login`.";
+				? `OpenR: **logged out**: OpenR ended the session ${formatAgo(now, status.endedAt)}. Log in with \`/admin\` → OpenR → **Log in**.`
+				: "OpenR: **logged out**. Log in with `/admin` → OpenR → **Log in**.";
 	}
 }
 
-/** One door's live status, for `/admin openr status`. OpenR's own words are escaped. */
+/** One door's live status, for `/admin` → OpenR. OpenR's own words are escaped. */
 export function describeDoorStatus(status: DoorStatusResult | undefined): string {
 	switch (status?.kind) {
 		case "ok": {
@@ -202,7 +202,7 @@ export function describeDoorStatus(status: DoorStatusResult | undefined): string
 function loginReply(step: LoginStep, now: Date): string {
 	switch (step.step) {
 		case "code-sent":
-			return `OpenR has emailed a code to Pixel's account. Pass it on with \`/admin openr code\` (Pixel waits ${formatDuration(step.codeUntil.getTime() - now.getTime())} for it).`;
+			return `OpenR has emailed a code to Pixel's account. Pass it on with \`/admin\` → OpenR → **Enter the code…** (Pixel waits ${formatDuration(step.codeUntil.getTime() - now.getTime())} for it).`;
 		case "logged-in":
 			return `Pixel is logged in to OpenR and can open doors. It keeps the session going by itself (it ends ${formatUntil(step.sessionUntil.getTime() - now.getTime())} unless refreshed).`;
 		case "refused":
@@ -210,9 +210,9 @@ function loginReply(step: LoginStep, now: Date): string {
 				return "OpenR refused Pixel's email or password. Check the `openr-email` and `openr-password` secrets.";
 			}
 			if (step.why === "code") {
-				return "OpenR didn't accept that code. Check it, or start again with `/admin openr login`.";
+				return "OpenR didn't accept that code. Check it, or start again with `/admin` → OpenR → **Log in**.";
 			}
-			return "There's no login waiting for a code, or it timed out. Start with `/admin openr login`.";
+			return "There's no login waiting for a code, or it timed out. Start with `/admin` → OpenR → **Log in**.";
 		case "failed":
 			return "⚠️ Couldn't reach OpenR, or it answered something unexpected. Try again in a moment; the logs say more.";
 	}

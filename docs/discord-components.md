@@ -69,11 +69,11 @@ Slash options are fast for someone who knows exactly what they want. Once a comm
 
 Keep the slash command as the way in. People find features by typing `/`, and commands are where Discord applies the server's visibility settings ([Hiding commands in Discord](discord-command-visibility.md)). Components then make the rest of the flow simpler: fewer options on the command, and buttons, selects and modals after it.
 
-Anti-patterns to remove as commands move over:
+Anti-patterns Pixel's commands had, and what replaced them:
 
 - **Options that conflict.** `/schedule message … repeat: once days: wed` used to mix options that only make sense together. Now the repeat is a Radio Group on the form, and the days only appear on the draft when the repeat is weekly.
-- **Boolean "are you sure" options.** `/parking taken confirm:` and `evict:` on the `/admin parking` commands used to ask for confirmation before the person could see what would happen. Now both show what will happen, with a Danger button.
-- **Two-command flows.** `/admin openr login` followed by `/admin openr code code:` is one task split in two. A reply with an "Enter code" button that opens a modal keeps it in one place.
+- **Boolean "are you sure" options.** `/parking taken confirm:` and `evict:` on the old `/admin parking` subcommands used to ask for confirmation before the person could see what would happen. Now both show what will happen, with a Danger button.
+- **Two-command flows.** `/admin openr login` followed by `/admin openr code code:` was one task split in two. Now the OpenR section of `/admin` has **Log in** and **Enter the code…** side by side.
 - **Listing, then retyping.** `/schedule list` followed by `/schedule pause schedule:` used to make the person carry a name between two commands. Now `/schedule` lists them in a select, with action buttons on the one picked.
 
 ## Patterns
@@ -255,11 +255,14 @@ return {
 4. Update [`docs/commands.md`](commands.md) and the `CHANGELOG.md` (`Changed`).
 5. Try it on Pixel Dev with `just deploy dev`. Check it on mobile as well as desktop, since layouts and modal descriptions render differently.
 
-## Candidates
+## Commands that have moved
 
-The commands that would gain most, roughly in order. Each is its own PR. `/schedule`, `/park`, `/admin parking` and `/ha` have moved: each opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`, `src/features/admin/parking-panel.ts`, `src/features/home/index.ts`).
+Every command with options that conflicted, or a flow split across several commands, now opens a panel. Copy one of them when adding a feature:
 
-| Command | Today | With components |
+| Command | Where | Shows |
 | --- | --- | --- |
-| `/admin openr login`, `/admin openr code` | Two commands | One reply with an "Enter code" button that opens a modal |
-| `/admin announcements set`, `remove`, `list` | Three commands | `list` with a Channel Select and a style select, and Remove buttons |
+| `/schedule` | `src/features/schedules/index.ts` | A list in a menu, a form and a draft, then a schedule's own panel |
+| `/park` | `src/features/parking/index.ts` | Buttons for how long, then your spot with the gate, staying longer and leaving |
+| `/ha` | `src/features/home/index.ts` | A list in a menu, then a device with a button per action |
+| `/admin` | `src/features/admin/panel.ts` | A status page with a menu of sections, each running the operations the old subcommands ran |
+| `/admin` → Parking | `src/features/admin/parking-panel.ts` | An overview, a panel per spot, and confirmations before ending a booking |

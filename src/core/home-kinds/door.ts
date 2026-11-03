@@ -3,7 +3,7 @@ import type { HomeKind } from "./kind.ts";
 /**
  * A door lock. The sensitive kind: member-only (a device can't be opened to
  * friends), and admins can switch control of every door off at once with
- * `/admin doors off`.
+ * `/admin` → Doors → **Switch door control off…**.
  */
 export const door: HomeKind = {
 	name: "door",

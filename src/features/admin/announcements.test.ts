@@ -29,7 +29,7 @@ function setup(routes: AnnouncementRoute[] = []) {
 
 const admin = () => principal("admin", { userId: IDS.admin });
 
-describe("/admin announcements", () => {
+describe("/admin → Announcements", () => {
 	it("is admin-only all the way down, and every reply is private", () => {
 		const { group } = setup();
 		expect(group.name).toBe("announcements");
@@ -162,7 +162,7 @@ describe("/admin announcements", () => {
 		it("says how to start when nothing is set", async () => {
 			const { sub } = setup();
 			const reply = await sub("list").handler(context({ principal: admin() }));
-			expect(reply.text).toContain("/admin announcements set");
+			expect(reply.text).toContain("`/admin` → Announcements → **Add a channel…**");
 		});
 
 		it("lists every channel with its style, marks problems, and explains the styles", async () => {

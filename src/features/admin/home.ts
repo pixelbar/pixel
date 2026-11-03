@@ -7,7 +7,7 @@ import {
 } from "../../services/home-devices.ts";
 
 /**
- * The "Home Assistant" field of `/admin status`: the connection, and how many
+ * The "Home Assistant" field of `/admin`: the connection, and how many
  * devices are allowed.
  */
 export function describeHome(
@@ -41,7 +41,7 @@ function describeConnection(status: HomeStatus): string {
 	}
 }
 
-/** Lines `/admin reload` adds when Home Assistant needs attention. Nothing when all is well or unused. */
+/** Lines `/admin` → **Reload the access lists** adds when Home Assistant needs attention. Nothing when all is well or unused. */
 export function homeLines(status: HomeStatus): string[] {
 	switch (status.kind) {
 		case "off":
@@ -59,7 +59,7 @@ export function homeLines(status: HomeStatus): string[] {
 }
 
 /**
- * Re-reads the devices file for `/admin reload`. A file that's now invalid leaves
+ * Re-reads the devices file for `/admin` → **Reload the access lists**. A file that's now invalid leaves
  * the old list in place and says why (the message names positions, never values).
  * Also notes devices whose entity Home Assistant doesn't know.
  */

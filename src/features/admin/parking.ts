@@ -30,7 +30,7 @@ import {
 } from "../../services/parking-windows.ts";
 
 /**
- * `/admin parking`: the spots, when they're open, and the parking settings. Admins
+ * `/admin` → Parking: the spots, when they're open, and the parking settings. Admins
  * only, private. Spots rarely change and live in `data/parking-spots.yaml`; opening
  * times change daily and live in `data/parking-windows.yaml`.
  *
@@ -86,7 +86,7 @@ export function resolveSpots(
 
 const bold = (names: readonly string[]) => names.map((n) => `**${n}**`).join(", ");
 
-/** One spot for `/admin parking status`: what it is, and when it's open. */
+/** One spot for `/admin` → Parking: what it is, and when it's open. */
 export function describeSpot(
 	spot: ParkingSpot,
 	entries: ParkingEntries,

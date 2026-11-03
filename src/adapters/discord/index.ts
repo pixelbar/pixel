@@ -60,7 +60,7 @@ export type DiscordAdapterDeps = {
 	logger: Logger;
 	/**
 	 * Discord channels for the other announcements. Each is optional; unset means off.
-	 * Open/closed announcements aren't here: admins set those with `/admin announcements`.
+	 * Open/closed announcements aren't here: admins set those with `/admin` → Announcements.
 	 */
 	announce: {
 		/** Where Pixel says it's online or offline. */
@@ -72,7 +72,7 @@ export type DiscordAdapterDeps = {
 	botStatusStateFile: string;
 	/** Where each admin-set live or single channel remembers its current post. */
 	announcementPostsDir: string;
-	/** The (style, channel) pairings admins have set with `/admin announcements`. */
+	/** The (style, channel) pairings admins have set with `/admin` → Announcements. */
 	announcementRouteStore: DiscordRoutesOptions["store"];
 	/** Where this adapter plugs in running those pairings once it's ready. */
 	announcementRoutes: Pick<AnnouncementRoutes, "use">;
@@ -183,8 +183,8 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			},
 		];
 
-		// Open/closed announcements: the channels admins set with /admin announcements. Plugged in
-		// first, so `/admin announcements` works even if a channel below can't be opened.
+		// Open/closed announcements: the channels admins set with /admin → Announcements. Plugged in
+		// first, so `/admin` → Announcements works even if a channel below can't be opened.
 		const routes = new DiscordAnnouncementRoutes({
 			store: deps.announcementRouteStore,
 			announcer: deps.announcer,
@@ -226,7 +226,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		if (deps.announcementRouteStore.list().length === 0) {
 			logger.info(
 				{ event: "discord.announce_unset" },
-				"no open/closed announcement channels set (/admin announcements set)",
+				"no open/closed announcement channels set (/admin → Announcements → Add a channel…)",
 			);
 		}
 	}

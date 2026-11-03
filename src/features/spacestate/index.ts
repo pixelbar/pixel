@@ -10,7 +10,7 @@ import {
 	SpaceStateApiError,
 } from "../../services/space-state-api.ts";
 
-/** Lets a member set the space open or closed. Granted with `/admin capabilities`. */
+/** Lets a member set the space open or closed. Granted with `/admin` → Capabilities. */
 export const SPACESTATE_CAPABILITY = {
 	name: "spacestate",
 	description: "Set the space open or closed with /spacestate",

@@ -7,7 +7,7 @@ import { ParkingError, type ParkingSpot, SPOT_NAME } from "./parking-spots.ts";
 
 /**
  * When parking spots are open, kept in `data/parking-windows.yaml` and changed with
- * `/admin parking open|close`. These change daily, so they live apart from the
+ * `/admin` → Parking → **Open spots…**. These change daily, so they live apart from the
  * spots themselves.
  *
  * - **windows:** a borrowed spot is open from `from` to `until`.
@@ -60,7 +60,7 @@ const fileSchema = z.strictObject({
 });
 
 const HEADER =
-	"# When Pixel's parking spots are open (borrowed) or closed (permanent). Managed with /admin parking.\n";
+	"# When Pixel's parking spots are open (borrowed) or closed (permanent). Managed with /admin → Parking.\n";
 
 const EMPTY: ParkingEntries = { windows: [], blocks: [] };
 

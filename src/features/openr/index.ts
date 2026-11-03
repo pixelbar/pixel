@@ -12,7 +12,7 @@ import type { KindSwitch } from "../../services/kind-switch.ts";
  * `/openr open`: opens one of the building's doors through OpenR, for a member with
  * the `openr` capability. Which doors exist comes only from the config (`OPENR_DOORS`);
  * the parking gate (`OPENR_GATE_DOOR`) is never among them, because only `/park` opens
- * it, for someone with a booking. `/admin doors off` stops both at once.
+ * it, for someone with a booking. `/admin` → Doors → **Switch door control off…** stops both at once.
  *
  * Pixel decides who may open what: OpenR only sees Pixel's own account.
  */
@@ -24,7 +24,7 @@ export const OPENR_CAPABILITY: CapabilityDefinition = {
 
 const ACCESS: Access = { minTier: "member", capability: OPENR_CAPABILITY.name };
 
-/** The switch `/admin doors` sets, shared with Home Assistant's doors. */
+/** The switch `/admin` → Doors sets, shared with Home Assistant's doors. */
 export const DOOR_SWITCH = "door";
 
 /** A door Pixel may open: its name in Discord, and its ID in OpenR. */
@@ -50,7 +50,7 @@ export function openedLine(door: string, result: DoorOpenResult): string {
 	if (result.opened) return `🔓 **${door}** is opening.`;
 	switch (result.reason) {
 		case "logged-out":
-			return "Pixel isn't logged in to OpenR right now, so it can't open doors. An admin can fix that with `/admin openr login`.";
+			return "Pixel isn't logged in to OpenR right now, so it can't open doors. An admin can fix that with `/admin` → OpenR → **Log in**.";
 		case "busy":
 			return `**${door}** is already being opened.`;
 		case "failed":

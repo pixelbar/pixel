@@ -100,7 +100,7 @@ describe("loadConfig", () => {
 		});
 	});
 
-	it("ignores the old open/closed channel variables: admins set those with /admin announcements", () => {
+	it("ignores the old open/closed channel variables: admins set those with /admin → Announcements", () => {
 		// A deploy that still has them set must keep starting.
 		const announce = loadConfig({
 			...VALID,

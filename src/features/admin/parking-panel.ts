@@ -28,7 +28,7 @@ import {
 } from "./parking.ts";
 
 /**
- * `/admin parking`: one subcommand that opens a private panel of every spot, when it's
+ * `/admin` → Parking: one subcommand that opens a private panel of every spot, when it's
  * open and who's in it (see docs/discord-components.md). Menus manage one spot, or open
  * and close several at once; buttons add a spot and change the settings. A spot's panel
  * opens, closes, edits, removes, frees and gives it to someone. A change that would end
@@ -137,6 +137,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			),
 			button("Settings", PARKING_ACTIONS.settingsForm),
 			button("Refresh", PARKING_ACTIONS.home),
+			// Back to the rest of `/admin`.
+			button("← Admin", "admin.home"),
 		]);
 		return {
 			embeds: [

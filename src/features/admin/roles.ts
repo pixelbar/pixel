@@ -12,7 +12,7 @@ import type {
 } from "../../core/role-mirror.ts";
 
 /**
- * Role mirroring in the admin commands: `/admin sync`, plus the wording shared
+ * Role mirroring in the admin commands: `/admin` → Discord roles → **Sync everyone**, plus the wording shared
  * with `level set`, `level get` and `status`. Discord moderators name roles, so
  * every role name is shown as a code span and never as formatting.
  */
@@ -60,12 +60,12 @@ export function mirrorLine(result: MirrorResult, context: "change" | "sync"): st
 		}
 		case "failed":
 			return context === "change"
-				? `Pixel is updated, but the Discord roles weren't changed: ${result.reason}. Run /admin sync once that's fixed.`
+				? `Pixel is updated, but the Discord roles weren't changed: ${result.reason}. Run /admin → Discord roles → **Sync everyone** once that's fixed.`
 				: `The Discord roles weren't changed: ${result.reason}.`;
 	}
 }
 
-/** The "Discord roles" field of `/admin level get`, or undefined when nothing is mapped. */
+/** The "Discord roles" field of `/admin` → People → **Look someone up…**, or undefined when nothing is mapped. */
 export function inspectionField(
 	inspection: Inspection,
 	wanted: WantedLevel,
@@ -84,13 +84,13 @@ export function inspectionField(
 				.join(" · ");
 			const matches = inspection.holdings.every((h) => h.has === (h.tier === wanted));
 			return field(
-				`${held}\n${matches ? "Matches their Pixel level." : "⚠ Doesn't match their Pixel level. Run /admin sync."}`,
+				`${held}\n${matches ? "Matches their Pixel level." : "⚠ Doesn't match their Pixel level. Run /admin → Discord roles → **Sync everyone**."}`,
 			);
 		}
 	}
 }
 
-/** The "Discord roles" lines of `/admin status`. */
+/** The "Discord roles" lines of `/admin`. */
 export function describeStates(states: readonly TierMirrorState[]): string {
 	if (states.every((state) => state.status === "unconfigured")) return "Not configured";
 	return states

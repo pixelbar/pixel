@@ -12,6 +12,7 @@ import { OPENR_CAPABILITY } from "./features/openr/index.ts";
 import { PARKING_CAPABILITY } from "./features/parking/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { SPACESTATE_CAPABILITY } from "./features/spacestate/index.ts";
+import { runAdmin } from "./testing/admin.ts";
 import { actor, IDS } from "./testing/fixtures.ts";
 
 /** End-to-end through the real wiring: access files → identity → dispatcher → features. */
@@ -79,12 +80,11 @@ describe("buildCore", () => {
 		[IDS.admin, true],
 		[IDS.member, false],
 		[IDS.guest, false],
-	])("/admin status for %s → allowed=%s", async (userId, allowed) => {
+	])("/admin for %s → allowed=%s", async (userId, allowed) => {
 		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
 		const result = await dispatcher.dispatch({
 			actor: actor({ userId }),
 			command: "admin",
-			subcommand: "status",
 			args: {},
 		});
 		if (allowed) expect(result.reply.embeds?.[0]?.title).toBe("Pixel status");
@@ -137,38 +137,33 @@ describe("buildCore", () => {
 		expect(published).toEqual([{ kind: "closing.time" }]);
 	});
 
-	it("/admin closing-time set writes the persist file, and members may not run it", async () => {
+	it("/admin's closing-time form writes the persist file, and members may not save one", async () => {
 		const { dispatcher } = buildCore(config, silentLogger, nullErrorReporter);
-		const denied = await dispatcher.dispatch({
-			actor: actor({ userId: IDS.member }),
-			command: "admin",
-			subgroup: "closing-time",
-			subcommand: "set",
-			args: { message: "nope" },
+		const save = (userId: string, message: string) =>
+			dispatcher.act({
+				actor: actor({ userId }),
+				action: "admin.closing-time-set",
+				args: { message },
+			});
+		const denied = await save(IDS.member, "nope");
+		expect(denied).toEqual({
+			kind: "refused",
+			reply: { text: MESSAGES.deniedTier, private: true },
 		});
-		expect(denied.reply.text).toBe(MESSAGES.deniedTier);
-		const saved = await dispatcher.dispatch({
-			actor: actor({ userId: IDS.admin }),
-			command: "admin",
-			subgroup: "closing-time",
-			subcommand: "set",
-			args: { message: "Please tidy up.\nLast out locks the door." },
-		});
-		expect(saved.reply.text).toBe("Saved the closing-time message.");
-		expect(saved.private).toBe(true);
+		const saved = await save(IDS.admin, "Please tidy up.\nLast out locks the door.");
+		expect(saved.kind === "update" && saved.reply.text).toBe("Saved the closing-time message.");
 		expect(readFileSync(config.closingTimeFile, "utf8")).toBe(
 			"Please tidy up.\nLast out locks the door.\n",
 		);
-		const form = await dispatcher.prepareForm({
+		// The form opens with the message that's saved.
+		const form = await dispatcher.act({
 			actor: actor({ userId: IDS.admin }),
-			command: "admin",
-			subgroup: "closing-time",
-			subcommand: "set",
+			action: "admin.closing-time-form",
 			args: {},
 		});
-		expect(form).toEqual({
-			ready: true,
-			values: { message: "Please tidy up.\nLast out locks the door." },
+		expect(form.kind === "form" && form.form.fields[0]).toMatchObject({
+			name: "message",
+			value: "Please tidy up.\nLast out locks the door.",
 		});
 	});
 
@@ -381,25 +376,12 @@ describe("buildCore", () => {
 				"parking",
 				"openr",
 			]);
-			const listed = await core.dispatcher.dispatch({
-				actor: actor({ userId: IDS.admin }),
-				command: "admin",
-				subgroup: "capabilities",
-				subcommand: "list",
-				args: {},
-			});
+			const listed = await runAdmin(core.dispatcher, "list", {});
 			const text = JSON.stringify(listed.reply);
 			for (const name of ["ha-admin", "ha-lights", "ha-switches", "ha-doors"]) {
 				expect(text).toContain(name);
 			}
-			const grant = await core.dispatcher.dispatch({
-				actor: actor({ userId: IDS.admin }),
-				command: "admin",
-				subgroup: "capabilities",
-				subcommand: "grant",
-				args: { user: IDS.member, capability: "ha-lights" },
-				users: { user: person },
-			});
+			const grant = await runAdmin(core.dispatcher, "grant", { capability: "ha-lights" }, person);
 			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
 		});
@@ -420,14 +402,7 @@ describe("buildCore", () => {
 					args: { state },
 				});
 			const grant = (core: ReturnType<typeof buildCore>) =>
-				core.dispatcher.dispatch({
-					actor: actor({ userId: IDS.admin }),
-					command: "admin",
-					subgroup: "capabilities",
-					subcommand: "grant",
-					args: { user: IDS.member, capability: "spacestate" },
-					users: { user: person },
-				});
+				runAdmin(core.dispatcher, "grant", { capability: "spacestate" }, person);
 
 			it("calls the configured API, only once an admin has granted the capability", async () => {
 				const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("SUCCESS"));
@@ -497,19 +472,9 @@ describe("buildCore", () => {
 					sent.push({ userId, text });
 				},
 			});
-			const grant = {
-				actor: actor({ userId: IDS.admin }),
-				command: "admin" as const,
-				subgroup: "capabilities",
-				subcommand: "grant" as const,
-				args: { user: IDS.member, capability: "ha-lights" },
-				users: { user: person },
-			};
-			await core.dispatcher.dispatch(grant);
-			await core.dispatcher.dispatch(grant);
-			const revoke = { ...grant, subcommand: "revoke" as const };
-			await core.dispatcher.dispatch(revoke);
-			await core.dispatcher.dispatch(revoke);
+			for (const op of ["grant", "grant", "revoke", "revoke"] as const) {
+				await runAdmin(core.dispatcher, op, { capability: "ha-lights" }, person);
+			}
 
 			expect(sent).toHaveLength(2);
 			expect(sent[0]).toMatchObject({ userId: IDS.member });
@@ -526,14 +491,7 @@ describe("buildCore", () => {
 					throw new Error("they have DMs from server members closed");
 				},
 			});
-			const result = await core.dispatcher.dispatch({
-				actor: actor({ userId: IDS.admin }),
-				command: "admin",
-				subgroup: "capabilities",
-				subcommand: "grant",
-				args: { user: IDS.member, capability: "ha-lights" },
-				users: { user: person },
-			});
+			const result = await runAdmin(core.dispatcher, "grant", { capability: "ha-lights" }, person);
 			expect(result.reply.embeds?.[0]?.title).toBe("Capability granted");
 			expect(result.reply.text ?? "").not.toMatch(/DM|closed/i);
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["ha-lights"]);
@@ -541,14 +499,7 @@ describe("buildCore", () => {
 
 		it("lets an admin grant one, which then shows in the member's principal and the file", async () => {
 			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
-			const grant = await core.dispatcher.dispatch({
-				actor: actor({ userId: IDS.admin }),
-				command: "admin",
-				subgroup: "capabilities",
-				subcommand: "grant",
-				args: { user: IDS.member, capability: "door" },
-				users: { user: person },
-			});
+			const grant = await runAdmin(core.dispatcher, "grant", { capability: "door" }, person);
 			expect(grant.reply.embeds?.[0]?.title).toBe("Capability granted");
 			expect(readFileSync(config.access.membersFile, "utf8")).toContain("door");
 			expect(core.access.view.records.get(IDS.member)?.capabilities).toEqual(["door"]);
@@ -561,13 +512,7 @@ describe("buildCore", () => {
 		it("refuses a member, a friend and a guest the admin commands", async () => {
 			const core = buildCore(config, silentLogger, nullErrorReporter, { capabilities: DOOR });
 			for (const userId of [IDS.member, IDS.friend, IDS.guest]) {
-				const result = await core.dispatcher.dispatch({
-					actor: actor({ userId }),
-					command: "admin",
-					subgroup: "capabilities",
-					subcommand: "list",
-					args: {},
-				});
+				const result = await runAdmin(core.dispatcher, "list", {}, undefined, { userId });
 				expect(result.reply.text).toBe(MESSAGES.deniedTier);
 			}
 		});

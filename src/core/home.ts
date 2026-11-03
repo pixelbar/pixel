@@ -62,7 +62,7 @@ export type HomeStatus =
 
 export type HomeBackend = {
 	status(): HomeStatus;
-	/** Re-checks the login and the connection (on `/admin reload`). */
+	/** Re-checks the login and the connection (on `/admin` → **Reload the access lists**). */
 	check(): Promise<HomeStatus>;
 	/** Fresh states for these entities. Entities that don't exist are left out. */
 	getStates(entityIds: readonly string[]): Promise<Map<string, EntityState>>;
