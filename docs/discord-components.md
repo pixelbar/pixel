@@ -80,7 +80,7 @@ Anti-patterns to remove as commands move over:
 
 ### A result with next steps
 
-The command does its job, and the reply offers the one or two things people usually do next. `/park` replies with where to park, plus **Extend** and **Leave** buttons. `/ha status` replies with the device's state and buttons for the actions the person may take on that device.
+The command does its job, and the reply offers the one or two things people usually do next. `/park` replies with where to park, plus **Extend** and **Leave** buttons. `/ha` shows a device's state with a button for each action the person may take on it.
 
 - Only show a button the clicker could actually use. Build the list from the same check the command uses (for Home Assistant, `actionableDevices` and `canActOnDevice`). The click still goes through the dispatcher, so a button shown by mistake is refused, never obeyed.
 - One Primary button at most, and it's the step most people want. Everything else is Secondary.
@@ -257,10 +257,9 @@ return {
 
 ## Candidates
 
-The commands that would gain most, roughly in order. Each is its own PR. `/schedule`, `/park` and `/admin parking` have moved: each opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`, `src/features/admin/parking-panel.ts`).
+The commands that would gain most, roughly in order. Each is its own PR. `/schedule`, `/park`, `/admin parking` and `/ha` have moved: each opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`, `src/features/admin/parking-panel.ts`, `src/features/home/index.ts`).
 
 | Command | Today | With components |
 | --- | --- | --- |
 | `/admin openr login`, `/admin openr code` | Two commands | One reply with an "Enter code" button that opens a modal |
-| `/ha status`, `/ha set` | Type the device, then type the state | `/ha status`'s reply has buttons for the actions the person may take |
 | `/admin announcements set`, `remove`, `list` | Three commands | `list` with a Channel Select and a style select, and Remove buttons |

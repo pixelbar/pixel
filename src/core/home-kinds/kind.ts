@@ -31,7 +31,7 @@ export type KindAction = {
 	working?: readonly string[];
 };
 
-/** An attribute worth showing for a kind in `/ha status`. */
+/** An attribute worth showing for a kind on a device's panel in `/ha`. */
 export type KindAttribute = {
 	/** The attribute's key in Home Assistant, such as "brightness". */
 	key: string;
@@ -57,7 +57,7 @@ export type HomeKind = {
 	domains: readonly string[];
 	/** What may be done with it. Empty means read-only. */
 	actions: readonly KindAction[];
-	/** The attributes `/ha status` shows besides the state. */
+	/** The attributes a device's panel shows besides the state. */
 	attributes?: readonly KindAttribute[];
 	/**
 	 * The lowest tier any device of this kind may be opened to. The devices file can

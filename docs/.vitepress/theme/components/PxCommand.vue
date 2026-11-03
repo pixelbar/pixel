@@ -4,13 +4,13 @@
  * and its options. The description goes in the default slot (markdown works).
  *
  * The signature is a real heading, so each command is in the page outline and has a
- * link of its own. The options are marked `ignore-header`: the outline shows `/ha set`.
+ * link of its own. The options are marked `ignore-header`: the outline shows `/openr open`.
  */
 import { computed, onBeforeUnmount, ref } from "vue";
 import PxTierBadge from "./PxTierBadge.vue";
 
 const props = defineProps<{
-	/** As Discord shows it: `/ha set device: state:`, `/info [topic:]` */
+	/** As Discord shows it: `/openr open door:`, `/info [topic:]` */
 	sig: string;
 	tier: "guest" | "friend" | "member" | "admin";
 	reply: "private" | "public";
@@ -55,7 +55,7 @@ const parts = computed<Part[]>(() =>
 	})),
 );
 
-/** The command without its options, as you'd type it: `/ha set`. */
+/** The command without its options, as you'd type it: `/openr open`. */
 const name = computed(() =>
 	parts.value
 		.filter((part) => part.kind === "cmd")

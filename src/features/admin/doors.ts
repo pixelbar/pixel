@@ -5,7 +5,7 @@ import type { KindSwitch } from "../../services/kind-switch.ts";
 
 /**
  * `/admin doors on|off`: the emergency switch for door control. Off stops every
- * door action from `/ha set`, `/ha open` and `/openr open`, and the parking gate, at
+ * door action from `/ha` and `/openr open`, and the parking gate, at
  * once, for everyone, until an admin switches it back on. Admins only, private, logged
  * and left as a Sentry breadcrumb.
  */

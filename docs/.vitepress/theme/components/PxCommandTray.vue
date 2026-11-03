@@ -62,10 +62,7 @@ const COMMANDS: readonly Command[] = [
 			"Send feedback to Pixel's maintainers. Your message and username may be made public",
 	},
 	{ name: "/closing-time", description: "Post the closing-time reminder" },
-	{ name: "/ha list", description: "The devices you may use, and their state" },
-	{ name: "/ha status", description: "The live state of one device" },
-	{ name: "/ha set", description: "Change a device, such as switching a light on or off" },
-	{ name: "/ha open", description: "Unlock a door" },
+	{ name: "/ha", description: "The Home Assistant devices you may use: see them, and change them" },
 	{ name: "/schedule", description: "Schedule messages and polls, and manage them" },
 	{ name: "/park", description: "Get a parking spot at the gate, and manage yours" },
 ];

@@ -98,30 +98,23 @@ function setup(
 		logger,
 		reporter: nullErrorReporter,
 	});
+	/** `/ha`: the list. */
 	const list = (userId: string) =>
-		dispatcher.dispatch({
-			actor: actor({ userId }),
-			command: "ha",
-			subcommand: "list",
-			args: {},
-		});
+		dispatcher.dispatch({ actor: actor({ userId }), command: "ha", args: {} });
+	/** `/ha device:`: one device's panel. */
 	const status = (userId: string, device: string) =>
-		dispatcher.dispatch({
-			actor: actor({ userId }),
-			command: "ha",
-			subcommand: "status",
-			args: { device },
-		});
+		dispatcher.dispatch({ actor: actor({ userId }), command: "ha", args: { device } });
 	const suggest = (userId: string, typed = "") =>
 		dispatcher.suggest({
 			actor: actor({ userId }),
 			command: "ha",
-			subcommand: "status",
 			option: "device",
 			typed,
 			args: {},
 		});
-	return { list, status, suggest, getStates, logger };
+	const act = (userId: string, action: string, args: Record<string, string | number>) =>
+		dispatcher.act({ actor: actor({ userId }), action, args });
+	return { list, status, suggest, act, getStates, logger };
 }
 
 const fields = (embed: { fields?: { name: string; value: string }[] } | undefined) =>
@@ -201,7 +194,7 @@ describe("/ha list", () => {
 		}
 	});
 
-	it("keeps a long list within the size limit, saying how many it left out", async () => {
+	it("shows a long list a page at a time, within the size limit", async () => {
 		const many = Array.from(
 			{ length: 150 },
 			(_, i) => `  - name: lamp-${i}\n    entity: light.l${i}\n    kind: light\n`,
@@ -210,10 +203,12 @@ describe("/ha list", () => {
 			Array.from({ length: 150 }, (_, i) => entity(`light.l${i}`, "on")),
 			{ yaml: `devices:\n${many}` },
 		);
-		const field = (await list(IDS.member)).reply.embeds?.[0]?.fields?.[0];
-		expect(field?.name).toBe("Lights · 150");
+		const { reply } = await list(IDS.member);
+		const field = reply.embeds?.[0]?.fields?.[0];
+		// A page at a time: 25, the most a menu can offer.
+		expect(field?.name).toBe("Lights · 25");
 		expect(field?.value.length).toBeLessThanOrEqual(1024);
-		expect(field?.value).toMatch(/…and \d+ more\.$/);
+		expect(reply.embeds?.[0]?.description).toContain("Page 1 of 6.");
 	});
 
 	it("pluralises switch as switches, not switchs", async () => {
@@ -429,7 +424,7 @@ describe("/ha status", () => {
 	});
 });
 
-describe("autocomplete for /ha status", () => {
+describe("autocomplete for /ha device:", () => {
 	it("suggests only what the caller may see, and never asks Home Assistant", async () => {
 		const { suggest, getStates } = setup(ALL);
 		expect((await suggest(IDS.friend)).map((s) => s.value)).toEqual(["sign"]);
