@@ -132,58 +132,36 @@ function setup(
 		logger,
 		reporter: nullErrorReporter,
 	});
-	const set = (who: Who, device: string, state: string) =>
+	/** Presses a device's action button: `ha.act`, as the panel's button does. */
+	const set = async (who: Who, device: string, state: string) => {
+		const outcome = await dispatcher.act({
+			actor: actor({ userId: PEOPLE[who].id }),
+			action: "ha.act",
+			args: { device, action: state },
+		});
+		if (outcome.kind === "form") throw new Error("unexpected form");
+		return { reply: outcome.reply, private: outcome.reply.private ?? false, outcome };
+	};
+	/** `/ha device:`: one device's panel. */
+	const panel = (who: Who, device: string) =>
 		dispatcher.dispatch({
 			actor: actor({ userId: PEOPLE[who].id }),
 			command: "ha",
-			subcommand: "set",
-			args: { device, state },
-		});
-	const suggest = (
-		who: Who,
-		option: "device" | "state",
-		typed = "",
-		args: Record<string, string> = {},
-	) =>
-		dispatcher.suggest({
-			actor: actor({ userId: PEOPLE[who].id }),
-			command: "ha",
-			subcommand: "set",
-			option,
-			typed,
-			args,
-		});
-	const dispatch = (who: Who, subcommand: string, args: Record<string, string>) =>
-		dispatcher.dispatch({
-			actor: actor({ userId: PEOPLE[who].id }),
-			command: "ha",
-			subcommand,
-			args,
-		});
-	const suggestFor = (who: Who, subcommand: string, option: string, typed = "") =>
-		dispatcher.suggest({
-			actor: actor({ userId: PEOPLE[who].id }),
-			command: "ha",
-			subcommand,
-			option,
-			typed,
-			args: {},
+			args: { device },
 		});
 	return {
 		set,
-		suggest,
-		dispatch,
-		suggestFor,
+		panel,
 		run,
 		logger,
 		reporter,
 		getStates,
 		callService,
 		feature,
+		dispatcher,
 	};
 }
 
-const names = (suggestions: { value: string | number }[]) => suggestions.map((s) => s.value);
 const logged = (calls: unknown[][]) => calls.map(([fields]) => fields as Record<string, unknown>);
 
 describe("/ha set: who may", () => {
@@ -455,16 +433,6 @@ describe("/ha set: what it says", () => {
 		expect((await set("haAdmin", "lamp", "on")).reply.text).toBe(HOME_MESSAGES.notSetUp);
 		expect(run).not.toHaveBeenCalled();
 	});
-
-	it("shows a working message while it waits", () => {
-		const { feature } = setup();
-		const ha = feature.commands?.[0];
-		const set = ha?.subcommands?.find((s) => s.name === "set");
-		expect(set && "placeholder" in set ? set.placeholder : undefined).toEqual({
-			text: "Working on it…",
-			private: true,
-		});
-	});
 });
 
 describe("/ha set: the audit trail", () => {
@@ -557,8 +525,8 @@ describe("/ha set: end to end with a fake Home Assistant", () => {
 
 	it("unlocks a door with lock.unlock, never lock.open", async () => {
 		const { control, callService } = live("locked", "unlocked");
-		const { dispatch } = setup({ control });
-		const result = await dispatch("doors", "open", { door: "front-door" });
+		const { set } = setup({ control });
+		const result = await set("doors", "front-door", "unlock");
 		expect(result.reply.embeds?.[0]?.title).toBe("✅ Done");
 		expect(callService.mock.calls).toEqual([
 			[{ domain: "lock", service: "unlock", entityId: "lock.front_door" }],
@@ -612,186 +580,224 @@ describe("/ha set: end to end with a fake Home Assistant", () => {
 	});
 });
 
-describe("autocomplete for /ha set", () => {
-	it("offers a device's own allowed actions for state, with what each does", async () => {
-		const { suggest } = setup();
-		expect(await suggest("lights", "state", "", { device: "lamp" })).toEqual([
-			{ name: "off · Switch the light off", value: "off" },
-			{ name: "on · Switch the light on", value: "on" },
-			{
-				name: "toggle · Switch the light on if it's off, and off if it's on",
-				value: "toggle",
-			},
-		]);
-		expect(names(await suggest("lights", "state", "", { device: "sign" }))).toEqual(["off", "on"]);
+describe("a device's panel", () => {
+	const STATES = [
+		{ entityId: "light.lamp", state: "on", attributes: {}, lastChanged: null },
+		{ entityId: "lock.front_door", state: "locked", attributes: {}, lastChanged: null },
+		{ entityId: "sensor.temp", state: "21", attributes: {}, lastChanged: null },
+	];
+	const buttons = (reply: {
+		controls?: readonly (readonly { kind: string; label?: string; disabled?: boolean }[])[];
+	}) =>
+		(reply.controls ?? [])
+			.flat()
+			.map((c) => (c.kind === "button" ? `${c.label}${c.disabled ? " (off)" : ""}` : c.kind));
+
+	it("offers a button for each action the person may take, greying out where it already is", async () => {
+		const { panel } = setup({ states: STATES });
+		const { reply } = await panel("lights", "lamp");
+		expect(buttons(reply)).toEqual(["On (off)", "Off", "Toggle", "← All devices", "Refresh"]);
+		expect(reply.private).toBe(true);
 	});
 
-	it("offers only what the person may run on that device", async () => {
-		const { suggest } = setup();
-		expect(await suggest("lights", "state", "", { device: "socket" })).toEqual([]);
-		expect(await suggest("plainMember", "state", "", { device: "lamp" })).toEqual([]);
-		expect(await suggest("lights", "state", "", { device: "no-such-thing" })).toEqual(
-			await suggest("lights", "state"),
+	it("offers nothing to change to someone who may only look", async () => {
+		const { panel } = setup({ states: STATES });
+		expect(buttons((await panel("plainMember", "lamp")).reply)).toEqual([
+			"← All devices",
+			"Refresh",
+		]);
+		expect(buttons((await panel("lights", "socket")).reply)).toEqual(["← All devices", "Refresh"]);
+		expect(buttons((await panel("haAdmin", "temp")).reply)).toEqual(["← All devices", "Refresh"]);
+	});
+
+	it("offers a door's lock and unlock to someone with ha-doors or ha-admin, never anything else", async () => {
+		for (const who of ["doors", "haAdmin"] as const) {
+			const { panel } = setup({ states: STATES });
+			expect(buttons((await panel(who, "front-door")).reply)).toEqual([
+				"Lock (off)",
+				"Unlock",
+				"← All devices",
+				"Refresh",
+			]);
+		}
+	});
+
+	it("offers no door buttons while doors are switched off, and says why", async () => {
+		const { panel } = setup({ states: STATES, doorsOff: true });
+		const { reply } = await panel("doors", "front-door");
+		expect(buttons(reply)).toEqual(["← All devices", "Refresh"]);
+		expect(reply.embeds?.[0]?.description).toContain(
+			"Controlling doors from Pixel is switched off by an admin right now.",
 		);
-		expect(await suggest("lights", "state", "", { device: "frozen" })).toEqual([]);
-		expect(await suggest("lights", "state", "", { device: "temp" })).toEqual([]);
 	});
 
-	it("offers the values that work somewhere when no device is chosen yet", async () => {
-		const { suggest } = setup();
-		expect(names(await suggest("lights", "state"))).toEqual(["off", "on", "toggle"]);
-		expect(names(await suggest("switches", "state"))).toEqual(["off", "on"]);
-		expect(names(await suggest("haAdmin", "state"))).toEqual([
-			"lock",
-			"off",
-			"on",
-			"toggle",
-			"unlock",
-		]);
-		expect(names(await suggest("haAdmin", "state"))).not.toContain("open");
-		expect(names(await suggest("doors", "state", "open", { device: "front-door" }))).toEqual([]);
-		expect(await suggest("plainMember", "state")).toEqual([]);
-		expect(await suggest("guestWithEverything", "state")).toEqual([]);
+	it("shows what a button did above the device's state, and nothing for a refusal", async () => {
+		const { set } = setup({ states: STATES });
+		const done = await set("lights", "lamp", "off");
+		expect(done.reply.embeds?.map((e) => e.title)).toEqual(["✅ Done", "lamp"]);
+		expect(done.outcome.kind).toBe("update");
+		const refused = await set("plainMember", "lamp", "off");
+		expect(refused.outcome.kind).toBe("refused");
 	});
 
-	it("matches what's typed, best matches first", async () => {
-		const { suggest } = setup();
-		expect(names(await suggest("haAdmin", "state", "o", { device: "lamp" }))).toEqual([
-			"off",
-			"on",
-			"toggle",
-		]);
-		expect(names(await suggest("haAdmin", "state", "ON", { device: "lamp" }))).toEqual(["on"]);
-		expect(await suggest("haAdmin", "state", "zzz", { device: "lamp" })).toEqual([]);
+	it("still says what happened when Home Assistant can't be read again afterwards", async () => {
+		writeFileSync(join(dir, "devices.yaml"), DEVICES);
+		const states = vi.fn(async () => {
+			throw new HomeUnavailableError(HOME_MESSAGES.unreachable);
+		});
+		// The action ran (the fake control says it's done); only the re-read fails.
+		const registry = new CommandRegistry();
+		registry.register(
+			createHomeFeature({
+				home: { getStates: states, callService: async () => {} },
+				homeDevices: HomeDeviceStore.open({ dir, kinds: HOME_KINDS }),
+				control: { run: vi.fn(async () => DONE) as DeviceControl["run"], timeoutMs: 8000 },
+			}),
+		);
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService(
+				[{ name: "t", tierFor: async () => "member" }],
+				[{ name: "t", capabilitiesFor: async () => ["ha-lights"] }],
+			),
+			rateLimiter: new RateLimiter({ capacity: 10, refillPerSecond: 0, now: () => 0 }),
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+		});
+		const outcome = await dispatcher.act({
+			actor: actor({ userId: PEOPLE.lights.id }),
+			action: "ha.act",
+			args: { device: "lamp", action: "off" },
+		});
+		if (outcome.kind !== "update") throw new Error(`expected an update, got ${outcome.kind}`);
+		expect(outcome.reply.embeds?.map((e) => e.title)).toEqual(["✅ Done", "lamp"]);
+		expect(outcome.reply.embeds?.[1]?.description).toBe(
+			`${HOME_MESSAGES.unreachable} Press **Refresh** to see its state.`,
+		);
+		expect(
+			outcome.reply.controls?.flat().map((c) => (c.kind === "button" ? c.label : c.kind)),
+		).toEqual(["← All devices", "Refresh"]);
 	});
 
-	it("offers doors, and leaves them out while they're switched off", async () => {
-		const { suggest } = setup();
-		expect(names(await suggest("doors", "state", "", { device: "front-door" }))).toEqual([
-			"lock",
-			"unlock",
-		]);
-		expect(names(await suggest("doors", "device"))).toEqual(["front-door"]);
-		const off = setup({ doorsOff: true });
-		expect(await off.suggest("doors", "state", "", { device: "front-door" })).toEqual([]);
-		expect(await off.suggest("doors", "device")).toEqual([]);
+	it("still reports anything unexpected while reading it again", async () => {
+		writeFileSync(join(dir, "devices.yaml"), DEVICES);
+		const registry = new CommandRegistry();
+		registry.register(
+			createHomeFeature({
+				home: {
+					getStates: async () => {
+						throw new Error("bug");
+					},
+					callService: async () => {},
+				},
+				homeDevices: HomeDeviceStore.open({ dir, kinds: HOME_KINDS }),
+				control: { run: vi.fn(async () => DONE) as DeviceControl["run"], timeoutMs: 8000 },
+			}),
+		);
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService(
+				[{ name: "t", tierFor: async () => "member" }],
+				[{ name: "t", capabilitiesFor: async () => ["ha-lights"] }],
+			),
+			rateLimiter: new RateLimiter({ capacity: 10, refillPerSecond: 0, now: () => 0 }),
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+		});
+		const outcome = await dispatcher.act({
+			actor: actor({ userId: PEOPLE.lights.id }),
+			action: "ha.act",
+			args: { device: "lamp", action: "off" },
+		});
+		expect(outcome).toEqual({
+			kind: "refused",
+			reply: { text: MESSAGES.internalError, private: true },
+		});
 	});
 
-	it("offers for device only what the person may act on, never read-only ones", async () => {
-		const { suggest } = setup();
-		expect(names(await suggest("lights", "device"))).toEqual(["lamp", "sign"]);
-		expect(names(await suggest("switches", "device"))).toEqual(["socket"]);
-		expect(names(await suggest("haAdmin", "device"))).toEqual([
-			"front-door",
-			"lamp",
-			"sign",
-			"socket",
-		]);
-		expect(names(await suggest("friendLights", "device"))).toEqual(["sign"]);
-		expect(await suggest("plainMember", "device")).toEqual([]);
-		expect(await suggest("plainAdmin", "device")).toEqual([]);
-		expect(await suggest("guestWithEverything", "device")).toEqual([]);
+	it("only shows a device the person may see", async () => {
+		const { panel, dispatcher } = setup({ states: STATES });
+		expect((await panel("plainMember", "no-such-thing")).reply).toEqual({
+			text: HOME_DENIED,
+			private: true,
+		});
+		const viaMenu = await dispatcher.act({
+			actor: actor({ userId: PEOPLE.friendLights.id }),
+			action: "ha.device",
+			args: { device: "front-door" },
+		});
+		expect(viaMenu).toEqual({ kind: "refused", reply: { text: HOME_DENIED, private: true } });
 	});
 
-	it("narrows the devices by the state already chosen, ignoring one that doesn't exist", async () => {
-		const { suggest } = setup();
-		expect(names(await suggest("haAdmin", "device", "", { state: "toggle" }))).toEqual(["lamp"]);
-		expect(names(await suggest("haAdmin", "device", "", { state: "on" }))).toEqual([
-			"lamp",
-			"sign",
-			"socket",
-		]);
-		expect(names(await suggest("haAdmin", "device", "", { state: "no-such-state" }))).toEqual([
-			"front-door",
-			"lamp",
-			"sign",
-			"socket",
-		]);
-	});
-
-	it("matches devices on what's typed, and never asks Home Assistant", async () => {
-		const { suggest, getStates } = setup();
-		expect(names(await suggest("haAdmin", "device", "so"))).toEqual(["socket"]);
-		expect(names(await suggest("haAdmin", "device", "s"))).toEqual(["sign", "socket"]);
-		expect(getStates).not.toHaveBeenCalled();
-	});
-
-	it("offers nothing when Home Assistant isn't set up", async () => {
-		const { suggest } = setup({ yaml: null });
-		expect(await suggest("haAdmin", "device")).toEqual([]);
-		expect(await suggest("haAdmin", "state")).toEqual([]);
-	});
-
-	it("is only a convenience: a value that was never offered is still refused", async () => {
-		const { set, run } = setup();
-		expect((await set("lights", "socket", "on")).reply.text).toBe(HOME_DENIED);
-		expect(run).not.toHaveBeenCalled();
+	it("says it isn't set up, from the command and from every button", async () => {
+		const { panel, dispatcher } = setup({ yaml: null });
+		expect((await panel("lights", "lamp")).reply.text).toBe(HOME_MESSAGES.notSetUp);
+		for (const [action, args] of [
+			["ha.list", {}],
+			["ha.device", { device: "lamp" }],
+			["ha.act", { device: "lamp", action: "on" }],
+		] as const) {
+			const outcome = await dispatcher.act({
+				actor: actor({ userId: PEOPLE.lights.id }),
+				action,
+				args,
+			});
+			expect(outcome.kind === "update" && outcome.reply.text).toBe(HOME_MESSAGES.notSetUp);
+		}
 	});
 });
 
-describe("/ha open", () => {
-	const open = (ctx: ReturnType<typeof setup>, who: Who, door: string) =>
-		ctx.dispatch(who, "open", { door });
-
-	it("always unlocks, and never unlatches", async () => {
-		const ctx = setup();
-		await open(ctx, "doors", "front-door");
-		expect((ctx.run.mock.calls[0] as [unknown, { name: string }])[1].name).toBe("unlock");
-		expect((await ctx.set("doors", "front-door", "open")).reply.text).toBe(HOME_DENIED);
-		expect(ctx.run).toHaveBeenCalledTimes(1);
-	});
-
-	it("needs member tier and ha-doors or ha-admin, like /ha set", async () => {
-		const ctx = setup();
-		expect((await open(ctx, "doors", "front-door")).reply.embeds?.[0]?.title).toBe("✅ Done");
-		expect((await open(ctx, "haAdmin", "front-door")).reply.embeds?.[0]?.title).toBe("✅ Done");
-		for (const who of ["lights", "plainMember", "plainAdmin"] as const) {
-			expect((await open(ctx, who, "front-door")).reply.text).toBe(HOME_DENIED);
-		}
-		expect((await open(ctx, "friendAdmin", "front-door")).reply.text).toBe(MESSAGES.deniedTier);
-		expect((await open(ctx, "guestWithEverything", "front-door")).reply.text).toBe(
-			MESSAGES.deniedTier,
-		);
-		expect(ctx.run).toHaveBeenCalledTimes(2);
-	});
-
-	it("only opens doors: anything else gets the generic answer, and so does a door that doesn't exist", async () => {
-		const ctx = setup();
-		expect((await open(ctx, "haAdmin", "lamp")).reply.text).toBe(HOME_DENIED);
-		expect((await open(ctx, "haAdmin", "back-door")).reply.text).toBe(HOME_DENIED);
-		expect(ctx.run).not.toHaveBeenCalled();
-		expect(logged(ctx.logger.warn.mock.calls).map((f) => f.reason)).toEqual([
-			"not-a-door",
-			"unknown-device",
+describe("the list's menu", () => {
+	it("offers only the devices the person may see, with their kind and state as plain text", async () => {
+		const { dispatcher } = setup({
+			states: [
+				{ entityId: "light.lamp", state: "on", attributes: {}, lastChanged: null },
+				{
+					entityId: "sensor.temp",
+					state: "21.456",
+					attributes: { unit_of_measurement: "°C" },
+					lastChanged: null,
+				},
+			],
+		});
+		const { reply } = await dispatcher.dispatch({
+			actor: actor({ userId: PEOPLE.lights.id }),
+			command: "ha",
+			args: {},
+		});
+		const menu = reply.controls?.[0]?.[0];
+		expect(menu?.kind === "select" && menu.options.map((o) => [o.value, o.description])).toEqual([
+			["lamp", "Light · on"],
+			["sign", "Light · not in Home Assistant"],
+			["socket", "Switch · not in Home Assistant"],
+			["frozen", "Light · not in Home Assistant"],
+			["front-door", "Door · not in Home Assistant"],
+			["temp", "Sensor · 21.46 °C"],
 		]);
+		expect(menu?.kind === "select" && menu.call.action).toBe("ha.device");
 	});
 
-	it("is refused while doors are switched off", async () => {
-		const ctx = setup({ doorsOff: true });
-		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(
-			"Controlling doors from Pixel is switched off by an admin right now.",
-		);
-		expect(ctx.run).not.toHaveBeenCalled();
-	});
-
-	it("needs a door that allows unlocking", async () => {
-		const ctx = setup({ yaml: DEVICES.replace("actions: [lock, unlock]", "actions: [lock]") });
-		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(HOME_DENIED);
-		expect(ctx.run).not.toHaveBeenCalled();
-	});
-
-	it("says it isn't set up when Home Assistant isn't configured", async () => {
-		const ctx = setup({ yaml: null });
-		expect((await open(ctx, "doors", "front-door")).reply.text).toBe(HOME_MESSAGES.notSetUp);
-	});
-
-	it("offers only the doors the person may open, and none while switched off", async () => {
-		const ctx = setup();
-		expect(names(await ctx.suggestFor("doors", "open", "door"))).toEqual(["front-door"]);
-		expect(names(await ctx.suggestFor("haAdmin", "open", "door"))).toEqual(["front-door"]);
-		expect(await ctx.suggestFor("lights", "open", "door")).toEqual([]);
-		expect(await ctx.suggestFor("plainAdmin", "open", "door")).toEqual([]);
-		expect(await setup({ doorsOff: true }).suggestFor("doors", "open", "door")).toEqual([]);
-		expect(await setup({ yaml: null }).suggestFor("doors", "open", "door")).toEqual([]);
+	it("pages past 25 devices", async () => {
+		const many = Array.from(
+			{ length: 30 },
+			(_, i) => `  - name: lamp-${i}\n    entity: light.l${i}\n    kind: light\n`,
+		).join("");
+		const { dispatcher } = setup({ yaml: `devices:\n${many}` });
+		const page = (n: number) =>
+			dispatcher.act({
+				actor: actor({ userId: PEOPLE.lights.id }),
+				action: "ha.list",
+				args: { page: n },
+			});
+		const second = await page(1);
+		const reply = second.kind === "update" ? second.reply : undefined;
+		const menu = reply?.controls?.[0]?.[0];
+		expect(menu?.kind === "select" && menu.options).toHaveLength(5);
+		expect(
+			reply?.controls?.[1]?.map((c) => (c.kind === "button" ? [c.label, c.disabled] : [])),
+		).toEqual([
+			["‹ Previous", undefined],
+			["Next ›", true],
+		]);
 	});
 });

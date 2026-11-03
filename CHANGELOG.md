@@ -11,6 +11,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- **`/ha` is one command with a panel** instead of `/ha list`, `/ha status`, `/ha set` and `/ha open`. `/ha` lists the devices you may see, grouped by kind with their state, with a menu to pick one; `/ha device:` goes straight to one. A device shows its live state and a button for each thing you may do to it (**On**, **Off**, **Toggle**, **Lock**, **Unlock**), with the one it's already at greyed out. Pressing one says what really happened above the device's fresh state. The rules haven't changed: the same capabilities, doors for members only and only lock and unlock, every press checked again, one action at a time, and no buttons while admins have switched doors off. The website's commands page shows the new panel. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
+
+### Changed
+
 - The website's commands page shows `/schedule` and `/park` as they now look: pictures of their panels, with the buttons and menus (the list, the form, a draft and a schedule; not parked, parked, and someone's in my spot), instead of the old subcommands. `/admin parking` is a one-line card like the other admin commands, and `/park` is in the command picker on the home page.
 
 - **`/admin parking` is one panel** instead of nine subcommands. It shows every spot, whether it's open, who's in it and the settings. **Manage a spot…** opens one spot: **Open…** / **Close for today** (borrowed) or **Close…** / **Open again** (permanent), **Edit…**, **Remove…**, **Free the spot…** and **Give it to someone…** (with a person picker). **Open spots…** and **Close spots…** do several at once, asking for times only when they apply; **Add a spot** and **Settings** are forms filled in with what's saved. Instead of `evict:True`, a change that would end someone's booking says whose and asks first. Run `just register dev` / `just register prod` after deploying.

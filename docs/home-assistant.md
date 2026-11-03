@@ -92,7 +92,7 @@ just dev          # or just deploy dev for Azure pixel-dev
 
 In Discord, `/admin status` should show **Connected** and `0 devices allowed`. If it warns that the token belongs to an admin, you signed in as the wrong HA user: delete that token, go back to step 2 as the non-admin user.
 
-`/ha list` as a friend or member says there is nothing available to you, which is right until you add devices.
+`/ha` as a friend or member says there is nothing available to you, which is right until you add devices.
 
 ### 6. Add devices
 
@@ -121,15 +121,15 @@ Then:
 just validate-config
 ```
 
-`/admin reload` (or restart). The reply says how many devices are allowed and names any entity Home Assistant does not know (a typo). `/ha list` shows the ones your tier may see.
+`/admin reload` (or restart). The reply says how many devices are allowed and names any entity Home Assistant does not know (a typo). `/ha` shows the ones your tier may see.
 
 Grant capabilities before anyone can change something: `/admin capabilities grant user: capability:ha-lights` (or `ha-switches`, `ha-doors`, `ha-admin`), or to everyone at a level with `/admin capabilities grant-level level:member capability:ha-lights`. Being a Pixel admin gives none.
 
 ### 7. Try an action on the test instance
 
-As someone who holds the capability, `/ha set device: workshop-light state: on`. The private reply says what really happened. Search the logs for `home.action` if you want to see the audit line (IDs, device, action, before, after, outcome — not a token).
+As someone who holds the capability, run `/ha device: workshop-light` and press **On**. The panel says what really happened, above the device's fresh state. Search the logs for `home.action` if you want to see the audit line (IDs, device, action, before, after, outcome — not a token).
 
-Doors: `/ha set` lock/unlock, or `/ha open door:` (always unlocks). `/admin doors off` stops every door action at once.
+Doors: the **Lock** and **Unlock** buttons on a door's panel in `/ha`. `/admin doors off` stops every door action at once.
 
 ## Revoke
 
@@ -150,7 +150,7 @@ Each row is a threat and what Pixel actually does about it. Identification of Di
 | **Leaked `HOME_ASSISTANT_TOKEN`** | Anything that non-admin HA user can do *inside Home Assistant*: every entity they can see, including locks Pixel has not listed. They cannot use Pixel's commands unless they also have the Discord bot token. They cannot change HA users or integrations if the user is not an admin. | Dedicated non-admin user; token only in `.env` / Key Vault; never logged (and token-shaped strings are scrubbed). **Revoke in HA at once** (delete the token). Then store a new one and restart. Pixel's allow-list does not protect HA from a caller who uses the token directly. |
 | **Leaked token that belongs to an admin** | The above, plus users, integrations and system settings. | Don't. Pixel warns in `/admin status`, the logs and Sentry if `auth/current_user` says `is_admin`. Redo the token as a non-admin. |
 | **Compromised Discord account** of someone with `ha-doors` or `ha-admin` | Unlock (and lock) every door in `devices.yaml`, from Discord, identified as that person. A stolen session of someone with only `ha-lights` can only run listed light actions. | Doors are member-only; the capability comes only from an admin's grant (to a person, or to a level, which reaches every member); every door action is logged (`home.action`) with ID, name, handle, device, before/after and outcome; `/admin doors off` without a deploy; revoke the HA token to stop the integration; Discord ban / timeout plus demote to guest. There is **no** confirmation button, public notice, per-person rate limit or "only while the space is open" check yet. |
-| **Compromised Discord account** of someone without HA capabilities | They can still run every command their tier allows (`/ha list` and `/ha status` on devices at or below their floor). They cannot change a device. | Same as any other takeover: Discord moderation, then `/admin level set` / revoke. `/ha` refusals say `HOME_DENIED` and do not confirm that a device exists. |
+| **Compromised Discord account** of someone without HA capabilities | They can still run every command their tier allows (`/ha` on devices at or below their floor). They cannot change a device. | Same as any other takeover: Discord moderation, then `/admin level set` / revoke. `/ha` refusals say `HOME_DENIED` and do not confirm that a device exists. |
 | **Someone who can edit `devices.yaml` or `members.yaml`** | Widen the allow-list (add a door, add `unlock`) or grant `ha-doors` / `ha-admin`. | Files live on a protected volume (Azure Files + snapshots) or a laptop you control. `admins.yaml` is not writable from Discord. Capability grants are audited and the person is DMed. |
 | **Compromised Home Assistant admin account, or a wide-open remote-access route** (Nabu Casa, exposed port, leaked sidecar) | Full control of the building, bypassing Pixel. | Pixel cannot fix a broken HA. Use a strong unique password and MFA on HA admins; do not expose HA to the internet except via Nabu Casa or Tailscale; keep the Pixel user non-admin so a *Pixel* leak is not an *HA admin* leak. Rotate HA passwords and the Pixel token. |
 | **Home Assistant down or slow** | `/ha` says it cannot reach HA. Discord, SpaceAPI and the rest keep working. | Connect in the background, reconnect forever, fail at once, no queue, no retry, time limit on every call. HA is not on `/healthz`. If HA can't be reached at startup, Pixel says so once (`home.connect_failed`, Sentry) and keeps trying, waiting up to a minute between attempts. After a refused token the connection stays off until `/admin reload`. A hung call cannot hold a command forever. |

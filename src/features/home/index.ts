@@ -1,10 +1,11 @@
-import type { CommandContext, Suggestion } from "../../core/command.ts";
+import type { Access } from "../../core/access.ts";
+import type { CommandContext, CommandOption, Suggestion } from "../../core/command.ts";
 import { MAX_SUGGESTIONS } from "../../core/dispatcher.ts";
+import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown, formatDuration, inlineCode } from "../../core/format.ts";
 import { type EntityState, HOME_MESSAGES, type Home } from "../../core/home.ts";
 import {
-	actionableDevices,
 	canActOnDevice,
 	canViewDevice,
 	HOME_DENIED,
@@ -13,6 +14,13 @@ import {
 import type { KindAction, KindAttribute } from "../../core/home-kinds/index.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Embed, EmbedField, Reply } from "../../core/reply.ts";
+import type {
+	ActionContext,
+	ActionDefinition,
+	ActionResult,
+	Control,
+	ControlRow,
+} from "../../core/ui.ts";
 import type { HomeDevice, HomeDeviceStore } from "../../services/home-devices.ts";
 import type { KindSwitch } from "../../services/kind-switch.ts";
 import { type ControlResult, DeviceControl } from "./control.ts";
@@ -31,6 +39,33 @@ export type HomeFeatureDeps = {
 	now?: () => Date;
 };
 
+/** The lowest floor any device can have. Each device's own floor is checked by the shared rule. */
+const FLOOR: Access = { minTier: "friend" };
+
+/** Devices on one page of the list (Discord shows 25 options in a menu). */
+export const PAGE_SIZE = 25;
+
+/** The actions behind `/ha`'s menu and buttons. */
+export const HOME_ACTIONS = {
+	list: "ha.list",
+	device: "ha.device",
+	act: "ha.act",
+} as const;
+
+const button = (
+	label: string,
+	action: string,
+	args: Record<string, string | number> = {},
+	disabled = false,
+	style: "primary" | "secondary" = "secondary",
+): Control => ({
+	kind: "button",
+	label,
+	style,
+	call: { action, args },
+	...(disabled ? { disabled } : {}),
+});
+
 /** An embed field holds at most 1024 characters. */
 const FIELD_LIMIT = 1000;
 const STATE_MAX = 40;
@@ -43,9 +78,12 @@ const NO_READING: Readonly<Record<string, string>> = {
 };
 
 /**
- * `/ha`: the Home Assistant devices Pixel knows about. `list` and `status` only
- * read. Who may see which device comes from the shared rule in `core/home-access.ts`
- * (the tier floor of each device), and everything Home Assistant says is shown as
+ * `/ha`: the Home Assistant devices Pixel knows about, as a private panel (see
+ * docs/discord-components.md). The list shows every device this person may see,
+ * with a menu to pick one; a device shows its live state and a button for each
+ * action they may take on it. Who may see and change which device comes only from
+ * the shared rule in `core/home-access.ts`, checked again on every click, and every
+ * change goes through `DeviceControl`. Everything Home Assistant says is shown as
  * inert text. Each read asks Home Assistant fresh: nothing is cached.
  */
 export function createHomeFeature(deps: HomeFeatureDeps): Feature {
@@ -55,7 +93,7 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 	const notSetUp = (): Reply => ({ text: HOME_MESSAGES.notSetUp, private: true });
 
 	/**
-	 * Runs one action for `/ha set` and `/ha open`: checks the device, the action and
+	 * Runs one action from a device's button: checks the device, the action and
 	 * the person with the shared rule, refuses a kind an admin has switched off, then
 	 * runs it through `DeviceControl` and logs it. Everything typed is checked here.
 	 */
@@ -124,178 +162,230 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 		};
 	};
 
+	/** Who may see a device, checked fresh every time; the real reason goes in the log. */
+	const viewable = (
+		name: string,
+		{ principal, logger }: Pick<CommandContext, "principal" | "logger">,
+	): HomeDevice | undefined => {
+		const device = deps.homeDevices.view.byName.get(name);
+		const decision = device ? canViewDevice(device, principal) : undefined;
+		if (device && decision?.allowed) return device;
+		// The real reason goes in the log. The typed text doesn't: it could be anything.
+		logger.warn(
+			{
+				event: "home.status_denied",
+				reason: device
+					? decision && !decision.allowed
+						? decision.reason
+						: "tier"
+					: "unknown-device",
+				...(device ? { device: device.name } : {}),
+			},
+			"refused a device status",
+		);
+		return undefined;
+	};
+
+	/** Every device this person may see, a page at a time, with a menu to pick one. */
+	const listPanel = async (
+		{ principal, logger }: Pick<CommandContext, "principal" | "logger">,
+		page = 0,
+	): Promise<Reply> => {
+		const devices = visibleDevices(deps.homeDevices.view.devices, principal);
+		if (devices.length === 0) {
+			return { text: "There are no devices available to you.", private: true };
+		}
+		const pages = Math.ceil(devices.length / PAGE_SIZE);
+		const current = Math.min(Math.max(0, page), pages - 1);
+		const shown = devices.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+		const states = await deps.home.getStates(shown.map((d) => d.entityId));
+		logger.info({ event: "home.list", devices: devices.length }, "listed devices");
+		const rows: ControlRow[] = [
+			[
+				{
+					kind: "select",
+					placeholder: "Choose a device…",
+					call: { action: HOME_ACTIONS.device },
+					arg: "device",
+					options: shown.map((device) => ({
+						label: device.name,
+						value: device.name,
+						// Plain text: a menu shows no markdown.
+						description:
+							`${capitalize(device.kind.name)} · ${plainReading(states.get(device.entityId))}${device.description ? ` · ${device.description}` : ""}`.slice(
+								0,
+								100,
+							),
+					})),
+				},
+			],
+		];
+		if (pages > 1) {
+			rows.push([
+				button("‹ Previous", HOME_ACTIONS.list, { page: current - 1 }, current === 0),
+				button("Next ›", HOME_ACTIONS.list, { page: current + 1 }, current >= pages - 1),
+			]);
+		}
+		rows.push([button("Refresh", HOME_ACTIONS.list, { page: current })]);
+		return {
+			embeds: [
+				describeList(shown, states, pages > 1 ? `Page ${current + 1} of ${pages}.` : undefined),
+			],
+			private: true,
+			controls: rows,
+		};
+	};
+
+	/**
+	 * One device: its live state, and a button for each action this person may take on
+	 * it now. Only the shared rule decides which; the buttons are a convenience, and the
+	 * action checks everything again.
+	 */
+	const devicePanel = async (
+		device: HomeDevice,
+		{ principal, logger }: Pick<CommandContext, "principal" | "logger">,
+		notice: Embed[] = [],
+	): Promise<Reply> => {
+		const state = (await deps.home.getStates([device.entityId])).get(device.entityId);
+		// Who looked at what is logged for doors, like looking someone's level up.
+		if (device.kind.name === "door") {
+			logger.info(
+				{ event: "home.status_viewed", device: device.name, kind: device.kind.name },
+				"viewed the status of a door",
+			);
+		}
+		const status = describeStatus(device, state, now());
+		const usable = device.actions.filter((a) => canActOnDevice(device, a.name, principal).allowed);
+		const off = usable.length > 0 && isOff(device.kind.name);
+		if (off) {
+			status.description = [
+				status.description,
+				`Controlling ${device.kind.name}s from Pixel is switched off by an admin right now.`,
+			]
+				.filter(Boolean)
+				.join("\n");
+		}
+		const current = state?.state.toLowerCase();
+		const actions: Control[] = off
+			? []
+			: usable.slice(0, 4).map((action) =>
+					button(
+						capitalize(action.name),
+						HOME_ACTIONS.act,
+						{ device: device.name, action: action.name },
+						// Already there: nothing to do (a toggle always has something to do).
+						action.done.length === 1 && action.done[0] === current,
+						"primary",
+					),
+				);
+		return {
+			embeds: [...notice, status],
+			private: true,
+			controls: [
+				...(actions.length > 0 ? [actions] : []),
+				[
+					button("← All devices", HOME_ACTIONS.list),
+					button("Refresh", HOME_ACTIONS.device, { device: device.name }),
+				],
+			],
+		};
+	};
+
+	const deviceArg: CommandOption = {
+		name: "device",
+		description: "Which device",
+		type: "string",
+		required: true,
+	};
+	const action = (
+		name: string,
+		options: readonly CommandOption[],
+		handler: (ctx: ActionContext) => Promise<ActionResult>,
+	): ActionDefinition => ({ name, access: FLOOR, options, handler });
+
+	const actions: ActionDefinition[] = [
+		action(
+			HOME_ACTIONS.list,
+			[{ name: "page", description: "Which page", type: "integer" }],
+			async (ctx) => {
+				if (!deps.homeDevices.configured) return { reply: notSetUp() };
+				return { reply: await listPanel(ctx, Number(ctx.args.page ?? 0)) };
+			},
+		),
+		action(HOME_ACTIONS.device, [deviceArg], async (ctx) => {
+			if (!deps.homeDevices.configured) return { reply: notSetUp() };
+			const device = viewable(String(ctx.args.device), ctx);
+			if (!device) throw new UserFacingError(HOME_DENIED);
+			return { reply: await devicePanel(device, ctx) };
+		}),
+		action(
+			HOME_ACTIONS.act,
+			[deviceArg, { name: "action", description: "What to do", type: "string", required: true }],
+			async (ctx) => {
+				if (!deps.homeDevices.configured) return { reply: notSetUp() };
+				const device = deps.homeDevices.view.byName.get(String(ctx.args.device));
+				const result = await act(device, String(ctx.args.action), ctx);
+				// Refused: say so privately and leave the panel as it was.
+				if (!result.embeds || !device) throw new UserFacingError(result.text ?? HOME_DENIED);
+				try {
+					return { reply: await devicePanel(device, ctx, result.embeds) };
+				} catch (error) {
+					if (!(error instanceof UserFacingError)) throw error;
+					// Home Assistant went away after the action: still say what happened to it.
+					return {
+						reply: {
+							embeds: [
+								...result.embeds,
+								{
+									title: device.name,
+									description: `${error.message} Press **Refresh** to see its state.`,
+									accent: "warning",
+								},
+							],
+							private: true,
+							controls: [
+								[
+									button("← All devices", HOME_ACTIONS.list),
+									button("Refresh", HOME_ACTIONS.device, { device: device.name }),
+								],
+							],
+						},
+					};
+				}
+			},
+		),
+	];
+
 	return {
 		name: "home",
 		commands: [
 			{
 				name: "ha",
-				description: "See the Home Assistant devices you may use",
+				description: "The Home Assistant devices you may use: see them, and change them",
 				// The lowest floor any device can have. Each device's own floor is checked by the shared rule.
-				access: { minTier: "friend" },
-				subcommands: [
+				access: FLOOR,
+				private: true,
+				options: [
 					{
-						name: "list",
-						description: "The devices you may use, and their state",
-						access: { minTier: "friend" },
-						private: true,
-						handler: async ({ principal, logger }): Promise<Reply> => {
-							if (!deps.homeDevices.configured) return notSetUp();
-							const devices = visibleDevices(deps.homeDevices.view.devices, principal);
-							if (devices.length === 0) {
-								return { text: "There are no devices available to you.", private: true };
-							}
-							const states = await deps.home.getStates(devices.map((d) => d.entityId));
-							logger.info({ event: "home.list", devices: devices.length }, "listed devices");
-							return { embeds: [describeList(devices, states)] };
-						},
-					},
-					{
-						name: "status",
-						description: "The live state of one device",
-						access: { minTier: "friend" },
-						private: true,
-						options: [
-							{
-								name: "device",
-								description: "Which device",
-								type: "string",
-								required: true,
-								suggest: async ({ typed, principal }) =>
-									deps.homeDevices.configured
-										? suggestDevices(
-												visibleDevices(deps.homeDevices.view.devices, principal),
-												typed,
-											)
-										: [],
-							},
-						],
-						handler: async ({ args, principal, logger }): Promise<Reply> => {
-							if (!deps.homeDevices.configured) return notSetUp();
-							// Autocomplete isn't validation: look the device up again, and check this person may see it.
-							const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
-							const decision = device ? canViewDevice(device, principal) : undefined;
-							if (!device || !decision?.allowed) {
-								// The real reason goes in the log. The typed text doesn't: it could be anything.
-								logger.warn(
-									{
-										event: "home.status_denied",
-										reason: device
-											? decision && !decision.allowed
-												? decision.reason
-												: "tier"
-											: "unknown-device",
-										...(device ? { device: device.name } : {}),
-									},
-									"refused a device status",
-								);
-								return { text: HOME_DENIED, private: true };
-							}
-							const state = (await deps.home.getStates([device.entityId])).get(device.entityId);
-							// Who looked at what is logged for doors, like looking someone's level up.
-							if (device.kind.name === "door") {
-								logger.info(
-									{ event: "home.status_viewed", device: device.name, kind: device.kind.name },
-									"viewed the status of a door",
-								);
-							}
-							return { embeds: [describeStatus(device, state, now())] };
-						},
-					},
-					{
-						name: "set",
-						description: "Change a device, such as switching a light on or off",
-						// The lowest floor any device can have. The shared rule decides per device and per action.
-						access: { minTier: "friend" },
-						private: true,
-						placeholder: { text: "Working on it…", private: true },
-						options: [
-							{
-								name: "device",
-								description: "Which device",
-								type: "string",
-								required: true,
-								suggest: async ({ typed, args, principal }) => {
-									if (!deps.homeDevices.configured) return [];
-									const devices = deps.homeDevices.view.devices;
-									// Narrow by the state already chosen, when it's one that exists.
-									const chosen = typeof args.state === "string" ? args.state : undefined;
-									const known =
-										chosen !== undefined &&
-										devices.some((d) => d.actions.some((a) => a.name === chosen));
-									return suggestDevices(
-										actionableDevices(devices, principal, known ? chosen : undefined).filter(
-											(device) => !isOff(device.kind.name),
-										),
-										typed,
-									);
-								},
-							},
-							{
-								name: "state",
-								description: "What to set it to, such as on or off",
-								type: "string",
-								required: true,
-								suggest: async ({ typed, args, principal }) => {
-									if (!deps.homeDevices.configured) return [];
-									const device = deps.homeDevices.view.byName.get(String(args.device ?? ""));
-									const usable = (d: HomeDevice) =>
-										d.actions.filter(
-											(a) => !isOff(d.kind.name) && canActOnDevice(d, a.name, principal).allowed,
-										);
-									// With a device chosen: what that device allows. Without: the values that work somewhere.
-									const actions = device
-										? usable(device)
-										: uniqueActions(deps.homeDevices.view.devices.flatMap(usable));
-									return suggestActions(actions, typed);
-								},
-							},
-						],
-						handler: async (context): Promise<Reply> => {
-							if (!deps.homeDevices.configured) return notSetUp();
-							const device = deps.homeDevices.view.byName.get(String(context.args.device ?? ""));
-							return act(device, String(context.args.state ?? ""), context);
-						},
-					},
-					{
-						name: "open",
-						description: "Unlock a door",
-						access: { minTier: "member" },
-						private: true,
-						placeholder: { text: "Working on it…", private: true },
-						options: [
-							{
-								name: "door",
-								description: "Which door",
-								type: "string",
-								required: true,
-								suggest: async ({ typed, principal }) => {
-									if (!deps.homeDevices.configured || isOff("door")) return [];
-									const doors = deps.homeDevices.view.devices.filter(
-										(d) => d.kind.name === "door" && canActOnDevice(d, "unlock", principal).allowed,
-									);
-									return suggestDevices(doors, typed);
-								},
-							},
-						],
-						handler: async (context): Promise<Reply> => {
-							if (!deps.homeDevices.configured) return notSetUp();
-							const device = deps.homeDevices.view.byName.get(String(context.args.door ?? ""));
-							// Only doors: anything else gets the same answer as a device that doesn't exist.
-							const door = device?.kind.name === "door" ? device : undefined;
-							if (device && !door) {
-								context.logger.warn(
-									{ event: "home.action_denied", reason: "not-a-door", device: device.name },
-									"refused a device action",
-								);
-								return { text: HOME_DENIED, private: true };
-							}
-							// Convenience only: always unlock. Pixel never unlatches (`lock.open`).
-							return act(door, "unlock", context);
-						},
+						name: "device",
+						description: "Go straight to one device (leave out to choose)",
+						type: "string",
+						suggest: async ({ typed, principal }) =>
+							deps.homeDevices.configured
+								? suggestDevices(visibleDevices(deps.homeDevices.view.devices, principal), typed)
+								: [],
 					},
 				],
+				handler: async (ctx): Promise<Reply> => {
+					if (!deps.homeDevices.configured) return notSetUp();
+					if (typeof ctx.args.device !== "string") return listPanel(ctx);
+					// Autocomplete isn't validation: look the device up again, and check this person may see it.
+					const device = viewable(ctx.args.device, ctx);
+					return device ? devicePanel(device, ctx) : { text: HOME_DENIED, private: true };
+				},
 			},
 		],
+		actions,
 	};
 }
 
@@ -306,6 +396,14 @@ export function describeState(raw: string, warn: readonly string[] = []): string
 	if (mark) return mark;
 	if (warn.includes(key)) return `⚠️ ${inlineCode(raw, STATE_MAX)}`;
 	return inlineCode(raw, STATE_MAX);
+}
+
+/** The state as plain text, for a menu: no marks, no code spans. */
+function plainReading(entity: EntityState | undefined): string {
+	if (!entity) return "not in Home Assistant";
+	const unit = entity.attributes.unit_of_measurement;
+	const state = tidyNumber(entity.state).replace(/\s+/g, " ").slice(0, STATE_MAX);
+	return typeof unit === "string" && unit.trim() !== "" ? `${state} ${unit.slice(0, 10)}` : state;
 }
 
 /** The state with its unit, when it has one, such as `21.5 °C`. */
@@ -323,6 +421,7 @@ function reading(device: HomeDevice, entity: EntityState | undefined): string {
 function describeList(
 	devices: readonly HomeDevice[],
 	states: ReadonlyMap<string, EntityState>,
+	page?: string,
 ): Embed {
 	const byKind = new Map<string, HomeDevice[]>();
 	for (const device of devices) {
@@ -336,7 +435,10 @@ function describeList(
 	}));
 	return {
 		title: "🏠 Devices",
-		description: "Use `/ha status` for more about one.",
+		description: [
+			"Choose a device below to see more, or to change it.",
+			...(page ? [page] : []),
+		].join(" "),
 		fields,
 		accent: "brand",
 	};
@@ -505,13 +607,13 @@ function describeResult(
 		case "in-progress":
 			return {
 				title: "⏳ Still working",
-				description: `${name} is still ${code(result.after)} after ${seconds}s. ${sent} Check with \`/ha status\`.`,
+				description: `${name} is still ${code(result.after)} after ${seconds}s. ${sent} Press **Refresh** to check.`,
 				accent: "warning",
 			};
 		case "no-change":
 			return {
 				title: "⚠️ Nothing changed",
-				description: `${name} still shows ${code(result.after)} after ${seconds}s. ${sent} Check with \`/ha status\`.`,
+				description: `${name} still shows ${code(result.after)} after ${seconds}s. ${sent} Press **Refresh** to check.`,
 				accent: "warning",
 			};
 		case "failed":
@@ -523,7 +625,7 @@ function describeResult(
 		case "unconfirmed":
 			return {
 				title: "⚠️ Can't confirm",
-				description: `I couldn't confirm what happened to ${name}: the command may or may not have gone through. ${sent} Check with \`/ha status\`.`,
+				description: `I couldn't confirm what happened to ${name}: the command may or may not have gone through. ${sent} Press **Refresh** to check.`,
 				accent: "warning",
 			};
 		case "rejected":
@@ -553,26 +655,4 @@ function notSent(
 		case "under-way":
 			return `${name} is already ${describeState(result.before ?? "")}, which means it's on its way. I didn't send anything.`;
 	}
-}
-
-/** The same action on several devices, once. */
-function uniqueActions(actions: readonly KindAction[]): KindAction[] {
-	return [...new Map(actions.map((action) => [action.name, action])).values()];
-}
-
-/** Action names to complete, with what each does, best matches first. Never asks Home Assistant. */
-function suggestActions(actions: readonly KindAction[], typed: string): Suggestion[] {
-	const needle = typed.trim().toLowerCase();
-	return actions
-		.filter((action) => needle === "" || action.name.includes(needle))
-		.sort(
-			(a, b) =>
-				Number(b.name.startsWith(needle)) - Number(a.name.startsWith(needle)) ||
-				a.name.localeCompare(b.name),
-		)
-		.slice(0, MAX_SUGGESTIONS)
-		.map((action) => ({
-			name: `${action.name} · ${action.description}`.slice(0, 100),
-			value: action.name,
-		}));
 }

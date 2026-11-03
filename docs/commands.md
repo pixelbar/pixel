@@ -99,33 +99,49 @@ Posts the closing-time reminder in the closing-time channel. Pixel also posts it
 
 ### Home Assistant
 
-Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and Pixel checks again whatever autocomplete offered.
+Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and you only get buttons for what you may change. Pixel checks again on every press, whatever the panel showed.
 
-<PxCommandTray query="/ha" :selected="2" caption="Typing /ha shows the four Home Assistant commands." />
+<PxCommand :level="4" sig="/ha [device:]" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ '[device:]': 'Go straight to one device. Only the ones you may see are offered. Leave it out to choose from the list.' }">
 
-<PxCommand :level="4" sig="/ha list" tier="friend" reply="private">
-
-The devices you may use, and their state.
+Opens the Home Assistant devices you may see, with their state. Changing one needs the capability for that kind of device, or `ha-admin`. Doors are for members only, and only lock and unlock.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/ha status device:" tier="friend" reply="private" autocomplete :options="{ 'device:': 'Which device.' }">
+The list groups the devices by kind, with each one's state as Home Assistant reports it right now. Pick one from the menu to see more, or to change it.
 
-One device's live state, when it last changed and a few details for its kind.
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'Devices', lines: ['Choose a device below to see more, or to change it.'], fields: [{ name: 'Lights · 2', value: 'example-light on · example-sign off' }, { name: 'Door · 1', value: 'example-door locked' }, { name: 'Sensor · 1', value: 'example-temperature 21.5 °C' }] }]"
+	:rows="[[{ select: 'Choose a device…' }], [{ label: 'Refresh' }]]"
+	caption="The list: the devices you may see, grouped by kind, with a menu to pick one."
+/>
 
-</PxCommand>
+A device shows its live state, when it last changed and a few details for its kind. There's a button for each thing you may do to it. The one it's already at is greyed out.
 
-<PxCommand :level="4" sig="/ha set device: state:" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ 'device:': 'Which device. Only the ones you may change are offered.', 'state:': 'What to set it to, such as on or off. Only the actions that device allows are offered.' }">
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'example-light', lines: ['The light over the workbench'], fields: [{ name: 'State', value: 'on', inline: true }, { name: 'Kind', value: 'Light', inline: true }, { name: 'Last changed', value: '2h 0m ago', inline: true }, { name: 'Brightness', value: '50%', inline: true }] }]"
+	:rows="[[{ label: 'On', style: 'primary', disabled: true }, { label: 'Off', style: 'primary' }, { label: 'Toggle', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="A light that's on, for someone who may switch lights: On is greyed out, Off and Toggle are there."
+/>
 
-Changes a device, such as switching a light on or off. Needs the capability for that kind of device, or `ha-admin`.
+Pressing one sends it once, then says what really happened above the device's fresh state: done, already there, still working, nothing changed, or that it couldn't confirm. Pixel never sends it again by itself.
 
-</PxCommand>
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'Done', lines: ['**example-light** is now off (it was on).'] }, { title: 'example-light', lines: ['The light over the workbench'], fields: [{ name: 'State', value: 'off', inline: true }, { name: 'Kind', value: 'Light', inline: true }, { name: 'Last changed', value: '0m ago', inline: true }] }]"
+	:rows="[[{ label: 'On', style: 'primary' }, { label: 'Off', style: 'primary', disabled: true }, { label: 'Toggle', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="After pressing Off: what happened, then the light's state now."
+/>
 
-<PxCommand :level="4" sig="/ha open door:" tier="member" reply="private" autocomplete :caps="['ha-doors', 'ha-admin']" :options="{ 'door:': 'Which door.' }">
+A door has **Lock** and **Unlock**, for members with `ha-doors` or `ha-admin`. Pixel never unlatches a door. While admins have switched door control off, a door shows no buttons and says why.
 
-Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlocks.
-
-</PxCommand>
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'example-door', lines: ['The front door'], fields: [{ name: 'State', value: 'locked', inline: true }, { name: 'Kind', value: 'Door', inline: true }, { name: 'Last changed', value: '3h 0m ago', inline: true }] }]"
+	:rows="[[{ label: 'Lock', style: 'primary', disabled: true }, { label: 'Unlock', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="A locked door, for a member with ha-doors: Unlock is the only thing to do."
+/>
 
 ### Scheduled posts
 
