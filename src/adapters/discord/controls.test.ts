@@ -483,6 +483,7 @@ describe("formArgs", () => {
 					caller: { canPost: true, canMentionEveryone: false, canCreatePolls: false },
 				},
 			},
+			users: {},
 		});
 	});
 
@@ -559,6 +560,7 @@ describe("formArgs", () => {
 		expect(formArgs(form, [{ customId: "c", values: ["x"] }])).toEqual({
 			args: { c: "x" },
 			channels: {},
+			users: {},
 		});
 		expect(formArgs(form, [{ customId: "c", values: [] }])).toBeUndefined();
 		expect(
@@ -567,6 +569,79 @@ describe("formArgs", () => {
 				{ customId: "ch", values: [CHANNEL] },
 			]),
 		).toBeUndefined();
+	});
+});
+
+describe("a person picker", () => {
+	const ADA = "100000000000000007";
+	const form: Form = {
+		title: "Who",
+		submit: { action: "feat.give", args: { spot: "ours" } },
+		fields: [
+			{ kind: "user", name: "user", label: "Who", value: ADA },
+			{ kind: "user", name: "other", label: "Who else", required: false },
+		],
+	};
+	const ada = { id: ADA, displayName: "Ada", username: "ada", bot: false };
+
+	it("draws a user select in a label, picked to begin with when it has a value", () => {
+		const modal = renderForm(form, "x");
+		expect(modal.components[0]?.component).toEqual({
+			type: 5,
+			custom_id: "user",
+			required: true,
+			min_values: 1,
+			max_values: 1,
+			default_values: [{ id: ADA, type: "user" }],
+		});
+		expect(modal.components[1]?.component).toEqual({
+			type: 5,
+			custom_id: "other",
+			required: false,
+			min_values: 0,
+			max_values: 1,
+		});
+	});
+
+	it("gives the person's immutable ID as the argument, and who they are beside it", () => {
+		expect(formArgs(form, [{ customId: "user", values: [ADA], user: ada }])).toEqual({
+			args: { spot: "ours", user: ADA },
+			channels: {},
+			users: { user: { id: ADA, displayName: "Ada", handle: "ada", isBot: false } },
+		});
+	});
+
+	it.each<[string, Parameters<typeof formArgs>[1]]>([
+		["nobody, when someone is required", []],
+		["a person who doesn't match the value", [{ customId: "user", values: ["1"], user: ada }]],
+		["two people", [{ customId: "user", values: [ADA, ADA], user: ada }]],
+		[
+			"half an optional pick",
+			[
+				{ customId: "user", values: [ADA], user: ada },
+				{ customId: "other", values: [ADA] },
+			],
+		],
+	])("refuses %s", (_, sent) => {
+		expect(formArgs(form, sent)).toBeUndefined();
+	});
+
+	it("reads who was picked, preferring their server nickname, for display only", () => {
+		const users = new Map([[ADA, { id: ADA, username: "ada", globalName: "Ada L", bot: false }]]);
+		const read = (members?: Map<string, { displayName?: string; nick?: string | null }>) =>
+			submittedFields(
+				[{ customId: "user", values: [ADA], users, ...(members ? { members } : {}) }],
+				() => null,
+			)[0]?.user;
+		expect(read()).toEqual({ id: ADA, displayName: "Ada L", username: "ada", bot: false });
+		expect(read(new Map([[ADA, { displayName: "Ada at Pixelbar" }]]))?.displayName).toBe(
+			"Ada at Pixelbar",
+		);
+		expect(read(new Map([[ADA, { nick: "Nick" }]]))?.displayName).toBe("Nick");
+		const plain = new Map([[ADA, { id: ADA, username: "ada" }]]);
+		expect(
+			submittedFields([{ customId: "user", values: [ADA], users: plain }], () => null)[0]?.user,
+		).toEqual({ id: ADA, displayName: "ada", username: "ada", bot: false });
 	});
 });
 

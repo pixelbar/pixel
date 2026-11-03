@@ -72,7 +72,7 @@ Keep the slash command as the way in. People find features by typing `/`, and co
 Anti-patterns to remove as commands move over:
 
 - **Options that conflict.** `/schedule message … repeat: once days: wed` used to mix options that only make sense together. Now the repeat is a Radio Group on the form, and the days only appear on the draft when the repeat is weekly.
-- **Boolean "are you sure" options.** `/parking taken confirm:` and `evict:` on the `/admin parking` commands ask for confirmation before the person can see what will happen. Reply with what will happen and a Danger button instead.
+- **Boolean "are you sure" options.** `/parking taken confirm:` and `evict:` on the `/admin parking` commands used to ask for confirmation before the person could see what would happen. Now both show what will happen, with a Danger button.
 - **Two-command flows.** `/admin openr login` followed by `/admin openr code code:` is one task split in two. A reply with an "Enter code" button that opens a modal keeps it in one place.
 - **Listing, then retyping.** `/schedule list` followed by `/schedule pause schedule:` used to make the person carry a name between two commands. Now `/schedule` lists them in a select, with action buttons on the one picked.
 
@@ -233,7 +233,7 @@ return {
 ```
 
 - An action returns `{ reply }`, which replaces the message the control was on, or `{ form }`, which opens a form. A form's `submit` names the action to run with the fields as extra arguments. A form must open within Discord's 3 seconds, so the handler that returns it should do no slow work.
-- A select's chosen value fills in its `arg`. With `max` above 1, the values are joined with spaces, so they can't contain whitespace. A form's checkbox group works the same way, and a channel field adds a `ResolvedChannel` to `ctx.channels`, like a `channel` option.
+- A select's chosen value fills in its `arg`. With `max` above 1, the values are joined with spaces, so they can't contain whitespace. A form's checkbox group works the same way. A channel field adds a `ResolvedChannel` to `ctx.channels`, like a `channel` option, and a user field adds a `ResolvedUser` to `ctx.users`, like a `user` option (so bots are refused unless the option allows them). A button can't carry a picked person or channel: to replay an action that had one (Go ahead after a confirmation), hold their ID in the button's arguments and pass it to a separate action, as `parking-admin.assign-confirm` does.
 - Refusals (no access, a `UserFacingError`) are sent as a private reply and leave the message as it was. To show a mistake inside the panel instead, catch it in the action and return a reply that explains it.
 - Limits come from `UI_LIMITS` in `core/ui.ts`: 5 rows, 5 buttons per row or one select, 25 options, 5 form fields, 2 to 10 radio options, 1 to 10 checkboxes. The adapter throws on a layout Discord would refuse, so a test catches it.
 
@@ -257,7 +257,7 @@ return {
 
 ## Candidates
 
-The commands that would gain most, roughly in order. Each is its own PR. `/schedule` and `/park` have moved: each is one command that opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`).
+The commands that would gain most, roughly in order. Each is its own PR. `/schedule`, `/park` and `/admin parking` have moved: each opens a panel, good examples to copy (`src/features/schedules/index.ts`, `src/features/parking/index.ts`, `src/features/admin/parking-panel.ts`).
 
 | Command | Today | With components |
 | --- | --- | --- |

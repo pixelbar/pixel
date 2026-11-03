@@ -308,56 +308,15 @@ Logs Pixel out of OpenR, so it can't open any door until someone logs in again.
 
 </PxCommand>
 
-<PxCommand sig="/admin parking status" tier="admin" reply="private">
+<PxCommand sig="/admin parking" tier="admin" reply="private">
 
-The parking spots, whether each is open now and later today, who's parked in them, and the parking settings.
+Opens the parking panel: every spot, whether it's open now and later today, who's in it, and the settings. Everything else is menus and buttons:
 
-</PxCommand>
+- **Manage a spot…** shows one spot with what you can do to it: **Open…** a borrowed spot for a while (a form asks from and until when; empty means now and 23:59) or **Close for today**; **Close…** our own spot until a time, or **Open again**; **Edit…** where it is and whether it's permanent; **Remove…**; **Free the spot…** when someone's in it; and **Give it to someone…**, for when someone parked in the wrong spot (pick who's there, and for how long; any booking they had elsewhere ends, a "reported taken" closure is lifted, and they get a DM).
+- **Open spots…** and **Close spots…** do several spots at once. Pixel only asks for times when they apply.
+- **Add a spot** asks for its name (lowercase words joined by `-`), where it is, and whether it's **permanent** (Pixelbar's own, open every day) or **borrowed** (closed until it's opened).
+- **Settings** changes the reminder, how long after someone's end Pixel ends their booking, the daily reset and the durations `/park` offers.
 
-<PxCommand sig="/admin parking open spots: [from:] [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked where this cuts in. Without it, the change is refused.' }">
-
-Opens borrowed spots for a while, replacing any opening they have that day. For a permanent spot, lifts its closure. Nothing runs past the reset.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking close spots: [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked there. Without it, the change is refused.' }">
-
-Closes spots: a borrowed spot until it's opened again, a permanent one for a while.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking assign user: spot: [for:] [evict:]" tier="admin" reply="private" :options="{ 'user:': 'Who is parked there.', 'spot:': 'The spot they are in.', '[for:]': 'How long, such as 2h or rest of day. Default: until the spot closes.', '[evict:]': 'End the booking of whoever still holds the spot. Without it, Pixel refuses while someone holds it.' }">
-
-Gives someone the spot they're parked in, for when someone parked in the wrong spot. Any booking they had elsewhere ends and a "reported taken" closure on the spot is lifted. Pixel doesn't move whoever was booked into it: they get a new spot themselves with **Someone's in my spot** in `/park`. If they still hold it, Pixel refuses unless `evict:True` ends their booking. Everyone affected gets a DM.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
-
-Ends the booking in a spot, for someone who left without pressing **Leave** in `/park`. Pixel DMs them that an admin ended it.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Lowercase words joined by -, such as neighbour-1.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
-
-Adds a parking spot. A borrowed spot is closed until it's opened.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:] [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.', '[evict:]': 'End the booking of anyone parked there if this cuts in.' }">
-
-Changes a spot. Changing whether it's permanent drops the openings or closures that no longer apply.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking remove-spot spot: [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[evict:]': 'End the booking of anyone parked there. Without it, a booked spot isn\'t removed.' }">
-
-Removes a spot and its opening times.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking settings [remind:] [grace:] [reset:] [durations:]" tier="admin" reply="private" :options="{ '[remind:]': 'Minutes before someone\'s end to remind them (0–120).', '[grace:]': 'Minutes after it to end their booking (0–60).', '[reset:]': 'When every booking ends each day, such as 23:59.', '[durations:]': 'The durations offered, separated by commas, such as 30m, 1h, 2h30, rest of day.' }">
-
-Shows the parking settings, or changes them.
+Anything that would end someone's booking says whose, and asks first. Pixel DMs them when it does.
 
 </PxCommand>

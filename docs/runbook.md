@@ -277,26 +277,26 @@ Members with the `parking` capability use `/park` (`/admin capabilities grant us
 
 | I want to… | Do this |
 | --- | --- |
-| Add our own spot | `/admin parking add-spot name:ours permanent:True description:…`. A permanent spot is open every day until the reset |
-| Add a borrowed spot | `/admin parking add-spot name:neighbour-1 description:…`. It's closed until it's opened |
-| Open borrowed spots for today | `/admin parking open spots:neighbour-1 neighbour-2 until:17:00`. `from` defaults to now and `until` to the reset. Running it again for a spot replaces that day's opening. `from:tomorrow 8` sets tomorrow's the evening before |
-| Close a spot | `/admin parking close spots:neighbour-1` ends a borrowed spot's opening for today. `/admin parking close spots:ours until:14:00` closes our own spot for a while (default: until the reset); `/admin parking open spots:ours` opens it again |
-| See what's open | `/admin parking status` |
-| Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
-| Free a spot someone left without pressing **Leave** in `/park` | `/admin parking free spot:` |
+| Add our own spot | `/admin parking` → **Add a spot**, kind **Permanent**. A permanent spot is open every day until the reset |
+| Add a borrowed spot | `/admin parking` → **Add a spot**, kind **Borrowed**. It's closed until it's opened |
+| Open borrowed spots for today | `/admin parking` → **Open spots…**, pick them, then fill in the form: **From** defaults to now and **Until** to the reset. Opening a spot again replaces that day's opening; a **From** of `tomorrow 8` sets tomorrow's |
+| Close a spot | `/admin parking` → **Close spots…** ends a borrowed spot's opening for today. For our own spot, Pixel asks until when (default: the reset); **Open again** on its panel lifts the closure |
+| See what's open | `/admin parking` |
+| Change the reminder, grace period, reset or durations | `/admin parking` → **Settings** (the panel shows them) |
+| Free a spot someone left without pressing **Leave** in `/park` | `/admin parking` → pick the spot → **Free the spot…** |
 | Watch parking | Set `DISCORD_PARKING_CHANNEL_ID` to a private admin channel (local `.env`; on Azure, `discord_parking_channel_id` in that env's `terraform.tfvars`, then apply). Pixel posts every booking, leave, extension, ending, taken-spot report and admin change there. The bot needs View Channel and Send Messages. `parking.channel_failed` in the logs means a post didn't go through |
 | See how much parking is used | Sentry, Explore → Metrics: `pixel.parking`, split by `event` (and `spot`). Counted whether or not the channel is set |
-| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin parking status` shows "reported taken"). If you find who parked there, `/admin parking assign user: spot:` gives them that spot (and lifts the closure). Pixel won't take it from someone still booked into it: they should run `/parking taken` to get a new spot, or you can end their booking with `evict:True`. Otherwise, once it's clear, `/admin parking open spots:` opens it again. If nothing else was free, Pixel asked the reporter to leave and ended their booking |
-| Close or remove a spot someone's parked in | Pixel refuses and says who's there until when. Add `evict:True` to end their booking |
+| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin parking` shows "reported taken"). If you find who parked there, **Give it to someone…** on that spot in `/admin parking` gives them that spot (and lifts the closure). Pixel won't take it from someone still booked into it: they should run `/parking taken` to get a new spot, or you can end their booking with `evict:True`. Otherwise, once it's clear, opening it in `/admin parking` opens it again. If nothing else was free, Pixel asked the reporter to leave and ended their booking |
+| Close or remove a spot someone's parked in | Pixel says who's there until when and asks; **Go ahead and end it** ends their booking |
 | Stop someone parking | Revoke their `parking` capability. A booking they already hold stays until they leave, an admin frees it, or the reset |
 
 - **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): every booking ends there, and openings and closures end there at the latest and are pruned from the file once they end. If Pixel was down at the reset, it ends those bookings when it starts. Moving the reset earlier shortens what's already set to match.
-- **Reminders:** Pixel DMs people `remindMinutes` (15) before their end, and ends a booking `graceMinutes` (5) after it if they haven't left or extended (`/admin parking settings` changes both). People need DMs from server members on. `parking.dm_failed` in the logs says who didn't get one and why (DMs closed, left the server); it never stops a booking ending. A reminder is never sent twice, even across a restart; one missed while Pixel was down isn't sent late once the booking has ended.
+- **Reminders:** Pixel DMs people `remindMinutes` (15) before their end, and ends a booking `graceMinutes` (5) after it if they haven't left or extended (**Settings** in `/admin parking` changes both). People need DMs from server members on. `parking.dm_failed` in the logs says who didn't get one and why (DMs closed, left the server); it never stops a booking ending. A reminder is never sent twice, even across a restart; one missed while Pixel was down isn't sent late once the booking has ended.
 - **Who's parked** is in `data/parking-bookings.yaml`. A booking is deleted when it ends. Look for `parking.booked`, `parking.left`, `parking.reset`, `parking.freed` and `parking.evicted` in the logs. `parking.gate_failed` means the gate didn't open (its `reason` is `not-connected`, `off` or `failed`; `openr.open_failed` just before it has OpenR's side): the person keeps their spot and can run `/park` again.
-- **If `parking-bookings.yaml` is invalid,** no one can park and `/park` and `/admin parking status` say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
+- **If `parking-bookings.yaml` is invalid,** no one can park and `/park` and `/admin parking` say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
 - **The files:** `data/parking-spots.yaml` (the spots and settings), `data/parking-windows.yaml` (opening times) and `data/parking-bookings.yaml` (who's parked). Back up the spots file with the access files. None is safe to delete: deleting the spots file deletes the spots, deleting the windows file closes every borrowed spot until someone opens it again, and deleting the bookings file frees spots that have cars in them.
-- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
-- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
+- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; its panel and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking` says so. The next open or close moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
 
 ## Closing-time
 
@@ -745,7 +745,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
+3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). End any parking booking they hold (**Free the spot…** in `/admin parking`); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.

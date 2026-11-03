@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ArgValue, ResolvedChannel } from "../../core/command.ts";
+import type { ArgValue, ResolvedChannel, ResolvedUser } from "../../core/command.ts";
 import {
 	type ActionCall,
 	type ChoiceOption,
@@ -299,6 +299,15 @@ function inputJson(field: FormInput) {
 				max_values: field.options.length,
 				options: field.options.map(choiceJson),
 			};
+		case "user":
+			return {
+				type: 5,
+				custom_id: field.name,
+				required,
+				min_values: required ? 1 : 0,
+				max_values: 1,
+				...(field.value ? { default_values: [{ id: field.value, type: "user" }] } : {}),
+			};
 		default:
 			return {
 				type: 8,
@@ -322,6 +331,8 @@ export type SubmittedField = {
 	values?: readonly string[];
 	/** For a channel select: the picked channel and the submitter's permission bits there. */
 	channel?: { id: string; name: string | null; callerPermissions: bigint | null };
+	/** For a user select: who was picked. The name is for display only. */
+	user?: { id: string; displayName: string; username: string; bot: boolean };
 };
 
 /**
@@ -332,9 +343,16 @@ export type SubmittedField = {
 export function formArgs(
 	form: Form,
 	submitted: readonly SubmittedField[],
-): { args: Record<string, ArgValue>; channels: Record<string, ResolvedChannel> } | undefined {
+):
+	| {
+			args: Record<string, ArgValue>;
+			channels: Record<string, ResolvedChannel>;
+			users: Record<string, ResolvedUser>;
+	  }
+	| undefined {
 	const args: Record<string, ArgValue> = { ...form.submit.args };
 	const channels: Record<string, ResolvedChannel> = {};
+	const users: Record<string, ResolvedUser> = {};
 	for (const field of form.fields) {
 		const sent = submitted.find((s) => s.customId === field.name);
 		const required = field.required ?? true;
@@ -373,6 +391,21 @@ export function formArgs(
 				args[field.name] = values.join(" ");
 				break;
 			}
+			case "user": {
+				const user = sent?.user;
+				if (!user || sent?.values?.[0] !== user.id || sent.values.length !== 1) {
+					if (required || (sent?.values?.length ?? 0) > 0) return undefined;
+					continue;
+				}
+				args[field.name] = user.id;
+				users[field.name] = {
+					id: user.id,
+					displayName: user.displayName,
+					handle: user.username,
+					isBot: user.bot,
+				};
+				break;
+			}
 			default: {
 				const channel = sent?.channel;
 				if (!channel || sent?.values?.[0] !== channel.id || sent.values.length !== 1) {
@@ -388,7 +421,7 @@ export function formArgs(
 			}
 		}
 	}
-	return { args, channels };
+	return { args, channels, users };
 }
 
 function cut(text: string, max: number): string {
@@ -402,6 +435,17 @@ export type ModalDataLike = {
 	value?: string | boolean | null;
 	values?: readonly string[];
 	channels?: { get(id: string): { id: string; name?: string | null } | null | undefined } | null;
+	users?: {
+		get(
+			id: string,
+		):
+			| { id: string; username: string; globalName?: string | null; bot?: boolean }
+			| null
+			| undefined;
+	} | null;
+	members?: {
+		get(id: string): { displayName?: string; nick?: string | null } | null | undefined;
+	} | null;
 };
 
 /**
@@ -412,8 +456,11 @@ export function submittedFields(
 	data: Iterable<ModalDataLike>,
 	permissionsIn: (channel: { id: string; name?: string | null }) => bigint | null,
 ): SubmittedField[] {
-	return [...data].map(({ customId, value, values, channels }) => {
-		const picked = values?.[0] === undefined ? undefined : channels?.get(values[0]);
+	return [...data].map(({ customId, value, values, channels, users, members }) => {
+		const first = values?.[0];
+		const picked = first === undefined ? undefined : channels?.get(first);
+		const person = first === undefined ? undefined : users?.get(first);
+		const member = first === undefined ? undefined : members?.get(first);
 		return {
 			customId,
 			...(typeof value === "string" || value === null ? { value } : {}),
@@ -424,6 +471,18 @@ export function submittedFields(
 							id: picked.id,
 							name: picked.name ?? null,
 							callerPermissions: permissionsIn(picked),
+						},
+					}
+				: {}),
+			...(person
+				? {
+						user: {
+							id: person.id,
+							// The server nickname when known. For display only.
+							displayName:
+								member?.displayName ?? member?.nick ?? person.globalName ?? person.username,
+							username: person.username,
+							bot: person.bot ?? false,
 						},
 					}
 				: {}),

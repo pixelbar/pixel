@@ -19,7 +19,8 @@ import { createDoorsSubgroup, describeDoors } from "./doors.ts";
 import { describeHome, homeLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
 import { createOpenrSubgroup, describeOpenr, type OpenrAdminDeps } from "./openr.ts";
-import { createParkingSubgroup, type ParkingAdminDeps } from "./parking.ts";
+import type { ParkingAdminDeps } from "./parking.ts";
+import { createParkingAdmin } from "./parking-panel.ts";
 import { createRoleSubcommands, describeStates } from "./roles.ts";
 
 export type AdminDeps = {
@@ -51,8 +52,10 @@ function describeCounts(counts: AccessStore["view"]["counts"]): string {
 export function createAdminFeature(deps: AdminDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const runtime = deps.runtime ?? "local";
+	const parking = createParkingAdmin({ ...deps.parking, now });
 	return {
 		name: "admin",
+		actions: parking.actions,
 		commands: [
 			{
 				name: "admin",
@@ -136,7 +139,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 					createDoorsSubgroup({ switches: deps.switches, reporter: deps.reporter }),
 					createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile }),
 					createAnnouncementsSubgroup({ routes: deps.announcementRoutes }),
-					createParkingSubgroup({ ...deps.parking, now }),
+					parking.subcommand,
 					createOpenrSubgroup({ ...deps.openr, reporter: deps.reporter, now }),
 				],
 			},
