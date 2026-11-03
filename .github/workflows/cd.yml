@@ -136,6 +136,9 @@ jobs:
   sentry-release:
     name: Sentry release (source maps)
     needs: [changes, publish]
+    # publish can run when changes failed (fail closed). Default success()
+    # would skip this job then; still upload maps if the image went out.
+    if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
