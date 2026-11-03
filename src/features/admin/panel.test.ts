@@ -170,6 +170,12 @@ function fits(reply: Reply) {
 const controlsOf = (reply: Reply): Control[] => (reply.controls ?? []).flat();
 const labels = (reply: Reply) =>
 	controlsOf(reply).map((c) => (c.kind === "select" ? `[${c.placeholder}]` : c.label));
+const choicesOf = (reply: Reply, placeholder: string) => {
+	const select = controlsOf(reply).find(
+		(c) => c.kind === "select" && c.placeholder === placeholder,
+	);
+	return select?.kind === "select" ? select.options.map((o) => o.value) : [];
+};
 const replyOf = (outcome: ActionOutcome): Reply => {
 	if (outcome.kind !== "update")
 		throw new Error(`expected an update, got ${JSON.stringify(outcome)}`);
@@ -314,6 +320,30 @@ describe("people", () => {
 		const revoked = replyOf(await t.submit(revoke, {}));
 		expect(revoked.embeds?.filter((e) => e.title === "Capability revoked")).toHaveLength(2);
 		expect(t.store.view.records.get(IDS.member)?.capabilities).toEqual([]);
+	});
+
+	it("revokes what their level gives from them alone, and grants it back", async () => {
+		const t = setup();
+		await t.store.setTierCapabilities(
+			{ tier: "member", capabilities: ["workshop"] },
+			actor({ userId: IDS.admin }),
+		);
+		const panel = replyOf(await t.person(GRACE));
+		expect(choicesOf(panel, "Revoke capabilities…")).toEqual(["front-door", "workshop"]);
+		expect(labels(panel)).not.toContain("[Grant capabilities…]");
+		const revoke = formOf(await t.click(panel, "Revoke capabilities…", ["workshop"]));
+		const revoked = replyOf(await t.submit(revoke, { reason: "misused the laser" }));
+		expect(said(revoked)).toContain("revoked for them alone");
+		expect(said(revoked)).toContain("Revoked: workshop");
+		expect(t.store.view.records.get(IDS.member)?.revoked).toEqual(["workshop"]);
+		expect(t.store.view.tierCapabilities.member).toEqual(["workshop"]);
+		expect(choicesOf(revoked, "Revoke capabilities…")).toEqual(["front-door"]);
+		expect(choicesOf(revoked, "Grant capabilities…")).toEqual(["workshop"]);
+		const grant = formOf(await t.click(revoked, "Grant capabilities…", ["workshop"]));
+		await t.submit(grant, {});
+		const record = t.store.view.records.get(IDS.member);
+		expect(record?.revoked).toEqual([]);
+		expect(record?.capabilities).toEqual(["front-door"]);
 	});
 
 	it("grants everything, syncs roles and shows where each capability comes from", async () => {

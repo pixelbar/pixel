@@ -25,6 +25,11 @@ export type MemberRecord = {
 	note?: string;
 	/** Named permissions. See the capability system (#28). */
 	capabilities: readonly string[];
+	/**
+	 * Capabilities taken away from this person even though their level grants
+	 * them (ADR 0024). A revocation wins over every grant, their own included.
+	 */
+	revoked: readonly string[];
 };
 
 /** A membership level that can be given capabilities as a whole. */
@@ -61,8 +66,23 @@ export type AccessChange =
 	 * a note someone wrote (even by hand since the last reload) is never replaced.
 	 */
 	| { kind: "set-tier"; id: string; tier: MemberTier; defaultNote?: string; reason?: string }
-	/** Replaces someone's capabilities. They must already have an entry. */
-	| { kind: "set-capabilities"; id: string; capabilities: readonly string[]; reason?: string };
+	/**
+	 * Changes someone's capabilities. They must already have an entry.
+	 *
+	 * Pass `capabilities` to replace their own grants (and `revoked` to replace
+	 * their revocations; left out, those stay as they are). Pass `grant` or
+	 * `revoke` instead to add or take names, applied to the entry as just read
+	 * from the file so a hand edit since the last reload isn't overwritten.
+	 */
+	| {
+			kind: "set-capabilities";
+			id: string;
+			capabilities?: readonly string[];
+			revoked?: readonly string[];
+			grant?: readonly string[];
+			revoke?: readonly string[];
+			reason?: string;
+	  };
 
 /** Longest reason accepted. It goes into the audit log, not the file. */
 export const MAX_REASON_LENGTH = 200;

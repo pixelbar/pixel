@@ -1,7 +1,7 @@
 import { TIER_LABELS, type Tier } from "../../core/access.ts";
 import { SPACE_ANNOUNCE_STYLES } from "../../core/announcement.ts";
 import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
-import type { CapabilityRegistry } from "../../core/capabilities.ts";
+import { type CapabilityRegistry, heldCapabilities } from "../../core/capabilities.ts";
 import type {
 	Args,
 	CommandContext,
@@ -193,7 +193,10 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 		const looked = await run(ops.level.get, ctx, { user: user.id }, { user });
 		const view = deps.access.view;
 		const tier: Tier = view.discord.get(user.id) ?? "guest";
-		const held = view.records.get(user.id)?.capabilities ?? [];
+		// What they actually hold, their level's grants included and revocations taken off, so
+		// the revoke menu offers a level grant (revoked for them alone) and the grant menu lifts one.
+		const record = view.records.get(user.id);
+		const held = record ? heldCapabilities(record, view.tierCapabilities) : [];
 		const rows: ControlRow[] = [];
 		if (!user.isBot) {
 			const who = personArgs(user);

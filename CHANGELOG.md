@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/admin` → People → **Revoke capabilities…** now also lists and revokes a capability someone gets from their membership level: it's taken away from that person alone, and everyone else at the level keeps it. It's saved as a `revoked:` list on their entry in `members.yaml`, which wins over every grant and stays when their level changes. **Grant capabilities…** gives it back. The person's panel shows revocations, `/admin` → Capabilities counts them, and the person is DMed. See [ADR 0024](docs/adr/0024-capability-revocation.md).
+
 ### Changed
 
 - CI/CD uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with [`.github/path-filters.yml`](.github/path-filters.yml) to decide which expensive jobs run. Markdown-only changes skip `just check`, the Docker smoke build and GHCR. A change to `src/`, the lockfile, workflows, Dockerfile, `justfile`, `config/` or `content/info/` still runs the matching job (fail closed); if the filter job itself fails, those jobs still run, and CD still uploads Sentry maps after a successful publish. Azure plans still skip unless Terraform files under `infra/` changed. The content-hash skip (`scripts/ci-inputs.sh` and the Actions cache markers) is gone.
