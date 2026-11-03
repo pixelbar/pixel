@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-03
+
 ### Added
 
 - `/admin` → People → **Revoke capabilities…** now also lists and revokes a capability someone gets from their membership level: it's taken away from that person alone, and everyone else at the level keeps it. It's saved as a `revoked:` list on their entry in `members.yaml`, which wins over every grant and stays when their level changes. **Grant capabilities…** gives it back. The person's panel shows revocations, `/admin` → Capabilities counts them, and the person is DMed. See [ADR 0024](docs/adr/0024-capability-revocation.md).
@@ -360,7 +362,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/pixelbar/pixel/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/pixelbar/pixel/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/pixelbar/pixel/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/pixelbar/pixel/compare/v0.20.0...v0.21.0
