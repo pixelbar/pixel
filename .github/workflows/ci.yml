@@ -1,19 +1,22 @@
 name: CI
 
-# just check and the Docker smoke build each run only when their inputs (a
-# list in .github/path-filters.yml plus this file) are not a set that already
-# passed. A push that only adds a CHANGELOG entry, a re-push of the same code,
-# or a docs-only PR skips them: GitHub shows a skipped job as passed. Pushes
-# to main run them too, so PRs can reuse main's results.
+# just check and the Docker smoke build each run only when their inputs (lists
+# in .github/path-filters.yml) changed, via dorny/paths-filter. A markdown-only
+# PR skips them: skipped jobs never start a runner, and GitHub shows them as
+# passed. Fail closed: src/, lockfile, workflows, Dockerfile, justfile, config/
+# and content/info/ still run the matching job; if the filter job fails, the
+# expensive jobs run.
 
 on:
   pull_request:
   push:
     branches: [main]
 
-# Least privilege: CI only reads the repo (the input markers are Actions caches).
+# Least privilege: CI reads the repo. pull-requests: read is for dorny's PR
+# files API (ignored on push).
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,29 +31,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      check: ${{ steps.check.outputs.passed != 'true' }}
-      check-key: ${{ steps.check.outputs.key }}
-      image: ${{ steps.image.outputs.passed != 'true' }}
-      image-key: ${{ steps.image.outputs.key }}
+      check: ${{ steps.filter.outputs.check }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - uses: ./.github/actions/ci-inputs
-        id: check
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
         with:
-          filter: check
-
-      - uses: ./.github/actions/ci-inputs
-        id: image
-        with:
-          filter: image
+          filters: .github/path-filters.yml
+          predicate-quantifier: some-with-excludes
 
   check:
     name: Lint, typecheck, test, build
     needs: changes
-    if: needs.changes.outputs.check == 'true'
+    if: ${{ always() && !cancelled() && (needs.changes.result == 'failure' || needs.changes.outputs.check == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -84,14 +82,10 @@ jobs:
           path: coverage/
           retention-days: 14
 
-      - uses: ./.github/actions/ci-passed
-        with:
-          key: ${{ needs.changes.outputs.check-key }}
-
   docker:
     name: Docker image builds
     needs: changes
-    if: needs.changes.outputs.image == 'true'
+    if: ${{ always() && !cancelled() && (needs.changes.result == 'failure' || needs.changes.outputs.image == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -113,7 +107,3 @@ jobs:
             PIXEL_GIT_BRANCH=${{ github.head_ref || github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - uses: ./.github/actions/ci-passed
-        with:
-          key: ${{ needs.changes.outputs.image-key }}

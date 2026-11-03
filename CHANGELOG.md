@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- CI/CD uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with [`.github/path-filters.yml`](.github/path-filters.yml) to decide which expensive jobs run. Markdown-only changes skip `just check`, the Docker smoke build and GHCR. A change to `src/`, the lockfile, workflows, Dockerfile, `justfile`, `config/` or `content/info/` still runs the matching job (fail closed); if the filter job itself fails, those jobs run. Azure plans still skip unless Terraform files under `infra/` changed. The content-hash skip (`scripts/ci-inputs.sh` and the Actions cache markers) is gone.
+
 - **`/ha` is one command with a panel** instead of `/ha list`, `/ha status`, `/ha set` and `/ha open`. `/ha` lists the devices you may see, grouped by kind with their state, with a menu to pick one; `/ha device:` goes straight to one. A device shows its live state and a button for each thing you may do to it (**On**, **Off**, **Toggle**, **Lock**, **Unlock**), with the one it's already at greyed out. Pressing one says what really happened above the device's fresh state. The rules haven't changed: the same capabilities, doors for members only and only lock and unlock, every press checked again, one action at a time, and no buttons while admins have switched doors off. The website's commands page shows the new panel. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
 
 ### Changed
