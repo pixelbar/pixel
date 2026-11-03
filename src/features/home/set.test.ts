@@ -640,6 +640,81 @@ describe("a device's panel", () => {
 		expect(refused.outcome.kind).toBe("refused");
 	});
 
+	it("still says what happened when Home Assistant can't be read again afterwards", async () => {
+		writeFileSync(join(dir, "devices.yaml"), DEVICES);
+		const states = vi.fn(async () => {
+			throw new HomeUnavailableError(HOME_MESSAGES.unreachable);
+		});
+		// The action ran (the fake control says it's done); only the re-read fails.
+		const registry = new CommandRegistry();
+		registry.register(
+			createHomeFeature({
+				home: { getStates: states, callService: async () => {} },
+				homeDevices: HomeDeviceStore.open({ dir, kinds: HOME_KINDS }),
+				control: { run: vi.fn(async () => DONE) as DeviceControl["run"], timeoutMs: 8000 },
+			}),
+		);
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService(
+				[{ name: "t", tierFor: async () => "member" }],
+				[{ name: "t", capabilitiesFor: async () => ["ha-lights"] }],
+			),
+			rateLimiter: new RateLimiter({ capacity: 10, refillPerSecond: 0, now: () => 0 }),
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+		});
+		const outcome = await dispatcher.act({
+			actor: actor({ userId: PEOPLE.lights.id }),
+			action: "ha.act",
+			args: { device: "lamp", action: "off" },
+		});
+		if (outcome.kind !== "update") throw new Error(`expected an update, got ${outcome.kind}`);
+		expect(outcome.reply.embeds?.map((e) => e.title)).toEqual(["✅ Done", "lamp"]);
+		expect(outcome.reply.embeds?.[1]?.description).toBe(
+			`${HOME_MESSAGES.unreachable} Press **Refresh** to see its state.`,
+		);
+		expect(
+			outcome.reply.controls?.flat().map((c) => (c.kind === "button" ? c.label : c.kind)),
+		).toEqual(["← All devices", "Refresh"]);
+	});
+
+	it("still reports anything unexpected while reading it again", async () => {
+		writeFileSync(join(dir, "devices.yaml"), DEVICES);
+		const registry = new CommandRegistry();
+		registry.register(
+			createHomeFeature({
+				home: {
+					getStates: async () => {
+						throw new Error("bug");
+					},
+					callService: async () => {},
+				},
+				homeDevices: HomeDeviceStore.open({ dir, kinds: HOME_KINDS }),
+				control: { run: vi.fn(async () => DONE) as DeviceControl["run"], timeoutMs: 8000 },
+			}),
+		);
+		const dispatcher = new Dispatcher({
+			registry,
+			identity: new IdentityService(
+				[{ name: "t", tierFor: async () => "member" }],
+				[{ name: "t", capabilitiesFor: async () => ["ha-lights"] }],
+			),
+			rateLimiter: new RateLimiter({ capacity: 10, refillPerSecond: 0, now: () => 0 }),
+			logger: silentLogger,
+			reporter: nullErrorReporter,
+		});
+		const outcome = await dispatcher.act({
+			actor: actor({ userId: PEOPLE.lights.id }),
+			action: "ha.act",
+			args: { device: "lamp", action: "off" },
+		});
+		expect(outcome).toEqual({
+			kind: "refused",
+			reply: { text: MESSAGES.internalError, private: true },
+		});
+	});
+
 	it("only shows a device the person may see", async () => {
 		const { panel, dispatcher } = setup({ states: STATES });
 		expect((await panel("plainMember", "no-such-thing")).reply).toEqual({

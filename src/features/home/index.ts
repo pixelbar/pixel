@@ -327,7 +327,31 @@ export function createHomeFeature(deps: HomeFeatureDeps): Feature {
 				const result = await act(device, String(ctx.args.action), ctx);
 				// Refused: say so privately and leave the panel as it was.
 				if (!result.embeds || !device) throw new UserFacingError(result.text ?? HOME_DENIED);
-				return { reply: await devicePanel(device, ctx, result.embeds) };
+				try {
+					return { reply: await devicePanel(device, ctx, result.embeds) };
+				} catch (error) {
+					if (!(error instanceof UserFacingError)) throw error;
+					// Home Assistant went away after the action: still say what happened to it.
+					return {
+						reply: {
+							embeds: [
+								...result.embeds,
+								{
+									title: device.name,
+									description: `${error.message} Press **Refresh** to see its state.`,
+									accent: "warning",
+								},
+							],
+							private: true,
+							controls: [
+								[
+									button("← All devices", HOME_ACTIONS.list),
+									button("Refresh", HOME_ACTIONS.device, { device: device.name }),
+								],
+							],
+						},
+					};
+				}
 			},
 		),
 	];
