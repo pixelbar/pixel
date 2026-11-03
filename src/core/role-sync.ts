@@ -20,11 +20,11 @@ import type { HolderList, MirroredTier, RoleHolder, RoleMirror } from "./role-mi
  *  - a tier whose role isn't mapped is left alone;
  *  - someone whose roles Pixel pushed since the run started, or just before, is skipped,
  *    and so is anyone whose level changed in Pixel after the plan was made;
- *  - someone whose last push Discord didn't take is skipped until one does (`/admin sync`),
+ *  - someone whose last push Discord didn't take is skipped until one does (`/admin` → Discord roles → **Sync everyone**),
  *    so an admin's change isn't undone by roles Pixel couldn't set;
  *  - more than `MAX_DEMOTIONS` removals in one run are all held back and reported,
  *    since that looks like a mistake (a role cleared, or the sync turned on before
- *    `/admin sync` brought Discord into line).
+ *    `/admin` → Discord roles → **Sync everyone** brought Discord into line).
  */
 
 export const MAX_DEMOTIONS = 5;
@@ -214,7 +214,7 @@ export class RoleSync {
 		if (plan.heldBack > 0) {
 			this.#problem(
 				`Role sync held back ${plan.heldBack} removals (more than ${MAX_DEMOTIONS} at once). ` +
-					"Check the Discord roles, or run /admin sync to push Pixel's levels to Discord.",
+					"Check the Discord roles, or run /admin → Discord roles → Sync everyone to push Pixel's levels to Discord.",
 			);
 		} else {
 			this.#problem(undefined);

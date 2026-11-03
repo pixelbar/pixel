@@ -427,7 +427,7 @@ describe("safe writes", () => {
 		writeFileSync(membersFile, broken);
 		const before = store.view;
 		await expect(store.apply({ kind: "set-tier", id: NEW_ID, tier: "friend" }, by)).rejects.toThrow(
-			/\/admin reload/,
+			/\/admin → Reload the access lists/,
 		);
 		expect(read()).toBe(broken);
 		expect(store.view).toBe(before);
@@ -451,7 +451,7 @@ describe("safe writes", () => {
 		] as const) {
 			const error = await store.apply(change, by).catch((e: unknown) => e as Error);
 			expect(error).toBeInstanceOf(AccessStoreError);
-			expect((error as Error).message).toMatch(/invalid.*\/admin reload/s);
+			expect((error as Error).message).toMatch(/invalid.*\/admin → Reload the access lists/s);
 			expect((error as Error).message).not.toContain(IDS.member);
 		}
 		expect(read()).toBe(broken);
@@ -815,7 +815,7 @@ describe("changing a level's capabilities", () => {
 		writeFileSync(membersFile, broken);
 		await expect(
 			store.setTierCapabilities({ tier: "member", capabilities: ["a"] }, by),
-		).rejects.toThrow(/\/admin reload/);
+		).rejects.toThrow(/\/admin → Reload the access lists/);
 		expect(read()).toBe(broken);
 	});
 

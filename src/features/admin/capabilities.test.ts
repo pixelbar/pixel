@@ -20,9 +20,9 @@ import { ConfigTierSource, StoreCapabilitySource } from "../../services/access-c
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
+import { type AdminOp, runAdmin } from "../../testing/admin.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
 import { inMemoryParking } from "../../testing/parking.ts";
-import { suggestCapabilities } from "./capabilities.ts";
 import { createAdminFeature } from "./index.ts";
 
 const ADMINS = `admins:\n  - ids: ["discord:${IDS.admin}"]\n`;
@@ -123,19 +123,12 @@ const human = (id: string, displayName = "Someone"): ResolvedUser => ({
 
 function run(
 	dispatcher: Dispatcher,
-	subcommand: "grant" | "grant-all" | "revoke" | "grant-level" | "revoke-level" | "list",
+	subcommand: AdminOp,
 	args: Record<string, string>,
 	target?: ResolvedUser,
 	as: Partial<PlatformActor> = { userId: IDS.admin, displayName: "Ada", handle: "ada_l" },
 ) {
-	return dispatcher.dispatch({
-		actor: actor(as),
-		command: "admin",
-		subgroup: "capabilities",
-		subcommand,
-		args: target ? { user: target.id, ...args } : args,
-		...(target ? { users: { user: target } } : {}),
-	});
+	return runAdmin(dispatcher, subcommand, args, target, as);
 }
 
 const fieldsOf = (result: Awaited<ReturnType<typeof run>>) =>
@@ -188,10 +181,13 @@ describe("who may run them", () => {
 		expect(read()).toBe(before);
 	});
 
-	it("lists them as /admin capabilities grant, grant-all, revoke and list for /help", async () => {
+	it("are actions behind /admin, all admin-only", async () => {
 		const { commands } = setup();
 		const admin = commands.get("admin")?.definition;
-		expect(admin?.subcommands?.map((s) => s.name)).toContain("capabilities");
+		expect(admin?.subcommands).toBeUndefined();
+		for (const name of ["admin.grant", "admin.revoke", "admin.grant-all", "admin.level-grant"]) {
+			expect(commands.action(name)?.definition.access).toEqual({ minTier: "admin" });
+		}
 	});
 });
 
@@ -271,16 +267,11 @@ describe("grant", () => {
 
 	it("refuses a bot", async () => {
 		const { dispatcher } = setup();
-		const result = await run(
-			dispatcher,
-			"grant",
-			{ capability: "workshop" },
-			{
-				...human(IDS.member),
-				isBot: true,
-			},
-		);
-		expect(result.reply.text).toMatch(/can't be a bot/);
+		const looked = await run(dispatcher, "whois", {}, { ...human(IDS.member), isBot: true });
+		// A bot is picked like anyone, but its panel offers nothing to change.
+		expect(
+			looked.reply.controls?.flat().map((c) => (c.kind === "button" ? c.label : c.kind)),
+		).toEqual(["← People"]);
 	});
 
 	it("refuses a capability that isn't in the registry", async () => {
@@ -317,16 +308,7 @@ describe("grant", () => {
 
 	it("says so, with no picker, when no capabilities are registered", async () => {
 		const empty = new CapabilityRegistry();
-		const { dispatcher, commands } = setup(empty);
-		const grant = commands
-			.get("admin")
-			?.definition.subcommands?.flatMap((s) =>
-				"subcommands" in s && s.subcommands ? s.subcommands : [],
-			)
-			.find((s) => s.name === "grant");
-		const option = grant?.options?.find((o) => o.name === "capability");
-		expect(option).toMatchObject({ type: "string" });
-		expect(option).not.toHaveProperty("choices");
+		const { dispatcher } = setup(empty);
 
 		for (const sub of ["grant", "revoke"] as const) {
 			const result = await run(dispatcher, sub, { capability: "anything" }, human(IDS.member));
@@ -334,42 +316,6 @@ describe("grant", () => {
 		}
 		const list = await run(dispatcher, "list", {});
 		expect(list.reply.text).toBe("No capabilities are registered yet.");
-	});
-
-	it("suggests the registered names instead of listing them as choices", async () => {
-		const { commands } = setup();
-		const grant = commands
-			.get("admin")
-			?.definition.subcommands?.flatMap((s) =>
-				"subcommands" in s && s.subcommands ? s.subcommands : [],
-			)
-			.find((s) => s.name === "grant");
-		const option = grant?.options?.find((o) => o.name === "capability");
-		expect(option).not.toHaveProperty("choices");
-		expect(option).toHaveProperty("suggest");
-	});
-
-	it("suggests capabilities by name or description, at most 25", () => {
-		const all = [
-			{ name: "front-door", description: "Open the front door" },
-			{ name: "workshop", description: "Use the workshop" },
-		];
-		expect(suggestCapabilities(all, "")).toEqual([
-			{ name: "front-door: Open the front door", value: "front-door" },
-			{ name: "workshop: Use the workshop", value: "workshop" },
-		]);
-		expect(suggestCapabilities(all, " SHOP ")).toEqual([
-			{ name: "workshop: Use the workshop", value: "workshop" },
-		]);
-		expect(suggestCapabilities(all, "door").map((s) => s.value)).toEqual(["front-door"]);
-		expect(suggestCapabilities(all, "laser")).toEqual([]);
-		const many = Array.from({ length: 30 }, (_, i) => ({
-			name: `c${i}`,
-			description: "x".repeat(100),
-		}));
-		const shown = suggestCapabilities(many, "");
-		expect(shown).toHaveLength(25);
-		expect(shown[0]?.name).toHaveLength(100);
 	});
 });
 
@@ -423,8 +369,6 @@ describe("grant-all", () => {
 		const before = BEFORE();
 		const guest = await run(dispatcher, "grant-all", {}, human(UNLISTED));
 		expect(guest.reply.text).toContain("is a guest");
-		const bot = await run(dispatcher, "grant-all", {}, { ...human(IDS.member), isBot: true });
-		expect(bot.reply.text).toBeDefined();
 		const long = await run(
 			dispatcher,
 			"grant-all",
@@ -637,13 +581,9 @@ describe("grant-level", () => {
 	it("offers the two levels as choices", () => {
 		const { commands } = setup();
 		const level = commands
-			.get("admin")
-			?.definition.subcommands?.flatMap((s) =>
-				"subcommands" in s && s.subcommands ? s.subcommands : [],
-			)
-			.find((s) => s.name === "grant-level")
-			?.options?.find((o) => o.name === "level");
-		expect(level).toMatchObject({ required: true, choices: ["member", "friend"] });
+			.action("admin.level-grant")
+			?.definition.options?.find((o) => o.name === "level");
+		expect(level).toMatchObject({ required: true, choices: ["friend", "member"] });
 	});
 });
 
@@ -686,7 +626,9 @@ describe("revoke-level", () => {
 		const before = BEFORE();
 		const result = await run(dispatcher, "revoke", { capability: "front-door" }, human(IDS.member));
 		expect(result.reply.text).toContain("gets front-door from their member level");
-		expect(result.reply.text).toContain("/admin capabilities revoke-level");
+		expect(result.reply.text).toContain(
+			"/admin → Capabilities → **What friends get** / **What members get**",
+		);
 		expect(read()).toBe(before);
 	});
 });

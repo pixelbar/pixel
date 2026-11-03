@@ -1,11 +1,6 @@
 import { highestTier, splitRef, TIER_LABELS, type Tier } from "../../core/access.ts";
 import { type CapabilityRegistry, tierGrantsFor } from "../../core/capabilities.ts";
-import type {
-	ResolvedUser,
-	SubcommandDefinition,
-	SubgroupDefinition,
-	Suggestion,
-} from "../../core/command.ts";
+import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import {
@@ -15,7 +10,7 @@ import {
 } from "../../core/ports/access-store.ts";
 
 /**
- * `/admin capabilities grant|grant-all|revoke|grant-level|revoke-level|list`: who
+ * `/admin` → People → **Grant capabilities…**: who
  * holds which named permission. Grants live in the members file, change only
  * through the access store (so they are audited), and are by immutable user ID
  * or by membership level. A capability does nothing for a guest, and never
@@ -44,9 +39,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		description: "Which capability",
 		type: "string",
 		required: true,
-		// Suggestions, not choices: Discord counts every choice towards /admin's size limit,
-		// once per subcommand. The handlers check the name is registered.
-		suggest: async ({ typed }: { typed: string }) => suggestCapabilities(capabilities.all(), typed),
+		// Checked against the registry by the handlers.
 	} as const;
 	const levelOption = {
 		name: "level",
@@ -180,7 +173,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 					const fromLevel = tierGrantsFor(view.tierCapabilities, level).includes(name);
 					return {
 						text: fromLevel
-							? `${describe(target)} gets ${name} from their ${level} level, not a grant of their own. Nothing changed. Use /admin capabilities revoke-level to take it from the level.`
+							? `${describe(target)} gets ${name} from their ${level} level, not a grant of their own. Nothing changed. Use /admin → Capabilities → **What friends get** / **What members get** to take it from the level.`
 							: `${describe(target)} doesn't have ${name}. Nothing changed.`,
 					};
 				}
@@ -373,20 +366,6 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		const description = capabilities.get(name)?.description;
 		return description ? `${name}: ${description}` : name;
 	}
-}
-
-/** Registered capabilities whose name or description has what was typed, at most 25. */
-export function suggestCapabilities(
-	all: readonly { name: string; description: string }[],
-	typed: string,
-): Suggestion[] {
-	const needle = typed.trim().toLowerCase();
-	return all
-		.filter(
-			(c) => c.name.toLowerCase().includes(needle) || c.description.toLowerCase().includes(needle),
-		)
-		.slice(0, 25)
-		.map((c) => ({ name: `${c.name}: ${c.description}`.slice(0, 100), value: c.name }));
 }
 
 /** The level an admin picked. The platform doesn't check it came from the choices. */

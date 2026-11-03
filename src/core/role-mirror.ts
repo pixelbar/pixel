@@ -192,7 +192,7 @@ export class RoleMirror {
 	/**
 	 * Whether Discord didn't take the last push of this person's roles (and no
 	 * later one has worked). The role sync leaves them alone until one does
-	 * (`/admin sync`), so a change Pixel made isn't undone by roles it couldn't set.
+	 * (`/admin` → Discord roles → **Sync everyone**), so a change Pixel made isn't undone by roles it couldn't set.
 	 */
 	pushFailed(userId: string): boolean {
 		return this.#pushFailed.has(userId);
@@ -210,7 +210,7 @@ export class RoleMirror {
 	 * Checks every tier and says so: configured tiers that work are logged, ones
 	 * that don't are logged and reported once each. A tier that can't be
 	 * mirrored is turned off on its own; the rest keep working. Run at startup
-	 * and on `/admin reload`, not on every change.
+	 * and on `/admin` → **Reload the access lists**, not on every change.
 	 */
 	async check(): Promise<readonly TierMirrorState[]> {
 		const states = await this.states();

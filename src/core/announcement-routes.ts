@@ -3,7 +3,7 @@ import { UserFacingError } from "./errors.ts";
 
 /**
  * Where open/closed announcements go: pairings of a style and a channel that admins
- * manage while Pixel runs (`/admin announcements`). Features hand changes to the
+ * manage while Pixel runs (`/admin` → Announcements). Features hand changes to the
  * core and never touch a platform; the Discord adapter plugs in a `RouteManager`
  * once it's connected, the same way it plugs in the calendar and channel posts.
  */

@@ -325,7 +325,7 @@ export class OpenrConnection implements DoorSystem {
 		);
 		this.#reporter.captureBackground(
 			new Error(
-				"OpenR ended Pixel's session, so Pixel can't open doors. An admin needs to run /admin openr login.",
+				"OpenR ended Pixel's session, so Pixel can't open doors. An admin needs to run /admin → OpenR → Log in.",
 			),
 			"openr",
 		);

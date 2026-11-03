@@ -5,7 +5,7 @@ import { openUntil, type ParkingEntries } from "./parking-windows.ts";
 /**
  * Which spot someone gets, as plain functions over the spots, their opening times and
  * the bookings, so every rule can be tested without a clock or a file. Shared by
- * `/park` and `/admin parking`.
+ * `/park` and `/admin` → Parking.
  */
 
 /** A spot that's free now, and until when it stays open (never past the reset). */

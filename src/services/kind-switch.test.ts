@@ -37,7 +37,7 @@ describe("KindSwitch", () => {
 		expect(switches.set("door", false, "discord:1")).toEqual({ changed: false, saved: true });
 		expect(switches.set("door", true, "discord:2")).toEqual({ changed: true, saved: true });
 		expect(switches.isOn("door")).toBe(true);
-		// The caller logs it with the actor's names (`/admin doors`), so it isn't logged twice.
+		// The caller logs it with the actor's names (`/admin` → Doors), so it isn't logged twice.
 		expect(warn).not.toHaveBeenCalled();
 	});
 

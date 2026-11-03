@@ -34,9 +34,9 @@ import type { Form } from "./ui.ts";
 export type DispatchRequest = {
 	actor: PlatformActor;
 	command: string;
-	/** Set when `command` is a group and the subcommand sits in a subgroup, e.g. `capabilities` in `/admin capabilities grant`. */
+	/** Set when `command` is a group and the subcommand sits in a subgroup, e.g. `group` in `/example group sub`. */
 	subgroup?: string;
-	/** Set when `command` is a group, e.g. `status` for `/admin status`. */
+	/** Set when `command` is a group, e.g. `say` for `/fishbot say`. */
 	subcommand?: string;
 	args: Args;
 	/** Users picked through `user` options, by option name, as resolved by the adapter. */

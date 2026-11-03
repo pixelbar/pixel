@@ -3,7 +3,7 @@ import { toInstant, toLocal } from "../core/recurrence.ts";
 import { addDays, describeWhen, formatTimeOfDay, type TimeOfDay } from "../core/when.ts";
 
 /**
- * Time rules for parking, shared by `/admin parking` and `/park`. Everything is
+ * Time rules for parking, shared by `/admin` → Parking and `/park`. Everything is
  * wall-clock in `PIXEL_TIMEZONE`: the daily reset (23:59 by default) ends every
  * booking, and no window or closure runs past the reset on the day it starts.
  * Durations and times of day are read by the core parsers (`core/duration.ts`,

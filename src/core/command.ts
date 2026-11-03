@@ -170,15 +170,15 @@ export type SubcommandDefinition = Named & Runnable;
 
 /**
  * A named set of subcommands inside a group, e.g. `capabilities` in
- * `/admin capabilities grant`. Its access is a floor for the subcommands in it.
+ * `/example group sub`. Its access is a floor for the subcommands in it.
  */
 export type SubgroupDefinition = Named & {
 	subcommands: readonly SubcommandDefinition[];
 };
 
 /**
- * A command with subcommands, e.g. `/admin status`, and optionally subgroups of
- * them, e.g. `/admin capabilities grant`. Access is a floor at every level: a
+ * A command with subcommands, e.g. `/fishbot say`, and optionally subgroups of
+ * them, e.g. `/example group sub`. Access is a floor at every level: a
  * subcommand or subgroup may tighten it but never loosen it, and the dispatcher
  * checks every level.
  */

@@ -60,7 +60,7 @@ function setup(configured: ReturnType<typeof fakeSystem> | null = fakeSystem()) 
 	return { system, reporter, group, warn, run };
 }
 
-describe("/admin openr", () => {
+describe("/admin → OpenR", () => {
 	it("is admin-only at every level, and private", () => {
 		const { group } = setup();
 		expect(group.access.minTier).toBe("admin");
@@ -80,11 +80,11 @@ describe("/admin openr", () => {
 	});
 });
 
-describe("/admin openr login", () => {
+describe("/admin → OpenR → **Log in**", () => {
 	it("starts a login, says a code is on its way, and logs who did it", async () => {
 		const { run, system, warn, reporter } = setup();
 		expect(await run("login")).toBe(
-			"OpenR has emailed a code to Pixel's account. Pass it on with `/admin openr code` (Pixel waits 10m for it).",
+			"OpenR has emailed a code to Pixel's account. Pass it on with `/admin` → OpenR → **Enter the code…** (Pixel waits 10m for it).",
 		);
 		expect(system?.startLogin).toHaveBeenCalledTimes(1);
 		expect(warn).toHaveBeenCalledWith(
@@ -113,7 +113,7 @@ describe("/admin openr login", () => {
 	});
 });
 
-describe("/admin openr code", () => {
+describe("/admin → OpenR → **Enter the code…**", () => {
 	it("passes the code on, without spaces, and never logs it", async () => {
 		const { run, system, warn } = setup();
 		expect(await run("code", { code: " 123 456 " })).toMatch(
@@ -136,7 +136,7 @@ describe("/admin openr code", () => {
 
 	it.each<[LoginStep, RegExp]>([
 		[{ step: "refused", why: "code" }, /didn't accept that code/],
-		[{ step: "refused", why: "no-login" }, /no login waiting.*\/admin openr login/],
+		[{ step: "refused", why: "no-login" }, /no login waiting.*\/admin` → OpenR → \*\*Log in\*\*/],
 	])("says what went wrong: %j", async (step, text) => {
 		const { run, system, warn } = setup();
 		system?.completeLogin.mockResolvedValueOnce(step);
@@ -147,7 +147,7 @@ describe("/admin openr code", () => {
 	});
 });
 
-describe("/admin openr logout", () => {
+describe("/admin → OpenR → **Log out…**", () => {
 	it("logs Pixel out, and logs who did it", async () => {
 		const { run, system, warn, reporter } = setup();
 		expect(await run("logout")).toMatch(/logged out of OpenR and can't open any door/);
@@ -162,12 +162,12 @@ describe("/admin openr logout", () => {
 	});
 });
 
-describe("/admin openr status", () => {
+describe("/admin → OpenR", () => {
 	it("lists the doors without reading them while logged out", async () => {
 		const { run, system } = setup(fakeSystem({ state: "logged-out" }));
 		expect(await run("status")).toBe(
 			[
-				"OpenR: **logged out**. Log in with `/admin openr login`.",
+				"OpenR: **logged out**. Log in with `/admin` → OpenR → **Log in**.",
 				"Doors: Entrance (103), Living room (203), Parking gate (125)",
 			].join("\n"),
 		);
@@ -235,7 +235,7 @@ describe("describeOpenr", () => {
 				refreshedAt: NOW,
 				refreshFailingSince: undefined,
 			},
-			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin openr login` before it does.",
+			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin` → OpenR → **Log in** before it does.",
 		],
 		[
 			{
@@ -248,24 +248,24 @@ describe("describeOpenr", () => {
 		],
 		[
 			{ state: "logged-in", sessionUntil: at(90), refreshedAt: NOW, refreshFailingSince: at(-30) },
-			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin openr login` before it does.\n⚠️ Refreshing has failed since 30m ago: OpenR may be down.",
+			"OpenR: logged in, session ends in 1h 30m unless refreshed\n⚠️ The session ends soon: log in again with `/admin` → OpenR → **Log in** before it does.\n⚠️ Refreshing has failed since 30m ago: OpenR may be down.",
 		],
 		[
 			{ state: "awaiting-code", codeUntil: at(7) },
-			"OpenR: waiting for the emailed code (`/admin openr code`) for another 7m",
+			"OpenR: waiting for the emailed code (`/admin` → OpenR → **Enter the code…**) for another 7m",
 		],
-		[{ state: "logged-out" }, "OpenR: **logged out**. Log in with `/admin openr login`."],
+		[{ state: "logged-out" }, "OpenR: **logged out**. Log in with `/admin` → OpenR → **Log in**."],
 		[
 			{ state: "logged-out", endedAt: at(-0.5) },
-			"OpenR: **logged out**: OpenR ended the session just now. Log in with `/admin openr login`.",
+			"OpenR: **logged out**: OpenR ended the session just now. Log in with `/admin` → OpenR → **Log in**.",
 		],
 		[
 			{ state: "logged-out", endedAt: at(-180) },
-			"OpenR: **logged out**: OpenR ended the session 3h ago. Log in with `/admin openr login`.",
+			"OpenR: **logged out**: OpenR ended the session 3h ago. Log in with `/admin` → OpenR → **Log in**.",
 		],
 		[
 			{ state: "logged-out", endedAt: at(-60 * 50) },
-			"OpenR: **logged out**: OpenR ended the session 2d ago. Log in with `/admin openr login`.",
+			"OpenR: **logged out**: OpenR ended the session 2d ago. Log in with `/admin` → OpenR → **Log in**.",
 		],
 	])("describes %j", (status, text) => {
 		expect(describeOpenr(status, NOW)).toBe(text);

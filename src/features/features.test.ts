@@ -4,7 +4,7 @@ import { Announcer } from "../core/announcer.ts";
 import { Calendar } from "../core/calendar.ts";
 import { CapabilityRegistry } from "../core/capabilities.ts";
 import { ChannelPosts } from "../core/channel-posts.ts";
-import { isSubgroup, type SubcommandDefinition } from "../core/command.ts";
+import type { SubcommandDefinition } from "../core/command.ts";
 import { DirectMessages } from "../core/direct-messages.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Feature } from "../core/feature.ts";
@@ -12,7 +12,7 @@ import { formatDuration } from "../core/format.ts";
 import { Home } from "../core/home.ts";
 import { silentLogger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
-import { nullErrorReporter } from "../core/ports/error-reporter.ts";
+import { type ErrorReporter, nullErrorReporter } from "../core/ports/error-reporter.ts";
 import { nullFeedbackSink } from "../core/ports/feedback.ts";
 import { notConnectedGate } from "../core/ports/gate.ts";
 import { CommandRegistry } from "../core/registry.ts";
@@ -160,13 +160,13 @@ describe("buildFeatures with OpenR", () => {
 		expect(doorSystem.open).toHaveBeenCalledWith("103");
 	});
 
-	it("shows OpenR and the door switch on /admin status", async () => {
+	it("shows OpenR and the door switch on /admin", async () => {
 		const { sub } = openr("125");
-		const reply = await sub("admin", "admin", "status").handler(context());
+		const reply = await sub("admin", "admin").handler(context());
 		const fields = Object.fromEntries(
 			(reply.embeds?.[0]?.fields ?? []).map((f) => [f.name, f.value]),
 		);
-		expect(fields.OpenR).toBe("OpenR: **logged out**. Log in with `/admin openr login`.");
+		expect(fields.OpenR).toBe("OpenR: **logged out**. Log in with `/admin` → OpenR → **Log in**.");
 		expect(fields.Doors).toBe("Door control: on");
 		expect(fields["Home Assistant"]).toBe("Not configured");
 	});
@@ -223,18 +223,9 @@ describe("buildFeatures", () => {
 		for (const f of buildFeatures(deps())) registry.register(f);
 		const admin = registry.get("admin")?.definition;
 		expect(admin?.access.minTier).toBe("admin");
-		expect(admin?.subcommands?.map((s) => [s.name, s.access.minTier])).toEqual([
-			["status", "admin"],
-			["reload", "admin"],
-			["level", "admin"],
-			["sync", "admin"],
-			["capabilities", "admin"],
-			["doors", "admin"],
-			["closing-time", "admin"],
-			["announcements", "admin"],
-			["parking", "admin"],
-			["openr", "admin"],
-		]);
+		// One command that opens a panel; everything else is admin-only actions.
+		expect(admin?.subcommands).toBeUndefined();
+		expect(admin?.private).toBe(true);
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
@@ -281,11 +272,11 @@ describe("help", () => {
 	});
 });
 
-function adminSubcommand(
-	name: string,
+function adminFeature(
 	store: Pick<AccessStore, "view" | "apply" | "setTierCapabilities" | "reload"> = access,
+	reporter: ErrorReporter = nullErrorReporter,
 ) {
-	const admin = createAdminFeature({
+	return createAdminFeature({
 		version: "1.0.0",
 		startedAt: new Date(0),
 		access: store,
@@ -295,17 +286,33 @@ function adminSubcommand(
 		homeDevices: HomeDeviceStore.empty(),
 		announcementRoutes: new AnnouncementRoutes(),
 		switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
-		reporter: nullErrorReporter,
+		reporter,
 		now: () => new Date(90 * 60_000),
 		closingTimeFile: "data/closing-time.md",
 		parking: inMemoryParking(),
 		openr: { system: undefined, doors: [], gateDoor: undefined },
-	}).commands?.[0];
-	const sub = admin?.subcommands?.find(
-		(s): s is SubcommandDefinition => !isSubgroup(s) && s.name === name,
-	);
-	if (!sub) throw new Error(`no /admin ${name}`);
-	return sub;
+	});
+}
+
+/** `/admin` (the status), or the action behind Reload the access lists. */
+function adminSubcommand(
+	name: "status" | "reload",
+	store: Pick<AccessStore, "view" | "apply" | "setTierCapabilities" | "reload"> = access,
+	reporter: ErrorReporter = nullErrorReporter,
+) {
+	const feature = adminFeature(store, reporter);
+	const command = feature.commands?.[0];
+	if (!command || command.subcommands !== undefined) throw new Error("no /admin");
+	if (name === "status") return command;
+	const reload = feature.actions?.find((a) => a.name === "admin.reload");
+	if (!reload) throw new Error("no admin.reload");
+	return {
+		private: true,
+		handler: async (ctx: ReturnType<typeof context>) => {
+			const result = await reload.handler(ctx);
+			return "reply" in result ? result.reply : {};
+		},
+	};
 }
 
 describe("admin", () => {
@@ -348,23 +355,7 @@ describe("admin", () => {
 			setTierCapabilities: access.setTierCapabilities,
 			reload: access.reload,
 		};
-		const admin = createAdminFeature({
-			version: "1.0.0",
-			startedAt: new Date(0),
-			access: store,
-			capabilities: new CapabilityRegistry(CAPABILITIES),
-			roles: new RoleMirror({ logger: silentLogger, reporter: nullErrorReporter }),
-			home: new Home({ logger: silentLogger, reporter: nullErrorReporter }),
-			homeDevices: HomeDeviceStore.empty(),
-			announcementRoutes: new AnnouncementRoutes(),
-			switches: new KindSwitch({ logger: silentLogger, switchable: ["door"] }),
-			reporter: { ...nullErrorReporter, captureBackground },
-			closingTimeFile: "data/closing-time.md",
-			parking: inMemoryParking(),
-			openr: { system: undefined, doors: [], gateDoor: undefined },
-		}).commands?.[0];
-		const reload = admin?.subcommands?.find((s) => s.name === "reload");
-		if (!reload || isSubgroup(reload)) throw new Error("no /admin reload");
+		const reload = adminSubcommand("reload", store, { ...nullErrorReporter, captureBackground });
 		const reply = await reload.handler(context({ principal: principal("admin") }));
 		expect(reply.text).toContain("don't exist and are ignored: gone, old.");
 		expect(captureBackground).toHaveBeenCalledTimes(1);

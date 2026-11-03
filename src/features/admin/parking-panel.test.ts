@@ -77,7 +77,7 @@ function setup() {
 	});
 	const who = (userId: string = IDS.admin) => actor({ userId, displayName: "Admin" });
 
-	/** `/admin parking`. */
+	/** `/admin` → Parking. */
 	const open = async (userId: string = IDS.admin) => {
 		const { reply } = await dispatcher.dispatch({
 			actor: who(userId),
@@ -141,7 +141,7 @@ function formOf(outcome: ActionOutcome): Form {
 	return outcome.form;
 }
 
-describe("/admin parking panel", () => {
+describe("/admin → Parking panel", () => {
 	it("is admin-only: the subcommand and every action", async () => {
 		const t = withSpots();
 		expect((await t.open(IDS.member)).text).toBe(MESSAGES.deniedTier);
@@ -153,7 +153,7 @@ describe("/admin parking panel", () => {
 	it("starts with Add a spot when there are none", async () => {
 		const reply = await setup().open();
 		expect(said(reply)).toContain("There are no parking spots yet. Add one with **Add a spot**.");
-		expect(labels(reply)).toEqual(["Add a spot", "Settings", "Refresh"]);
+		expect(labels(reply)).toEqual(["Add a spot", "Settings", "Refresh", "← Admin"]);
 	});
 
 	it("lists every spot, with menus to manage one, or open or close several", async () => {
@@ -167,6 +167,7 @@ describe("/admin parking panel", () => {
 			"Add a spot",
 			"Settings",
 			"Refresh",
+			"← Admin",
 		]);
 		const several = controlsOf(reply).find(
 			(c) => c.kind === "select" && c.placeholder === "Open spots…",

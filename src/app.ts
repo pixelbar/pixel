@@ -57,7 +57,7 @@ export type Core = {
 	home: Home;
 	/** The devices Pixel may touch in Home Assistant. Empty when Home Assistant isn't set up. */
 	homeDevices: HomeDeviceStore;
-	/** Emergency switches for kinds of device, such as doors (`/admin doors`). */
+	/** Emergency switches for kinds of device, such as doors (`/admin` → Doors). */
 	switches: KindSwitch;
 	registry: CommandRegistry;
 	dispatcher: Dispatcher;

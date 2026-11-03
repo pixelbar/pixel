@@ -9,7 +9,7 @@ import { type Clock, formatParkingDuration, parseDuration } from "./parking-time
 
 /**
  * Pixelbar's parking spots and the parking settings, kept in
- * `data/parking-spots.yaml` and changed with `/admin parking`. They rarely change,
+ * `data/parking-spots.yaml` and changed with `/admin` → Parking. They rarely change,
  * so they live apart from the daily opening times (`parking-windows.yaml`) and the
  * bookings. Not safe to delete.
  *
@@ -83,7 +83,7 @@ const fileSchema = z.strictObject({
 });
 
 const HEADER =
-	"# Pixel's parking spots and settings. Managed with /admin parking; NOT safe to delete.\n";
+	"# Pixel's parking spots and settings. Managed with /admin → Parking; NOT safe to delete.\n";
 
 export class ParkingError extends UserFacingError {
 	override name = "ParkingError";

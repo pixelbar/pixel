@@ -313,7 +313,7 @@ export class FileAccessStore implements AccessStore {
 			if (!(error instanceof AccessConfigError)) throw error;
 			this.#logger.warn({ event: "access.file_invalid" }, error.message);
 			throw new AccessStoreError(
-				"The members file is invalid, so nothing was changed. Fix it, then run /admin reload.",
+				"The members file is invalid, so nothing was changed. Fix it, then run /admin → Reload the access lists.",
 			);
 		}
 	}

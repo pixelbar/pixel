@@ -73,7 +73,7 @@ function withSpots() {
 
 const span = (e: ParkingEntry) => [e.spot, e.from.toISOString(), e.until.toISOString()];
 
-describe("/admin parking", () => {
+describe("/admin → Parking", () => {
 	it("is admin-only, and every reply is private", () => {
 		const { ops } = setup();
 		expect(Object.entries(ops).map(([name, op]) => [name, op.access.minTier, op.private])).toEqual([
@@ -467,7 +467,7 @@ describe("/admin parking", () => {
 	});
 });
 
-describe("/admin parking and bookings", () => {
+describe("/admin → Parking and bookings", () => {
 	const alice = { ref: "discord:100000000000000002", name: "Alice *A*" };
 	const book = (t: ReturnType<typeof setup>, spot: string, until: Date) =>
 		t.bookings.claim(alice, NOW, () => ({ spot, until }));
@@ -568,7 +568,7 @@ describe("/admin parking and bookings", () => {
 	});
 });
 
-describe("/admin parking activity", () => {
+describe("/admin → Parking activity", () => {
 	const events = (t: ReturnType<typeof setup>) =>
 		(t.activity.record.mock.calls as unknown as [Record<string, unknown>][]).map(([e]) => e);
 
@@ -660,7 +660,7 @@ describe("/admin parking activity", () => {
 	});
 });
 
-describe("/admin parking assign", () => {
+describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 	const BOB = { id: "100000000000000005", displayName: "Bob", isBot: false };
 	const alice = { ref: "discord:100000000000000002", name: "Alice" };
 	const bobRef = `discord:${BOB.id}`;

@@ -532,7 +532,7 @@ describe("keeping the session alive", () => {
 		});
 		expect(existsSync(t.file)).toBe(false);
 		expect(t.captureBackground).toHaveBeenCalledWith(
-			expect.objectContaining({ message: expect.stringMatching(/\/admin openr login/) }),
+			expect.objectContaining({ message: expect.stringMatching(/\/admin → OpenR → Log in/) }),
 			"openr",
 		);
 		expect(t.logs.at(-1)).toEqual({
