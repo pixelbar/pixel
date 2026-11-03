@@ -1,11 +1,10 @@
 name: CD
 
-# Merges to `main` publish GHCR and upload Sentry maps when the image inputs
-# (the `image` list in .github/path-filters.yml plus this file) differ from
-# the last run that published. They do **not** roll pixel-prod (ADR 0013):
-# that is the Release workflow. Docs / changelog / test / infra-only merges
-# skip this pipeline. A run that didn't finish saves nothing, so the next one
-# publishes. Azure `dev` is a local build (`just deploy dev`) or the Deploy dev workflow.
+# Merges to `main` publish GHCR and upload Sentry maps when an image path
+# changed (dorny/paths-filter + the `image` list in .github/path-filters.yml).
+# They do **not** roll pixel-prod (ADR 0013): that is the Release workflow.
+# Docs / changelog / test / infra-only merges skip this pipeline. Azure `dev`
+# is a local build (`just deploy dev`) or the Deploy dev workflow.
 # Never copy pixel-dev / Mini Discord tokens into prod.
 # This workflow does not apply Terraform.
 
@@ -19,10 +18,8 @@ on:
 permissions:
   contents: read
 
-# Queue, never cancel, so a publish is never cut short halfway. GitHub still
-# keeps only one pending run and replaces it with a newer push; that is safe
-# because the `latest` lookup below compares against the last run that
-# published, not the previous push, so a replaced run's changes are not lost.
+# Queue, never cancel, so a publish already running is never cut short halfway.
+# GitHub still keeps only one pending run and replaces it with a newer push.
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
@@ -39,25 +36,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      image: ${{ steps.image.outputs.passed != 'true' }}
-      image-key: ${{ steps.image.outputs.key }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      # latest, not exact: after a revert the older code must publish again,
-      # because `:main` has moved on since it was last published.
-      - uses: ./.github/actions/ci-inputs
-        id: image
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
         with:
-          filter: image
-          match: latest
+          filters: .github/path-filters.yml
+          predicate-quantifier: some-with-excludes
 
   publish:
     name: Publish GHCR
     needs: changes
-    if: needs.changes.outputs.image == 'true'
+    if: ${{ always() && !cancelled() && (needs.changes.result == 'failure' || needs.changes.outputs.image == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -141,6 +136,9 @@ jobs:
   sentry-release:
     name: Sentry release (source maps)
     needs: [changes, publish]
+    # publish can run when changes failed (fail closed). Default success()
+    # would skip this job then; still upload maps if the image went out.
+    if: ${{ always() && !cancelled() && needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -201,8 +199,3 @@ jobs:
           set_commits: auto
           ignore_missing: true
           disable_telemetry: true
-
-      # Last, so a run counts as published only with its image and its maps.
-      - uses: ./.github/actions/ci-passed
-        with:
-          key: ${{ needs.changes.outputs.image-key }}

@@ -1,19 +1,18 @@
-# What each CI/CD job depends on. A job runs only when the files its list
-# matches are not a set that already passed (scripts/ci-inputs.sh hashes them,
-# .github/actions/ci-inputs looks the hash up). So a push that only adds a
-# CHANGELOG entry, or a docs-only PR, does not run the app checks again.
-# Keep the pipeline diagrams in docs/architecture.md and docs/runbook.md in sync.
+# Which expensive CI/CD jobs run for a change.
+# Used by dorny/paths-filter in ci.yml, cd.yml, docs.yml and terraform.yml
+# (predicate-quantifier: some-with-excludes). Keep the pipeline diagrams in
+# docs/architecture.md and docs/runbook.md in sync.
 #
-# Patterns are git glob pathspecs: `*` stays inside one directory, `**`
-# crosses them, a leading `!` excludes. Every hash also covers this file,
-# scripts/ci-inputs.sh, .github/actions/ and the workflow that runs the job,
-# so don't list those here. List what the job reads, nothing more.
-# `just ci-inputs <name>` prints what a list matches.
+# Patterns are picomatch globs: `*` stays inside one directory, `**` crosses
+# them, a leading `!` excludes. Markdown-only changes match none of check or
+# image, so they skip just check, Docker and GHCR. Changing this file itself
+# is in every list (fail closed).
 #
 # check     → just check + just build (ci.yml)
 # image     → Docker smoke (ci.yml) and GHCR + Sentry (cd.yml)
 # docs      → Biome on docs/ + the VitePress build (docs.yml)
-# terraform → just tf-validate and the env plans (terraform.yml)
+# terraform → just tf-validate (terraform.yml)
+# stack     → Azure plans (terraform.yml); markdown under infra/ does not count
 
 check:
   - "src/**"
@@ -30,6 +29,10 @@ check:
   - ".nvmrc"
   # Biome skips what git ignores.
   - ".gitignore"
+  - "Dockerfile"
+  # Fail closed: a workflow or filter change still runs just check.
+  - ".github/workflows/**"
+  - ".github/path-filters.yml"
   # scripts/secrets-manifest.test.ts checks these against infra/secrets.manifest.yaml (ADR 0015).
   - "infra/secrets.manifest.yaml"
   - "infra/modules/pixel/*.tf"
@@ -38,12 +41,6 @@ check:
   - "docs/runbook.md"
   - "docs/architecture.md"
   - "docs/infra.md"
-  # scripts/ci-inputs.test.ts checks these against the lists below (ci.yml is
-  # in every check hash already).
-  - "Dockerfile"
-  - ".github/workflows/cd.yml"
-  - ".github/workflows/docs.yml"
-  - ".github/workflows/terraform.yml"
 
 # What the Dockerfile copies. Tests are copied but never compiled into the image.
 image:
@@ -58,6 +55,9 @@ image:
   - "tsconfig.build.json"
   - "Dockerfile"
   - ".dockerignore"
+  - ".github/path-filters.yml"
+  - ".github/workflows/ci.yml"
+  - ".github/workflows/cd.yml"
 
 # The site, plus the root package.json (its version is in the nav, and Biome
 # comes from the root install). docs.yml's paths trigger must list these too.
@@ -70,10 +70,20 @@ docs:
   - ".gitignore"
   - ".nvmrc"
   - "justfile"
+  - ".github/workflows/docs.yml"
+  - ".github/path-filters.yml"
 
 # Markdown under infra/ does not change the stack. terraform.yml's paths
-# trigger must list these too.
+# trigger must list the positive patterns too, so the workflow still starts
+# for infra markdown; the inner filter then skips validate.
 terraform:
   - "infra/**"
   - "!infra/**/*.md"
   - "justfile"
+  - ".github/workflows/terraform.yml"
+  - ".github/path-filters.yml"
+
+# Azure plans only. justfile / workflow / filter edits validate but do not plan.
+stack:
+  - "infra/**"
+  - "!infra/**/*.md"
