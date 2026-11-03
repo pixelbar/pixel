@@ -272,6 +272,20 @@ describe("people", () => {
 		expect(labels(bot)).toEqual(["← People"]);
 	});
 
+	it("offers a guest no way to grant capabilities, since they'd do nothing", async () => {
+		const t = setup();
+		const guest = replyOf(
+			await t.person({ id: "100000000000000098", displayName: "Gus", isBot: false }),
+		);
+		expect(labels(guest)).toEqual([
+			"Change level…",
+			"Sync their Discord roles",
+			"Capabilities in detail",
+			"← People",
+			"Refresh",
+		]);
+	});
+
 	it("changes a level on a form filled in with the current one, with a reason", async () => {
 		const t = setup();
 		const panel = replyOf(await t.person(GRACE));

@@ -201,14 +201,16 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 				...(tier === "admin"
 					? []
 					: [button("Change level…", ADMIN_ACTIONS.levelForm, who, "primary")]),
-				button("Grant every capability…", ADMIN_ACTIONS.grantAllForm, who),
+				...(tier === "guest"
+					? []
+					: [button("Grant every capability…", ADMIN_ACTIONS.grantAllForm, who)]),
 				button("Sync their Discord roles", ADMIN_ACTIONS.syncPerson, who),
 				button("Capabilities in detail", ADMIN_ACTIONS.personCapabilities, who),
 			]);
 			const all = deps.capabilities.all();
 			const toGrant = all.filter((c) => !held.includes(c.name));
 			const toRevoke = held.filter((name) => deps.capabilities.has(name));
-			if (toGrant.length > 0) {
+			if (tier !== "guest" && toGrant.length > 0) {
 				rows.push([capabilitySelect("Grant capabilities…", ADMIN_ACTIONS.grantAsk, who, toGrant)]);
 			}
 			if (toRevoke.length > 0) {
