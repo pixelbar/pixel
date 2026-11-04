@@ -21,6 +21,7 @@ import { normaliseSpotName, resetClock } from "../../services/parking-spots.ts";
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import { openUntil } from "../../services/parking-windows.ts";
 import {
+	alphabetical,
 	describeSpot,
 	EvictNeeded,
 	type ParkingAdminDeps,
@@ -101,9 +102,10 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 
 	/** Every spot, a page of 25 at a time (Discord's menus hold 25), and the settings. */
 	async function overview(ctx: ActionContext, notice: string[] = [], at = 0): Promise<Reply> {
-		const { page, pages } = spotPage(deps.spots.all().length, at);
+		const sorted = alphabetical(deps.spots.all());
+		const { page, pages } = spotPage(sorted.length, at);
 		const status = await run("status", ctx, { page });
-		const spots = spotsOnPage(deps.spots.all(), page);
+		const spots = spotsOnPage(sorted, page);
 		const rows: ControlRow[] = [];
 		if (spots.length > 0) {
 			const options = spots.map((s) => ({
