@@ -9,6 +9,14 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- When something typed on a form is wrong (a bad spot name, a time Pixel can't read, an OpenR code that doesn't work), the private reply now has **Fix it**, which opens the form again filled in with what was typed, instead of starting over. Every form opened from a button or menu gets it when its action refuses what was typed, which today is every `/admin` form, including Parking (where a form's mistake now comes back this way instead of on the panel). Discord can't check a form before it's sent, so this is the nearest thing. `/schedule` already keeps what was typed in its draft, and `/park` shows its problems on its panel.
+
+### Changed
+
+- Parking spot names can contain spaces (`by the bins`), as well as lowercase letters, digits and `-`. Where `/admin` → Parking takes several spots, separate them with commas; spaces still work when no name has one.
+
 ## [0.24.0] - 2026-11-03
 
 ### Added
@@ -17,8 +25,6 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
-- Parking spot names can contain spaces (`by the bins`), as well as lowercase letters, digits and `-`. Where `/admin` → Parking takes several spots, separate them with commas; spaces still work when no name has one.
-- When something typed on a form is wrong (a bad spot name, a time Pixel can't read, an OpenR code that doesn't work), the private reply now has **Fix it**, which opens the form again filled in with what was typed, instead of starting over. Every form opened from a button or menu gets it when its action refuses what was typed, which today is every `/admin` form, including Parking (where a form's mistake now comes back this way instead of on the panel). Discord can't check a form before it's sent, so this is the nearest thing. `/schedule` already keeps what was typed in its draft, and `/park` shows its problems on its panel.
 - CI/CD uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with [`.github/path-filters.yml`](.github/path-filters.yml) to decide which expensive jobs run. Markdown-only changes skip `just check`, the Docker smoke build and GHCR. A change to `src/`, the lockfile, workflows, Dockerfile, `justfile`, `config/` or `content/info/` still runs the matching job (fail closed); if the filter job itself fails, those jobs still run, and CD still uploads Sentry maps after a successful publish. Azure plans still skip unless Terraform files under `infra/` changed. The content-hash skip (`scripts/ci-inputs.sh` and the Actions cache markers) is gone.
 
 - **`/admin` is one command with a panel** instead of about twenty subcommands and groups. `/admin` shows Pixel's status, with **Reload the access lists** and a **Go to…** menu of sections:
