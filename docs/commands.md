@@ -270,9 +270,9 @@ Opens the admin panel: Pixel's health, with sections for people and their access
 - **Reload the access lists** re-reads the member and admin lists and the Home Assistant devices after someone edited them by hand, and says what changed.
 - **Refresh** shows the status again.
 
-Changes that are hard to undo ask first, and most ask for an optional reason for the audit log. **← Admin** in every section goes back to the first panel.
+Changes that are hard to undo ask first. Changes to a person's level or capabilities, and to what a level gets, ask for an optional reason for the audit log. **← Admin** in every section goes back to the first panel.
 
-### People
+### People {#admin-people}
 
 One person's level, capabilities and Discord roles. **Look someone up…** asks who, then shows their level, where it comes from, what they hold and their roles.
 
@@ -282,15 +282,15 @@ One person's level, capabilities and Discord roles. **Look someone up…** asks 
 - **Sync their Discord roles**: sets their roles to match their level.
 - **Capabilities in detail**: the capabilities they hold, in full.
 
-### Capabilities
+### Capabilities {#admin-capabilities}
 
 Every capability, what it is for, how many people hold it and which levels get it. **What friends get** and **What members get** show what a level grants, with menus to grant a capability to everyone at that level, or take it back. What friends get, members get too. A level change DMs nobody.
 
-### Discord roles
+### Discord roles {#admin-roles}
 
 Whether Pixel's levels are mirrored to Discord roles. **Sync everyone** sets the roles to match Pixel's lists for everyone in them. People who hold a role but aren't listed aren't touched.
 
-### Announcements
+### Announcements {#admin-announcements}
 
 The channels where Pixel announces that the space opened or closed, and whether each is posting. **Add a channel…** picks a channel you can post in and a style:
 
@@ -300,15 +300,15 @@ The channels where Pixel announces that the space opened or closed, and whether 
 
 **Stop announcing in…** removes a channel. Changes take effect at once.
 
-### Closing time
+### Closing time {#admin-closing-time}
 
 The reminder Pixel posts when the space closes, and by `/closing-time`. **Change the message…** opens the text, prefilled with the saved one. Markdown and date tokens like <code v-pre>{{date}}</code> work. With no message set, Pixel posts its own. It's posted in public, so never put door codes or other secrets in it.
 
-### Doors
+### Doors {#admin-doors}
 
 Door control from Pixel, on or off. **Switch door control off…** (Pixel asks first) stops every door action from Pixel at once, for everyone: Home Assistant's doors, OpenR's doors and the parking gate. **Switch door control on** brings it back. It stays as set across restarts. It doesn't lock a physical door.
 
-### OpenR
+### OpenR {#admin-openr}
 
 Only shown where OpenR is set up. Whether Pixel is logged in to OpenR, and each door's status.
 
@@ -316,7 +316,7 @@ Only shown where OpenR is set up. Whether Pixel is logged in to OpenR, and each 
 - **Enter the code…**: finishes logging in with that code. It's never logged.
 - **Log out…** (Pixel asks first): nobody can open a door through OpenR until an admin logs in again.
 
-### Parking
+### Parking {#admin-parking}
 
 Every spot, whether it's open, until when, and who's in it, 25 spots to a page.
 
@@ -332,6 +332,6 @@ One spot's panel has:
 - **Edit…**: where it is (shown to people who park) and its kind.
 - **Remove…** (Pixel asks first): the spot and its opening times go. This can't be undone.
 - **Free the spot…**: ends the booking of someone who left without pressing **Leave**.
-- **Give it to someone…**: books it for the person who is parked there, until a time or until the spot closes. They get a DM, and a booking they had elsewhere ends. Pixel won't take a spot from someone still booked into it unless you go ahead when it asks.
+- **Give it to someone…**: books it for the person who is parked there, for how long you say (such as `2h` or `rest of day`), or until the spot closes if you leave it empty. They get a DM, and a booking they had elsewhere ends. Pixel won't take a spot from someone still booked into it unless you go ahead when it asks.
 
 How to use these day to day is in the [runbook](/maintainers/runbook).
