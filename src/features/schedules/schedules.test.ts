@@ -166,7 +166,7 @@ function setup(options: { check?: ChannelCheck } = {}) {
 		);
 		if (!control || control.kind === "link") throw new Error(`no control "${label}"`);
 		const args = { ...control.call.args } as Record<string, string | number>;
-		if (control.kind === "select") args[control.arg] = values.join(" ");
+		if (control.kind === "select") args[control.arg] = values.join(", ");
 		return act(control.call.action, args, { userId });
 	};
 

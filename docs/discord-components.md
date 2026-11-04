@@ -107,7 +107,7 @@ For several related fields, open a modal with one Label per field. Inside a Labe
 
 - Five top-level components at most. If a form needs more, it's two steps or two commands.
 - Fields in a modal can't depend on each other: nothing appears or disappears while the person fills it in. Ask for everything that could matter, mark what's optional in its description, and check the combination when it's submitted.
-- A modal can't open from a modal submit. When a submit has a mistake, reply privately with what's wrong and a **Fix it** button that reopens the modal filled in with what they typed (pass it as the prefill, like `formModal`'s `values`).
+- A modal can't open from a modal submit. When a submit has a mistake, reply privately with what's wrong and a **Fix it** button that reopens the modal filled in with what they typed (pass it as the prefill, like `formModal`'s `values`). `/admin` → Parking does this for every form: the form's own opening action takes what was typed as optional arguments.
 - Opening a modal has to be the first response to an interaction, within 3 seconds, and never after a defer. The access check before it must be fast, as `prepareForm` is today.
 - Use the `Label` component, not an Action Row, for every input. Move `formModal` over when it's next changed.
 
@@ -233,7 +233,7 @@ return {
 ```
 
 - An action returns `{ reply }`, which replaces the message the control was on, or `{ form }`, which opens a form. A form's `submit` names the action to run with the fields as extra arguments. A form must open within Discord's 3 seconds, so the handler that returns it should do no slow work.
-- A select's chosen value fills in its `arg`. With `max` above 1, the values are joined with spaces, so they can't contain whitespace. A form's checkbox group works the same way. A channel field adds a `ResolvedChannel` to `ctx.channels`, like a `channel` option, and a user field adds a `ResolvedUser` to `ctx.users`, like a `user` option (so bots are refused unless the option allows them). A button can't carry a picked person or channel: to replay an action that had one (Go ahead after a confirmation), hold their ID in the button's arguments and pass it to a separate action, as `parking-admin.assign-confirm` does.
+- A select's chosen value fills in its `arg`. With `max` above 1, the values are joined with `, `, so they can't contain a comma. A form's checkbox group works the same way. A channel field adds a `ResolvedChannel` to `ctx.channels`, like a `channel` option, and a user field adds a `ResolvedUser` to `ctx.users`, like a `user` option (so bots are refused unless the option allows them). A button can't carry a picked person or channel: to replay an action that had one (Go ahead after a confirmation), hold their ID in the button's arguments and pass it to a separate action, as `parking-admin.assign-confirm` does.
 - Refusals (no access, a `UserFacingError`) are sent as a private reply and leave the message as it was. To show a mistake inside the panel instead, catch it in the action and return a reply that explains it.
 - Limits come from `UI_LIMITS` in `core/ui.ts`: 5 rows, 5 buttons per row or one select, 25 options, 5 form fields, 2 to 10 radio options, 1 to 10 checkboxes. The adapter throws on a layout Discord would refuse, so a test catches it.
 

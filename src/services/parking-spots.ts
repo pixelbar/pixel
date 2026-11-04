@@ -29,8 +29,16 @@ export const MAX_DURATIONS = 25;
 export const MAX_REMIND_MINUTES = 120;
 export const MAX_GRACE_MINUTES = 60;
 
-/** Lowercase words joined by '-', up to 32 characters, like Home Assistant device names. */
-export const SPOT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+/**
+ * Lowercase words joined by '-' or single spaces, starting with a letter, up to 32
+ * characters: `neighbour-1` or `by the bins`.
+ */
+export const SPOT_NAME = /^(?=.{1,32}$)[a-z][a-z0-9-]*(?: [a-z0-9-]+)*$/;
+
+/** A spot name as typed, trimmed and with runs of spaces made one. */
+export function normaliseSpotName(typed: string): string {
+	return typed.trim().replace(/\s+/g, " ");
+}
 
 export type ParkingSpot = {
 	name: string;
@@ -58,7 +66,7 @@ export const DEFAULT_SETTINGS: ParkingSettings = {
 };
 
 const spotSchema = z.strictObject({
-	name: z.string().regex(SPOT_NAME, { error: "must be lowercase words joined by '-'" }),
+	name: z.string().regex(SPOT_NAME, { error: "must be lowercase words joined by '-' or spaces" }),
 	description: z.string().min(1).max(MAX_DESCRIPTION).optional(),
 	permanent: z.boolean().default(false),
 });
@@ -138,11 +146,12 @@ export class ParkingSpotStore {
 		return this.#settings;
 	}
 
-	add(spot: ParkingSpot): ParkingSpot {
+	add(typed: ParkingSpot): ParkingSpot {
 		this.#writable();
+		const spot = { ...typed, name: normaliseSpotName(typed.name) };
 		if (!SPOT_NAME.test(spot.name)) {
 			throw new ParkingError(
-				"A spot's name is lowercase letters, digits and '-', starting with a letter, up to 32 characters.",
+				"A spot's name is lowercase letters, digits, '-' and spaces, starting with a letter, up to 32 characters.",
 			);
 		}
 		if (this.get(spot.name))

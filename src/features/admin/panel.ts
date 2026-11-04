@@ -272,7 +272,9 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 		base: Args,
 		users: ActionContext["users"],
 	): Promise<Reply> {
-		const names = String(ctx.args.capability).split(/\s+/).filter(Boolean);
+		const names = String(ctx.args.capability)
+			.split(/[\s,]+/)
+			.filter(Boolean);
 		const replies: Reply[] = [];
 		for (const capability of names)
 			replies.push(await run(op, ctx, { ...base, capability }, users));
@@ -595,7 +597,9 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 		),
 		action(ADMIN_ACTIONS.grantAsk, [...personOptions, capabilityArg], (ctx) => {
 			const user = heldPerson(ctx);
-			const names = String(ctx.args.capability).split(/\s+/).join(", ");
+			const names = String(ctx.args.capability)
+				.split(/[\s,]+/)
+				.join(", ");
 			return {
 				form: reasonForm(`Grant ${names}`, ADMIN_ACTIONS.grant, {
 					...personArgs(user),
@@ -615,7 +619,9 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 		}),
 		action(ADMIN_ACTIONS.revokeAsk, [...personOptions, capabilityArg], (ctx) => {
 			const user = heldPerson(ctx);
-			const names = String(ctx.args.capability).split(/\s+/).join(", ");
+			const names = String(ctx.args.capability)
+				.split(/[\s,]+/)
+				.join(", ");
 			return {
 				form: reasonForm(`Revoke ${names}`, ADMIN_ACTIONS.revoke, {
 					...personArgs(user),
@@ -678,10 +684,16 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 			const levelArg = choice("level", "Which level", GRANT_LEVELS);
 			return [
 				action(ask, [levelArg, capabilityArg], (ctx) => ({
-					form: reasonForm(`${verb} ${String(ctx.args.capability).split(/\s+/).join(", ")}`, go, {
-						level: String(ctx.args.level),
-						capability: String(ctx.args.capability),
-					}),
+					form: reasonForm(
+						`${verb} ${String(ctx.args.capability)
+							.split(/[\s,]+/)
+							.join(", ")}`,
+						go,
+						{
+							level: String(ctx.args.level),
+							capability: String(ctx.args.capability),
+						},
+					),
 				})),
 				action(go, [levelArg, capabilityArg, reasonOpt], async (ctx) => {
 					const said = await eachCapability(

@@ -168,6 +168,24 @@ describe("renderControls", () => {
 		expect(held[0]?.[0]?.select).toEqual({ arg: "id", values: ["a", "b"], min: 1, max: 1 });
 	});
 
+	it("lets a multiple choice's values contain spaces", () => {
+		const { held } = render([
+			[
+				select({
+					max: 2,
+					options: [
+						{ label: "x", value: "by the bins" },
+						{ label: "y", value: "c" },
+					],
+				}),
+			],
+		]);
+		expect(held[0]?.[0]?.select?.values).toEqual(["by the bins", "c"]);
+		expect(held[0]?.[0] && controlArgs(held[0][0], ["by the bins", "c"])).toMatchObject({
+			id: "by the bins, c",
+		});
+	});
+
 	it("holds nothing when there are no controls", () => {
 		expect(render([])).toEqual({ json: [], held: [] });
 	});
@@ -200,13 +218,13 @@ describe("renderControls", () => {
 		["max of zero", [[select({ min: 0, max: 0 })]]],
 		["a negative min", [[select({ min: -1 })]]],
 		[
-			"multiple choice values with spaces",
+			"multiple choice values with commas",
 			[
 				[
 					select({
 						max: 2,
 						options: [
-							{ label: "x", value: "a b" },
+							{ label: "x", value: "a,b" },
 							{ label: "y", value: "c" },
 						],
 					}),
@@ -230,8 +248,8 @@ describe("controlArgs", () => {
 		expect(controlArgs({ call: { action: "feat.go" } }, ["x"])).toEqual({});
 	});
 
-	it("adds a select's chosen values, space-separated", () => {
-		expect(controlArgs(pick, ["mon", "wed"])).toEqual({ from: "list", days: "mon wed" });
+	it("adds a select's chosen values, joined with commas", () => {
+		expect(controlArgs(pick, ["mon", "wed"])).toEqual({ from: "list", days: "mon, wed" });
 		expect(controlArgs(pick, [])).toEqual({ from: "list" });
 		expect(controlArgs(pick, undefined)).toEqual({ from: "list" });
 	});
@@ -444,8 +462,8 @@ describe("renderForm", () => {
 		],
 		["no checkboxes", [{ kind: "checkboxes", name: "c", label: "c", options: [] }]],
 		[
-			"a checkbox value with a space",
-			[{ kind: "checkboxes", name: "c", label: "c", options: [{ label: "x", value: "a b" }] }],
+			"a checkbox value with a comma",
+			[{ kind: "checkboxes", name: "c", label: "c", options: [{ label: "x", value: "a,b" }] }],
 		],
 	])("refuses a form Discord would refuse: %s", (_, fields) => {
 		expect(() => renderForm({ title: "T", submit: { action: "feat.go" }, fields }, "x")).toThrow();
@@ -473,7 +491,7 @@ describe("formArgs", () => {
 				channel: CHANNEL,
 				when: "wed 1900",
 				repeat: "weekly",
-				days: "mon tue",
+				days: "mon, tue",
 				text: "Hello",
 			},
 			channels: {

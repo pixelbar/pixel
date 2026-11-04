@@ -108,7 +108,7 @@ function setup() {
 		);
 		if (!control || control.kind === "link") throw new Error(`no control "${label}"`);
 		const args = { ...control.call.args } as Record<string, string | boolean>;
-		if (control.kind === "select") args[control.arg] = values.join(" ");
+		if (control.kind === "select") args[control.arg] = values.join(", ");
 		return act(control.call.action, args);
 	};
 	const submit = (
@@ -262,6 +262,23 @@ describe("several spots at once", () => {
 		expect(said(opened)).toContain("**neighbour-1**, **neighbour-2** open from now until 23:59.");
 	});
 
+	it("handles spots whose names have spaces", async () => {
+		const t = withSpots();
+		t.spots.add({ name: "by the bins", permanent: false });
+		const panel = replyOf(await t.click(await t.open(), "Manage a spot…", ["by the bins"]));
+		expect(panel.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		const form = formOf(
+			await t.click(await t.open(), "Open spots…", ["by the bins", "neighbour-1"]),
+		);
+		expect(form.title).toBe("Open by the bins, neighbour-1");
+		const opened = replyOf(await t.submit(form, { until: "17:00" }));
+		expect(said(opened)).toContain("**by the bins**, **neighbour-1** open from now until 17:00.");
+		const open = replyOf(await t.act(PARKING_ACTIONS.spot, { spot: "by the bins" }));
+		const shut = replyOf(await t.click(open, "Close for today"));
+		expect(shut.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		expect(said(shut)).toContain("**by the bins** closed for today.");
+	});
+
 	it("closes borrowed spots straight away, and asks until when for permanent ones", async () => {
 		const t = withSpots();
 		await t.act(PARKING_ACTIONS.open, { spots: "neighbour-1" });
@@ -408,6 +425,115 @@ describe("spots and settings", () => {
 		});
 		const bad = replyOf(await t.submit(form, { remind: "lots" }));
 		expect(said(bad)).toContain("⚠️ **Remind** is a whole number of minutes from 0 to 120.");
+	});
+});
+
+describe("Fix it", () => {
+	const field = (form: Form, name: string) => form.fields.find((f) => f.name === name);
+	const fixIt = async (
+		t: ReturnType<typeof setup>,
+		form: Form,
+		fields: Record<string, string>,
+		users?: Record<string, ResolvedUser>,
+	) => {
+		const reply = replyOf(await t.submit(form, fields, users));
+		expect(reply.embeds?.[0]?.title).toBe("That didn't work");
+		expect(labels(reply)).toEqual(["Fix it", "Cancel"]);
+		return { reply, again: formOf(await t.click(reply, "Fix it")) };
+	};
+
+	it("opens Add a spot again with what was typed, and works once it's fixed", async () => {
+		const t = withSpots();
+		const form = formOf(await t.act(PARKING_ACTIONS.addForm, {}));
+		const { reply, again } = await fixIt(t, form, {
+			name: "By the Bins",
+			description: "Round the back",
+			kind: "permanent",
+		});
+		expect(said(reply)).toContain("⚠️ A spot's name is lowercase letters");
+		expect(again.title).toBe("Add a spot");
+		expect(field(again, "name")).toMatchObject({ value: "By the Bins" });
+		expect(field(again, "description")).toMatchObject({ value: "Round the back" });
+		expect(field(again, "kind")).toMatchObject({
+			options: [
+				expect.not.objectContaining({ selected: true }),
+				expect.objectContaining({ selected: true }),
+			],
+		});
+		const added = replyOf(
+			await t.submit(again, {
+				name: "by the bins",
+				description: "Round the back",
+				kind: "permanent",
+			}),
+		);
+		expect(added.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		expect(t.spots.get("by the bins")).toEqual({
+			name: "by the bins",
+			description: "Round the back",
+			permanent: true,
+		});
+	});
+
+	it("Cancel goes back without changing anything", async () => {
+		const t = withSpots();
+		const form = formOf(await t.act(PARKING_ACTIONS.addForm, {}));
+		const { reply } = await fixIt(t, form, { name: "ours", kind: "borrowed" });
+		expect(said(reply)).toContain("already a spot called **ours**");
+		expect(replyOf(await t.click(reply, "Cancel")).embeds?.[0]?.title).toBe("🅿️ Parking spots");
+		expect(t.spots.all()).toHaveLength(2);
+	});
+
+	it("opens Open… and Close… again with the times typed", async () => {
+		const t = withSpots();
+		const open = formOf(await t.act(PARKING_ACTIONS.openPick, { spots: "neighbour-1" }));
+		const { again } = await fixIt(t, open, { from: "soon", until: "17:00" });
+		expect(again.title).toBe("Open neighbour-1");
+		expect(again.submit).toEqual({ action: PARKING_ACTIONS.open, args: { spots: "neighbour-1" } });
+		expect(field(again, "from")).toMatchObject({ value: "soon" });
+		expect(field(again, "until")).toMatchObject({ value: "17:00" });
+
+		const close = formOf(await t.act(PARKING_ACTIONS.closePick, { spots: "ours" }));
+		const fixed = await fixIt(t, close, { until: "whenever" });
+		expect(fixed.again.title).toBe("Close ours");
+		expect(field(fixed.again, "until")).toMatchObject({ value: "whenever" });
+	});
+
+	it("opens Edit… again with what was typed, not what's saved", async () => {
+		const t = withSpots();
+		const form = formOf(await t.act(PARKING_ACTIONS.editForm, { spot: "ours" }));
+		expect(field(form, "description")).toMatchObject({ value: "Next to the gate" });
+		const { again } = await fixIt(t, form, { description: "x".repeat(101), kind: "borrowed" });
+		expect(field(again, "description")).toMatchObject({ value: "x".repeat(101) });
+		expect(field(again, "kind")).toMatchObject({
+			options: [
+				expect.objectContaining({ selected: true }),
+				expect.not.objectContaining({ selected: true }),
+			],
+		});
+		// Emptied on the form, then a problem: it stays empty rather than showing the saved one.
+		const emptied = formOf(
+			await t.act(PARKING_ACTIONS.editForm, { spot: "ours", kind: "permanent" }),
+		);
+		expect(field(emptied, "description")).not.toHaveProperty("value");
+	});
+
+	it("opens Give it to someone… again with the person and how long", async () => {
+		const t = withSpots();
+		const form = formOf(await t.act(PARKING_ACTIONS.assignForm, { spot: "neighbour-1" }));
+		const { again } = await fixIt(t, form, { user: BOB.id, for: "2h" }, { user: BOB });
+		expect(again.submit).toEqual({ action: PARKING_ACTIONS.assign, args: { spot: "neighbour-1" } });
+		expect(field(again, "user")).toMatchObject({ value: BOB.id });
+		expect(field(again, "for")).toMatchObject({ value: "2h" });
+	});
+
+	it("opens the settings again with what was typed", async () => {
+		const t = withSpots();
+		const form = formOf(await t.act(PARKING_ACTIONS.settingsForm, {}));
+		const { again } = await fixIt(t, form, { remind: "999", durations: "1h" });
+		expect(field(again, "remind")).toMatchObject({ value: "999" });
+		expect(field(again, "durations")).toMatchObject({ value: "1h" });
+		expect(field(again, "grace")).toMatchObject({ value: "5" });
 	});
 });
 

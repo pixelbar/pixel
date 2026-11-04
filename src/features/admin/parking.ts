@@ -14,6 +14,7 @@ import {
 	MAX_GRACE_MINUTES,
 	MAX_REMIND_MINUTES,
 	normaliseDurations,
+	normaliseSpotName,
 	type ParkingSettings,
 	type ParkingSpot,
 	type ParkingSpotStore,
@@ -55,11 +56,29 @@ export type ParkingAdminDeps = {
 	now?: () => Date;
 };
 
-const SPOTS_HELP = "One spot, or several separated by spaces";
+const SPOTS_HELP = "One spot, or several separated by commas";
 
 /** A change would end someone's booking, and `evict` wasn't given: ask first. */
 export class EvictNeeded extends UserFacingError {
 	override name = "EvictNeeded";
+}
+
+/**
+ * The spot names in `typed`, separated by commas (names can contain spaces). A piece
+ * that isn't a spot, but has a word that is, is read as names separated by spaces, as
+ * before names could contain them.
+ */
+export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string): string[] {
+	return typed
+		.toLowerCase()
+		.split(",")
+		.map(normaliseSpotName)
+		.filter(Boolean)
+		.flatMap((piece) => {
+			if (spots.get(piece)) return [piece];
+			const words = piece.split(" ");
+			return words.length > 1 && words.some((w) => spots.get(w)) ? words : [piece];
+		});
 }
 
 /** The spots named in `typed`, in the order given. Throws if any doesn't exist. */
@@ -67,14 +86,7 @@ export function resolveSpots(
 	spots: Pick<ParkingSpotStore, "get">,
 	typed: string,
 ): readonly ParkingSpot[] {
-	const names = [
-		...new Set(
-			typed
-				.toLowerCase()
-				.split(/[\s,]+/)
-				.filter(Boolean),
-		),
-	];
+	const names = [...new Set(splitSpots(spots, typed))];
 	if (names.length === 0) throw new UserFacingError("Name at least one spot.");
 	const found = names.map((n) => ({ name: n, spot: spots.get(n) }));
 	const unknown = found.filter((f) => !f.spot).map((f) => inlineCode(f.name, 32));
@@ -310,7 +322,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		options: [
 			{
 				name: "name",
-				description: "Lowercase words joined by '-', e.g. neighbour-1",
+				description: "Lowercase words joined by '-' or spaces, e.g. neighbour-1",
 				type: "string",
 				required: true,
 			},

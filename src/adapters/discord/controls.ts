@@ -171,8 +171,8 @@ export function renderControls(
 			if (min < 0 || max < Math.max(min, 1) || max > options.length) {
 				throw new Error("a select's min and max must fit its options");
 			}
-			if (max > 1 && options.some((o) => /\s/.test(o.value))) {
-				throw new Error("values of a multiple choice can't contain whitespace");
+			if (max > 1 && options.some((o) => o.value.includes(","))) {
+				throw new Error("values of a multiple choice can't contain a comma");
 			}
 			held.push({
 				call: control.call,
@@ -241,7 +241,7 @@ export function controlArgs(
 	) {
 		return undefined;
 	}
-	if (chosen.length > 0) args[arg] = chosen.join(" ");
+	if (chosen.length > 0) args[arg] = chosen.join(", ");
 	return args;
 }
 
@@ -288,8 +288,8 @@ function inputJson(field: FormInput) {
 			if (field.options.length < 1 || field.options.length > UI_LIMITS.choices) {
 				throw new Error(`a checkbox group has 1 to ${UI_LIMITS.choices} options`);
 			}
-			if (field.options.some((o) => /\s/.test(o.value))) {
-				throw new Error("checkbox values can't contain whitespace");
+			if (field.options.some((o) => o.value.includes(","))) {
+				throw new Error("checkbox values can't contain a comma");
 			}
 			return {
 				type: 22,
@@ -388,7 +388,7 @@ export function formArgs(
 					if (required) return undefined;
 					continue;
 				}
-				args[field.name] = values.join(" ");
+				args[field.name] = values.join(", ");
 				break;
 			}
 			case "user": {

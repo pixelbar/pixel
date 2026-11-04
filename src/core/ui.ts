@@ -21,7 +21,7 @@ export type ButtonStyle = "primary" | "secondary" | "success" | "danger";
 
 export type ChoiceOption = {
 	label: string;
-	/** What's submitted. No whitespace when more than one can be chosen. */
+	/** What's submitted. No comma when more than one can be chosen. */
 	value: string;
 	description?: string;
 	/** Chosen to begin with. */
@@ -35,7 +35,7 @@ export type Control =
 			kind: "select";
 			placeholder: string;
 			call: ActionCall;
-			/** Which argument of `call` the chosen values fill in (space-separated if several). */
+			/** Which argument of `call` the chosen values fill in (joined with ", " if several). */
 			arg: string;
 			options: readonly ChoiceOption[];
 			/** How many may be chosen. Both default to 1. */
@@ -77,7 +77,7 @@ export type FormInput =
 	  })
 	/** Exactly one of 2 to 10 options. */
 	| (InputBase & { kind: "radio"; options: readonly ChoiceOption[] })
-	/** Any number of 1 to 10 options, submitted space-separated. */
+	/** Any number of 1 to 10 options, submitted joined with ", ". */
 	| (InputBase & { kind: "checkboxes"; options: readonly ChoiceOption[] })
 	/** A channel. The argument is its ID, and `ctx.channels` says what the person may do there. */
 	| (InputBase & { kind: "channel"; value?: string })
