@@ -1,7 +1,7 @@
 /**
  * The building's door system (OpenR): opens a door by its ID, using the one account
  * Pixel is logged in to. Who may open which door is decided before this is called (the
- * dispatcher, the doors in the config, `/admin doors`); an implementation only makes the
+ * dispatcher, the doors in the config, `/admin` → Doors); an implementation only makes the
  * call and never decides who may.
  *
  * Opening must fail closed: one attempt with a time limit, no retries and no queueing,

@@ -1,4 +1,11 @@
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import {
+	Client,
+	Events,
+	GatewayIntentBits,
+	type GuildBasedChannel,
+	type Interaction,
+	MessageFlags,
+} from "discord.js";
 import type { PlatformActor } from "../../core/access.ts";
 import type { Publisher } from "../../core/announcement.ts";
 import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
@@ -27,6 +34,7 @@ import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
 import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
+import { CONTROL_PREFIX, HeldControls, submittedFields, UI_FORM_PREFIX } from "./controls.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
 import {
@@ -39,6 +47,11 @@ import {
 import { handleInteractionFailure } from "./interaction-errors.ts";
 import { createPresencePublisher } from "./presence.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
+import {
+	CONTROL_EXPIRED_MESSAGE,
+	createControlHandler,
+	createUiFormHandler,
+} from "./ui-handlers.ts";
 
 export type DiscordAdapterDeps = {
 	token: string;
@@ -47,7 +60,7 @@ export type DiscordAdapterDeps = {
 	logger: Logger;
 	/**
 	 * Discord channels for the other announcements. Each is optional; unset means off.
-	 * Open/closed announcements aren't here: admins set those with `/admin announcements`.
+	 * Open/closed announcements aren't here: admins set those with `/admin` → Announcements.
 	 */
 	announce: {
 		/** Where Pixel says it's online or offline. */
@@ -59,7 +72,7 @@ export type DiscordAdapterDeps = {
 	botStatusStateFile: string;
 	/** Where each admin-set live or single channel remembers its current post. */
 	announcementPostsDir: string;
-	/** The (style, channel) pairings admins have set with `/admin announcements`. */
+	/** The (style, channel) pairings admins have set with `/admin` → Announcements. */
 	announcementRouteStore: DiscordRoutesOptions["store"];
 	/** Where this adapter plugs in running those pairings once it's ready. */
 	announcementRoutes: Pick<AnnouncementRoutes, "use">;
@@ -103,17 +116,32 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 	const { guildId, dispatcher, reportError } = deps;
 	const logger = deps.logger.child({ adapter: "discord" });
 	const forms = new PendingForms();
+	const controls = new HeldControls();
 	const handleCommand = createCommandHandler({
 		guildId,
 		dispatcher,
 		deferAfterMs: DEFER_AFTER_MS,
 		forms,
+		controls,
 	});
 	const handleModal = createModalHandler({
 		guildId,
 		dispatcher,
 		deferAfterMs: DEFER_AFTER_MS,
 		forms,
+		controls,
+	});
+	const handleControl = createControlHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
+		controls,
+	});
+	const handleUiForm = createUiFormHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
+		controls,
 	});
 	const handleAutocomplete = createAutocompleteHandler({ guildId, dispatcher });
 	const leaveIfForeign = createGuildGuard({ guildId, logger, reportError });
@@ -155,8 +183,8 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			},
 		];
 
-		// Open/closed announcements: the channels admins set with /admin announcements. Plugged in
-		// first, so `/admin announcements` works even if a channel below can't be opened.
+		// Open/closed announcements: the channels admins set with /admin → Announcements. Plugged in
+		// first, so `/admin` → Announcements works even if a channel below can't be opened.
 		const routes = new DiscordAnnouncementRoutes({
 			store: deps.announcementRouteStore,
 			announcer: deps.announcer,
@@ -198,7 +226,7 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		if (deps.announcementRouteStore.list().length === 0) {
 			logger.info(
 				{ event: "discord.announce_unset" },
-				"no open/closed announcement channels set (/admin announcements set)",
+				"no open/closed announcement channels set (/admin → Announcements → Add a channel…)",
 			);
 		}
 	}
@@ -257,6 +285,62 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			});
 			return;
 		}
+		if (interaction.isButton() || interaction.isStringSelectMenu()) {
+			if (!interaction.customId.startsWith(CONTROL_PREFIX)) return;
+			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+			handleControl(
+				{
+					guildId: interaction.guildId,
+					customId: interaction.customId,
+					user: interaction.user,
+					...(interaction.isStringSelectMenu() ? { values: interaction.values } : {}),
+					update: (payload) => interaction.update(payload),
+					deferUpdate: () => interaction.deferUpdate(),
+					editReply: (payload) => interaction.editReply(payload),
+					reply: (payload) => interaction.reply(payload),
+					followUp: (payload) => interaction.followUp(payload),
+					showModal: (modal) => interaction.showModal(modal),
+				},
+				displayName,
+			).catch((error: unknown) => {
+				handleInteractionFailure(
+					error,
+					{ logger, reportError },
+					{ actor: discordActor(interaction.user, displayName) },
+				);
+			});
+			return;
+		}
+		if (interaction.isModalSubmit() && interaction.customId.startsWith(UI_FORM_PREFIX)) {
+			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+			const answered = interaction.isFromMessage()
+				? handleUiForm(
+						{
+							guildId: interaction.guildId,
+							customId: interaction.customId,
+							user: interaction.user,
+							fields: submittedFields(interaction.fields.fields.values(), (channel) =>
+								callerBits(interaction, channel),
+							),
+							update: (payload) => interaction.update(payload),
+							deferUpdate: () => interaction.deferUpdate(),
+							editReply: (payload) => interaction.editReply(payload),
+							reply: (payload) => interaction.reply(payload),
+							followUp: (payload) => interaction.followUp(payload),
+						},
+						displayName,
+					)
+				: // Pixel only opens these forms from a message's controls.
+					interaction.reply({ content: CONTROL_EXPIRED_MESSAGE, flags: MessageFlags.Ephemeral });
+			answered.catch((error: unknown) => {
+				handleInteractionFailure(
+					error,
+					{ logger, reportError },
+					{ actor: discordActor(interaction.user, displayName) },
+				);
+			});
+			return;
+		}
 		if (interaction.isModalSubmit()) {
 			handleModal(interaction).catch((error: unknown) => {
 				handleInteractionFailure(
@@ -270,16 +354,8 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		if (!interaction.isChatInputCommand()) return;
 		const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
 		// For a channel picked in the command: what this person may do there.
-		const permissionsIn = (channelId: string): bigint | null => {
-			const resolved = interaction.options.resolved?.channels?.get(channelId);
-			if (resolved && "permissions" in resolved && typeof resolved.permissions === "string") {
-				return BigInt(resolved.permissions);
-			}
-			if (resolved && interaction.inCachedGuild() && "permissionsFor" in resolved) {
-				return resolved.permissionsFor(interaction.member)?.bitfield ?? null;
-			}
-			return null;
-		};
+		const permissionsIn = (channelId: string): bigint | null =>
+			callerBits(interaction, interaction.options.resolved?.channels?.get(channelId));
 		const withPermissions = (options: readonly DiscordOption[]): DiscordOption[] =>
 			options.map((option) => ({
 				...option,
@@ -313,4 +389,19 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			return client.isReady();
 		},
 	};
+}
+
+/**
+ * What the person behind an interaction may do in a channel they picked: their
+ * permission bits, as Discord sent them or from the cache. Null if neither says.
+ */
+function callerBits(interaction: Interaction, channel: unknown): bigint | null {
+	if (channel === null || typeof channel !== "object") return null;
+	if ("permissions" in channel && typeof channel.permissions === "string") {
+		return BigInt(channel.permissions);
+	}
+	if (interaction.inCachedGuild() && "permissionsFor" in channel) {
+		return (channel as GuildBasedChannel).permissionsFor(interaction.member)?.bitfield ?? null;
+	}
+	return null;
 }

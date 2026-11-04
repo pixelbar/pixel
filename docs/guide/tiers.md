@@ -29,9 +29,9 @@ A capability is a named permission for one person, for things that shouldn't rea
 | --- | --- |
 | `schedule-posts` | Schedule messages and polls in channels you can post in, with `/schedule`. |
 | `spacestate` | Set the space open or closed, with `/spacestate set`. Members only. |
-| `ha-lights` | Change lights in Home Assistant, with `/ha set`. |
-| `ha-switches` | Change switches in Home Assistant, with `/ha set`. |
-| `ha-doors` | Unlock doors, with `/ha open`. Members only. |
+| `ha-lights` | Switch lights in Home Assistant, with the buttons in `/ha`. |
+| `ha-switches` | Switch switches in Home Assistant, with the buttons in `/ha`. |
+| `ha-doors` | Lock and unlock doors, with the buttons in `/ha`. Members only. |
 | `ha-admin` | Act on any Home Assistant device, whatever its kind. |
 
 - **Nothing gives you a capability by itself.** Not your tier, not a Discord role, and not being an admin. An admin grants it to a person, and Pixel sends that person a direct message when it changes.

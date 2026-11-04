@@ -14,7 +14,7 @@ export type GateResult =
 	| { opened: true }
 	/**
 	 * `not-connected`: Pixel can't open the gate at all right now (not set up, or not
-	 * logged in). `off`: an admin has switched door control off (`/admin doors off`).
+	 * logged in). `off`: an admin has switched door control off (`/admin` → Doors → **Switch door control off…**).
 	 * `failed`: it tried and couldn't.
 	 */
 	| { opened: false; reason: "not-connected" | "off" | "failed" };

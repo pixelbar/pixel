@@ -1,11 +1,10 @@
 import { highestTier, splitRef, TIER_LABELS, type Tier } from "../../core/access.ts";
-import { type CapabilityRegistry, tierGrantsFor } from "../../core/capabilities.ts";
-import type {
-	ResolvedUser,
-	SubcommandDefinition,
-	SubgroupDefinition,
-	Suggestion,
-} from "../../core/command.ts";
+import {
+	type CapabilityRegistry,
+	heldCapabilities,
+	tierGrantsFor,
+} from "../../core/capabilities.ts";
+import type { ResolvedUser, SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import {
@@ -15,10 +14,12 @@ import {
 } from "../../core/ports/access-store.ts";
 
 /**
- * `/admin capabilities grant|grant-all|revoke|grant-level|revoke-level|list`: who
+ * `/admin` → People → **Grant capabilities…**: who
  * holds which named permission. Grants live in the members file, change only
  * through the access store (so they are audited), and are by immutable user ID
- * or by membership level. A capability does nothing for a guest, and never
+ * or by membership level. Revoking from a person also works on what their level
+ * gives them: it is recorded as a revocation on their entry, which wins over
+ * every grant (ADR 0024). A capability does nothing for a guest, and never
  * replaces the tier a command requires.
  */
 
@@ -44,9 +45,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		description: "Which capability",
 		type: "string",
 		required: true,
-		// Suggestions, not choices: Discord counts every choice towards /admin's size limit,
-		// once per subcommand. The handlers check the name is registered.
-		suggest: async ({ typed }: { typed: string }) => suggestCapabilities(capabilities.all(), typed),
+		// Checked against the registry by the handlers.
 	} as const;
 	const levelOption = {
 		name: "level",
@@ -83,15 +82,15 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 						`${describe(target)} is a guest, so a capability would do nothing. Make them a member or friend first.`,
 					);
 				}
-				const held = view.records.get(target.id)?.capabilities ?? [];
-				if (held.includes(name)) {
+				const record = view.records.get(target.id);
+				if (record && heldCapabilities(record, view.tierCapabilities).includes(name)) {
 					return { text: `${describe(target)} already has ${name}. Nothing changed.` };
 				}
 				await access.apply(
 					{
 						kind: "set-capabilities",
 						id: target.id,
-						capabilities: [...held, name],
+						grant: [name],
 						...(reason ? { reason } : {}),
 					},
 					principal,
@@ -130,7 +129,8 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 						`${describe(target)} is a guest, so a capability would do nothing. Make them a member or friend first.`,
 					);
 				}
-				const held = view.records.get(target.id)?.capabilities ?? [];
+				const record = view.records.get(target.id);
+				const held = record ? heldCapabilities(record, view.tierCapabilities) : [];
 				const missing = names.filter((name) => !held.includes(name));
 				if (missing.length === 0) {
 					return { text: `${describe(target)} already has every capability. Nothing changed.` };
@@ -139,7 +139,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 					{
 						kind: "set-capabilities",
 						id: target.id,
-						capabilities: [...held, ...missing],
+						grant: missing,
 						...(reason ? { reason } : {}),
 					},
 					principal,
@@ -174,25 +174,19 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				const reason = checkedReason(args.reason);
 				const view = access.view;
 				const record = view.records.get(target.id);
-				const held = record?.capabilities ?? [];
-				if (!held.includes(name)) {
-					const level = record?.tier ?? "guest";
-					const fromLevel = tierGrantsFor(view.tierCapabilities, level).includes(name);
-					return {
-						text: fromLevel
-							? `${describe(target)} gets ${name} from their ${level} level, not a grant of their own. Nothing changed. Use /admin capabilities revoke-level to take it from the level.`
-							: `${describe(target)} doesn't have ${name}. Nothing changed.`,
-					};
+				if (!record || !heldCapabilities(record, view.tierCapabilities).includes(name)) {
+					return { text: `${describe(target)} doesn't have ${name}. Nothing changed.` };
 				}
-				await access.apply(
+				const result = await access.apply(
 					{
 						kind: "set-capabilities",
 						id: target.id,
-						capabilities: held.filter((held) => held !== name),
+						revoke: [name],
 						...(reason ? { reason } : {}),
 					},
 					principal,
 				);
+				const fromLevel = result.after.revoked.includes(name);
 				return {
 					embeds: [
 						{
@@ -201,6 +195,14 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 							fields: [
 								{ name: "Person", value: describe(target) },
 								{ name: "Capability", value: label(name) },
+								...(fromLevel
+									? [
+											{
+												name: "Note",
+												value: `Their ${result.after.tier} level gives it, so it's revoked for them alone and stays revoked if their level changes. Everyone else at the level keeps it. Granting it to them gives it back.`,
+											},
+										]
+									: []),
 							],
 						},
 					],
@@ -234,6 +236,10 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 								{ name: "Level", value: level, inline: true },
 								{ name: "Reaches", value: REACHES[level], inline: true },
 								{ name: "Capability", value: label(name) },
+								{
+									name: "Note",
+									value: "Anyone it was revoked from on their own still doesn't have it.",
+								},
 							],
 						},
 					],
@@ -293,19 +299,21 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				const target = users.user;
 				if (!target) {
 					const view = access.view;
+					// A person can appear under several IDs, so count each record once.
+					const active = [...new Set(view.records.values())].filter(
+						(r) =>
+							highestTier(r.ids.map((ref) => view.discord.get(splitRef(ref).userId) ?? "guest")) !==
+							"guest",
+					);
 					const lines = capabilities.all().map((c) => {
-						// A person can appear under several IDs, so count each record once.
-						const holders = [...new Set(view.records.values())].filter(
-							(r) =>
-								r.capabilities.includes(c.name) &&
-								highestTier(
-									r.ids.map((ref) => view.discord.get(splitRef(ref).userId) ?? "guest"),
-								) !== "guest",
+						const holders = active.filter(
+							(r) => r.capabilities.includes(c.name) && !r.revoked.includes(c.name),
 						).length;
+						const revoked = active.filter((r) => r.revoked.includes(c.name)).length;
 						const level = LEVELS.filter((l) => view.tierCapabilities[l].includes(c.name))
 							.map((l) => REACHES[l])
 							.at(-1);
-						return `**${c.name}**: ${c.description} (${holders} ${holders === 1 ? "person" : "people"}${level ? `, and ${level}` : ""})`;
+						return `**${c.name}**: ${c.description} (${holders} ${holders === 1 ? "person" : "people"}${level ? `, and ${level}` : ""}${revoked > 0 ? `; revoked from ${revoked}` : ""})`;
 					});
 					return { embeds: [{ title: "Capabilities", description: lines.join("\n") }] };
 				}
@@ -317,10 +325,11 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 				const view = access.view;
 				const tier: Tier = view.discord.get(target.id) ?? "guest";
 				const record = view.records.get(target.id);
-				const held = record?.capabilities ?? [];
+				const revoked = record?.revoked ?? [];
+				const held = (record?.capabilities ?? []).filter((name) => !revoked.includes(name));
 				const level = record?.tier ?? "guest";
 				const fromLevel = tierGrantsFor(view.tierCapabilities, level).filter(
-					(name) => !held.includes(name),
+					(name) => !held.includes(name) && !revoked.includes(name),
 				);
 				const lines = [
 					...held.map((name) =>
@@ -345,6 +354,7 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 											? "None"
 											: lines.join("\n") + (tier === "guest" ? "\n(inactive while a guest)" : ""),
 								},
+								...(revoked.length > 0 ? [{ name: "Revoked", value: revoked.join("\n") }] : []),
 							],
 						},
 					],
@@ -373,20 +383,6 @@ export function createCapabilitySubgroup(deps: CapabilityCommandDeps): SubgroupD
 		const description = capabilities.get(name)?.description;
 		return description ? `${name}: ${description}` : name;
 	}
-}
-
-/** Registered capabilities whose name or description has what was typed, at most 25. */
-export function suggestCapabilities(
-	all: readonly { name: string; description: string }[],
-	typed: string,
-): Suggestion[] {
-	const needle = typed.trim().toLowerCase();
-	return all
-		.filter(
-			(c) => c.name.toLowerCase().includes(needle) || c.description.toLowerCase().includes(needle),
-		)
-		.slice(0, 25)
-		.map((c) => ({ name: `${c.name}: ${c.description}`.slice(0, 100), value: c.name }));
 }
 
 /** The level an admin picked. The platform doesn't check it came from the choices. */

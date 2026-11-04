@@ -29,13 +29,14 @@ import type { ErrorReporter } from "./ports/error-reporter.ts";
 import { RateLimiter } from "./rate-limit.ts";
 import type { CommandRegistry } from "./registry.ts";
 import type { Reply } from "./reply.ts";
+import type { Form } from "./ui.ts";
 
 export type DispatchRequest = {
 	actor: PlatformActor;
 	command: string;
-	/** Set when `command` is a group and the subcommand sits in a subgroup, e.g. `capabilities` in `/admin capabilities grant`. */
+	/** Set when `command` is a group and the subcommand sits in a subgroup, e.g. `group` in `/example group sub`. */
 	subgroup?: string;
-	/** Set when `command` is a group, e.g. `status` for `/admin status`. */
+	/** Set when `command` is a group, e.g. `say` for `/fishbot say`. */
 	subcommand?: string;
 	args: Args;
 	/** Users picked through `user` options, by option name, as resolved by the adapter. */
@@ -43,6 +44,30 @@ export type DispatchRequest = {
 	/** Channels picked through `channel` options, by option name, as resolved by the adapter. */
 	channels?: Readonly<Record<string, ResolvedChannel>>;
 };
+
+/** Someone used a button, a select menu or a form: run the action it names. */
+export type ActionRequest = {
+	/** Whoever used the control, never whoever was shown it first. */
+	actor: PlatformActor;
+	action: string;
+	args: Args;
+	users?: Readonly<Record<string, ResolvedUser>>;
+	channels?: Readonly<Record<string, ResolvedChannel>>;
+};
+
+/**
+ * What to do with the message the control is on: replace it, open a form, or leave
+ * it and tell the person privately why nothing happened.
+ */
+export type ActionOutcome =
+	| { kind: "update"; reply: Reply }
+	| { kind: "form"; form: Form }
+	/**
+	 * Refused. `problem` means the action itself said what's wrong with what was given
+	 * (a `UserFacingError`), so trying again with different input could work; it's never
+	 * set for access, rate limits or Pixel's own failures.
+	 */
+	| { kind: "refused"; reply: Reply; problem?: true };
 
 /** Someone is typing in an option that has live suggestions. */
 export type SuggestRequest = {
@@ -102,6 +127,7 @@ export const MESSAGES = {
 	deniedTier: "You don't have access to this command.",
 	deniedContext: "This command can't be used here.",
 	internalError: "Something went wrong on my end. Please try again later.",
+	unknownAction: "That doesn't work any more. Run the command again.",
 } as const;
 
 /**
@@ -340,6 +366,94 @@ export class Dispatcher {
 			log.error({ event: "command.failed", err: error }, "command failed");
 			reporter.capture(error, { command, feature, principal });
 			return privateText(MESSAGES.internalError);
+		}
+	}
+
+	/**
+	 * Runs an action for someone who used a control (a button, a select menu or a
+	 * form). Held to exactly the rules of `dispatch`: rate limit, identity, the
+	 * action's access, its declared options, then the handler. Nothing about who was
+	 * shown the control counts: the actor is whoever used it.
+	 */
+	async act(request: ActionRequest): Promise<ActionOutcome> {
+		const { identity, rateLimiter, reporter } = this.#deps;
+		const { actor } = request;
+		const log = this.#deps.logger.child({
+			action: request.action,
+			platform: actor.platform,
+			...actorLogFields(actor),
+		});
+		const refused = (text: string): ActionOutcome => ({
+			kind: "refused",
+			reply: { text, private: true },
+		});
+
+		const registered = this.#deps.registry.action(request.action);
+		if (!registered) {
+			log.warn({ event: "action.unknown" }, "unknown action");
+			return refused(MESSAGES.unknownAction);
+		}
+		const { definition, feature } = registered;
+
+		if (!rateLimiter.tryTake(actorRef(actor))) {
+			log.warn({ event: "action.rate_limited" }, "rate limited");
+			return refused(MESSAGES.rateLimited);
+		}
+
+		const principal = await identity.resolve(actor);
+		const decision = checkAccess(definition.access, principal);
+		if (!decision.allowed) {
+			log.warn(
+				{
+					event: "action.denied",
+					reason: decision.reason,
+					tier: principal.tier,
+					required: definition.access.minTier,
+					...(definition.access.capability === undefined
+						? {}
+						: { capability: definition.access.capability }),
+				},
+				"action denied",
+			);
+			return refused(decision.reason === "context" ? MESSAGES.deniedContext : MESSAGES.deniedTier);
+		}
+
+		const started = performance.now();
+		const executed = (outcome: "ok" | "user_error" | "error") =>
+			log.info(
+				{
+					event: "action.executed",
+					outcome,
+					tier: principal.tier,
+					durationMs: Math.round(performance.now() - started),
+				},
+				"action executed",
+			);
+		try {
+			const valid = validateArgs(definition, request.args, request.users, request.channels);
+			const run = () =>
+				definition.handler({
+					args: valid.args,
+					users: valid.users,
+					channels: valid.channels,
+					principal,
+					logger: log,
+				});
+			const context = { command: request.action, feature, principal };
+			const result = await (reporter.withContext ? reporter.withContext(context, run) : run());
+			executed("ok");
+			return "form" in result
+				? { kind: "form", form: result.form }
+				: { kind: "update", reply: result.reply };
+		} catch (error) {
+			if (error instanceof UserFacingError) {
+				executed("user_error");
+				return { kind: "refused", reply: { text: error.message, private: true }, problem: true };
+			}
+			executed("error");
+			log.error({ event: "action.failed", err: error }, "action failed");
+			reporter.capture(error, { command: request.action, feature, principal });
+			return refused(MESSAGES.internalError);
 		}
 	}
 

@@ -2,15 +2,13 @@
  * The Pixel mark's entrance, as in the launch video. `<PxMarkIntro>` wraps it
  * for the landing page.
  *
- * Dark uses the original logo (public/pixel-mark.png): a mosaic of its own
+ * Dark uses the original logo (public/pixel-mark.png), light its version
+ * printed on paper (public/pixel-mark-light.png). A mosaic of the logo's own
  * pixels flies in and snaps together on a 64 × 64 grid, sharpens in steps
- * (64, 128, 256) into the original itself, and lights up with a surge of glow
- * and a burst of sparks. After that a light runs round the orbits and the star
- * breathes, both drawn from the original's own pixels.
- *
- * Light uses the pixel-art mark printed on paper (pixel-mark.ts with the
- * --mark-* tokens): the same flight, no glow, then the shine and twinkle of
- * `<PxMark animated>`. It follows the theme switch.
+ * (64, 128, 256) into the logo itself, and lights up with a surge and a burst
+ * of sparks. After that a light runs round the orbits and the star breathes,
+ * both drawn from the logo's own pixels. Dark emits (the effects add light);
+ * light prints (they deepen the ink). It follows the theme switch.
  *
  * Motion is in whole steps on a 30 fps clock. It plays the first time it
  * scrolls into view and pauses while off screen. Reduced motion shows the
@@ -65,27 +63,6 @@ function launch(x: number, y: number, seed: number): Pick<Tile, "delay" | "fromX
 	};
 }
 
-/** Every pixel of the pixel-art mark (light), coloured from the --mark-* tokens. */
-function artTiles(token: (name: string) => string): Tile[] {
-	const out: Tile[] = [];
-	let seed = 1;
-	for (const layer of MARK_LAYERS) {
-		for (const m of layer.d.matchAll(/M(\d+) (\d+)h(\d+)v1h-\d+z/g)) {
-			const [x, y, w] = [Number(m[1]), Number(m[2]), Number(m[3])];
-			for (let i = 0; i < w; i++) {
-				out.push({
-					x: x + i,
-					y,
-					color: token(`--mark-${layer.color}`),
-					alpha: layer.dim ? 0.55 : 1,
-					...launch(x + i, y, seed++),
-				});
-			}
-		}
-	}
-	return out;
-}
-
 /** The original, shrunk to `size` × `size` (the browser averages each square). */
 function shrink(image: HTMLImageElement, size: number): HTMLCanvasElement {
 	const c = document.createElement("canvas");
@@ -99,8 +76,11 @@ function shrink(image: HTMLImageElement, size: number): HTMLCanvasElement {
 	return c;
 }
 
-/** Every lit square of the original at 64 × 64 (dark), in its own colour. */
-function photoTiles(small: HTMLCanvasElement): Tile[] {
+/**
+ * Every inked square of the logo at 64 × 64, in its own colour. The original
+ * is lit on black; the paper version is ink on transparent.
+ */
+function photoTiles(small: HTMLCanvasElement, paper: boolean): Tile[] {
 	const data = small.getContext("2d")?.getImageData(0, 0, GRID, GRID).data;
 	const out: Tile[] = [];
 	if (!data) return out;
@@ -108,15 +88,15 @@ function photoTiles(small: HTMLCanvasElement): Tile[] {
 	for (let y = 0; y < GRID; y++) {
 		for (let x = 0; x < GRID; x++) {
 			const i = (y * GRID + x) * 4;
-			const [r, g, b] = [data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0];
-			if (Math.max(r, g, b) < 20) continue;
-			out.push({ x, y, color: `rgb(${r} ${g} ${b})`, alpha: 1, ...launch(x, y, seed++) });
+			const [r, g, b, a] = [data[i] ?? 0, data[i + 1] ?? 0, data[i + 2] ?? 0, data[i + 3] ?? 0];
+			if (paper ? a < 20 : Math.max(r, g, b) < 20) continue;
+			out.push({ x, y, color: `rgb(${r} ${g} ${b})`, alpha: a / 255, ...launch(x, y, seed++) });
 		}
 	}
 	return out;
 }
 
-/** The original seen only through `shape` (in grid units), softened: a glow to add on top. */
+/** The logo seen only through `shape` (in grid units), softened: a glow to lay on top. */
 function maskedGlow(image: HTMLImageElement, shape: Path2D, ink: string): HTMLCanvasElement {
 	const c = document.createElement("canvas");
 	c.width = MASK;
@@ -134,7 +114,7 @@ function maskedGlow(image: HTMLImageElement, shape: Path2D, ink: string): HTMLCa
 	return c;
 }
 
-/** The original, blurred: the surge of glow when it lights up. */
+/** The logo, blurred: the surge when it lights up. */
 function bloom(image: HTMLImageElement): HTMLCanvasElement {
 	const c = document.createElement("canvas");
 	c.width = MASK;
@@ -150,10 +130,10 @@ function bloom(image: HTMLImageElement): HTMLCanvasElement {
 /** Build the mark into `host` (it fills the host's width) and play it when it's seen. */
 export function createPixelMarkIntro(
 	host: HTMLElement,
-	options: { src: string; label?: string },
+	options: { src: string; lightSrc: string; label?: string },
 ): PixelMarkIntro {
-	const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	const isDark = () => document.documentElement.classList.contains("dark");
+	const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 	const styles = getComputedStyle(document.documentElement);
 	const token = (name: string) => styles.getPropertyValue(name).trim();
 
@@ -169,43 +149,34 @@ export function createPixelMarkIntro(
 
 	// ---------- What gets drawn ----------
 
-	const image = new Image();
-	image.src = options.src;
-	let photo:
-		| {
-				tiles: Tile[];
-				steps: HTMLCanvasElement[];
-				sweep: HTMLCanvasElement[];
-				star: HTMLCanvasElement;
-				bloom: HTMLCanvasElement;
-		  }
-		| undefined;
-	const ready = image.decode().then(() => {
+	type Version = {
+		image: HTMLImageElement;
+		tiles: Tile[];
+		steps: HTMLCanvasElement[];
+		sweep: HTMLCanvasElement[];
+		star: HTMLCanvasElement;
+		bloom: HTMLCanvasElement;
+	};
+	const versions: { dark?: Version; light?: Version } = {};
+	const starShape = new Path2D();
+	for (const layer of MARK_LAYERS)
+		if (layer.part === "star") starShape.addPath(new Path2D(layer.d));
+
+	async function load(theme: "dark" | "light", src: string): Promise<void> {
+		const image = new Image();
+		image.src = src;
+		await image.decode();
 		const steps = [GRID, GRID * 2, GRID * 4].map((size) => shrink(image, size));
-		const starShape = new Path2D();
-		for (const layer of MARK_LAYERS)
-			if (layer.part === "star") starShape.addPath(new Path2D(layer.d));
-		photo = {
-			tiles: photoTiles(steps[0] as HTMLCanvasElement),
+		versions[theme] = {
+			image,
+			tiles: photoTiles(steps[0] as HTMLCanvasElement, theme === "light"),
 			steps,
 			sweep: MARK_SWEEP.map((d) => maskedGlow(image, new Path2D(d), token("--mark-shine"))),
 			star: maskedGlow(image, starShape, token("--mark-shine")),
 			bloom: bloom(image),
 		};
-	});
-
-	const artPaths = MARK_LAYERS.map((layer) => ({ layer, path: new Path2D(layer.d) }));
-	const sweepPaths = MARK_SWEEP.map((d) => new Path2D(d));
-	let art: Tile[] = [];
-	let theme = "";
-	/** Read the colours again whenever the theme changes. */
-	function refreshTheme(): boolean {
-		const now = isDark() ? "dark" : "light";
-		if (now === theme) return now === "dark";
-		theme = now;
-		art = artTiles(token);
-		return now === "dark";
 	}
+	const ready = Promise.all([load("dark", options.src), load("light", options.lightSrc)]);
 
 	// The entrance's timing depends on how far the last tile flies.
 	const lastLanding = (tiles: Tile[]) =>
@@ -292,9 +263,15 @@ export function createPixelMarkIntro(
 		return phase < sector ? 0.85 : phase < sector * 2 ? 0.35 : 0;
 	}
 
-	/** Dark: the original, flown in as a mosaic, sharpened in steps, then lit. */
-	function drawDark(f: number): void {
-		if (!photo) return;
+	/** The logo, flown in as a mosaic, sharpened in steps, then lit. */
+	function draw(f: number): void {
+		const dark = isDark();
+		const photo = dark ? versions.dark : versions.light;
+		if (!ctx || !photo) return;
+		ctx.clearRect(0, 0, canvas.width, canvas.height);
+		// Dark adds light; light deepens the ink, and more gently.
+		const glow: GlobalCompositeOperation = dark ? "lighter" : "multiply";
+		const strength = dark ? 1 : 0.6;
 		const landed = lastLanding(photo.tiles);
 		const ignite = landed + 9;
 		if (f < landed) {
@@ -307,59 +284,19 @@ export function createPixelMarkIntro(
 			cover(step, 1, false);
 			return;
 		}
-		cover(image);
+		cover(photo.image);
 		const since = f - ignite;
 		const surge =
 			since >= 0 && since < 10 ? ([0.9, 0.7, 0.5, 0.3, 0.15][Math.floor(since / 2)] ?? 0) : 0;
-		if (surge) cover(photo.bloom, surge, true, "lighter");
+		if (surge) cover(photo.bloom, surge * strength, true, glow);
 		drawSparks(since);
 		if (since > 2 && !reduced) {
-			photo.sweep.forEach((glow, i) => {
+			photo.sweep.forEach((sector, i) => {
 				const a = sweepAt(f, i);
-				if (a) cover(glow, a, true, "lighter");
+				if (a) cover(sector, a * strength, true, glow);
 			});
-			if (Math.floor(f / 36) % 2 === 1) cover(photo.star, 0.35, true, "lighter");
+			if (Math.floor(f / 36) % 2 === 1) cover(photo.star, 0.35 * strength, true, glow);
 		}
-	}
-
-	/** Light: the printed pixel art, flown in, then the shine and twinkle. No glow. */
-	function drawLight(f: number): void {
-		if (!ctx) return;
-		const landed = lastLanding(art);
-		if (f < landed) {
-			drawTiles(art, f);
-			return;
-		}
-		const lit = f > landed + 4 && !reduced;
-		ctx.save();
-		ctx.translate(pad, pad);
-		ctx.scale(px, px);
-		for (const { layer, path } of artPaths) {
-			const twinkle = lit && layer.twinkle !== undefined && (f + layer.twinkle * 18) % 54 >= 27;
-			ctx.globalAlpha = (layer.dim ? 0.55 : 1) * (twinkle ? 0.25 : 1);
-			ctx.fillStyle = token(`--mark-${layer.color}`);
-			ctx.fill(path);
-		}
-		if (lit) {
-			ctx.fillStyle = token("--mark-shine");
-			sweepPaths.forEach((path, i) => {
-				const a = sweepAt(f, i);
-				if (!a) return;
-				// In light the shine is a highlight on ink, not a flash.
-				ctx.globalAlpha = a * 0.6;
-				ctx.fill(path);
-			});
-		}
-		ctx.restore();
-		ctx.globalAlpha = 1;
-		drawSparks(f - landed - 2);
-	}
-
-	function draw(f: number): void {
-		if (!ctx) return;
-		ctx.clearRect(0, 0, canvas.width, canvas.height);
-		if (refreshTheme()) drawDark(f);
-		else drawLight(f);
 	}
 
 	// ---------- The clock ----------
@@ -368,7 +305,7 @@ export function createPixelMarkIntro(
 	let started = 0;
 	let frame = -1;
 	let seen = false;
-	const DONE = 200; // well past either entrance
+	const DONE = 200; // well past the entrance
 
 	function tick(now: number): void {
 		if (!started) started = now;

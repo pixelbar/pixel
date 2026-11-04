@@ -8,7 +8,7 @@ Pixel is a helpful assistant bot for members and visitors of the [Pixelbar](http
 
 Pixel starts on Discord. Its core doesn't depend on any platform. Mastodon is an optional outbound publisher (toots when the space opens or closes). Interactive platforms such as Telegram can be added later as separate adapters.
 
-> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`, `doors`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar), `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability), `/spacestate` (set the space open or closed, for members with the `spacestate` capability), `/park` and `/parking` (a parking spot at the gate, for members with the `parking` capability; admins manage spots with `/admin parking`) and `/ha` (`list`, `status`, `set`, `open`: the Home Assistant devices you may see; lights and switches if you hold the capability; doors for members with `ha-doors`). See [`docs/architecture.md`](docs/architecture.md), [`docs/identity-and-access.md`](docs/identity-and-access.md) and [`docs/home-assistant.md`](docs/home-assistant.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
+> **Status:** phase 1 in progress. The core, the access lists and the Discord adapter work, with `/help`, `/ping`, `/status` (live from SpaceAPI), `/whoami` and `/admin` (`status`, `reload`, `level set`, `level get`, `sync`, `capabilities`, `doors`), plus open/closed announcements in Discord, `/closing-time` (a closing reminder, also posted automatically when the space closes), `/events` (from the server's scheduled events), `/info` (short answers about Pixelbar), `/schedule` (messages and native polls posted in a channel once or on a repeat, for people with the `schedule-posts` capability), `/spacestate` (set the space open or closed, for members with the `spacestate` capability), `/park` and `/parking` (a parking spot at the gate, for members with the `parking` capability; admins manage spots with `/admin` → Parking) and `/ha` (a panel of the Home Assistant devices you may see; lights and switches if you hold the capability; doors for members with `ha-doors`). See [`docs/architecture.md`](docs/architecture.md), [`docs/identity-and-access.md`](docs/identity-and-access.md) and [`docs/home-assistant.md`](docs/home-assistant.md). To hide admin commands from other people in Discord, see [`docs/discord-command-visibility.md`](docs/discord-command-visibility.md).
 
 ## Stack
 
@@ -53,7 +53,7 @@ Never develop against the production bot.
 
 ### Announcements
 
-Pixel can post when Pixelbar opens or closes, in three styles. Admins choose which channels get which style while Pixel runs, with `/admin announcements set style:<live|timeline|single> channel:<#channel>` (any number of channels, one style each; `remove` and `list` too), and it is saved in `data/announcement-routes.yaml`, so it survives restarts and deploys. There is no environment setting for these:
+Pixel can post when Pixelbar opens or closes, in three styles. Admins choose which channels get which style while Pixel runs, with `/admin` → Announcements → **Add a channel…** (any number of channels, one style each; `remove` and `list` too), and it is saved in `data/announcement-routes.yaml`, so it survives restarts and deploys. There is no environment setting for these:
 
 - **Live**: opening makes a "🟢 Pixelbar is open" post. Closing edits that same post to "🔴 Pixelbar is closed, was open from … to …". Opening again makes a new post, so a closed post never flips back.
 - **Timeline**: a new post for every open and every close, never edited. Good for a status-only channel where you want a log of exactly when it opened and closed.
@@ -63,7 +63,7 @@ Pixel also says when **it** comes online and goes offline, in the announcements 
 
 A space change is posted once it has held for two checks in a row (about 30–60 seconds), so flicking the switch doesn't flood the channel. Nothing is posted when Pixel starts.
 
-**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin closing-time set` (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register dev` or `just register prod`.
+**Closing time** (`DISCORD_CLOSING_TIME_CHANNEL_ID`): after a confirmed close, and when a member runs `/closing-time`, Pixel posts a reminder in that channel. Unset, `off` or `none` turns both paths off. Admins set the text with `/admin` → Closing time → **Change the message…** (a modal that prefills the saved message), which writes `data/closing-time.md` on the persist share. A missing file uses a built-in default. Do not put secrets in that file. `{{date}}` and the other date tokens fill in when it is posted. Mentions stay disabled. After a deploy that adds the command, run `just register dev` or `just register prod`.
 
 Give the bot these permissions in each channel: **View Channel**, **Send Messages** and **Embed Links**, plus **Read Message History** for the live style. Pixel checks this at startup and tells you in the logs if something is missing.
 
@@ -92,7 +92,7 @@ The text of the answer, in markdown…
 Tiers come from two YAML files. **They are gitignored, because they contain personal data.**
 
 - `config/admins.yaml`: Pixel admins, each with `ids` like `["discord:<id>"]` (the same shape as `members.yaml`). Each admin also needs a `members.yaml` entry holding the same ids.
-- `config/members.yaml`: paying `member` and `friend` memberships (Discord ID and tier), plus optional capabilities. **Pixel rewrites this file** when admins change tiers, keeping a `.bak` of the previous version, so it needs a writable location. Hand edits are still fine, and `/admin reload` picks them up.
+- `config/members.yaml`: paying `member` and `friend` memberships (Discord ID and tier), plus optional capabilities. **Pixel rewrites this file** when admins change tiers, keeping a `.bak` of the previous version, so it needs a writable location. Hand edits are still fine, and `/admin` → **Reload the access lists** picks them up.
 
 Everyone else is a `guest`.
 
@@ -102,7 +102,7 @@ Discord IDs **must be quoted strings**, because unquoted numbers lose precision.
 
 Optional. Pixel can list and change lights, switches and doors on a Home Assistant instance. Set `HOME_ASSISTANT_URL` and `HOME_ASSISTANT_TOKEN` (both or neither) and keep an allow-list in `config/home-assistant/devices.yaml`. Use a **non-admin** Home Assistant user; the token can do anything that user can, so the devices file is the fence.
 
-Commands: `/ha list`, `/ha status`, `/ha set` (needs `ha-lights`, `ha-switches`, `ha-doors` or `ha-admin`), `/ha open` (members with `ha-doors` or `ha-admin`; unlocks only). `/admin doors off` stops every door action at once.
+Command: `/ha [device:]` opens a private panel: the devices you may see, and on a device a button for each action you may take (needs `ha-lights`, `ha-switches`, `ha-doors` or `ha-admin`; doors are for members, and only lock and unlock). `/admin` → Doors → **Switch door control off…** stops every door action at once.
 
 First-time setup, the threat model and how to revoke the token: [`docs/home-assistant.md`](docs/home-assistant.md). Day-to-day: the [runbook](docs/runbook.md#home-assistant). Do not commit real URLs, tokens or the space's device names.
 
@@ -125,11 +125,11 @@ These are validated at startup. See `.env.example` and the [full list](docs/arch
 | `HOME_ASSISTANT_URL`, `HOME_ASSISTANT_TOKEN` | Optional, set both or neither. How Pixel reaches Home Assistant (for example the Nabu Casa URL) and a long-lived token from a **non-admin** HA user |
 | `PIXEL_HOME_ASSISTANT_DIR`    | Optional. Where `devices.yaml` (the Home Assistant device allow-list) lives. Defaults to `config/home-assistant/`. Copy `devices.example.yaml` there when you set up Home Assistant |
 | `SPACEAPI_URL`                | Optional. Defaults to `https://spaceapi.pixelbar.nl/` |
-| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcement-routes.yaml` (the channels set with `/admin announcements`), optional `closing-time.md`. Defaults to `data/` |
+| `PIXEL_DATA_DIR`              | Optional. Runtime files: `schedules.yaml` (keep this), `home-switches.state`, `space.state`, `announcement-routes.yaml` (the channels set with `/admin` → Announcements), optional `closing-time.md`. Defaults to `data/` |
 | `PIXEL_TIMEZONE`              | Optional. The time zone `/events` shows times in, and that `{{date}}` tokens use when a user-set post goes out. Defaults to `Europe/Amsterdam` |
 | `PIXEL_CONTENT_DIR`           | Optional. Where the `/info` topics live (`info/*.md`). Defaults to `content` |
 | `PIXEL_HEARTBEAT_MINUTES`     | Optional. How often Pixel checks in with a Sentry cron monitor (`pixel-<env>`) so Sentry can alert when it goes quiet. Default 5, 0 turns it off |
-| `PIXEL_RUNTIME`               | Optional. `local` (default) or `cloud`. Azure sets `cloud`. `/admin status` and the online post show it as Where |
+| `PIXEL_RUNTIME`               | Optional. `local` (default) or `cloud`. Azure sets `cloud`. `/admin` and the online post show it as Where |
 | `SENTRY_DSN`                  | Optional. Error reporting, traces, profiles, sessions, metrics and Sentry Logs are off if unset |
 | `SENTRY_TRACES_SAMPLE_RATE`   | Optional. How many traces Sentry keeps (`0`–`1`). Default `1`. Errors are always kept |
 | `SENTRY_PROFILE_SESSION_SAMPLE_RATE` | Optional. How many of those traces get a CPU profile (`0`–`1`). Default `1`. `0` turns profiling off |

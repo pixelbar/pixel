@@ -1,3 +1,5 @@
+import type { ControlRow } from "./ui.ts";
+
 export type EmbedField = { name: string; value: string; inline?: boolean };
 
 /**
@@ -24,4 +26,9 @@ export type Reply = {
 	 * default visibility.
 	 */
 	private?: boolean;
+	/**
+	 * Buttons and select menus under the reply, at most 5 rows. Each runs a
+	 * registered action for whoever uses it; see `core/ui.ts`.
+	 */
+	controls?: readonly ControlRow[];
 };

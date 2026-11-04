@@ -20,6 +20,7 @@ import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
+import { type AdminOp, runAdmin } from "../../testing/admin.ts";
 import { actor, context, IDS } from "../../testing/fixtures.ts";
 import { inMemoryParking } from "../../testing/parking.ts";
 import { createAdminFeature } from "./index.ts";
@@ -107,21 +108,12 @@ const human = (id: string, displayName = "Someone"): ResolvedUser => ({
 
 function run(
 	dispatcher: Dispatcher,
-	subcommand: string,
+	subcommand: AdminOp,
 	args: Record<string, string>,
-	target: ResolvedUser | undefined,
+	target?: ResolvedUser,
 	as: Partial<PlatformActor> = { userId: IDS.admin, displayName: "Ada", handle: "ada_l" },
 ) {
-	return dispatcher.dispatch({
-		actor: actor(as),
-		command: "admin",
-		// The old names are kept in the tests' vocabulary: set-level is /admin level set, whois is /admin level get.
-		...(subcommand === "set-level" || subcommand === "whois"
-			? { subgroup: "level", subcommand: subcommand === "set-level" ? "set" : "get" }
-			: { subcommand }),
-		args: target ? { user: target.id, ...args } : args,
-		...(target ? { users: { user: target } } : {}),
-	});
+	return runAdmin(dispatcher, subcommand, args, target, as);
 }
 
 const fieldsOf = (result: Awaited<ReturnType<typeof run>>) =>
@@ -169,7 +161,7 @@ describe("who may run them", () => {
 	});
 });
 
-describe("/admin level set", () => {
+describe("/admin → People → **Change level…**", () => {
 	it("makes a guest a member, persists it, and logs who did what to whom", async () => {
 		const { dispatcher, store } = setup();
 		const result = await run(
@@ -297,33 +289,29 @@ describe("/admin level set", () => {
 		expect(read()).toBe(MEMBERS);
 	});
 
-	it("refuses a bot", async () => {
+	it("offers a bot nothing to change", async () => {
 		const { dispatcher } = setup();
-		const result = await run(
-			dispatcher,
-			"set-level",
-			{ level: "member" },
-			{
-				...human(TARGET),
-				isBot: true,
-			},
-		);
-		expect(result.reply.text).toMatch(/can't be a bot/);
+		const looked = await run(dispatcher, "whois", {}, { ...human(IDS.member), isBot: true });
+		// A bot is picked like anyone, but its panel offers nothing to change.
+		expect(
+			looked.reply.controls?.flat().map((c) => (c.kind === "button" ? c.label : c.kind)),
+		).toEqual(["← People"]);
 		expect(read()).toBe(MEMBERS);
 	});
 
 	it("refuses a person Discord didn't resolve", async () => {
 		const { dispatcher } = setup();
-		const result = await run(dispatcher, "set-level", { level: "member" }, undefined);
+		const result = await run(dispatcher, "whois", {}, undefined);
 		expect(result.reply.text).toMatch(/Missing required option "user"/);
-		const unresolved = await dispatcher.dispatch({
+		const unresolved = await dispatcher.act({
 			actor: actor({ userId: IDS.admin }),
-			command: "admin",
-			subgroup: "level",
-			subcommand: "set",
-			args: { user: TARGET, level: "member" },
+			action: "admin.person",
+			args: { user: TARGET },
 		});
-		expect(unresolved.reply.text).toMatch(/Invalid value for option "user"/);
+		expect(unresolved).toMatchObject({
+			kind: "refused",
+			reply: { text: expect.stringMatching(/Invalid value for option "user"/) },
+		});
 		expect(read()).toBe(MEMBERS);
 	});
 
@@ -381,7 +369,7 @@ describe("/admin level set", () => {
 	});
 });
 
-describe("/admin level get", () => {
+describe("/admin → People → **Look someone up…**", () => {
 	it("shows level, source, capabilities and the note for a member", async () => {
 		const { dispatcher } = setup();
 		const result = await run(dispatcher, "whois", {}, human(IDS.member, "Grace"));

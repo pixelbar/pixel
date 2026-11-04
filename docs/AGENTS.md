@@ -8,7 +8,7 @@ For the bot itself, see the [root `AGENTS.md`](../AGENTS.md). Its rules still ap
 
 - **Site work only touches `docs/`.** Don't change `src/`, `config/`, `infra/` or the bot's `package.json` and lockfile in the same change. If the site needs a fact the code doesn't give it, ask; don't change the bot to suit the site.
 - **The only exceptions:** the `docs-*` recipes in `justfile`, the docs entries in `.gitignore`, the `docs/**` overrides in `biome.json`, and a `CHANGELOG.md` entry.
-- **The maintainer docs are separate.** `architecture.md`, `identity-and-access.md`, `infra.md`, `home-assistant.md`, `runbook.md`, `discord-command-visibility.md` and `adr/` belong to the bot. Edit them only when the bot changes, following the root `AGENTS.md`. A site change never rewrites them to fit the theme.
+- **The maintainer docs are separate.** `architecture.md`, `identity-and-access.md`, `infra.md`, `home-assistant.md`, `runbook.md`, `discord-command-visibility.md`, `discord-components.md` and `adr/` belong to the bot. Edit them only when the bot changes, following the root `AGENTS.md`. A site change never rewrites them to fit the theme.
 
 ## Commands
 
@@ -47,7 +47,7 @@ docs/
       shiki.ts              # code colours from the spectrum
       components/Px*.vue    # landing page, mark, command card, tier badge, status, mermaid
       components/pixel-mark.ts  # the mark as pixel-art paths (generated from the logo)
-      components/pixel-mark-intro.ts  # the hero's entrance: the original logo in dark, pixel-mark.ts in light
+      components/pixel-mark-intro.ts  # the hero's entrance: the original logo in dark, its paper version in light
 ```
 
 ## The design system
@@ -61,9 +61,9 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 - **Dark emits, light prints.** Dark glows (`--glow-*`); light uses hard offset shadows (`--shadow-card`, `--shadow-lift`). Check both themes.
 - **Motion is short and stepped** (`--step`, 80ms `steps(2)`). Respect `prefers-reduced-motion`.
 - **Colour is never the only signal.** States and tiers always carry a word.
-- **The logo has two versions.** Dark uses the original (`public/pixel-mark.png`, `-96.png`) on its black `--void` tile. Light uses the pixel-art mark printed on paper (`public/pixel-mark-light.svg`, `.png`, `-96.png`): a white star centre (`--mark-core`), the orbits in the `--mark-*` colours, no glow. Don't recolour, redraw or crop either by hand.
+- **The logo has two versions.** Dark uses the original (`public/pixel-mark.png`, `-96.png`) on its black `--void` tile. Light uses the original printed on paper (`public/pixel-mark-light.png`, `-96.png`, transparent): made from the original's pixels, brightness becomes ink, each pixel keeps its hue at full strength, the glow becomes pale tints, and the star stays white-hot. Don't recolour, redraw or crop either by hand; if the original changes, make the light version from it the same way.
 - **`<PxMark>`** draws the mark from `pixel-mark.ts` with the `--mark-*` tokens, so it follows the theme: neon with a glow in dark, graphic-strength colours without glow in light. `animated` adds stepped motion: a shine runs round the orbits, particles twinkle and, in dark, the star breathes. Reduced motion turns it all off.
-- **`<PxMarkIntro>`** (the hero) is the launch video's entrance, drawn on a canvas. In dark it uses the original logo (`public/pixel-mark.png`): a mosaic of its own pixels flies in and snaps together on the 64 × 64 grid, sharpens in steps (64, 128, 256) into the original itself, and lights up with a surge of glow and a burst of `--spectrum-*` sparks; then a light runs round the orbits and the star breathes, both drawn from the original's own pixels. The canvas uses `mix-blend-mode: screen` in dark so the original's black tile takes the page's background. In light it's the printed pixel art from `pixel-mark.ts` and the `--mark-*` tokens, with no glow. It follows the theme switch, plays once when it comes into view, pauses off screen, and shows the finished mark, still, with reduced motion. The animation is plain TypeScript in `pixel-mark-intro.ts`, started on mount (it needs the browser); the sparks fly a little past the mark, so don't clip its box.
+- **`<PxMarkIntro>`** (the hero) is the launch video's entrance, drawn on a canvas. In dark it uses the original logo (`public/pixel-mark.png`): a mosaic of its own pixels flies in and snaps together on the 64 × 64 grid, sharpens in steps (64, 128, 256) into the original itself, and lights up with a surge of glow and a burst of `--spectrum-*` sparks; then a light runs round the orbits and the star breathes, both drawn from the original's own pixels. The canvas uses `mix-blend-mode: screen` in dark so the original's black tile takes the page's background. Light plays the same entrance from `public/pixel-mark-light.png`, with the effects deepening the ink (`multiply`) instead of adding light. It follows the theme switch, plays once when it comes into view, pauses off screen, and shows the finished mark, still, with reduced motion. The animation is plain TypeScript in `pixel-mark-intro.ts`, started on mount (it needs the browser); the sparks fly a little past the mark, so don't clip its box.
 - **`pixel-mark.ts` is generated** by tracing the logo onto a 64 × 64 grid. Don't hand-edit its paths; if the logo changes, regenerate it and the light assets together.
 - **Fonts are self-hosted** through `@fontsource` (Pixelify Sans, IBM Plex Sans, IBM Plex Mono). Don't add Google Fonts or other third-party requests: visitors' browsers shouldn't contact anyone else (GDPR).
 - **No AI tropes:** no blue-purple gradients, emoji cards or left-border cards.
@@ -72,7 +72,7 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 
 - **Voice:** plain, friendly, exact. English, sentence case, "you" for the reader. The site describes Pixel in the third person ("Pixel posts when the space opens").
 - **No emoji in the interface.**
-- **Commands are code, as Discord shows them:** `/ha set device: state:`, `/info [topic:]`. Required options end in a colon; optional ones go in brackets.
+- **Commands are code, as Discord shows them:** `/openr open door:`, `/info [topic:]`. Required options end in a colon; optional ones go in brackets.
 - **Every command shows its lowest tier and its reply.** Use `<PxCommand>` with the tier from the command's `access.minTier`, `reply="private"` or `"public"` from `private: true`, and any `capability` in `caps`. Copy names, options and descriptions from `src/features/`, not from memory. Admin commands get cards too, with a one-line description each; never describe admin internals. Each card's signature is a heading, so it's in the outline and linkable (`/commands#ha-set`): pass `:level="4"` to cards inside a `###` subsection.
 - **Don't invent facts.** Behaviour comes from the code and the maintainer docs. Facts about Pixelbar (prices, opening times, rules) are linked on [pixelbar.nl](https://pixelbar.nl), not restated.
 - **The repository is public.** No secrets, tokens, door codes, real Discord IDs, people's names, Home Assistant URLs or the space's device names, not even as examples. Use obviously fake values.
@@ -80,11 +80,15 @@ The **Pixel** design system is the source of truth for colour, type, spacing, de
 ## Markdown and components
 
 - **Pages are Vue templates.** `{{` in prose and code spans is escaped for you (`markdown/escape-mustache.ts`). Inside raw HTML you write yourself, use `<code v-pre>`.
-- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxCommandTray`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMarkIntro`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
+- **Components are registered globally** in `theme/index.ts`: `PxCommand`, `PxCommandTray`, `PxPanel`, `PxModal`, `PxTierBadge`, `PxSpectrum`, `PxStatus`, `PxMark`, `PxMarkIntro`, `PxMermaid`, `PxHome`. A new one goes in `theme/components/`, is registered there, uses only the `px-` classes and tokens, and works in both themes and at 390px wide.
 - **Custom containers** (`::: tip`, `::: info`, `::: warning`, `::: danger`) are styled as Pixel callouts. Use at most one per section.
 - **Mermaid** fences render through `<PxMermaid>` in the theme's colours. Mermaid only loads on pages that have a diagram.
 - **Links:** link between site pages with root paths (`/commands`, `/guide/tiers`). In the maintainer docs, relative links to files outside `docs/` become GitHub links at build time (`markdown/repo-links.ts`). Relative links between `docs/*.md` files are pointed at where the site serves them, so `privacy.md` from a maintainer doc still reaches `/privacy`.
-- **`PxCommandTray`** is a pretend Discord message box with the slash-command picker, animated in steps (reduced motion shows it still). In the docs use it still: `<PxCommandTray query="/ha" :selected="2" caption="…" />` shows that query typed, the list filtered to it, one row selected and a caption under it. Its list of names and descriptions copies what Pixel registers in `src/features/`: when a command or its description changes there, change it here too. Keep admin commands out of it.
+- **`PxCommandTray`** is a pretend Discord message box with the slash-command picker, animated in steps (reduced motion shows it still). In the docs use it still: `<PxCommandTray query="/fishbot" :selected="2" caption="…" />` shows that query typed, the list filtered to it, one row selected and a caption under it. Its list of names and descriptions copies what Pixel registers in `src/features/`: when a command or its description changes there, change it here too. Keep admin commands out of it.
+- **`PxPanel`** is a still picture of one of Pixel's private replies with buttons and menus, for commands that open a panel (`/schedule`, `/park`, `/ha`). Show what the command really shows: copy the text and labels from `src/features/` (no emoji, and no left-border embeds), with made-up channels, spots, times and people (`#general`, `neighbour-1`, "Example member"). `content` is message text above the embeds; `embeds` take a `title`, `lines` (`**bold**` works, nothing else) and `fields`; `rows` are buttons (`{ label, style?, disabled? }`, style `primary`, `secondary`, `success` or `danger`) or one `{ select }` each. Always give a `caption`: it's shown and read out instead of the picture. When a panel's buttons or text change in `src/features/`, change the pictures too.
+- **`PxModal`** is a still picture of a form Pixel opens: a `title` and `fields` (`label`, `hint`, `kind` of `text`, `paragraph`, `picker` or `radio`), copied from the feature, with a `caption`. Use it for a panel's main form, not for every form.
+- Use `PxCommandTray` for commands people pick options for, and `PxPanel` for ones that open a panel: don't show a panel command as a list of subcommands.
+- Keep admin commands to their one-line card: no `PxPanel` or `PxModal` for them.
 - **`PxStatus`** reads `https://spaceapi.pixelbar.nl/` in the visitor's browser. If that fails, it says the status is unknown; it never guesses.
 
 ## Adding pages

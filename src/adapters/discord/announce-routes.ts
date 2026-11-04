@@ -27,7 +27,7 @@ export const routePublisherId = (style: SpaceAnnounceStyle, channelId: string): 
 export const requiredPermissions = (style: SpaceAnnounceStyle): readonly bigint[] =>
 	style === "timeline" ? TIMELINE_PERMISSIONS : LIVE_PERMISSIONS;
 
-/** Why a route isn't posting, as `/admin announcements` shows it. */
+/** Why a route isn't posting, as `/admin` → Announcements shows it. */
 const cantAnnounce = (problem: string): string => `I can't announce in that channel: ${problem}.`;
 
 export type DiscordRoutesOptions = {
@@ -42,7 +42,7 @@ export type DiscordRoutesOptions = {
 };
 
 /**
- * The Discord side of `/admin announcements`: turns the saved (style, channel)
+ * The Discord side of `/admin` → Announcements: turns the saved (style, channel)
  * pairings into publishers on the announcer, and starts and stops them as admins
  * change them. A route whose channel can't be used (deleted, missing permissions)
  * stays on the list with the reason, and `retry` tries it again, so fixing the

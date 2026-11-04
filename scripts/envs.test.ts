@@ -6,6 +6,8 @@ import {
 	chooseEnvFile,
 	deployProblem,
 	ENVS,
+	localFiles,
+	missingFilesProblem,
 	parseTarget,
 	pixelEnvOf,
 	SUBSCRIPTION,
@@ -13,6 +15,7 @@ import {
 	subscriptionProblem,
 	TARGETS,
 	targetEnvironment,
+	withLocalFiles,
 } from "./envs.ts";
 
 describe("parseTarget", () => {
@@ -148,6 +151,49 @@ describe("ENVS matches the Terraform stacks", () => {
 			expect(env.prod).toBe(target === "prod");
 		});
 	}
+});
+
+describe("localFiles", () => {
+	it("keeps each env's pulled config apart from the local bot's", () => {
+		expect(localFiles("dev")).toEqual({
+			adminsFile: "config/admins.dev.yaml",
+			membersFile: "config/dev/members.yaml",
+			homeAssistantDir: "config/home-assistant/dev",
+			announcementRoutesFile: "config/dev/announcement-routes.yaml",
+		});
+		expect(Object.values(localFiles("prod"))).not.toContain("config/admins.yaml");
+	});
+});
+
+describe("withLocalFiles", () => {
+	it("points Pixel's config paths at the env's pulled files", () => {
+		expect(withLocalFiles("prod", { PIXEL_ENV: "prod" })).toEqual({
+			PIXEL_ENV: "prod",
+			PIXEL_ADMINS_FILE: "config/admins.prod.yaml",
+			PIXEL_MEMBERS_FILE: "config/prod/members.yaml",
+			PIXEL_HOME_ASSISTANT_DIR: "config/home-assistant/prod",
+		});
+	});
+
+	it("keeps a path the env file sets, and treats an empty one as unset", () => {
+		const vars = withLocalFiles("dev", {
+			PIXEL_ADMINS_FILE: "elsewhere/admins.yaml",
+			PIXEL_MEMBERS_FILE: "",
+		});
+		expect(vars.PIXEL_ADMINS_FILE).toBe("elsewhere/admins.yaml");
+		expect(vars.PIXEL_MEMBERS_FILE).toBe("config/dev/members.yaml");
+	});
+});
+
+describe("missingFilesProblem", () => {
+	it("is fine when every file is there", () => {
+		expect(missingFilesProblem("dev", ["a", "b"], () => true)).toBeUndefined();
+	});
+
+	it("names what's missing and says to pull that env", () => {
+		const problem = missingFilesProblem("prod", ["a", "b"], (f) => f === "a");
+		expect(problem).toBe("Missing b. Run: just pull prod");
+	});
 });
 
 describe("the justfile", () => {

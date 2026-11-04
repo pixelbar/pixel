@@ -52,18 +52,10 @@ typecheck:
     pnpm exec tsc --noEmit
 
 # Everything CI runs for the Node app: lint, types, tests with coverage thresholds.
-# GitHub skips it when the `check` inputs already passed (.github/path-filters.yml).
+# GitHub skips it when no `check` path changed (.github/path-filters.yml).
 [group('develop')]
 [doc("Everything CI runs for the Node app: lint, types, tests with coverage thresholds")]
 check: lint typecheck coverage
-
-# The files a CI job depends on (a list in .github/path-filters.yml), and the
-# hash CI uses to skip the job when they already passed: just ci-inputs check
-[group('develop')]
-[doc("Show the files a CI job depends on and the hash CI uses to skip it: `just ci-inputs check`")]
-ci-inputs filter:
-    bash scripts/ci-inputs.sh --list {{filter}}
-    @echo "hash (CI also adds the workflow file): $(bash scripts/ci-inputs.sh {{filter}})"
 
 # Fail unless this branch updates CHANGELOG.md vs the base (default origin/main).
 # CI sets SKIP_CHANGELOG when the PR has the skip-changelog label.
@@ -130,9 +122,16 @@ tf-apply env:
     terraform -chdir=infra/envs/{{env}} init -backend-config=backend.azurerm.example.hcl -input=false
     terraform -chdir=infra/envs/{{env}} apply
 
-# Validate the access list files and the Home Assistant devices file
+# Validate the access lists and Home Assistant devices file: the local bot's, or an
+# env's as `just pull dev|prod` wrote them (config/admins.<env>.yaml, config/<env>/, …)
 [group('config')]
-validate-config:
+[doc("Validate the access lists and devices file: the local bot's, or `just validate-config dev|prod`")]
+validate-config env="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "{{env}}" ]; then
+      exec pnpm exec tsx scripts/validate-config.ts "{{env}}"
+    fi
     pnpm exec tsx scripts/validate-config.ts "${PIXEL_ADMINS_FILE:-config/admins.yaml}" "${PIXEL_MEMBERS_FILE:-config/members.yaml}" "${PIXEL_HOME_ASSISTANT_DIR:-config/home-assistant}"
 
 # Validate infra/secrets.manifest.yaml (names only; no Azure login, no values)
@@ -146,6 +145,7 @@ validate-secrets:
 env env:
     @pnpm exec tsx scripts/env.ts show {{env}}
 
+# Reads that env's file and the config `just pull <env>` wrote (config/admins.<env>.yaml, …).
 # Register slash commands: `just register dev` or `just register prod`
 [group('environments')]
 register env:
@@ -300,6 +300,8 @@ deploy env:
     pnpm exec tsx scripts/env.ts deploy {{env}}
     eval "$(pnpm exec tsx scripts/env.ts shell {{env}})"
     pnpm exec tsx scripts/env.ts check-az {{env}}
+    # `just register` runs after the roll and reads these, so check them before anything ships.
+    just validate-config {{env}}
     just docker-login-ghcr
     image_name="ghcr.io/pixelbar/pixel"
     sha="$(git rev-parse HEAD)"

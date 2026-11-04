@@ -12,7 +12,7 @@ import type { RoleMirror } from "../../core/role-mirror.ts";
 import { inspectionField, mirrorLine, mirrorReason, wantedFor } from "./roles.ts";
 
 /**
- * `/admin level set` and `/admin level get`: who is a member or friend. Both act
+ * `/admin` → People → **Change level…** and `/admin` → People → **Look someone up…**: who is a member or friend. Both act
  * on the person's immutable ID. Names, handles and notes are shown for people
  * to read only, and everything written by someone else is escaped or shown as a
  * code span so it can't render as formatting, links or mentions.
@@ -192,7 +192,11 @@ export function createLevelSubgroup(
 													)
 													.join(", ")}${tier === "guest" ? " (inactive while a guest)" : ""}`,
 								},
+								...(record && record.revoked.length > 0
+									? [{ name: "Revoked", value: record.revoked.join(", ") }]
+									: []),
 								...(record?.note ? [{ name: "Note", value: inlineCode(record.note, 300) }] : []),
+
 								...(rolesField ? [rolesField] : []),
 							],
 						},

@@ -8,7 +8,7 @@ import {
 } from "../closing-time/index.ts";
 
 /**
- * `/admin closing-time set`: a modal for the reminder text, written to the
+ * `/admin` → Closing time → **Change the message…**: a modal for the reminder text, written to the
  * persist file (`PIXEL_DATA_DIR/closing-time.md`, the Azure Files share on cloud).
  * Opens with the saved message when one is already set.
  */

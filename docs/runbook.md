@@ -2,7 +2,7 @@
 
 How to run Pixel day to day and what to do when something goes wrong. It is written for volunteers: anyone with the right access should be able to follow it without the original author.
 
-**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy dev` or the Deploy dev workflow (a branch or PR) rolls Azure `dev`; merges to `main` publish GHCR when the image inputs differ from the last publish. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
+**This is a living document.** Bootstrap (#8) is applied. Container App `pixel-dev` is live (#9). `infra/envs/prod` is in repo (#12). CD: `just deploy dev` or the Deploy dev workflow (a branch or PR) rolls Azure `dev`; merges to `main` publish GHCR when image paths changed. Prod and the docs site ship from the Release workflow. Every procedure has two parts:
 
 - **Today:** what works now, with Pixel run locally or in a container you start yourself. Everything here has been checked against the code.
 - **🚧 Azure:** a marker for the steps that still depend on hosting that is not applied, or on #12. Search for `🚧` to find what's left.
@@ -51,26 +51,28 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 | **Environments** | `dev` (Pixel Dev bot, test guild) and `prod` (production Pixel bot, production guild). Separate bots, tokens and secrets. Never copy the Dev token into prod. |
 | **Who is on the hook when the bot is down** | 🚧 Not decided. Put a named contact (and a backup) here, and where to reach them. |
 | **Where Pixel runs** | Azure `pixel-dev` (one replica, no public ingress) plus `pixel-prod` after a maintainer apply, plus any laptop `just dev`. Subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, West Europe. Resource groups `pixel-bootstrap`, `pixel-dev`, `pixel-prod`. `just deploy dev` rolls `pixel-dev`. **Do not** also run `just dev` on the Pixel Dev token while that app is up. A Release rolls `pixel-prod` after Environment `prod` approval. Diagrams: [`infra.md`](infra.md). |
-| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when the files those jobs depend on have not already passed. Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when the image inputs differ from the last publish. |
+| **Where the code and CI are** | GitHub, `pixelbar/pixel`. CI runs `just check` and/or a Docker smoke build only when those paths changed ([`dorny/paths-filter`](https://github.com/dorny/paths-filter)). Docs PRs run Biome + the site build. CD on `main` publishes `ghcr.io/pixelbar/pixel:<sha>` when image paths changed. |
 | **Access you may need** | The Discord Developer Portal (bot token), a Discord role that can manage the server, the Sentry project, the GitHub repo, the Home Assistant admin account, Owner on the Pixel Azure subscription (to apply bootstrap), and the host. |
 
 ## Quick reference
 
+Admin tasks in Discord are in one private panel, `/admin`. This runbook writes them as a path: `/admin` → Doors → **Switch door control off…** means run `/admin`, pick **Doors** in its **Go to…** menu, then press that button. Changes that are hard to undo ask first.
+
 | I want to… | Do this |
 | --- | --- |
 | See when Pixel last started, crashed or stopped, and which version | The announcements channel: a "🟢 Pixel is online" post per run (version, commit, **Where** `local` or `cloud`), edited to "🔴 offline" on shutdown, or marked "⚠️ stopped unexpectedly" after a crash |
-| See if Pixel is up and which version | `/ping` in Discord, or `/admin status` (version, **Where** `local` or `cloud`, Node, uptime, access list counts, Discord roles, Home Assistant) |
+| See if Pixel is up and which version | `/ping` in Discord, or `/admin` (version, **Where** `local` or `cloud`, Node, uptime, access list counts, Discord roles, Home Assistant) |
 | Check readiness from outside | `GET /healthz` (process is up) and `GET /readyz` (200 only while the Discord gateway is connected, otherwise 503), on `HEALTH_PORT` (default 8080) |
 | Read the logs | Console, or the file `data/logs/current.log` (JSON lines, about two weeks kept), or **Logs** in Sentry |
 | See what Pixel stores about people | [Privacy notice](privacy.md). Handle a request under [Privacy requests](#privacy-requests) |
 | Set up Home Assistant on a test instance | [`home-assistant.md`](home-assistant.md) |
 | A door action looks wrong | [If a door action looks wrong](#if-a-door-action-looks-wrong) |
-| Re-read the access lists and devices after a hand edit | `/admin reload` (admins only). Or restart |
-| Check the config files without starting Pixel | `just validate-config` |
+| Re-read the access lists and devices after a hand edit | `/admin` → **Reload the access lists** (admins only). Or restart |
+| Check the config files without starting Pixel | `just validate-config` (the local bot's), or `just validate-config dev\|prod` (that environment's, as `just pull` wrote them) |
 | Make Discord pick up new or changed commands | Prod: a Release does it (the `register-prod` job, after a second Environment `prod` approval). Dev: `just deploy dev` or the Deploy dev workflow does it. By hand (rollbacks, or before `github_register_principal_id` is applied): `just register dev` or `just register prod`. Prod uses `.env.prod` (`PIXEL_ENV=prod`), never the Mini Pixel Dev token |
 | Add Pixel to a Discord server | [Adding Pixel to a Discord server](#adding-pixel-to-a-discord-server) |
 | Turn closing-time posts on or off, or change the text | [Closing-time](#closing-time) |
-| Look up a person | `/admin level get user:` (admins only) |
+| Look up a person | `/admin` → People → **Look someone up…** (admins only) |
 | See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
 | Cut a production release | GitHub → Actions → **Release** → Run workflow on `main` |
 
@@ -133,25 +135,25 @@ Tiers come from two files: `config/admins.yaml` (hand-edited) and `config/member
 
 **Add or change a member or friend (the normal way):**
 
-1. In Discord, an admin runs `/admin level set user:<person> level:<member|friend|guest>` with an optional reason.
-2. Check it with `/admin level get user:<person>`.
+1. In Discord, an admin runs `/admin` → People → **Change level…** with an optional reason.
+2. Check it with `/admin` → People → **Look someone up…**.
 
-That's all: Pixel updates `members.yaml` itself (writing the person's Discord username as the `note` if the entry has none, so you can tell who is who; it never replaces a note you wrote), keeps `members.yaml.bak`, and logs an `access.changed` event with who did it. If Pixel is configured to mirror Discord roles, it also sets the person's role. `/admin sync` re-applies the roles for everyone if they ever drift.
+That's all: Pixel updates `members.yaml` itself (writing the person's Discord username as the `note` if the entry has none, so you can tell who is who; it never replaces a note you wrote), keeps `members.yaml.bak`, and logs an `access.changed` event with who did it. If Pixel is configured to mirror Discord roles, it also sets the person's role. `/admin` → Discord roles → **Sync everyone** re-applies the roles for everyone if they ever drift.
 
-**Role sync (optional).** With `DISCORD_ROLE_SYNC=on`, Pixel also works the other way: every minute it reads who holds the mapped roles and updates `members.yaml` (role given → that level; role taken away or left the server → guest; admins never change). Giving someone the `member` role in Discord is then enough. To turn it on: enable the Server Members Intent for the bot (Developer Portal → Bot), run `/admin sync` so everyone Pixel lists holds their role, then set `DISCORD_ROLE_SYNC=on` (`discord_role_sync = "on"` in the env's `terraform.tfvars` on Azure) and restart. Look for `role_sync.problem` in the logs or Sentry: it says why the sync paused (a broken role, the intent off) or that it held back more than 5 removals at once; fix the roles or run `/admin sync`, and it carries on by itself. Each change is an `access.changed` record by the bot, with reason "Has the member role" or "Discord role removed".
+**Role sync (optional).** With `DISCORD_ROLE_SYNC=on`, Pixel also works the other way: every minute it reads who holds the mapped roles and updates `members.yaml` (role given → that level; role taken away or left the server → guest; admins never change). Giving someone the `member` role in Discord is then enough. To turn it on: enable the Server Members Intent for the bot (Developer Portal → Bot), run `/admin` → Discord roles → **Sync everyone** so everyone Pixel lists holds their role, then set `DISCORD_ROLE_SYNC=on` (`discord_role_sync = "on"` in the env's `terraform.tfvars` on Azure) and restart. Look for `role_sync.problem` in the logs or Sentry: it says why the sync paused (a broken role, the intent off) or that it held back more than 5 removals at once; fix the roles or run `/admin` → Discord roles → **Sync everyone**, and it carries on by itself. Each change is an `access.changed` record by the bot, with reason "Has the member role" or "Discord role removed".
 
-**Remove someone completely:** `/admin level set … level:guest` keeps their entry. To delete the entry, edit `members.yaml` by hand (remove the whole `- ids: …` block), then `/admin reload`. Admins can't be changed from Discord (see below).
+**Remove someone completely:** `/admin` → People → **Change level…** keeps their entry. To delete the entry, edit `members.yaml` by hand (remove the whole `- ids: …` block), then `/admin` → **Reload the access lists**. Admins can't be changed from Discord (see below).
 
-**Add or remove an admin:** admins are never changed from Discord. Edit `config/admins.yaml` by hand, and make sure every admin also has an entry in `members.yaml` with the same IDs. Then run `just validate-config` and `/admin reload` (or restart). Admin IDs must be quoted strings like `"discord:123456789012345678"`. Getting an ID: in Discord, enable Developer Mode, right-click the person, **Copy User ID**.
+**Add or remove an admin:** admins are never changed from Discord. Edit `config/admins.yaml` by hand, and make sure every admin also has an entry in `members.yaml` with the same IDs. Then run `just validate-config` and `/admin` → **Reload the access lists** (or restart). Admin IDs must be quoted strings like `"discord:123456789012345678"`. Getting an ID: in Discord, enable Developer Mode, right-click the person, **Copy User ID**.
 
 **If you edited a file and Pixel won't start:** run `just validate-config`. It names the file, the position and the field, never the value. Fix that and start again. A bad `admins.yaml` or a missing admin list is a startup failure by design. `members.yaml.bak` is the previous good copy if you need to go back.
 
-**Capabilities** (extra permissions such as `ha-lights`): `/admin capabilities grant|revoke user: capability:`, `/admin capabilities grant-all user:` (every capability in one audited change) and `/admin capabilities list [user:]`. To give one to everyone at a level, use `/admin capabilities grant-level level:member capability:ha-lights` (`level:friend` reaches friends and members) and `revoke-level` to take it back; it is saved in the `tiers:` section at the top of `members.yaml`, and a hand edit there needs `/admin reload` like any other. They only ever work for members, friends and admins, never guests. A real individual grant or revoke also DMs the person, naming the capability; a level change DMs nobody. If they have DMs from server members closed, the change still applies; look for `capability.dm_failed` in the logs (IDs, not the message text).
+**Capabilities** (extra permissions such as `ha-lights`): `/admin` → People → **Grant capabilities…**, `/admin` → People → **Grant every capability…** (every capability in one audited change) and `/admin` → Capabilities. To give one to everyone at a level, use `/admin` → Capabilities → **What friends get** / **What members get** (`level:friend` reaches friends and members) and `revoke-level` to take it back; it is saved in the `tiers:` section at the top of `members.yaml`, and a hand edit there needs `/admin` → **Reload the access lists** like any other. They only ever work for members, friends and admins, never guests. A real individual grant or revoke also DMs the person, naming the capability; a level change DMs nobody. If they have DMs from server members closed, the change still applies; look for `capability.dm_failed` in the logs (IDs, not the message text).
 
 **Azure (`dev`):**
 
 - **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. `just secrets-pull dev` writes it to `config/admins.dev.yaml`; edit that, then `just secrets-push dev`, which checks it against the env's `members.yaml` and offers the restart (see [Sync secrets with Key Vault](#sync-secrets-with-key-vault)). Versions of the secret are history.
-- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit of `members.yaml`: `just pull dev`, edit `config/dev/members.yaml`, `just push dev` (see [Pull and push an environment](#pull-and-push-an-environment)), then `/admin reload`, or restart. Daily backups of the share keep 14 days.
+- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit of `members.yaml`: `just pull dev`, edit `config/dev/members.yaml`, `just push dev` (see [Pull and push an environment](#pull-and-push-an-environment)), then `/admin` → **Reload the access lists**, or restart. Daily backups of the share keep 14 days.
 - Prod (#12) will be the same layout in `pixel-prod`.
 
 ## Moderation
@@ -169,7 +171,7 @@ The events to look for: `command.executed` (with `outcome`), `command.denied`, `
 **Stop someone using Pixel.** Pixel has no block list of its own (#6 decided Discord's own moderation covers it):
 
 1. **Ban or time them out in Discord** (Server Settings → Members). A banned person can't use any command.
-2. If they were a member or friend, run `/admin level set user:<person> level:guest`, and revoke any capabilities with `/admin capabilities revoke`, so nothing lingers if they come back.
+2. If they were a member or friend, run `/admin` → People → **Change level…**, and revoke any capabilities with `/admin` → People → **Revoke capabilities…**, so nothing lingers if they come back.
 3. Note what you did and why.
 
 If you suspect someone's **account was taken over** (for example it is unlocking things or running device actions it never used to), do 1 and 2 at once, then check the logs for what it did, and tell the board.
@@ -178,17 +180,17 @@ If you suspect someone's **account was taken over** (for example it is unlocking
 
 First-time setup (dedicated non-admin user, token, URL, devices file) and the threat model: [`home-assistant.md`](home-assistant.md). Why those choices: [ADR 0011](adr/0011-home-assistant.md).
 
-Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** HA user, and can only touch the devices in `config/home-assistant/devices.yaml` (read [`architecture.md`](architecture.md), "Home Assistant"). `/admin status` shows whether it's connected, and how many devices are allowed.
+Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** HA user, and can only touch the devices in `config/home-assistant/devices.yaml` (read [`architecture.md`](architecture.md), "Home Assistant"). `/admin` shows whether it's connected, and how many devices are allowed.
 
-**Add or remove devices on Azure:** `just ha-devices dev` (or `prod`). It pulls that env's `devices.yaml` from the file share, shows everything Home Assistant has with what's already listed ticked (marked `[listed as …]`, first). Tick to add a device, untick to remove one. Press `/` to search, ⏎ to keep the filter, `s` to see every ticked device, and esc to go back; ticks survive searches. Listed devices Home Assistant no longer offers are shown too, so they can be removed. For each new device it asks: the name, the actions (none means read-only) and `minTier`. It validates the result, shows the diff, and uploads it only when you say yes and nobody changed the remote meanwhile. Then run `/admin reload` in that env. The remote is the truth: the tool keeps a local copy in `config/home-assistant/<env>/devices.yaml`, and if that copy has edits the remote lacks, it shows them and stops (or throws them away if you say so). It needs `az login` and `HOME_ASSISTANT_URL` / `HOME_ASSISTANT_TOKEN` in `.env.dev` (or `.env`) or `.env.prod`. Doors start with no actions ticked, and on dev it offers none, because dev must not control the real doors. A leftover `inventory.yaml` on a share (older Pixel versions wrote it) is not used and can be deleted.
+**Add or remove devices on Azure:** `just ha-devices dev` (or `prod`). It pulls that env's `devices.yaml` from the file share, shows everything Home Assistant has with what's already listed ticked (marked `[listed as …]`, first). Tick to add a device, untick to remove one. Press `/` to search, ⏎ to keep the filter, `s` to see every ticked device, and esc to go back; ticks survive searches. Listed devices Home Assistant no longer offers are shown too, so they can be removed. For each new device it asks: the name, the actions (none means read-only) and `minTier`. It validates the result, shows the diff, and uploads it only when you say yes and nobody changed the remote meanwhile. Then run `/admin` → **Reload the access lists** in that env. The remote is the truth: the tool keeps a local copy in `config/home-assistant/<env>/devices.yaml`, and if that copy has edits the remote lacks, it shows them and stops (or throws them away if you say so). It needs `az login` and `HOME_ASSISTANT_URL` / `HOME_ASSISTANT_TOKEN` in `.env.dev` (or `.env`) or `.env.prod`. Doors start with no actions ticked, and on dev it offers none, because dev must not control the real doors. A leftover `inventory.yaml` on a share (older Pixel versions wrote it) is not used and can be deleted.
 
-**Add a device by hand:** write an entry in `devices.yaml` (the entity ID is on the entity's page in Home Assistant), and set who may use it (`minTier`) and which `actions` are allowed (none means read-only). Run `just validate-config`, then `/admin reload`: the reply says how many devices there are and warns about entities HA doesn't know. Nothing is usable until it's in `devices.yaml`.
+**Add a device by hand:** write an entry in `devices.yaml` (the entity ID is on the entity's page in Home Assistant), and set who may use it (`minTier`) and which `actions` are allowed (none means read-only). Run `just validate-config`, then `/admin` → **Reload the access lists**: the reply says how many devices there are and warns about entities HA doesn't know. Nothing is usable until it's in `devices.yaml`.
 
-**Take a device away from people quickly:** remove its `actions` (or the whole entry) from `devices.yaml` and `/admin reload`. Changing it back is the same in reverse.
+**Take a device away from people quickly:** remove its `actions` (or the whole entry) from `devices.yaml` and `/admin` → **Reload the access lists**. Changing it back is the same in reverse.
 
-**Doors:** members with `ha-doors` (or `ha-admin`) can lock or unlock a door with `/ha set`, or unlock with `/ha open door:`. Pixel never unlatches (`open` / `lock.open`); drop `open` from `devices.yaml` if it's still listed, or `just validate-config` refuses the file. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
+**Doors:** members with `ha-doors` (or `ha-admin`) can lock or unlock a door with the **Lock** and **Unlock** buttons on its panel in `/ha` (`/ha device:` goes straight to it). Pixel never unlatches (`open` / `lock.open`); drop `open` from `devices.yaml` if it's still listed, or `just validate-config` refuses the file. A door can't be opened to friends: `just validate-config` refuses a door with `minTier: friend`.
 
-**Stop all door control at once:** `/admin doors off` (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin doors on`. It survives restarts. Check it in `/admin status`. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin doors on` fixes it.
+**Stop all door control at once:** `/admin` → Doors → **Switch door control off…** (admins only). Nobody can then act on any door from Pixel until an admin runs `/admin` → Doors → **Switch door control on**. It survives restarts. Check it in `/admin`. If the switch file in `data/` is ever unreadable, doors start off and say so in the logs; `/admin` → Doors → **Switch door control on** fixes it.
 
 **Emergency stop for everything:** revoke Pixel's token **in Home Assistant** (profile of the Pixel user → Security → Long-lived access tokens → delete). Pixel's next call is refused and the connection turns off. It takes effect at once and doesn't depend on Pixel being healthy. To bring it back, make a new token and put it in `HOME_ASSISTANT_TOKEN` (see [Secrets](#secrets)).
 
@@ -196,11 +198,11 @@ Pixel talks to Home Assistant (HA) with a long-lived token from a **non-admin** 
 
 Someone unlocked (or locked) a door who shouldn't have, a door moved when nobody asked, or `/ha` reported a result that doesn't match the physical door.
 
-1. **Stop Pixel's door control now:** `/admin doors off`. That is enough if the problem is only Pixel. It does not lock the physical door.
+1. **Stop Pixel's door control now:** `/admin` → Doors → **Switch door control off…**. That is enough if the problem is only Pixel. It does not lock the physical door.
 2. **If anything still moves,** or you don't trust the Home Assistant user: delete Pixel's long-lived token in HA (emergency stop above). That stops every Pixel action, not only doors.
 3. **Check the physical door** and, if you can, Home Assistant's own logbook for that lock.
 4. **Find who Pixel thinks did it.** Search the logs for `"kind":"door"` and `home.action` / `home.action_denied` (see [Moderation](#moderation)). Act on the Discord ID, never the name. A matching nickname is not evidence.
-5. **If that Discord account looks taken over:** Discord ban or timeout, `/admin level set` to guest, revoke `ha-doors` and `ha-admin` (see [Moderation](#moderation)). Keep doors off until you know they can't do it again.
+5. **If that Discord account looks taken over:** Discord ban or timeout, `/admin` → People → **Change level…** to guest, revoke `ha-doors` and `ha-admin` (see [Moderation](#moderation)). Keep doors off until you know they can't do it again.
 6. **If the token or the HA admin looks leaked:** rotate the Home Assistant token (and the HA admin password) as in [Secrets](#secrets). Treat a leaked HA admin as a building incident, not only a Pixel one.
 7. Tell the board what you stopped, which ID you found, and whether the physical door was open.
 
@@ -258,43 +260,45 @@ That restarts the running revision (`az containerapp revision restart`); it does
 
 ## Scheduled posts
 
-Members with the `schedule-posts` capability schedule messages and polls with `/schedule` (`/admin capabilities grant user: capability:schedule-posts`). `/schedule list` shows them all, with who made each in the file.
+Members with the `schedule-posts` capability schedule messages and polls with `/schedule` (`/admin` → People → **Grant capabilities…**). `/schedule` opens a private panel that lists them all; who made each is in the file.
 
 After a deploy that adds `/schedule`, run **`just register dev`** or **`just register prod`** so Discord lists the commands, then grant the capability. No new environment variables: times use `PIXEL_TIMEZONE` (Europe/Amsterdam). The bot needs Send Messages in the target channel, and Send Polls if it will post polls.
 
 - **They live in `data/schedules.yaml`.** Back it up with the access files; deleting it deletes every schedule.
 - **Tokens** in the message, poll question or answers (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`) fill in when the post goes out, in `PIXEL_TIMEZONE`. A whole-day offset (`{{date+2}}`, `{{day+2}}`) is from the scheduled day, so a Monday post can say Wednesday. A name Pixel doesn't know is left as written. Discord's limits (2000 characters for a message, 300 for a poll question, 55 for an answer) count the filled text, so `/schedule` refuses a post its tokens would push over. `schedule.clipped` in the logs means one still came out too long and was cut to fit. Don't put secrets in a scheduled post.
-- **Change one before it posts:** `/schedule edit` (only the person who scheduled it). Without a schedule it lists theirs; with one it opens the same compose modal, prefilled. One-offs that already went out, and other people's schedules, get a generic refusal.
-- **Stop one now:** `/schedule pause` or `/schedule delete`. To stop someone's schedules, revoke their capability: each of theirs pauses the next time it's due.
+- **Change one before it posts:** pick it in `/schedule` and press **Edit** (only the person who scheduled it sees Edit, Pause and Delete). Nothing changes until they press **Save changes**.
+- **Stop one now:** the person who made it presses **Pause** or **Delete** on it in `/schedule`. Nobody else can, admins included: to stop someone's schedules, revoke their capability (each of theirs pauses the next time it's due), or remove the entry from `data/schedules.yaml` and restart.
+- **Poll reminders:** a poll with a reminder (set with **Reminders** on its draft) gets a daily reminder in that channel while it's open, linking to it. `schedule.reminded` in the logs means one went out; `schedule.reminder_failed` (Pixel can't post in the reminder channel) and `schedule.reminder_skipped` (more than an hour late) mean it didn't. To stop them, its creator edits the poll and clears the time in **Reminders**, or pauses it.
+- **"That's expired. Run the command again."** The panel's buttons last 15 minutes from the last click, and a deploy or restart drops them and any unsaved draft. Nothing that was saved is lost.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
 
 ## Parking
 
-Members with the `parking` capability get a spot at the gate with `/park for:` (`/admin capabilities grant user: capability:parking`), see who's parked with `/parking list`, and free their spot with `/parking leave`. Admins manage the spots and when they're open with `/admin parking`. After deploying a version that adds these commands, run `just register dev` or `just register prod`. With [OpenR](#openr-doors-and-the-gate) set up and `OPENR_GATE_DOOR` set, `/park` opens the gate; without it, or while Pixel is logged out of OpenR or `/admin doors` is off, `/park` says to open it the usual way.
+Members with the `parking` capability use `/park` (`/admin` → People → **Grant capabilities…**): a private panel that shows who's parked where, gets them a spot and opens the gate, and has Leave, Stay longer and Someone's in my spot once they're parked. `/park for:` books straight away. Admins manage the spots and when they're open with `/admin` → Parking. After deploying a version that adds these commands, run `just register dev` or `just register prod`. With [OpenR](#openr-doors-and-the-gate) set up and `OPENR_GATE_DOOR` set, `/park` opens the gate; without it, or while Pixel is logged out of OpenR or `/admin` → Doors is off, `/park` says to open it the usual way.
 
 | I want to… | Do this |
 | --- | --- |
-| Add our own spot | `/admin parking add-spot name:ours permanent:True description:…`. A permanent spot is open every day until the reset |
-| Add a borrowed spot | `/admin parking add-spot name:neighbour-1 description:…`. It's closed until it's opened |
-| Open borrowed spots for today | `/admin parking open spots:neighbour-1 neighbour-2 until:17:00`. `from` defaults to now and `until` to the reset. Running it again for a spot replaces that day's opening. `from:tomorrow 8` sets tomorrow's the evening before |
-| Close a spot | `/admin parking close spots:neighbour-1` ends a borrowed spot's opening for today. `/admin parking close spots:ours until:14:00` closes our own spot for a while (default: until the reset); `/admin parking open spots:ours` opens it again |
-| See what's open | `/admin parking status` |
-| Change the reminder, grace period, reset or durations | `/admin parking settings` (with no options it shows them) |
-| Free a spot someone left without `/parking leave` | `/admin parking free spot:` |
+| Add our own spot | `/admin` → Parking → **Add a spot**, kind **Permanent**. A permanent spot is open every day until the reset |
+| Add a borrowed spot | `/admin` → Parking → **Add a spot**, kind **Borrowed**. It's closed until it's opened |
+| Open borrowed spots for today | `/admin` → Parking → **Open spots…**, pick them, then fill in the form: **From** defaults to now and **Until** to the reset. Opening a spot again replaces that day's opening; a **From** of `tomorrow 8` sets tomorrow's |
+| Close a spot | `/admin` → Parking → **Close spots…** ends a borrowed spot's opening for today. For our own spot, Pixel asks until when (default: the reset); **Open again** on its panel lifts the closure |
+| See what's open | `/admin` → Parking |
+| Change the reminder, grace period, reset or durations | `/admin` → Parking → **Settings** (the panel shows them) |
+| Free a spot someone left without pressing **Leave** in `/park` | `/admin` → Parking → pick the spot → **Free the spot…** |
 | Watch parking | Set `DISCORD_PARKING_CHANNEL_ID` to a private admin channel (local `.env`; on Azure, `discord_parking_channel_id` in that env's `terraform.tfvars`, then apply). Pixel posts every booking, leave, extension, ending, taken-spot report and admin change there. The bot needs View Channel and Send Messages. `parking.channel_failed` in the logs means a post didn't go through |
 | See how much parking is used | Sentry, Explore → Metrics: `pixel.parking`, split by `event` (and `spot`). Counted whether or not the channel is set |
-| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin parking status` shows "reported taken"). If you find who parked there, `/admin parking assign user: spot:` gives them that spot (and lifts the closure). Pixel won't take it from someone still booked into it: they should run `/parking taken` to get a new spot, or you can end their booking with `evict:True`. Otherwise, once it's clear, `/admin parking open spots:` opens it again. If nothing else was free, Pixel asked the reporter to leave and ended their booking |
-| Close or remove a spot someone's parked in | Pixel refuses and says who's there until when. Add `evict:True` to end their booking |
+| Someone reported a spot taken | The parking channel says who and which spot. That spot is closed until the reset (`/admin` → Parking shows "reported taken"). If you find who parked there, **Give it to someone…** on that spot in `/admin` → Parking gives them that spot (and lifts the closure). Pixel won't take it from someone still booked into it: they press **Someone's in my spot** in `/park` to get a new spot, or you go ahead when Pixel asks, which ends their booking. Otherwise, once it's clear, opening it in `/admin` → Parking opens it again. If nothing else was free, Pixel asked the reporter to leave and ended their booking |
+| Close or remove a spot someone's parked in | Pixel says who's there until when and asks; **Go ahead and end it** ends their booking |
 | Stop someone parking | Revoke their `parking` capability. A booking they already hold stays until they leave, an admin frees it, or the reset |
 
 - **Nothing runs past the reset** (23:59 by default, in `PIXEL_TIMEZONE`): every booking ends there, and openings and closures end there at the latest and are pruned from the file once they end. If Pixel was down at the reset, it ends those bookings when it starts. Moving the reset earlier shortens what's already set to match.
-- **Reminders:** Pixel DMs people `remindMinutes` (15) before their end, and ends a booking `graceMinutes` (5) after it if they haven't left or extended (`/admin parking settings` changes both). People need DMs from server members on. `parking.dm_failed` in the logs says who didn't get one and why (DMs closed, left the server); it never stops a booking ending. A reminder is never sent twice, even across a restart; one missed while Pixel was down isn't sent late once the booking has ended.
+- **Reminders:** Pixel DMs people `remindMinutes` (15) before their end, and ends a booking `graceMinutes` (5) after it if they haven't left or extended (**Settings** in `/admin` → Parking changes both). People need DMs from server members on. `parking.dm_failed` in the logs says who didn't get one and why (DMs closed, left the server); it never stops a booking ending. A reminder is never sent twice, even across a restart; one missed while Pixel was down isn't sent late once the booking has ended.
 - **Who's parked** is in `data/parking-bookings.yaml`. A booking is deleted when it ends. Look for `parking.booked`, `parking.left`, `parking.reset`, `parking.freed` and `parking.evicted` in the logs. `parking.gate_failed` means the gate didn't open (its `reason` is `not-connected`, `off` or `failed`; `openr.open_failed` just before it has OpenR's side): the person keeps their spot and can run `/park` again.
-- **If `parking-bookings.yaml` is invalid,** no one can park and `/parking list` and `/admin parking status` say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
+- **If `parking-bookings.yaml` is invalid,** no one can park and `/park` and `/admin` → Parking say so (`parking.bookings_unreadable` in the logs). Fix it, or if you're sure nobody is parked, delete it, then restart.
 - **The files:** `data/parking-spots.yaml` (the spots and settings), `data/parking-windows.yaml` (opening times) and `data/parking-bookings.yaml` (who's parked). Back up the spots file with the access files. None is safe to delete: deleting the spots file deletes the spots, deleting the windows file closes every borrowed spot until someone opens it again, and deleting the bookings file frees spots that have cars in them.
-- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin parking` refuses changes; `/admin parking status` and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
-- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin parking status` says so. The next `open` or `close` moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
+- **If `parking-spots.yaml` is invalid** (a bad hand edit), parking is off and `/admin` → Parking refuses changes; its panel and the logs (`parking.spots_unreadable`, and Sentry at startup) say why. Fix the file or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
+- **If `parking-windows.yaml` is invalid,** borrowed spots are closed (our own spot still works) and `/admin` → Parking says so. The next open or close moves the broken file aside to `parking-windows.yaml.broken` and starts a new one; set today's openings again.
 
 ## Closing-time
 
@@ -306,8 +310,8 @@ Members can post a closing-time reminder with `/closing-time`, and Pixel posts t
 | --- | --- |
 | Turn it on | Set `DISCORD_CLOSING_TIME_CHANNEL_ID` to the Discord channel ID (local `.env`; on Azure, `discord_closing_time_channel_id` in that env's `terraform.tfvars`, then apply. Set by hand with `az`, the next apply removes it). The bot needs View Channel, Send Messages and Embed Links there |
 | Turn it off | Unset the variable, or set it to `off` or `none`. `/closing-time` then says so privately; the automatic path logs `closing_time.disabled` and does not fail space-close |
-| Change the text | `/admin closing-time set` (opens a modal, prefilled when a message is already saved). Pixel writes `data/closing-time.md` on the persist volume (Azure Files share on cloud — that write *is* the sync; there is no extra copy). You can still edit the file by hand. A missing or empty file uses a built-in default. No restart needed. `{{date}}` and the other date tokens fill in when it is posted. **Never put door codes, wifi passwords or personal data in it** |
-| Change where open/closed is announced | `/admin announcements set` (a style and a channel), `remove`, `list`. It takes effect at once and is saved in `data/announcement-routes.yaml` on the persist volume. There is no environment setting for this; moving Pixel to another share means copying that file with the rest of `data/`. After deploying a version that adds the command, run `just register dev` / `just register prod`. **Upgrading from `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` / `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`:** those are gone and ignored, so set the same channels again with `/admin announcements set` right after the deploy, or open/closed announcements stop. A route whose channel was deleted or lost permissions stays on the list with the reason (and is reported to Sentry at startup). Fix the channel's permissions and Pixel picks it up by itself within 5 minutes (log `announcements.route_on`), or `set` it again to check at once |
+| Change the text | `/admin` → Closing time → **Change the message…** (opens a modal, prefilled when a message is already saved). Pixel writes `data/closing-time.md` on the persist volume (Azure Files share on cloud — that write *is* the sync; there is no extra copy). You can still edit the file by hand. A missing or empty file uses a built-in default. No restart needed. `{{date}}` and the other date tokens fill in when it is posted. **Never put door codes, wifi passwords or personal data in it** |
+| Change where open/closed is announced | `/admin` → Announcements → **Add a channel…** (a style and a channel), or **Stop announcing in…**; the section lists them. It takes effect at once and is saved in `data/announcement-routes.yaml` on the persist volume. There is no environment setting for this; moving Pixel to another share means copying that file with the rest of `data/`. After deploying a version that adds the command, run `just register dev` / `just register prod`. **Upgrading from `DISCORD_ANNOUNCE_LIVE_CHANNEL_ID` / `DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID`:** those are gone and ignored, so set the same channels again with `/admin` → Announcements → **Add a channel…** right after the deploy, or open/closed announcements stop. A route whose channel was deleted or lost permissions stays on the list with the reason (and is reported to Sentry at startup). Fix the channel's permissions and Pixel picks it up by itself within 5 minutes (log `announcements.route_on`), or `set` it again to check at once |
 | See that it posted | The configured channel: a "Closing time" embed, mentions disabled |
 | Discord lists `/closing-time` but Pixel says it doesn't know it, or shows an error and then the reminder still posts | Another instance is on this bot token. Stop the extra one (see [Incidents](#incidents)), then retry |
 
@@ -341,21 +345,21 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 2. Put `OPENR_EMAIL` and `OPENR_PASSWORD` in `.env.<env>` and `just secrets-push <env>` (Key Vault secrets `openr-email` and `openr-password`). Locally, put them in `.env`.
 3. Set the building and doors: `openr_building_id`, `openr_doors` (`Entrance=103, Living room=203`: the names people pick, and OpenR's door IDs) and `openr_gate_door` in that env's `terraform.tfvars`, then apply (locally: `OPENR_BUILDING_ID`, `OPENR_DOORS`, `OPENR_GATE_DOOR`). To find the IDs, put the account in the env file and run `just openr-doors <env>`: it logs in (asking for the code OpenR emails), lists the buildings and doors the account can see with their IDs, marks the ones it can open, prints a suggested `OPENR_BUILDING_ID` and `OPENR_DOORS`, and logs out again. It's read-only and leaves Pixel's own session alone. (The IDs are also in the OpenR dashboard's address bar, `/buildings/<building>/doors/<door>`.) Never list the gate in `openr_doors`: only `/park` opens it, and startup refuses it. On **dev**, think twice before setting real doors: dev would open the real building.
 4. Restart Pixel, and run `just register dev` (or `prod`) so Discord shows `/openr`.
-5. Log in: `/admin openr login`. OpenR emails a code to Pixel's account; pass it on with `/admin openr code code:` within 10 minutes. `/admin openr status` should say logged in.
-6. Grant the capability to the members who may open doors: `/admin capabilities grant user: capability:openr`. Being an admin is not enough. The gate needs only `parking`, and a booking.
+5. Log in: `/admin` → OpenR → **Log in**. OpenR emails a code to Pixel's account; pass it on with `/admin` → OpenR → **Enter the code…** within 10 minutes. `/admin` → OpenR should say logged in.
+6. Grant the capability to the members who may open doors: `/admin` → People → **Grant capabilities…**. Being an admin is not enough. The gate needs only `parking`, and a booking.
 
 | I want to… | Do this |
 | --- | --- |
-| See whether Pixel can open doors | `/admin openr status`: logged in, when the session ends, whether refreshing is failing, and each door's and the gate's live status from OpenR (online or offline, and its errors). `/admin status` shows the session only |
-| Keep the session going | Nothing day to day: Pixel refreshes it every ~15 minutes. But OpenR ends it about **6 months after the login** whatever Pixel does; `/admin openr status` warns two weeks before. Log in again then |
-| Log Pixel in again | `/admin openr login`, then `/admin openr code code:` with the emailed code. A new login replaces the old session only once the code is accepted |
-| Stop every door and the gate now | `/admin doors off`. It also stops Home Assistant's doors. `/admin doors on` to undo |
-| Stop Pixel opening anything through OpenR at all | `/admin openr logout`: Pixel forgets the session and tells OpenR. Nothing opens until someone logs in again |
+| See whether Pixel can open doors | `/admin` → OpenR: logged in, when the session ends, whether refreshing is failing, and each door's and the gate's live status from OpenR (online or offline, and its errors). `/admin` shows the session only |
+| Keep the session going | Nothing day to day: Pixel refreshes it every ~15 minutes. But OpenR ends it about **6 months after the login** whatever Pixel does; `/admin` → OpenR warns two weeks before. Log in again then |
+| Log Pixel in again | `/admin` → OpenR → **Log in**, then `/admin` → OpenR → **Enter the code…** with the emailed code. A new login replaces the old session only once the code is accepted |
+| Stop every door and the gate now | `/admin` → Doors → **Switch door control off…**. It also stops Home Assistant's doors. `/admin` → Doors → **Switch door control on** to undo |
+| Stop Pixel opening anything through OpenR at all | `/admin` → OpenR → **Log out…**: Pixel forgets the session and tells OpenR. Nothing opens until someone logs in again |
 | Stop one person | Revoke their `openr` capability (and `parking` for the gate) |
 | Add, rename or remove a door | Change `openr_doors` (or `OPENR_DOORS`) and apply, then restart. No re-registering: doors are autocompleted |
 
-- **When the session ends:** OpenR can end it (a refused refresh, a password change, an expiry). Pixel then can't open anything until an admin logs in again: Sentry gets an `openr` error saying so, the logs say `openr.session_ended`, and `/admin status` shows it. `/park` still books spots and says to open the gate the usual way.
-- **A door shows offline or errors** on `/admin openr status`: that's OpenR's own view of the door (its reader or controller), not Pixel's. Check it in the OpenR dashboard. `openr.status_failed` in the logs means the status couldn't be read at all.
+- **When the session ends:** OpenR can end it (a refused refresh, a password change, an expiry). Pixel then can't open anything until an admin logs in again: Sentry gets an `openr` error saying so, the logs say `openr.session_ended`, and `/admin` shows it. `/park` still books spots and says to open the gate the usual way.
+- **A door shows offline or errors** on `/admin` → OpenR: that's OpenR's own view of the door (its reader or controller), not Pixel's. Check it in the OpenR dashboard. `openr.status_failed` in the logs means the status couldn't be read at all.
 - **If OpenR is down:** opening fails at once (`openr.open_failed` with the HTTP status or `timeout`). Pixel keeps the session and keeps refreshing; `openr.refresh_failed` repeats in the logs and Sentry gets the first one. Nothing is retried or opened late.
 - **If OpenR starts refusing everything** after working before, OpenR may have changed its dashboard. Pixel copies the dashboard's version header (`APP_VERSION` in `src/adapters/openr/client.ts`); compare it with the version the dashboard sends (browser dev tools, any request's `yy-app-version`) and update it.
 - **Logs:** `openr.door_opened` / `openr.door_failed` / `openr.door_denied` (who, which door, why), `parking.gate_opened` / `parking.gate_failed`, and `openr.login_started`, `openr.login_completed`, `openr.logged_out` with the admin. Never the email, password, code or cookies.
@@ -363,9 +367,9 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 
 ### If a door or the gate opened when it shouldn't have
 
-1. **Stop it now:** `/admin doors off`. If you don't trust Pixel at all, also `/admin openr logout`, or change the OpenR account's password in the OpenR dashboard (that ends every session, including Pixel's, without depending on Pixel).
+1. **Stop it now:** `/admin` → Doors → **Switch door control off…**. If you don't trust Pixel at all, also `/admin` → OpenR → **Log out…**, or change the OpenR account's password in the OpenR dashboard (that ends every session, including Pixel's, without depending on Pixel).
 2. **Find who Pixel opened it for:** search the logs for `openr.door_opened` and `parking.gate_opened`, and act on the Discord ID, never the name (see [Moderation](#moderation)). OpenR's own logs show only Pixel's account.
-3. **If that Discord account looks taken over:** ban or time it out, `/admin level set` to guest, and revoke `openr` and `parking`.
+3. **If that Discord account looks taken over:** ban or time it out, `/admin` → People → **Change level…** to guest, and revoke `openr` and `parking`.
 4. **If the OpenR account or the session file may have leaked:** change the account's password in OpenR, then put the new one in `OPENR_PASSWORD` ([Secrets](#secrets)), restart and log in again.
 5. Tell the board what you stopped and which ID you found.
 
@@ -379,7 +383,7 @@ Members with the `spacestate` capability can set the space open or closed with `
 2. On Azure, first put `SPACESTATE_USER` and `SPACESTATE_TOKEN` in `.env.<env>` and `just secrets-push <env>`, which creates the Key Vault secrets `spacestate-user` and `spacestate-token`. Then set `spacestate_api_url` in the environment's `terraform.tfvars` and apply. Terraform only references the two secrets; it never writes them.
 3. Optional: if the API needs extra request headers, set `SPACESTATE_ADDITIONAL_HEADERS` to a JSON object such as `{"X-Example": "value"}`. It is a secret so the values stay out of the public repository. On Azure, push it with `just secrets-push <env>` (Key Vault secret `spacestate-additional-headers`) first, then set `spacestate_additional_headers_enabled = true` and apply.
 4. Restart Pixel, then run `just register dev` (or `prod`) so Discord shows `/spacestate`.
-5. An admin grants the capability: `/admin capabilities grant user: capability:spacestate`. Being an admin is not enough.
+5. An admin grants the capability: `/admin` → People → **Grant capabilities…**. Being an admin is not enough.
 6. Try `/spacestate set state:open`, then check `/status`. Pixel follows the state it reads back from SpaceAPI, so the change is announced the usual way.
 
 **Turn it off:** unset all three variables (on Azure, unset `spacestate_api_url`). The command stays but says it isn't set up. To stop one person, revoke their capability.
@@ -418,7 +422,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 1. In HA, as the **non-admin** Pixel user: Profile → Security → Long-lived access tokens → create a new token, then delete the old one.
 2. Put the new one in the secret store as `HOME_ASSISTANT_TOKEN`, and restart Pixel.
-3. `/admin status` should say Connected with no warning about an admin token. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
+3. `/admin` should say Connected with no warning about an admin token. If it warns that the token belongs to an admin, the token is from the wrong user: redo it with the non-admin user.
 
 **Rotate the Mastodon token:**
 
@@ -436,7 +440,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 
 1. In the OpenR dashboard, as Pixel's account, change the password. That ends Pixel's session (Sentry says so at the next refresh).
 2. Put the new one in the secret store as `OPENR_PASSWORD`, and restart Pixel.
-3. `/admin openr login`, then `/admin openr code` with the emailed code. `/admin openr status` should say logged in.
+3. `/admin` → OpenR → **Log in**, then `/admin` → OpenR → **Enter the code…** with the emailed code. `/admin` → OpenR should say logged in.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 
@@ -462,7 +466,7 @@ These local files are gitignored and written readable only by you. **You need:**
 3. `just secrets-push dev`. It reads the vault again (the live values) and lists each secret as `=` the same, `~` changes, `+` new in Key Vault, or `!` only in Key Vault (a push never deletes). Values are never shown, only their length. `admins.yaml` changes are shown as a diff and checked against `members.yaml` on the share, the way Pixel checks them at startup. Each admin added or removed is listed as an `access.changed` record and, once pushed, sent to that env's Sentry Logs with your Azure account as the `user` (as with `members.yaml`, below).
 4. Say yes to push. For `prod` you also type `prod`. It stops without writing if the vault changed since it was read (run it again), and reads every value back afterwards.
 5. **Restart.** Pixel reads secrets only at startup, so it keeps the old values until it restarts. The tool offers to run `just restart dev` for you; say no and run it yourself when it suits (a restart is a short gap in the bot).
-6. Check `/ping` and `/admin status` in that environment's server.
+6. Check `/ping` and `/admin` in that environment's server.
 
 **Guards:** it refuses an env file whose `PIXEL_ENV` is for the other bot, and a Discord token that's also in another bot's file (`.env.dev` or `.env` for prod; `.env.prod` for dev). Never copy the Pixel Dev or Mini token into `.env.prod`.
 
@@ -482,11 +486,13 @@ These local files are gitignored and written readable only by you. **You need:**
 | App secrets | `.env.<env>`, `config/admins.<env>.yaml` | Key Vault (as `just secrets-pull`, above) | Yes |
 | `members.yaml` | `config/<env>/members.yaml` | File share | Yes, for a hand edit (prefer `/admin`) |
 | `devices.yaml` | `config/home-assistant/<env>/devices.yaml` | File share | Never: use `just ha-devices` |
-| `announcement-routes.yaml` | `config/<env>/announcement-routes.yaml` | File share (`data/`) | Never: `/admin announcements` |
+| `announcement-routes.yaml` | `config/<env>/announcement-routes.yaml` | File share (`data/`) | Never: `/admin` → Announcements |
 
 All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
 
-**Edit `members.yaml` by hand** (to delete an entry, say; `/admin level set` and `/admin capabilities` are still quicker for what they cover): `just pull dev`, edit `config/dev/members.yaml`, then `just push dev`. It shows the diff against the share, checks the file with the vault's `admins.yaml` (or your local one, if you're pushing that too) the way Pixel does at startup, and asks. It uploads only if the share's copy hasn't changed since it was read: an admin command in the meantime stops it, so pull again and redo the edit. It reads the file back afterwards. Then run `/admin reload` in that env (or let it restart). Before asking, it lists each change as an `access.changed` record (a person's level or capabilities, a level's capabilities, someone removed; a note alone isn't one), and after the upload it sends them to that env's Sentry Logs, like Pixel's own, with `user` set to your Azure account (`azure:<you>`) and `source: just-push`. Without a `SENTRY_DSN` for that env it says so and pushes anyway.
+**Edit `members.yaml` by hand** (to delete an entry, say; `/admin` → People → **Change level…** and `/admin` → Capabilities are still quicker for what they cover): `just pull dev`, edit `config/dev/members.yaml`, then `just push dev`. It shows the diff against the share, checks the file with the vault's `admins.yaml` (or your local one, if you're pushing that too) the way Pixel does at startup, and asks. It uploads only if the share's copy hasn't changed since it was read: an admin command in the meantime stops it, so pull again and redo the edit. It reads the file back afterwards. Then run `/admin` → **Reload the access lists** in that env (or let it restart). Before asking, it lists each change as an `access.changed` record (a person's level or capabilities, a level's capabilities, someone removed; a note alone isn't one), and after the upload it sends them to that env's Sentry Logs, like Pixel's own, with `user` set to your Azure account (`azure:<you>`) and `source: just-push`. Without a `SENTRY_DSN` for that env it says so and pushes anyway.
+
+The tools that take `dev` or `prod` and load Pixel's config (`just register`, `just command-access`, `just validate-config <env>`, and `just deploy dev`, which validates before it builds) read these files, never the local bot's `config/admins.yaml`, `config/members.yaml` or `config/home-assistant/`. If one is missing they stop and say to run `just pull <env>`. To read other files, set `PIXEL_ADMINS_FILE`, `PIXEL_MEMBERS_FILE` or `PIXEL_HOME_ASSISTANT_DIR` in `.env.<env>`.
 
 **`terraform.tfvars` holds settings, never secrets.** Discord IDs, URLs, feature switches and the like. Secret Terraform inputs (`tailscale_auth_key`, `container_registry_password`: anything the stack's `variables.tf` marks `sensitive`; app secrets are not Terraform inputs at all) go in `infra/envs/<env>/secrets.auto.tfvars` instead: Terraform loads it automatically, it's gitignored, and it never leaves your laptop. `just push` refuses a tfvars that sets a secret, sets a variable the stack doesn't declare, or names the other environment's Key Vault or storage account. It checks the file before showing anything, and the diff hides the value of every sensitive variable, so even a tfvars that wrongly holds a secret never prints it.
 
@@ -502,7 +508,7 @@ All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **
 
 ## Deploys
 
-**What is deployed:** `/ping` ("Pixel `<version>` is up") or `/admin status`. The version people see is `package.json` (set when a release is cut) plus the git SHA the image was built from (`PIXEL_VERSION`; `just docker-build` and CD set it). `docker ps` shows the image tag if you run it in a container.
+**What is deployed:** `/ping` ("Pixel `<version>` is up") or `/admin`. The version people see is `package.json` (set when a release is cut) plus the git SHA the image was built from (`PIXEL_VERSION`; `just docker-build` and CD set it). `docker ps` shows the image tag if you run it in a container.
 
 **Roll back to the previous version:** start the previous image tag instead (keep the last few tags, and don't prune them). Rolling back is safe for Pixel's own data: `members.yaml` and the other files stay as they are. If the older version doesn't know a capability that is in `members.yaml`, it logs a warning and ignores it. After a rollback that changes which commands exist, run `just register dev` or `just register prod` so Discord matches.
 
@@ -516,7 +522,7 @@ All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **
 
 - **`dev`:** from this tree, `just deploy dev`. Builds **linux/amd64** (Azure cannot run Mini arm64 images), pushes `ghcr.io/pixelbar/pixel:<sha>` (or `dev-dirty-*` if the tree is dirty) and `:dev`, then `az containerapp update` on `pixel-dev` only (min=max=1). Then `just register dev` against the Pixel Dev guild from `.env.dev` (or `.env`), then `just sentry-release` (skipped without org/token; a Sentry failure still fails the recipe but after commands are registered). Needs `gh auth refresh --scopes write:packages,read:packages,repo`, Docker, `az` on subscription `d150e252-e2f0-47fb-8a4a-c3f29e9aebd4`, and `.env` for register. Does not start Pixel. Pushes and pull requests never deploy by themselves (so a local SHA is not overwritten by another CI head).
 - **`dev` from a branch or PR** ([ADR 0018](adr/0018-deploy-dev-workflow.md)): GitHub → Actions → **Deploy dev** → Run workflow with a PR number (`123`), branch or SHA, or `just deploy-remote dev 123` (empty: your current branch, which must be pushed). It resolves the commit (refuses PRs from forks: push the branch here first), runs `just check` on it, publishes `:<sha>` and `:dev`, rolls `pixel-dev` in Environment `dev` (min=max=1, refuses unless the app has `PIXEL_ENV=dev`), registers dev slash commands from the running app's settings, and creates a Sentry release in environment `dev`. No version, tag or Terraform apply. It replaces whatever `pixel-dev` was running, including a laptop deploy, so say so in the team chat first. Runs queue. The register job fails closed until a maintainer sets `github_register_principal_id` in `infra/envs/dev` to `pixel-github-dev`'s principal ID and applies; then **Re-run failed jobs**, or `just register dev`.
-- **`prod`:** not on merge. `just deploy prod` refuses. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That runs `just check` on the `main` commit (if it fails, nothing is tagged, published or deployed), cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when the image inputs differ from the last publish; they do not log in to Azure. CD runs queue rather than cancel each other, and a merge that failed or was skipped is picked up by the next one: if a SHA is missing from GHCR, fix the cause and re-run or merge again.
+- **`prod`:** not on merge. `just deploy prod` refuses. A maintainer runs **Actions → Release → Run workflow** on `main` ([`.github/workflows/release.yml`](../.github/workflows/release.yml)). That runs `just check` on the `main` commit (if it fails, nothing is tagged, published or deployed), cuts Unreleased, tags `vX.Y.Z`, opens a GitHub Release, publishes `:<sha>` / `:vX.Y.Z` / `:main`, uploads Sentry source maps, publishes the docs site, then GitHub Environment `prod` (reviewers, branch `main`) rolls `pixel-prod` to **that same digest**. No Terraform apply. Fails closed without `ARM_*` or if `pixel-prod` does not exist yet. Never copy `pixel-dev-kv` or the Mini local Discord token into prod. After the roll, a second Environment `prod` approval runs **Register prod slash commands**: it reads the app ID, guild ID and `discord-token` reference from `pixel-prod` itself, refuses unless `PIXEL_ENV=prod`, and runs `just register-ci prod` (example access lists, throwaway data dir). It fails closed until `github_register_principal_id` is applied in `infra/envs/prod` ([ADR 0014](adr/0014-release-registers-commands.md)); then **Re-run failed jobs**, or `just register prod` with `.env.prod`. Merges to `main` ([`.github/workflows/cd.yml`](../.github/workflows/cd.yml)) publish the merge SHA and `:main` and upload Sentry maps when image paths changed; they do not log in to Azure. CD runs queue rather than cancel each other. If a SHA is missing from GHCR (a docs-only merge can replace a CD run that had not started yet), re-run CD on that commit or merge again.
 - GHCR: CI uses `GITHUB_TOKEN` (`packages: write` on the publish job only). Local uses `gh`. The package is **public** (no secrets in the image) so Azure can pull.
 - Prod Azure login is GitHub Environment OIDC (`ARM_*` variables on Environment `prod`). `dev` uses local `az`. Terraform plan on PRs uses Environment `dev` / `prod` `ARM_*` and fails closed if they are missing.
 - Neither path applies Terraform. After first create, **dev** apply **ignores** the Pixel container image, so `just tf-apply dev` cannot silently replace the SHA `just deploy dev` pinned. Prod apply sets `container_image`; a later Release roll moves it again. Dev rollback is `az`, not a tfvars bump.
@@ -528,17 +534,17 @@ All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **
 
 What GitHub runs. The same diagrams live in [`architecture.md`](architecture.md#ci-and-cd-pipelines). Job inputs: [`.github/path-filters.yml`](../.github/path-filters.yml).
 
-Each expensive job runs only when the files it depends on are not a set that already passed. A first "What changed" job hashes them ([`scripts/ci-inputs.sh`](../scripts/ci-inputs.sh)) and looks for a marker in the Actions cache; the job saves one when it succeeds. So pushing only a CHANGELOG entry, re-pushing the same code, or a docs-only PR (PRs can see `main`'s markers) skips them. A skipped job never starts and GitHub shows it as passed. Every hash also covers the workflow running the job, `.github/path-filters.yml`, `scripts/ci-inputs.sh` and `.github/actions/`. To see what a list matches: `just ci-inputs check`.
+Each expensive job runs only when a path in its list in [`.github/path-filters.yml`](../.github/path-filters.yml) changed. A first "What changed" job runs [`dorny/paths-filter`](https://github.com/dorny/paths-filter) (`some-with-excludes`). Markdown-only changes skip `just check`, Docker and GHCR. A skipped job never starts and GitHub shows it as passed. If the filter job fails, the expensive jobs still run (fail closed).
 
-**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/`, `config/`, root `*.ts` and `*.json` (`package.json`, tsconfigs, `biome.json`, `vitest.config.ts`), lockfile, `.nvmrc`, `.gitignore`, `justfile`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`, and the files `scripts/ci-inputs.test.ts` checks the lists against: `Dockerfile`, `cd.yml`, `docs.yml`, `terraform.yml`.
+**Check** (`just check` + `just build`): `src/`, `scripts/`, `content/` (including `content/info/`), `config/`, root `*.ts` and `*.json` (`package.json`, tsconfigs, `biome.json`, `vitest.config.ts`), lockfile, `.nvmrc`, `.gitignore`, `justfile`, Dockerfile, `.github/workflows/**`, `.github/path-filters.yml`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`.
 
-**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without tests (`*.test.ts`, `src/testing/`), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`. CD publishes when these (and `cd.yml`) differ from the last run that published, so a revert publishes again. If a CD run was cancelled or failed, the next merge publishes.
+**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without tests (`*.test.ts`, `src/testing/`), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`, plus `ci.yml`, `cd.yml` and the filter file.
 
-**Docs** (`docs/`, root `package.json` / lockfile, `biome.json`, `.gitignore`, `.nvmrc`, `justfile`): Biome lint + VitePress build. Not app CI.
+**Docs** (`docs/`, root `package.json` / lockfile, `biome.json`, `.gitignore`, `.nvmrc`, `justfile`, `docs.yml`, the filter file): Biome lint + VitePress build. Not app CI.
 
-**Always on PRs:** the changelog gate (no `pnpm install`). **Terraform:** the workflow starts when `infra/`, that workflow, the `justfile` or the gate change; it skips if its inputs (`infra/` without markdown, `justfile`) already passed; Azure plans run only when Terraform files under `infra/` changed, and otherwise never start (so never wait on an Environment).
+**Always on PRs:** the changelog gate (no `pnpm install`). **Terraform:** the workflow starts when `infra/`, that workflow, the `justfile` or the filter file change; Azure plans run only when Terraform files under `infra/` changed (markdown does not), and otherwise never start (so never wait on an Environment).
 
-**Forcing a rerun:** re-run the workflow after deleting the `ci-passed-…` cache under Actions → Caches, or change a file in the list. Markers are evicted after 7 days unused; then the job just runs again.
+**Forcing a rerun:** change a file in the list, or empty-commit one. Re-running the workflow with the same paths still skips the jobs that did not match.
 
 Pull request:
 
@@ -546,25 +552,23 @@ Pull request:
 flowchart TD
   pr[Pull request push]
   pr --> clog[Changelog gate always, no install]
-  pr --> docs{"docs inputs in this push?"}
-  docs -->|yes| docsp{"docs inputs already passed?"}
-  docsp -->|no| site[Biome + docs site build]
-  docsp -->|yes| nosite[Skip site build]
+  pr --> docs{"docs paths?"}
+  docs -->|yes| site[Biome + docs site build]
   docs -->|no| nodocs[Docs workflow off]
   pr --> tf{"infra/, justfile or terraform.yml?"}
-  tf -->|yes| tfp{"terraform inputs already passed?"}
-  tfp -->|no| tfval[just tf-validate]
+  tf -->|yes| tffilter{"terraform paths, not infra markdown?"}
+  tffilter -->|yes| tfval[just tf-validate]
   tfval --> tffiles{"infra Terraform files?"}
   tffiles -->|yes| azplan[Azure plan via Environment OIDC]
   tffiles -->|no| noaz[Plan jobs never start]
-  tfp -->|yes| notfrun[Skip validate and plans]
+  tffilter -->|no| notfrun[Skip validate and plans]
   tf -->|no| notf[Terraform workflow off]
-  pr --> checkp{"check inputs already passed?"}
-  checkp -->|no| check["just check + just build"]
-  checkp -->|yes| nocheck[Skip just check]
-  pr --> imagep{"image inputs already passed?"}
-  imagep -->|no| docker[Docker image smoke]
-  imagep -->|yes| nodocker[Skip Docker]
+  pr --> checkp{"check paths?"}
+  checkp -->|yes| check["just check + just build"]
+  checkp -->|no| nocheck[Skip just check]
+  pr --> imagep{"image paths?"}
+  imagep -->|yes| docker[Docker image smoke]
+  imagep -->|no| nodocker[Skip Docker]
 ```
 
 Merge to `main`:
@@ -572,13 +576,12 @@ Merge to `main`:
 ```mermaid
 flowchart TD
   main[Push to main]
-  main --> ci["Same CI gates as PRs; what passes here PRs reuse"]
+  main --> ci[Same path filters as PRs]
   main --> queue[CD runs queue, never cancel]
-  queue --> imagep{"image inputs same as last publish?"}
-  imagep -->|no| pub["CD: GHCR SHA and :main"]
+  queue --> imagep{"image paths in this push?"}
+  imagep -->|yes| pub["CD: GHCR SHA and :main"]
   pub --> maps[Sentry source maps]
-  maps --> mark[Remember these inputs as published]
-  imagep -->|yes| nocd[Skip GHCR and Sentry]
+  imagep -->|no| nocd[Skip GHCR and Sentry]
   main --> clogp{"CHANGELOG.md changed?"}
   clogp -->|yes| clogm["Changelog merge: merge main into open PRs, push if only CHANGELOG conflicts and it's safe"]
   main --> note[Does not roll pixel-prod]
@@ -679,15 +682,15 @@ Pixel can't tell whether the space is open, so it says so rather than guess. Che
 
 Discord and the rest of Pixel keep working. Check the instance is up, the token is still valid (`write:statuses`), and `MASTODON_INSTANCE` is the origin (not a profile URL with a typo). Nothing to restart unless you changed config. Pixel does not retry a failed toot (that could double-post).
 
-**Home Assistant is unreachable** (`/admin status` shows not connected or off; `/ha` says it can't reach it)
+**Home Assistant is unreachable** (`/admin` shows not connected or off; `/ha` says it can't reach it)
 
-1. `/admin status` shows why. "Off: the token was refused" means the token was revoked or replaced: make a new one (see [Secrets](#secrets)). Not connected means it can't reach the HA URL: check HA is up and the network or tunnel between them.
+1. `/admin` shows why. "Off: the token was refused" means the token was revoked or replaced: make a new one (see [Secrets](#secrets)). Not connected means it can't reach the HA URL: check HA is up and the network or tunnel between them.
 2. Pixel keeps reconnecting by itself, never queues an action and never retries one, so nothing will fire late when it's back. If it couldn't reach HA at startup, the logs say `home.connect_failed` once and it keeps trying (waiting up to a minute between attempts); `home.ready` means it got through.
-3. After fixing it, `/admin reload` re-checks the connection.
+3. After fixing it, `/admin` → **Reload the access lists** re-checks the connection.
 
 **Someone has the wrong access**
 
-`/admin level get user:<person>` shows their tier, where it comes from and their capabilities. Fix it with `/admin level set` or by editing the files (see [Access lists](#access-lists)).
+`/admin` → People → **Look someone up…** shows their tier, where it comes from and their capabilities. Fix it with `/admin` → People → **Change level…** or by editing the files (see [Access lists](#access-lists)).
 
 ## Sentry
 
@@ -733,7 +736,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 **Access request ("what do you have on me?"):**
 
-1. `/admin level get user:<person>` for their tier, note and capabilities, or read their entry in `members.yaml`.
+1. `/admin` → People → **Look someone up…** for their tier, note and capabilities, or read their entry in `members.yaml`.
 2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules, and `data/parking-bookings.yaml` (`by.ref`) and `data/parking-windows.yaml` (`setBy.ref`) for a booking or opening times they set.
 3. Search the logs by their ID (see [Moderation](#moderation)): the rotating file, Sentry **Logs**, and Azure Log Analytics when Pixel is in the cloud.
 4. In Sentry, search Issues, Logs and User Feedback for their ID.
@@ -741,9 +744,9 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 **Deletion request:**
 
-1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin reload`. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
+1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin` → **Reload the access lists**. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (`/schedule delete`, or remove those entries from `data/schedules.yaml` and restart). End any parking booking they hold (`/admin parking free`); entries they set in `data/parking-windows.yaml` end by the next reset.
+3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). End any parking booking they hold (**Free the spot…** in `/admin` → Parking); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.
@@ -759,9 +762,9 @@ Pixel has no database. Message content and command arguments are never logged, e
 2. Recreate `.env` from the secret store (`DISCORD_TOKEN`, `DISCORD_APP_ID`, `DISCORD_GUILD_ID`, `HOME_ASSISTANT_*`, `SENTRY_DSN`, the channel and role IDs). If the Discord application is gone, make a new one in the Developer Portal, invite the bot with the permissions it needs, and update the IDs.
 3. Restore `admins.yaml`, `members.yaml` and `devices.yaml` from backup, then `just validate-config`.
 4. `just register dev` or `just register prod`, then start Pixel.
-5. Check `/ping`, `/admin status` and `/ha list`. Run `/admin sync` if roles are mirrored.
+5. Check `/ping`, `/admin` and `/ha`. Run `/admin` → Discord roles → **Sync everyone** if roles are mirrored.
 
-If `members.yaml` is lost and there's no backup, Pixel won't start (it fails closed). Restore the last backup, or rebuild the file from `members.example.yaml` and re-add people with `/admin level set` once an admin can start it.
+If `members.yaml` is lost and there's no backup, Pixel won't start (it fails closed). Restore the last backup, or rebuild the file from `members.example.yaml` and re-add people with `/admin` → People → **Change level…** once an admin can start it.
 
 **Bootstrap state:** the storage account `pixelbartfstate` has versioning and 14-day soft delete. Restore a previous `terraform.tfstate` blob if remote state is damaged. If bootstrap was never migrated off the laptop, that local file is the backup — migrate it.
 

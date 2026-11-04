@@ -1,18 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Args, SuggestContext } from "../../core/command.ts";
+import type { Args } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { silentLogger } from "../../core/logger.ts";
 import { ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { type ParkingEntry, ParkingWindowStore } from "../../services/parking-windows.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
-import {
-	createParkingSubgroup,
-	describeSpot,
-	resolveSpots,
-	suggestSpot,
-	suggestSpots,
-} from "./parking.ts";
+import { describeSpot, type ParkingOperation, parkingOperations, resolveSpots } from "./parking.ts";
 
 const ZONE = "Europe/Amsterdam";
 /** Saturday 24 Oct 2026, 10:00 in Amsterdam (UTC+2). The reset is 23:59, 21:59 UTC. */
@@ -34,7 +28,7 @@ function setup(
 	const notices = { send: vi.fn(async () => {}) };
 	const activity = { record: vi.fn(async () => true) };
 	let now = NOW;
-	const group = createParkingSubgroup({
+	const ops = parkingOperations({
 		spots,
 		windows,
 		bookings,
@@ -43,11 +37,7 @@ function setup(
 		timezone: ZONE,
 		now: () => now,
 	});
-	const sub = (name: string) => {
-		const found = group.subcommands.find((s) => s.name === name);
-		if (!found) throw new Error(`no ${name}`);
-		return found;
-	};
+	const sub = (name: string) => ops[name as ParkingOperation];
 	const run = async (name: string, args: Args = {}) => {
 		const reply = await sub(name).handler(
 			context({ principal: principal("admin", { userId: IDS.admin }), args }),
@@ -62,7 +52,7 @@ function setup(
 		bookings,
 		notices,
 		activity,
-		group,
+		ops,
 		sub,
 		run,
 		fails,
@@ -83,12 +73,10 @@ function withSpots() {
 
 const span = (e: ParkingEntry) => [e.spot, e.from.toISOString(), e.until.toISOString()];
 
-describe("/admin parking", () => {
-	it("is admin-only all the way down, and every reply is private", () => {
-		const { group } = setup();
-		expect(group.name).toBe("parking");
-		expect(group.access.minTier).toBe("admin");
-		expect(group.subcommands.map((s) => [s.name, s.access.minTier, s.private])).toEqual([
+describe("/admin → Parking", () => {
+	it("is admin-only, and every reply is private", () => {
+		const { ops } = setup();
+		expect(Object.entries(ops).map(([name, op]) => [name, op.access.minTier, op.private])).toEqual([
 			["status", "admin", true],
 			["open", "admin", true],
 			["close", "admin", true],
@@ -99,20 +87,6 @@ describe("/admin parking", () => {
 			["remove-spot", "admin", true],
 			["settings", "admin", true],
 		]);
-	});
-
-	it("suggests spot names from the file", async () => {
-		const { sub } = withSpots();
-		const suggest = (name: string, option: string, typed: string) => {
-			const found = sub(name).options?.find((o) => o.name === option);
-			if (!found || !("suggest" in found) || !found.suggest) throw new Error("no suggest");
-			return found.suggest({ typed } as SuggestContext);
-		};
-		expect(await suggest("open", "spots", "ours neigh")).toEqual([
-			{ name: "ours neighbour-1", value: "ours neighbour-1" },
-			{ name: "ours neighbour-2", value: "ours neighbour-2" },
-		]);
-		expect(await suggest("edit-spot", "spot", "OURS")).toEqual([{ name: "ours", value: "ours" }]);
 	});
 
 	describe("status", () => {
@@ -177,7 +151,7 @@ describe("/admin parking", () => {
 
 		it("refuses a bad name", async () => {
 			await setup()
-				.fails("add-spot", { name: "Our Spot" })
+				.fails("add-spot", { name: "Our_Spot" })
 				.toThrow(/starting with a letter/);
 		});
 	});
@@ -241,7 +215,7 @@ describe("/admin parking", () => {
 			]);
 			// From tomorrow, "now+2h" is still two hours from now: before it opens.
 			await fails("open", { spots: "neighbour-2", from: "tomorrow 8", until: "now+2h" }).toThrow(
-				/couldn't understand `until`, or it's in the past/,
+				/couldn't understand \*\*Until\*\*, or it's in the past/,
 			);
 		});
 
@@ -256,10 +230,10 @@ describe("/admin parking", () => {
 		it("refuses a time it can't understand, or that's gone", async () => {
 			const { fails } = withSpots();
 			await fails("open", { spots: "neighbour-1", until: "later" }).toThrow(
-				/couldn't understand `until`/,
+				/couldn't understand \*\*Until\*\*/,
 			);
 			await fails("open", { spots: "neighbour-1", from: "2026-10-23T08:00" }).toThrow(
-				/couldn't understand `from`/,
+				/couldn't understand \*\*From\*\*/,
 			);
 		});
 
@@ -273,7 +247,7 @@ describe("/admin parking", () => {
 			);
 			expect(entries().blocks).toEqual([]);
 			await fails("open", { spots: "ours", until: "17:00" }).toThrow(
-				/only apply to borrowed spots\. \*\*ours\*\* is permanent/,
+				/A time only applies to borrowed spots\. \*\*ours\*\* is permanent/,
 			);
 		});
 
@@ -315,7 +289,7 @@ describe("/admin parking", () => {
 		it("refuses `until` for borrowed spots, and past the reset", async () => {
 			const { fails } = withSpots();
 			await fails("close", { spots: "neighbour-1", until: "17:00" }).toThrow(
-				/only applies to permanent spots/,
+				/A time only applies to permanent spots/,
 			);
 			await fails("close", { spots: "ours", until: "tomorrow 9" }).toThrow(
 				/can't run past the reset/,
@@ -493,7 +467,7 @@ describe("/admin parking", () => {
 	});
 });
 
-describe("/admin parking and bookings", () => {
+describe("/admin → Parking and bookings", () => {
 	const alice = { ref: "discord:100000000000000002", name: "Alice *A*" };
 	const book = (t: ReturnType<typeof setup>, spot: string, until: Date) =>
 		t.bookings.claim(alice, NOW, () => ({ spot, until }));
@@ -537,7 +511,7 @@ describe("/admin parking and bookings", () => {
 		await t
 			.fails("open", { spots: "neighbour-1", until: "15:00" })
 			.toThrow(
-				"Someone is parked in **neighbour-1** until about 16:00. Add `evict:True` to end their booking.",
+				"Someone is parked in **neighbour-1** until about 16:00. Going ahead ends their booking.",
 			);
 		await t.fails("close", { spots: "neighbour-1" }).toThrow(/Someone is parked/);
 		await t.fails("remove-spot", { spot: "neighbour-1" }).toThrow(/Someone is parked/);
@@ -584,19 +558,17 @@ describe("/admin parking and bookings", () => {
 		}));
 		await t
 			.fails("remove-spot", { spot: "ours" })
-			.toThrow(
-				"Someone is parked in **ours** until about 14:00. Add `evict:True` to end their booking.",
-			);
+			.toThrow("Someone is parked in **ours** until about 14:00. Going ahead ends their booking.");
 		await t.run("open", { spots: "neighbour-1" });
 		await t
 			.fails("close", { spots: "ours neighbour-1" })
 			.toThrow(
-				/\*\*ours\*\* until about 14:00, \*\*neighbour-1\*\* until about 14:00\. .*end those bookings/,
+				/\*\*ours\*\* until about 14:00, \*\*neighbour-1\*\* until about 14:00\. Going ahead ends those bookings/,
 			);
 	});
 });
 
-describe("/admin parking activity", () => {
+describe("/admin → Parking activity", () => {
 	const events = (t: ReturnType<typeof setup>) =>
 		(t.activity.record.mock.calls as unknown as [Record<string, unknown>][]).map(([e]) => e);
 
@@ -688,7 +660,7 @@ describe("/admin parking activity", () => {
 	});
 });
 
-describe("/admin parking assign", () => {
+describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 	const BOB = { id: "100000000000000005", displayName: "Bob", isBot: false };
 	const alice = { ref: "discord:100000000000000002", name: "Alice" };
 	const bobRef = `discord:${BOB.id}`;
@@ -739,7 +711,7 @@ describe("/admin parking assign", () => {
 			[
 				"ours",
 				"assigned",
-				"An admin gave you **ours**, until 23:59. Run `/parking leave` when you go.",
+				"An admin gave you **ours**, until 23:59. Run `/park` and press **Leave** when you go.",
 			],
 		]);
 		expect(recorded(t).at(-1)).toEqual({
@@ -751,12 +723,12 @@ describe("/admin parking assign", () => {
 		});
 	});
 
-	it("never moves whoever still holds the spot: they use /parking taken, or an admin evicts", async () => {
+	it("never moves whoever still holds the spot: they use Someone's in my spot, or an admin evicts", async () => {
 		const t = withSpots();
 		await t.run("open", { spots: "neighbour-1" });
 		t.bookings.claim(alice, NOW, () => ({ spot: "ours", until: utc("10:00") }));
 		await expect(assign(t, { spot: "ours" })).rejects.toThrow(
-			"Alice is still booked into **ours**, until about 12:00. They get a new spot with `/parking taken`; or add `evict:True` to end their booking.",
+			"Alice is still booked into **ours**, until about 12:00. They get a new spot with Someone's in my spot in `/park`, or going ahead ends their booking.",
 		);
 		expect(t.bookings.all().map((b) => [b.by.name, b.spot])).toEqual([["Alice", "ours"]]);
 
@@ -807,13 +779,13 @@ describe("/admin parking assign", () => {
 	it("refuses a closed spot, a time past its close, and a duration it can't read", async () => {
 		const t = withSpots();
 		await expect(assign(t, { spot: "neighbour-1" })).rejects.toThrow(
-			"**neighbour-1** is closed right now. Open it first with `/admin parking open`.",
+			"**neighbour-1** is closed right now. Open it first.",
 		);
 		await t.run("close", { spots: "ours", until: "17:00" });
 		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/is closed right now/);
 		await t.run("open", { spots: "neighbour-1", until: "17:00" });
 		await expect(assign(t, { spot: "neighbour-1", for: "rest of day" })).rejects.toThrow(
-			"**neighbour-1** is only open until 17:00. Leave out `for` to give it until then.",
+			"**neighbour-1** is only open until 17:00. Leave **How long** empty to give it until then.",
 		);
 		await expect(assign(t, { spot: "neighbour-1", for: "ages" })).rejects.toThrow(
 			/couldn't understand how long/,
@@ -821,14 +793,9 @@ describe("/admin parking assign", () => {
 		expect(t.bookings.all()).toEqual([]);
 	});
 
-	it("needs a person, and suggests the durations", async () => {
+	it("needs a person", async () => {
 		const t = withSpots();
 		await t.fails("assign", { spot: "ours" }).toThrow("Pick who is parked there.");
-		const option = t.sub("assign").options?.find((o) => o.name === "for");
-		if (!option || !("suggest" in option) || !option.suggest) throw new Error("no suggest");
-		expect(await option.suggest({ typed: "rest" } as SuggestContext)).toEqual([
-			{ name: "rest of day", value: "rest of day" },
-		]);
 	});
 
 	it("puts the closure back, and changes no booking, when the booking can't be saved", async () => {
@@ -891,28 +858,30 @@ describe("/admin parking assign", () => {
 });
 
 describe("helpers", () => {
-	it("suggests at most 25 spots, and never ones already typed", () => {
-		const names = Array.from({ length: 30 }, (_, i) => `spot-${i}`);
-		expect(suggestSpot(names, "")).toHaveLength(25);
-		expect(suggestSpots(["a", "b"], "a ")).toEqual([{ name: "a b", value: "a b" }]);
-		expect(suggestSpots(["x".repeat(32)], `${"y".repeat(70)} x`)).toEqual([]);
-	});
-
-	it("suggests spots with capitals, ignoring case", () => {
-		expect(suggestSpot(["A1", "b"], "a")).toEqual([{ name: "A1", value: "A1" }]);
-		expect(suggestSpots(["A1", "A2"], "a1 a")).toEqual([{ name: "a1 A2", value: "a1 A2" }]);
-	});
-
 	it("resolves spots in the order given, without repeats", () => {
 		const store = new ParkingSpotStore({ logger: silentLogger });
 		store.add({ name: "a", permanent: false });
 		store.add({ name: "b", permanent: true });
 		expect(resolveSpots(store, "B a b").map((s) => s.name)).toEqual(["b", "a"]);
+		expect(resolveSpots(store, "b, a,b").map((s) => s.name)).toEqual(["b", "a"]);
+	});
+
+	it("resolves names with spaces, separated by commas", () => {
+		const store = new ParkingSpotStore({ logger: silentLogger });
+		store.add({ name: "by the bins", permanent: false });
+		store.add({ name: "a", permanent: false });
+		expect(resolveSpots(store, "By  the bins").map((s) => s.name)).toEqual(["by the bins"]);
+		expect(resolveSpots(store, "a, by the bins").map((s) => s.name)).toEqual(["a", "by the bins"]);
+		expect(() => resolveSpots(store, "by the bin")).toThrow(/no spot called/);
+		expect(() => resolveSpots(store, "a nope")).toThrow(/no spot called `nope`\./);
+		expect(() => resolveSpots(store, " , ")).toThrow(/at least one/);
 	});
 
 	it("resolves a spot with capitals however it's typed", () => {
 		const store = new ParkingSpotStore({ logger: silentLogger });
 		store.add({ name: "A1", permanent: false });
+		store.add({ name: "Bay B2", permanent: false });
+		expect(resolveSpots(store, "a1, A1, bay b2").map((s) => s.name)).toEqual(["A1", "Bay B2"]);
 		expect(resolveSpots(store, "a1 A1").map((s) => s.name)).toEqual(["A1"]);
 		expect(() => resolveSpots(store, "A2")).toThrow(/no spot called `A2`/);
 	});

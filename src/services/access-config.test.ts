@@ -63,6 +63,7 @@ describe("loadAccessConfig", () => {
 			tier: "friend",
 			note: "Ada",
 			capabilities: ["front-door"],
+			revoked: [],
 		});
 		expect(config.warnings).toEqual([]);
 	});
@@ -352,6 +353,7 @@ describe("guests and capabilities", () => {
 			ids: [`discord:${IDS.member}`],
 			tier: "guest",
 			capabilities: ["front-door"],
+			revoked: [],
 		});
 	});
 
@@ -362,6 +364,7 @@ describe("guests and capabilities", () => {
 			tier: "member",
 			note: "hi",
 			capabilities: [],
+			revoked: [],
 		});
 	});
 
@@ -376,6 +379,13 @@ describe("guests and capabilities", () => {
 	])("rejects %s", (_label, lines, message) => {
 		withEntry(lines);
 		expect(() => loadAccessConfig(paths)).toThrow(message);
+	});
+
+	it("reads revoked capabilities, and rejects a bad name there", () => {
+		withEntry("    tier: member\n    revoked: [workshop]\n");
+		expect(loadAccessConfig(paths).records.get(IDS.member)?.revoked).toEqual(["workshop"]);
+		withEntry("    tier: member\n    revoked: [Work Shop]\n");
+		expect(() => loadAccessConfig(paths)).toThrow(/revoked\[0\]/);
 	});
 
 	it("rejects more capabilities than the limit", () => {
@@ -400,6 +410,25 @@ describe("StoreCapabilitySource", () => {
 		expect(await source.capabilitiesFor(actor({ userId: IDS.member }))).toEqual(["front-door"]);
 		expect(await source.capabilitiesFor(actor({ userId: IDS.guest }))).toEqual([]);
 		expect(await source.capabilitiesFor(actor({ userId: IDS.admin }))).toEqual([]);
+	});
+
+	it("adds the level's grants and takes away what was revoked from them, even their own", async () => {
+		write(
+			ADMINS,
+			`tiers:\n  friend:\n    capabilities: [workshop, ha-lights]\n${members(
+				`  - ids: ["discord:${IDS.member}"]\n    tier: member\n    capabilities: [front-door, ha-doors]\n    revoked: [workshop, ha-doors]\n`,
+			)}`,
+		);
+		const source = new StoreCapabilitySource({ view: loadAccessConfig(paths) });
+		expect(await source.capabilitiesFor(actor({ userId: IDS.member }))).toEqual([
+			"front-door",
+			"ha-lights",
+		]);
+		// Others at the level keep it.
+		expect(await source.capabilitiesFor(actor({ userId: IDS.admin }))).toEqual([
+			"workshop",
+			"ha-lights",
+		]);
 	});
 
 	it("reads the store's current view each time", async () => {

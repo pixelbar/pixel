@@ -22,22 +22,27 @@ describe("membersAudit", () => {
 			{
 				kind: "set-capabilities",
 				target: A,
-				before: { tier: "member", capabilities: [] },
-				after: { tier: "member", capabilities: ["ha-lights"] },
+				before: { tier: "member", capabilities: [], revoked: [] },
+				after: { tier: "member", capabilities: ["ha-lights"], revoked: [] },
 			},
 			{
 				kind: "set-tier",
 				target: B,
-				before: { tier: "friend", capabilities: [] },
-				after: { tier: "member", capabilities: [] },
+				before: { tier: "friend", capabilities: [], revoked: [] },
+				after: { tier: "member", capabilities: [], revoked: [] },
 			},
 			{
 				kind: "set-tier",
 				target: "discord:100000000000000004",
 				before: null,
-				after: { tier: "friend", capabilities: [] },
+				after: { tier: "friend", capabilities: [], revoked: [] },
 			},
-			{ kind: "remove", target: C, before: { tier: "member", capabilities: [] }, after: null },
+			{
+				kind: "remove",
+				target: C,
+				before: { tier: "member", capabilities: [], revoked: [] },
+				after: null,
+			},
 		]);
 	});
 
@@ -45,6 +50,23 @@ describe("membersAudit", () => {
 		const before = members(person(A, "member", "    note: one\n"));
 		const after = members(person(A, "member", "    note: two\n"));
 		expect(membersAudit(before, after)).toEqual([]);
+	});
+
+	it("records a revocation as a capability change, and shows it", () => {
+		const before = members(person(A, "member"));
+		const after = members(person(A, "member", "    revoked: [ha-lights]\n"));
+		const audit = membersAudit(before, after);
+		expect(audit).toEqual([
+			{
+				kind: "set-capabilities",
+				target: A,
+				before: { tier: "member", capabilities: [], revoked: [] },
+				after: { tier: "member", capabilities: [], revoked: ["ha-lights"] },
+			},
+		]);
+		expect(audit[0] && describeAudit(audit[0])).toBe(
+			`  set-capabilities ${A}: member (no capabilities) → member (no capabilities; revoked ha-lights)`,
+		);
 	});
 
 	it("records a level's capabilities", () => {
@@ -61,7 +83,12 @@ describe("membersAudit", () => {
 
 	it("treats a file new on the share as everyone added", () => {
 		expect(membersAudit(undefined, members(person(A, "member")))).toEqual([
-			{ kind: "set-tier", target: A, before: null, after: { tier: "member", capabilities: [] } },
+			{
+				kind: "set-tier",
+				target: A,
+				before: null,
+				after: { tier: "member", capabilities: [], revoked: [] },
+			},
 		]);
 	});
 
@@ -99,7 +126,7 @@ describe("output", () => {
 				kind: "set-tier",
 				target: A,
 				before: null,
-				after: { tier: "member", capabilities: ["ha-lights"] },
+				after: { tier: "member", capabilities: ["ha-lights"], revoked: [] },
 			}),
 		).toBe(`  set-tier ${A}: none → member (ha-lights)`);
 		expect(
@@ -122,7 +149,12 @@ describe("output", () => {
 
 	it("names the attributes as Pixel's access.changed does, with the Azure account as the user", () => {
 		const attrs = auditAttributes(
-			{ kind: "remove", target: A, before: { tier: "member", capabilities: [] }, after: null },
+			{
+				kind: "remove",
+				target: A,
+				before: { tier: "member", capabilities: [], revoked: [] },
+				after: null,
+			},
 			"dev",
 			"someone@example.invalid",
 		);
@@ -133,7 +165,7 @@ describe("output", () => {
 			source: "just-push",
 			kind: "remove",
 			target: A,
-			before: { tier: "member", capabilities: [] },
+			before: { tier: "member", capabilities: [], revoked: [] },
 			after: null,
 		});
 	});

@@ -50,7 +50,7 @@ export type FeatureDeps = {
 	home: Home;
 	homeDevices: HomeDeviceStore;
 	announcementRoutes: AnnouncementRoutes;
-	/** Emergency switches for kinds of device (`/admin doors`). */
+	/** Emergency switches for kinds of device (`/admin` → Doors). */
 	switches: KindSwitch;
 	feedback: FeedbackSink;
 	reporter: ErrorReporter;

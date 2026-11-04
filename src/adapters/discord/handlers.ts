@@ -2,8 +2,9 @@ import type { PlatformActor } from "../../core/access.ts";
 import type { Dispatcher, DispatchRequest, FormOption } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import { type DiscordOption, parseAutocomplete, parseOptions } from "./args.ts";
+import { HeldControls, renderControls } from "./controls.ts";
 import { formModal, PendingForms } from "./forms.ts";
-import { renderReply } from "./render.ts";
+import { type ControlsRenderer, renderReply } from "./render.ts";
 import { type Respondable, respond } from "./respond.ts";
 
 /**
@@ -55,7 +56,14 @@ export type CommandHandlerDeps = {
 	deferAfterMs: number;
 	/** Commands waiting for their form. Shared with the modal handler. */
 	forms?: PendingForms;
+	/** What replies' buttons and select menus run. Shared with the control handlers. */
+	controls?: HeldControls;
 };
+
+/** Draws a reply's controls, held for `owner` only. */
+export function controlsFor(held: HeldControls, owner: string): ControlsRenderer {
+	return (rows) => renderControls(rows, (controls) => held.holdControls(owner, controls));
+}
 
 export const FORM_EXPIRED_MESSAGE = "That form has expired. Run the command again.";
 
@@ -72,6 +80,7 @@ export function createCommandHandler({
 	dispatcher,
 	deferAfterMs,
 	forms = new PendingForms(),
+	controls = new HeldControls(),
 }: CommandHandlerDeps) {
 	return async (interaction: IncomingCommand, displayName?: string): Promise<void> => {
 		if (interaction.guildId !== guildId) {
@@ -111,7 +120,7 @@ export function createCommandHandler({
 				return;
 			}
 		}
-		await run(interaction, request, dispatcher, deferAfterMs);
+		await run(interaction, request, dispatcher, deferAfterMs, controls);
 	};
 }
 
@@ -124,6 +133,7 @@ export function createModalHandler({
 	dispatcher,
 	deferAfterMs,
 	forms,
+	controls = new HeldControls(),
 }: Omit<CommandHandlerDeps, "forms"> & { forms: PendingForms }) {
 	return async (interaction: IncomingModal): Promise<void> => {
 		if (interaction.guildId !== guildId) {
@@ -145,6 +155,7 @@ export function createModalHandler({
 			{ ...pending.request, args: { ...pending.request.args, ...filled } },
 			dispatcher,
 			deferAfterMs,
+			controls,
 		);
 	};
 }
@@ -171,8 +182,10 @@ function run(
 	request: DispatchRequest,
 	dispatcher: Pick<Dispatcher, "dispatch" | "defaultPrivacy">,
 	deferAfterMs: number,
+	controls: HeldControls,
 ): Promise<void> {
 	return respond(interaction, {
+		controls: controlsFor(controls, request.actor.userId),
 		defaultPrivate: dispatcher.defaultPrivacy(
 			request.command,
 			request.subcommand,

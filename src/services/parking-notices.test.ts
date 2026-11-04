@@ -26,13 +26,13 @@ describe("parking DMs", () => {
 
 	it("tells someone an admin gave them a spot", () => {
 		expect(assignedText(booking, context)).toBe(
-			"An admin gave you **ours**, until 11:00. Run `/parking leave` when you go.",
+			"An admin gave you **ours**, until 11:00. Run `/park` and press **Leave** when you go.",
 		);
 	});
 
 	it("offers less than an hour when that's all the spot has", () => {
 		const text = reminderText(booking, new Date("2026-10-24T09:20:00Z"), RESET, context);
-		expect(text).toContain("`/parking extend for:20m` (up to 20m)");
+		expect(text).toContain("stay up to 20m longer: run `/park` and pick how long");
 	});
 
 	it("treats a spot with no opening left as closing", () => {

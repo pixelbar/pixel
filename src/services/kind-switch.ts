@@ -6,7 +6,7 @@ import type { Logger } from "../core/logger.ts";
 
 /**
  * Emergency switches for whole kinds of Home Assistant device: an admin can turn
- * control of, say, every door off at once with `/admin doors off`, without a deploy
+ * control of, say, every door off at once with `/admin` → Doors → **Switch door control off…**, without a deploy
  * or an edit to the devices file. Reading a device is unaffected.
  *
  * Everything starts switched on. What's switched off is remembered in a small file
@@ -30,7 +30,7 @@ const fileSchema = z.strictObject({
 });
 
 const HEADER =
-	"# Which kinds of Home Assistant device are switched off (/admin doors). Written by Pixel.\n";
+	"# Which kinds of Home Assistant device are switched off (/admin → Doors). Written by Pixel.\n";
 
 export class KindSwitch {
 	readonly #file: string | undefined;

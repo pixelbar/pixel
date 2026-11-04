@@ -218,15 +218,21 @@ describe("formModal", () => {
 	});
 
 	it("prefills a field when a value is given, clipped to the field limit", () => {
-		const shown = formModal("pixel-form:x", "/admin closing-time set", [TEXT], {
-			text: `Please tidy up.\n${"x".repeat(3000)}`,
-		});
+		const shown = formModal(
+			"pixel-form:x",
+			"/admin → Closing time → **Change the message…**",
+			[TEXT],
+			{
+				text: `Please tidy up.\n${"x".repeat(3000)}`,
+			},
+		);
 		expect(shown.components[0]?.components[0]).toMatchObject({
 			custom_id: "text",
 			value: `Please tidy up.\n${"x".repeat(3000)}`.slice(0, 2000),
 		});
 		expect(
-			formModal("pixel-form:x", "/admin closing-time set", [TEXT]).components[0]?.components[0],
+			formModal("pixel-form:x", "/admin → Closing time → **Change the message…**", [TEXT])
+				.components[0]?.components[0],
 		).not.toHaveProperty("value");
 	});
 });

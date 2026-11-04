@@ -242,7 +242,7 @@ const envSchema = z
 
 export type Config = {
 	env: "local" | "dev" | "prod";
-	/** Where this process is running. Azure Container Apps sets `cloud`. `/admin status` shows this. */
+	/** Where this process is running. Azure Container Apps sets `cloud`. `/admin` shows this. */
 	runtime: "local" | "cloud";
 	version: string;
 	/** The git commit and branch Pixel was built from, when given. */

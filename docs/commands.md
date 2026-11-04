@@ -99,121 +99,140 @@ Posts the closing-time reminder in the closing-time channel. Pixel also posts it
 
 ### Home Assistant
 
-Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and Pixel checks again whatever autocomplete offered.
+Lights, switches and doors in the space. You only ever see the devices you're allowed to see, and you only get buttons for what you may change. Pixel checks again on every press, whatever the panel showed.
 
-<PxCommandTray query="/ha" :selected="2" caption="Typing /ha shows the four Home Assistant commands." />
+<PxCommand :level="4" sig="/ha [device:]" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ '[device:]': 'Go straight to one device. Only the ones you may see are offered. Leave it out to choose from the list.' }">
 
-<PxCommand :level="4" sig="/ha list" tier="friend" reply="private">
-
-The devices you may use, and their state.
+Opens the Home Assistant devices you may see, with their state. Changing one needs the capability for that kind of device, or `ha-admin`. Doors are for members only, and only lock and unlock.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/ha status device:" tier="friend" reply="private" autocomplete :options="{ 'device:': 'Which device.' }">
+The list groups the devices by kind, with each one's state as Home Assistant reports it right now. Pick one from the menu to see more, or to change it.
 
-One device's live state, when it last changed and a few details for its kind.
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'Devices', lines: ['Choose a device below to see more, or to change it.'], fields: [{ name: 'Lights · 2', value: 'example-light on · example-sign off' }, { name: 'Door · 1', value: 'example-door locked' }, { name: 'Sensor · 1', value: 'example-temperature 21.5 °C' }] }]"
+	:rows="[[{ select: 'Choose a device…' }], [{ label: 'Refresh' }]]"
+	caption="The list: the devices you may see, grouped by kind, with a menu to pick one."
+/>
 
-</PxCommand>
+A device shows its live state, when it last changed and a few details for its kind. There's a button for each thing you may do to it. The one it's already at is greyed out.
 
-<PxCommand :level="4" sig="/ha set device: state:" tier="friend" reply="private" autocomplete :caps="['ha-lights', 'ha-switches', 'ha-doors', 'ha-admin']" :options="{ 'device:': 'Which device. Only the ones you may change are offered.', 'state:': 'What to set it to, such as on or off. Only the actions that device allows are offered.' }">
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'example-light', lines: ['The light over the workbench'], fields: [{ name: 'State', value: 'on', inline: true }, { name: 'Kind', value: 'Light', inline: true }, { name: 'Last changed', value: '2h 0m ago', inline: true }, { name: 'Brightness', value: '50%', inline: true }] }]"
+	:rows="[[{ label: 'On', style: 'primary', disabled: true }, { label: 'Off', style: 'primary' }, { label: 'Toggle', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="A light that's on, for someone who may switch lights: On is greyed out, Off and Toggle are there."
+/>
 
-Changes a device, such as switching a light on or off. Needs the capability for that kind of device, or `ha-admin`.
+Pressing one sends it once, then says what really happened above the device's fresh state: done, already there, still working, nothing changed, or that it couldn't confirm. Pixel never sends it again by itself.
 
-</PxCommand>
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'Done', lines: ['**example-light** is now off (it was on).'] }, { title: 'example-light', lines: ['The light over the workbench'], fields: [{ name: 'State', value: 'off', inline: true }, { name: 'Kind', value: 'Light', inline: true }, { name: 'Last changed', value: '0m ago', inline: true }] }]"
+	:rows="[[{ label: 'On', style: 'primary' }, { label: 'Off', style: 'primary', disabled: true }, { label: 'Toggle', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="After pressing Off: what happened, then the light's state now."
+/>
 
-<PxCommand :level="4" sig="/ha open door:" tier="member" reply="private" autocomplete :caps="['ha-doors', 'ha-admin']" :options="{ 'door:': 'Which door.' }">
+A door has **Lock** and **Unlock**, for members with `ha-doors` or `ha-admin`. Pixel never unlatches a door. While admins have switched door control off, a door shows no buttons and says why.
 
-Unlocks a door. Members only, with `ha-doors` or `ha-admin`. It only ever unlocks.
-
-</PxCommand>
+<PxPanel
+	command="/ha"
+	:embeds="[{ title: 'example-door', lines: ['The front door'], fields: [{ name: 'State', value: 'locked', inline: true }, { name: 'Kind', value: 'Door', inline: true }, { name: 'Last changed', value: '3h 0m ago', inline: true }] }]"
+	:rows="[[{ label: 'Lock', style: 'primary', disabled: true }, { label: 'Unlock', style: 'primary' }], [{ label: '← All devices' }, { label: 'Refresh' }]]"
+	caption="A locked door, for a member with ha-doors: Unlock is the only thing to do."
+/>
 
 ### Scheduled posts
 
 Messages and polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
 
-<PxCommandTray query="/schedule" :selected="0" caption="Typing /schedule lists what you can do with scheduled posts." />
+<PxCommand :level="4" sig="/schedule" tier="member" reply="private" :caps="['schedule-posts']">
 
-<PxCommand :level="4" sig="/schedule message channel: when: [repeat:] [days:] [mentions:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post, such as wed 1900, 14 oct 19:00, tomorrow 9am, now or now+1h.', '[repeat:]': 'once, weekly, fortnightly, monthly or every-2-months. Once if left out.', '[days:]': 'For weekly and fortnightly: which days, such as wed sat.', '[mentions:]': 'Let @everyone, @here and role mentions ping. Off if left out.', '[name:]': 'A name to find it by later. The start of the text if left out.' }">
-
-Schedules a message. A form opens for the text. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
+Opens your scheduled posts. Everything else is buttons, menus and forms in Pixel's reply, so there's nothing to remember. The buttons stop working after 15 minutes or when Pixel restarts: run `/schedule` again.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/schedule poll channel: when: [repeat:] [days:] [duration:] [multiple:] [name:]" tier="member" reply="private" form :caps="['schedule-posts']" :options="{ 'channel:': 'Where to post it.', 'when:': 'When to post it.', '[repeat:]': 'How often. Once if left out.', '[days:]': 'For weekly and fortnightly: which days.', '[duration:]': 'How long people can vote, from 1 hour to 2 weeks. 1 day if left out.', '[multiple:]': 'Let people pick more than one answer.', '[name:]': 'A name to find it by later.' }">
+Every scheduled post is in the menu, soonest first, with its channel, its next post and how often it repeats. Pick one to see it, or make a new one.
 
-Schedules a native Discord poll. A form opens for the question and the answers, one per line (2 to 10).
+<PxPanel
+	command="/schedule"
+	:embeds="[{ title: 'Scheduled posts', lines: ['**3** scheduled · **2** yours · **1** paused', 'Choose one to see what it will post, change it or delete it.', 'Times are in Europe/Amsterdam.'] }]"
+	:rows="[[{ select: 'Choose a schedule…' }], [{ label: 'New message', style: 'primary' }, { label: 'New poll' }]]"
+	caption="The list: a menu of every scheduled post, and New message and New poll."
+/>
 
-</PxCommand>
+**New message** and **New poll** open a form. When is a day, a time or both, such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
-<PxCommand :level="4" sig="/schedule list" tier="member" reply="private" :caps="['schedule-posts']">
+<PxModal
+	title="New message"
+	:fields="[
+		{ label: 'Channel', hint: 'Where to post it. You need to be able to post there yourself.', kind: 'picker', value: '#general' },
+		{ label: 'When', hint: 'In Europe/Amsterdam. A day, a time or both.', kind: 'text', value: 'wed 1900 · tomorrow 9am · 14 oct 19:00 · now+1h' },
+		{ label: 'Repeat', kind: 'radio', choices: ['Once', 'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months'], picked: 'Weekly' },
+		{ label: 'Message', kind: 'paragraph', value: 'What to post. Markdown works. {{date}} and {{date+2}} fill in when it\'s posted.' },
+	]"
+	caption="The form for a new message: the channel, when, how often, and the text."
+/>
 
-Every scheduled post, with where and when it goes out next.
+Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders**; and **Pings**, only where you could ping everyone yourself. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
 
-</PxCommand>
+<PxPanel
+	command="/schedule"
+	:content="['Pizza night tonight! Doors open at 19:00.']"
+	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Schedule**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message, pings off', inline: true }] }]"
+	:rows="[[{ select: 'Which days?' }], [{ label: 'Schedule', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
+	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Schedule to save it."
+/>
 
-<PxCommand :level="4" sig="/schedule edit schedule: [when:] [repeat:] [days:] [duration:] [name:]" tier="member" reply="private" autocomplete form :caps="['schedule-posts']" :options="{ 'schedule:': 'Which of your schedules. Only your own upcoming ones are offered.', '[duration:]': 'For a poll: how long people can vote, from 1 hour to 2 weeks. Unchanged if left out; refused on a message.' }">
+**Schedule** saves it and shows it. A schedule shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
 
-Changes one of your own scheduled posts before it goes out: its content, and optionally when, how often and, for a poll, how long it stays open. A new time or repeat counts from now, so nothing it would have posted before the edit goes out late. Turning a repeat into a one-off needs a new `when`.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule preview schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Shows exactly what a scheduled post will look like.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule pause schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Stops a schedule from posting until it's resumed.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule resume schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Starts a paused schedule again. Nothing missed while paused is posted. A one-off whose time passed while it was paused can't be resumed: delete it.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/schedule delete schedule:" tier="member" reply="private" autocomplete :caps="['schedule-posts']" :options="{ 'schedule:': 'Which schedule.' }">
-
-Deletes a schedule.
-
-</PxCommand>
+<PxPanel
+	command="/schedule"
+	:content="['Pizza night tonight! Doors open at 19:00.']"
+	:embeds="[{ title: 'Pizza night tonight! Doors open at 19:00.', lines: ['Next post: **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam).', 'Made by you.', '', 'Above is what it will post next time, with dates filled in. Pings don\'t fire here.'], fields: [{ name: 'Channel', value: '#general', inline: true }, { name: 'Repeats', value: 'Weekly on Wednesday', inline: true }, { name: 'What', value: 'A message, pings off' }] }]"
+	:rows="[[{ label: 'Edit', style: 'primary' }, { label: 'Pause' }, { label: 'Delete', style: 'danger' }], [{ label: '← All schedules' }]]"
+	caption="One of your schedules: what it will post next, with Edit, Pause and Delete."
+/>
 
 ### Parking
 
 Getting a parking spot at the gate. These need the `parking` capability. Every reply is private, and every booking ends at 23:59.
 
-<PxCommand :level="4" sig="/park for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How long, such as 30m, 2h, 2h30 or rest of day.' }">
+<PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h, 2h30 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
 
-Gives you a spot that's free for that whole time, opens the gate, and says where to park. Pixel DMs you 15 minutes before your time is up (with `/parking extend` if the spot has more time), and ends your booking 5 minutes after it if you haven't left or extended, so keep DMs from server members on. Pixelbar's own spot comes first, then the borrowed spot that fits most tightly. If nothing is free for that long, the gate stays shut and Pixel says the longest stay that would fit. Running it again while you're parked opens the gate again and doesn't book another spot.
-
-</PxCommand>
-
-<PxCommand :level="4" sig="/parking list" tier="member" reply="private" :caps="['parking']">
-
-Which spots are open, who's in each, since when and until about when, and how long each spot stays open.
+Opens your parking panel. Everything else is buttons. `/park for:` books straight away, for when you're at the gate and know how long.
 
 </PxCommand>
 
-<PxCommand :level="4" sig="/parking extend for:" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ 'for:': 'How much longer, such as 30m, 1h or rest of day.' }">
+When you're not parked, pick how long. The lengths come from the parking settings, and ones that won't fit right now are greyed out. **Another length…** takes any other. Pixel gives you a spot that's free for that whole time, opens the gate and says where to park: Pixelbar's own spot first, then the borrowed spot that fits most tightly. If nothing fits, the gate stays shut and Pixel offers the longest stay that would. Every panel shows who's in which spot.
 
-Stays longer in your spot, as long as it's open that long and it's before 23:59. It adds to your end (or to now, if that's passed), and Pixel reminds you again before the new end. If the spot doesn't have that much time, Pixel says how much it has.
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)', '**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
+	:rows="[[{ label: 'Park for 30m' }, { label: 'Park for 1h' }, { label: 'Park for 2h' }, { label: 'Park for 4h' }, { label: 'Park until 23:59' }], [{ label: 'Another length…' }], [{ label: 'Refresh' }]]"
+	caption="Not parked: a button for each length, and who's in which spot."
+/>
 
-</PxCommand>
+Once you're parked, the panel says where. **Open the gate** opens it again, if it didn't open or you need it again. **Leave** frees your spot when you go. The **Stay … longer** buttons only offer what fits before the spot closes, or 23:59.
 
-<PxCommand :level="4" sig="/parking taken [confirm:]" tier="member" reply="private" :caps="['parking']" :options="{ '[confirm:]': 'Move to the spot Pixel offers. Without it, Pixel only shows you the spot.' }">
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)', '**neighbour-1**: free · open until 14:00 (4h left)'] }]"
+	:rows="[[{ label: 'Open the gate', style: 'primary' }, { label: 'Leave' }, { label: 'Someone\'s in my spot' }], [{ label: 'Stay 30m longer' }, { label: 'Stay 1h longer' }, { label: 'Stay 2h longer' }, { label: 'Stay 4h longer' }, { label: 'Stay until 23:59' }], [{ label: 'Refresh' }]]"
+	caption="Parked: where to park, the gate, staying longer, a taken spot and leaving."
+/>
 
-Someone else is in your spot. If another spot is free for the rest of your time, Pixel shows it, and `confirm:True` moves you there. If nothing else is free, Pixel ends your booking, asks you to leave and reports it to the board. Either way, your spot is closed until the end of the day and the admins are told.
+If someone else is in your spot, **Someone's in my spot** shows what Pixel will do before it does it. If another spot is free for the rest of your time, it moves you there. If none is, it ends your booking and reports it to the board. Either way your spot is closed until the end of the day, so nobody else is sent there.
 
-</PxCommand>
+<PxPanel
+	command="/park"
+	:embeds="[{ title: 'Parking', lines: ['Sorry about that. **neighbour-1** is free for the rest of your time, until 12:00.', 'Move there, and I\'ll close **ours** until 23:59 and tell the admins.'] }]"
+	:rows="[[{ label: 'Move to neighbour-1', style: 'primary' }, { label: 'Cancel' }]]"
+	caption="Someone's in my spot: Pixel offers a free spot before moving you."
+/>
 
-<PxCommand :level="4" sig="/parking leave" tier="member" reply="private" :caps="['parking']">
-
-Frees your spot.
-
-</PxCommand>
+Pixel DMs you 15 minutes before your time is up, saying how much longer you could stay, and ends your booking 5 minutes after it if you haven't left or stayed longer, so keep DMs from server members on.
 
 ### Doors
 
@@ -239,182 +258,8 @@ Tells the space's state API that Pixelbar is open or closed. `/status` and the o
 
 For Pixel's operators. Every reply is private, and every change is recorded. How to use them is in the [runbook](/maintainers/runbook).
 
-<PxCommand sig="/admin status" tier="admin" reply="private">
+<PxCommand sig="/admin" tier="admin" reply="private">
 
-Pixel's health and an overview of the access lists.
-
-</PxCommand>
-
-<PxCommand sig="/admin reload" tier="admin" reply="private">
-
-Re-reads the admin and member lists after they were edited by hand.
-
-</PxCommand>
-
-<PxCommand sig="/admin level set user: level: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'level:': 'member, friend or guest. Guest keeps their entry but gives no access.', '[reason:]': 'Why, for the audit log.' }">
-
-Makes someone a member or friend, or sets them back to guest. If their entry has no note, their username is saved as one, so the file shows who is who.
-
-</PxCommand>
-
-<PxCommand sig="/admin level get user:" tier="admin" reply="private" :options="{ 'user:': 'The person.' }">
-
-Someone's level, where it comes from, and their capabilities.
-
-</PxCommand>
-
-<PxCommand sig="/admin sync [user:]" tier="admin" reply="private" :options="{ '[user:]': 'Just this person. Leave it out to sync everyone in Pixel\'s lists.' }">
-
-Sets Discord roles to match Pixel's lists, for one person or everyone listed.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities grant user: capability: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
-
-Gives someone a capability.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities grant-all user: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', '[reason:]': 'Why, for the audit log.' }">
-
-Gives someone every capability that exists.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities revoke user: capability: [reason:]" tier="admin" reply="private" :options="{ 'user:': 'The person.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
-
-Takes a capability away.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities grant-level level: capability: [reason:]" tier="admin" reply="private" :options="{ 'level:': 'member or friend. A friend grant reaches members too.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
-
-Gives everyone at a membership level a capability.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities revoke-level level: capability: [reason:]" tier="admin" reply="private" :options="{ 'level:': 'member or friend.', 'capability:': 'Which capability.', '[reason:]': 'Why, for the audit log.' }">
-
-Takes a capability away from a membership level. People granted it on their own keep it.
-
-</PxCommand>
-
-<PxCommand sig="/admin capabilities list [user:]" tier="admin" reply="private" :options="{ '[user:]': 'Show just this person.' }">
-
-Which capabilities exist, or what one person has.
-
-</PxCommand>
-
-<PxCommand sig="/admin announcements set style: channel:" tier="admin" reply="private" :options="{ 'style:': 'live (one post, edited to closed), timeline (a new post each time) or single (only the latest status, the old post deleted).', 'channel:': 'Where to announce.' }">
-
-Posts open/closed announcements in a channel, in a style. Any number of channels, one style each.
-
-</PxCommand>
-
-<PxCommand sig="/admin announcements remove channel:" tier="admin" reply="private" :options="{ 'channel:': 'The channel to stop announcing in.' }">
-
-Stops announcing in a channel. Posts already there stay.
-
-</PxCommand>
-
-<PxCommand sig="/admin announcements list" tier="admin" reply="private">
-
-Which channels get announcements, and in which style.
-
-</PxCommand>
-
-<PxCommand sig="/admin closing-time set" tier="admin" reply="private" form>
-
-Sets the closing-time reminder. A form opens for the text.
-
-</PxCommand>
-
-<PxCommand sig="/admin doors off" tier="admin" reply="private">
-
-Switches door control from Pixel off for everyone, at once: Home Assistant's doors, OpenR's doors and the parking gate.
-
-</PxCommand>
-
-<PxCommand sig="/admin doors on" tier="admin" reply="private">
-
-Switches door control from Pixel back on.
-
-</PxCommand>
-
-<PxCommand sig="/admin openr status" tier="admin" reply="private">
-
-Whether Pixel is logged in to OpenR, when its session ends, and each door's live status: online or offline, and any errors OpenR reports.
-
-</PxCommand>
-
-<PxCommand sig="/admin openr login" tier="admin" reply="private">
-
-Logs Pixel in to OpenR with its own account. OpenR then emails a code to that account.
-
-</PxCommand>
-
-<PxCommand sig="/admin openr code code:" tier="admin" reply="private" :options="{ 'code:': 'The code from OpenR\'s email.' }">
-
-Finishes the login with the emailed code. Pixel then keeps the session going by itself.
-
-</PxCommand>
-
-<PxCommand sig="/admin openr logout" tier="admin" reply="private">
-
-Logs Pixel out of OpenR, so it can't open any door until someone logs in again.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking status" tier="admin" reply="private">
-
-The parking spots, whether each is open now and later today, who's parked in them, and the parking settings.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking open spots: [from:] [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[from:]': 'Borrowed spots: when it opens. Default: now.', '[until:]': 'Borrowed spots: when it closes, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked where this cuts in. Without it, the change is refused.' }">
-
-Opens borrowed spots for a while, replacing any opening they have that day. For a permanent spot, lifts its closure. Nothing runs past the reset.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking close spots: [until:] [evict:]" tier="admin" reply="private" :options="{ 'spots:': 'One spot, or several separated by spaces.', '[until:]': 'Permanent spots: when it opens again, such as 17:00 or now+2h. Default: the reset (23:59).', '[evict:]': 'End the booking of anyone parked there. Without it, the change is refused.' }">
-
-Closes spots: a borrowed spot until it's opened again, a permanent one for a while.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking assign user: spot: [for:] [evict:]" tier="admin" reply="private" :options="{ 'user:': 'Who is parked there.', 'spot:': 'The spot they are in.', '[for:]': 'How long, such as 2h or rest of day. Default: until the spot closes.', '[evict:]': 'End the booking of whoever still holds the spot. Without it, Pixel refuses while someone holds it.' }">
-
-Gives someone the spot they're parked in, for when someone parked in the wrong spot. Any booking they had elsewhere ends and a "reported taken" closure on the spot is lifted. Pixel doesn't move whoever was booked into it: they get a new spot themselves with `/parking taken`. If they still hold it, Pixel refuses unless `evict:True` ends their booking. Everyone affected gets a DM.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking free spot:" tier="admin" reply="private" :options="{ 'spot:': 'The spot.' }">
-
-Ends the booking in a spot, for someone who left without `/parking leave`. Pixel DMs them that an admin ended it.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Words joined by -, such as neighbour-1 or A1. Capitals are kept, but a1 and A1 are the same spot.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
-
-Adds a parking spot. A borrowed spot is closed until it's opened.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking edit-spot spot: [description:] [permanent:] [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[description:]': 'A new description, or - to remove it.', '[permanent:]': 'Whether it\'s Pixelbar\'s own spot.', '[evict:]': 'End the booking of anyone parked there if this cuts in.' }">
-
-Changes a spot. Changing whether it's permanent drops the openings or closures that no longer apply.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking remove-spot spot: [evict:]" tier="admin" reply="private" :options="{ 'spot:': 'The spot.', '[evict:]': 'End the booking of anyone parked there. Without it, a booked spot isn\'t removed.' }">
-
-Removes a spot and its opening times.
-
-</PxCommand>
-
-<PxCommand sig="/admin parking settings [remind:] [grace:] [reset:] [durations:]" tier="admin" reply="private" :options="{ '[remind:]': 'Minutes before someone\'s end to remind them (0–120).', '[grace:]': 'Minutes after it to end their booking (0–60).', '[reset:]': 'When every booking ends each day, such as 23:59.', '[durations:]': 'The durations offered, separated by commas, such as 30m, 1h, 2h30, rest of day.' }">
-
-Shows the parking settings, or changes them.
+Opens the admin panel: Pixel's health, with sections for people and their access levels, capabilities, Discord roles, announcements, the closing-time reminder, doors, OpenR and parking.
 
 </PxCommand>

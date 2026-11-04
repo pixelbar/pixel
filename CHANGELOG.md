@@ -13,6 +13,52 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Parking spot names can have capitals, such as `A1`. Pixel keeps them as written but matches them ignoring case, so `/admin parking` finds `A1` when you type `a1`, and `a1` can't be added next to `A1`.
 
+## [0.25.0] - 2026-11-04
+
+### Added
+
+- When something typed on a form is wrong (a bad spot name, a time Pixel can't read, an OpenR code that doesn't work), the private reply now has **Fix it**, which opens the form again filled in with what was typed, instead of starting over. Every form opened from a button or menu gets it when its action refuses what was typed, which today is every `/admin` form, including Parking (where a form's mistake now comes back this way instead of on the panel). Discord can't check a form before it's sent, so this is the nearest thing. `/schedule` already keeps what was typed in its draft, and `/park` shows its problems on its panel.
+
+### Changed
+
+- Parking spot names can contain spaces (`by the bins`), as well as lowercase letters, digits and `-`. Where `/admin` → Parking takes several spots, separate them with commas; spaces still work when no name has one.
+
+## [0.24.0] - 2026-11-03
+
+### Added
+
+- `/admin` → People → **Revoke capabilities…** now also lists and revokes a capability someone gets from their membership level: it's taken away from that person alone, and everyone else at the level keeps it. It's saved as a `revoked:` list on their entry in `members.yaml`, which wins over every grant and stays when their level changes. **Grant capabilities…** gives it back. The person's panel shows revocations, `/admin` → Capabilities counts them, and the person is DMed. See [ADR 0024](docs/adr/0024-capability-revocation.md).
+
+### Changed
+
+- CI/CD uses [`dorny/paths-filter`](https://github.com/dorny/paths-filter) with [`.github/path-filters.yml`](.github/path-filters.yml) to decide which expensive jobs run. Markdown-only changes skip `just check`, the Docker smoke build and GHCR. A change to `src/`, the lockfile, workflows, Dockerfile, `justfile`, `config/` or `content/info/` still runs the matching job (fail closed); if the filter job itself fails, those jobs still run, and CD still uploads Sentry maps after a successful publish. Azure plans still skip unless Terraform files under `infra/` changed. The content-hash skip (`scripts/ci-inputs.sh` and the Actions cache markers) is gone.
+
+- **`/admin` is one command with a panel** instead of about twenty subcommands and groups. `/admin` shows Pixel's status, with **Reload the access lists** and a **Go to…** menu of sections:
+  - **People**: look someone up with a person picker, then **Change level…** (with a reason), **Grant capabilities…** / **Revoke capabilities…** (pick several, then a reason), **Grant every capability…**, **Sync their Discord roles** and **Capabilities in detail**.
+  - **Capabilities**: who holds what, and what the friend and member levels get.
+  - **Discord roles** (**Sync everyone**), **Announcements** (**Add a channel…**, **Stop announcing in…**), **Closing time** (**Change the message…**), **Doors** (switching door control off asks first), **OpenR** (**Log in**, **Enter the code…**, **Log out…**, which asks first) and **Parking** (the parking panel, now with **← Admin**).
+
+  Every change runs exactly what the old subcommand ran, with the same checks, audit and logs. The docs write admin tasks as a path, such as `/admin` → Doors → **Switch door control off…**. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands. If a Pixel admin who isn't a server Administrator can't see `/admin` afterwards, run `just command-access dev` / `prod`.
+
+- **`/ha` is one command with a panel** instead of `/ha list`, `/ha status`, `/ha set` and `/ha open`. `/ha` lists the devices you may see, grouped by kind with their state, with a menu to pick one; `/ha device:` goes straight to one. A device shows its live state and a button for each thing you may do to it (**On**, **Off**, **Toggle**, **Lock**, **Unlock**), with the one it's already at greyed out. Pressing one says what really happened above the device's fresh state. The rules haven't changed: the same capabilities, doors for members only and only lock and unlock, every press checked again, one action at a time, and no buttons while admins have switched doors off. The website's commands page shows the new panel. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
+
+### Changed
+
+- The website's commands page shows `/schedule` and `/park` as they now look: pictures of their panels, with the buttons and menus (the list, the form, a draft and a schedule; not parked, parked, and someone's in my spot), instead of the old subcommands. `/admin parking` is a one-line card like the other admin commands, and `/park` is in the command picker on the home page.
+
+- **`/admin parking` is one panel** instead of nine subcommands. It shows every spot, whether it's open, who's in it and the settings. **Manage a spot…** opens one spot: **Open…** / **Close for today** (borrowed) or **Close…** / **Open again** (permanent), **Edit…**, **Remove…**, **Free the spot…** and **Give it to someone…** (with a person picker). **Open spots…** and **Close spots…** do several at once, asking for times only when they apply; **Add a spot** and **Settings** are forms filled in with what's saved. Instead of `evict:True`, a change that would end someone's booking says whose and asks first. Run `just register dev` / `just register prod` after deploying.
+
+- **`/park` is one command with buttons** instead of `/park for:` and four `/parking` subcommands. `/park` opens a private panel that shows who's in which spot. When you're not parked, pick how long (**Park for 1h**, **Park until 23:59**, … from the durations in the settings, greyed out when they won't fit) or **Another length…**. When you are, **Open the gate**, **Leave**, **Stay 1h longer** / **Stay until 17:00** (only what fits before the spot closes), and **Someone's in my spot**, which shows whether it will move you or end your booking before it does. Problems are explained on the panel. `/park for:` still books straight away. The reminder DM now points to `/park`. Run `just register dev` / `just register prod` after deploying, so Discord drops `/parking`.
+
+### Added
+
+- **Poll reminders:** on a poll's draft in `/schedule`, **Reminders** sets a channel and a time of day. While the poll is open, Pixel posts a reminder there every day at that time, with the question, when it closes and a link to the poll. It never pings. Reminders stop when the poll closes, so a weekly Monday poll open for a week reminds every day that week. You need to be able to post in the reminder channel yourself. Edit the poll to change them, or clear the time to turn them off. Schedules gain optional `reminder`, `lastPoll` and `lastReminderAt` fields in `data/schedules.yaml`; existing files load unchanged.
+
+### Changed
+
+- **`/schedule` is one command with buttons, menus and forms** instead of eight subcommands with options. It opens a private list of every scheduled post; pick one to see exactly what it will post next and, if you made it, **Edit**, **Pause**/**Resume** or **Delete** it (Pixel asks first). **New message** and **New poll** open a form for the channel, when, the repeat and the text, then show a draft with the time Pixel understood and the post filled in; weekly days, a poll's duration and several answers, and pings are chosen on the draft, only when they apply. Nothing is saved until you press **Schedule**, and anything wrong is explained on the draft. Editing can now move a schedule to another channel. Only the person who made a schedule can pause, resume or delete it (before, anyone with `schedule-posts` could). Buttons last 15 minutes and a restart drops them, along with any unsaved draft. Run `just register dev` / `just register prod` after deploying, so Discord drops the old subcommands.
+- The website's light mode has a new logo: the original glowing logo printed on paper, with vivid orbits and a white-hot star, in the nav bar and the landing page's animation. It replaces the flat pixel-art version.
+
 ## [0.23.0] - 2026-11-02
 
 ### Added
@@ -30,6 +76,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - `/admin capabilities`' `capability` option suggests names as you type (with their descriptions) instead of a fixed picker. Discord counts every picker entry towards `/admin`'s 4000-character limit, once per subcommand, so each new capability made `/admin` bigger and parking would have pushed it over. Names are still checked: an unknown one is refused with "That capability doesn't exist." Run `just register dev` / `just register prod` after deploying.
+
+### Fixed
+
+- `just register`, `just command-access` and `just deploy` for `dev` or `prod` now read that environment's access lists and devices file where `just pull` puts them (`config/admins.<env>.yaml`, `config/<env>/members.yaml`, `config/home-assistant/<env>/`), instead of the local bot's `config/admins.yaml`. When one is missing they say to run `just pull <env>`. `just validate-config dev|prod` checks those files, and `just deploy dev` runs it before building, so a missing file no longer fails the deploy after the app has rolled.
 
 ## [0.22.0] - 2026-10-28
 
@@ -326,7 +376,9 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/pixelbar/pixel/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/pixelbar/pixel/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/pixelbar/pixel/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/pixelbar/pixel/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/pixelbar/pixel/compare/v0.20.0...v0.21.0

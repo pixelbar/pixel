@@ -23,7 +23,7 @@ function setup(saveFails = false) {
 	return { switches, reporter, group, run, warn };
 }
 
-describe("/admin doors", () => {
+describe("/admin → Doors", () => {
 	it("is admin-only at every level, and private", () => {
 		const { group } = setup();
 		expect(group.access.minTier).toBe("admin");
@@ -83,10 +83,12 @@ describe("/admin doors", () => {
 		);
 	});
 
-	it("shows the state for /admin status", () => {
+	it("shows the state for /admin", () => {
 		const { switches } = setup();
 		expect(describeDoors(switches)).toBe("Door control: on");
 		switches.set("door", false, "x");
-		expect(describeDoors(switches)).toBe("Door control: **off** (`/admin doors on`)");
+		expect(describeDoors(switches)).toBe(
+			"Door control: **off** (`/admin` → Doors → **Switch door control on**)",
+		);
 	});
 });

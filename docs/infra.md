@@ -35,8 +35,8 @@ flowchart LR
   subgraph github["GitHub pixelbar/pixel"]
     SRC[git + content/info]
     GHCR["GHCR public<br/>ghcr.io/pixelbar/pixel"]
-    CI["CI: check and/or image smoke<br/>unless those inputs already passed"]
-    CD["CD on main: GHCR when image inputs<br/>differ from last publish; Sentry maps"]
+    CI["CI: check and/or image smoke<br/>when those paths change"]
+    CD["CD on main: GHCR when image paths<br/>change; Sentry maps"]
     REL["Release: bump, GHCR :vX.Y.Z,<br/>Pages, approved pixel-prod,<br/>register prod commands"]
     TFW["terraform.yml: plan envs/dev + prod"]
     DEPDEV["Deploy dev (manual): check, GHCR :sha + :dev,<br/>roll pixel-dev, register dev commands"]
@@ -158,16 +158,16 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | --- | --- | --- | --- |
 | `DISCORD_TOKEN` | Discord Developer Portal → KV `discord-token` | env | humans, then restart |
 | `admins.yaml` | gitignored `config/admins.yaml` (example file is fake IDs only) | KV `admins-yaml` → `/app/secrets/admins-yaml` | humans only; commands never write it |
-| `members.yaml` | gitignored `config/members.yaml`, uploaded to the share | `/app/persist/members.yaml` | Pixel (`/admin level`, capabilities) and humans |
-| `devices.yaml` | gitignored `config/home-assistant/devices.yaml` | `/app/persist/home-assistant/` | humans; `/admin reload` |
+| `members.yaml` | gitignored `config/members.yaml`, uploaded to the share | `/app/persist/members.yaml` | Pixel (`/admin` → People, capabilities) and humans |
+| `devices.yaml` | gitignored `config/home-assistant/devices.yaml` | `/app/persist/home-assistant/` | humans; `/admin` → **Reload the access lists** |
 | HA token / URL | HA long-lived token (non-admin user) + plain URL | KV + env | humans |
 | `SENTRY_DSN` | Sentry project → KV | env | humans |
 | Image | GHCR (`just deploy dev`, Deploy dev, CD on `main`, or a Release) | Container App | `az containerapp update` |
 | `content/info/*.md` | git, `COPY` in the Dockerfile | image | next image |
 | `data/schedules.yaml` | created when someone uses `/schedule` | `/app/persist/data/` | Pixel; **not safe to delete** |
-| `data/announcement-routes.yaml` | `/admin announcements set` | `/app/persist/data/` | Pixel; missing → no open/closed announcements until an admin sets them |
-| `data/closing-time.md` | `/admin closing-time set`, or a hand edit | `/app/persist/data/` | Pixel; missing → built-in default |
-| `data/home-switches.state` | `/admin doors`; missing file → doors default **on**; unreadable → **off** | persist | Pixel |
+| `data/announcement-routes.yaml` | `/admin` → Announcements → **Add a channel…** | `/app/persist/data/` | Pixel; missing → no open/closed announcements until an admin sets them |
+| `data/closing-time.md` | `/admin` → Closing time → **Change the message…**, or a hand edit | `/app/persist/data/` | Pixel; missing → built-in default |
+| `data/home-switches.state` | `/admin` → Doors; missing file → doors default **on**; unreadable → **off** | persist | Pixel |
 | Example YAML in git | `config/*.example.yaml` | **never** uploaded to a real bot | local laptop only |
 
 How to seed the share and vault: [dev README](../infra/envs/dev/README.md).

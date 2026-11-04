@@ -165,7 +165,7 @@ describe("openedLine", () => {
 			"**Entrance** is already being opened.",
 		);
 		expect(openedLine("Entrance", { opened: false, reason: "logged-out" })).toMatch(
-			/isn't logged in to OpenR.*\/admin openr login/,
+			/isn't logged in to OpenR.*\/admin` → OpenR → \*\*Log in\*\*/,
 		);
 	});
 });

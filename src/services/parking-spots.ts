@@ -9,7 +9,7 @@ import { type Clock, formatParkingDuration, parseDuration } from "./parking-time
 
 /**
  * Pixelbar's parking spots and the parking settings, kept in
- * `data/parking-spots.yaml` and changed with `/admin parking`. They rarely change,
+ * `data/parking-spots.yaml` and changed with `/admin` → Parking. They rarely change,
  * so they live apart from the daily opening times (`parking-windows.yaml`) and the
  * bookings. Not safe to delete.
  *
@@ -30,14 +30,20 @@ export const MAX_REMIND_MINUTES = 120;
 export const MAX_GRACE_MINUTES = 60;
 
 /**
- * Words joined by '-', up to 32 characters, such as `neighbour-1` or `A1`. Capitals are
- * kept as written, but names are matched ignoring case, so `A1` and `a1` are one spot.
+ * Words joined by '-' or single spaces, starting with a letter, up to 32 characters:
+ * `neighbour-1`, `by the bins` or `A1`. Capitals are kept as written, but names are
+ * matched ignoring case, so `A1` and `a1` are one spot.
  */
-export const SPOT_NAME = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
+export const SPOT_NAME = /^(?=.{1,32}$)[A-Za-z][A-Za-z0-9-]*(?: [A-Za-z0-9-]+)*$/;
 
 /** Whether two spot names are the same spot. */
 export function sameSpotName(a: string, b: string): boolean {
 	return a.toLowerCase() === b.toLowerCase();
+}
+
+/** A spot name as typed, trimmed and with runs of spaces made one. */
+export function normaliseSpotName(typed: string): string {
+	return typed.trim().replace(/\s+/g, " ");
 }
 
 export type ParkingSpot = {
@@ -68,7 +74,7 @@ export const DEFAULT_SETTINGS: ParkingSettings = {
 const spotSchema = z.strictObject({
 	name: z
 		.string()
-		.regex(SPOT_NAME, { error: "must be words joined by '-', starting with a letter" }),
+		.regex(SPOT_NAME, { error: "must be words joined by '-' or spaces, starting with a letter" }),
 	description: z.string().min(1).max(MAX_DESCRIPTION).optional(),
 	permanent: z.boolean().default(false),
 });
@@ -93,7 +99,7 @@ const fileSchema = z.strictObject({
 });
 
 const HEADER =
-	"# Pixel's parking spots and settings. Managed with /admin parking; NOT safe to delete.\n";
+	"# Pixel's parking spots and settings. Managed with /admin → Parking; NOT safe to delete.\n";
 
 export class ParkingError extends UserFacingError {
 	override name = "ParkingError";
@@ -149,11 +155,12 @@ export class ParkingSpotStore {
 		return this.#settings;
 	}
 
-	add(spot: ParkingSpot): ParkingSpot {
+	add(typed: ParkingSpot): ParkingSpot {
 		this.#writable();
+		const spot = { ...typed, name: normaliseSpotName(typed.name) };
 		if (!SPOT_NAME.test(spot.name)) {
 			throw new ParkingError(
-				"A spot's name is letters, digits and '-', starting with a letter, up to 32 characters.",
+				"A spot's name is letters, digits, '-' and spaces, starting with a letter, up to 32 characters.",
 			);
 		}
 		if (this.get(spot.name))

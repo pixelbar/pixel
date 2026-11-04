@@ -5,7 +5,8 @@ import type { ErrorReporter } from "./ports/error-reporter.ts";
 /**
  * Capabilities are named permissions on top of a tier. An admin grants one to
  * an individual person, or to a whole membership level (`friend` or `member`)
- * in the members file's `tiers:` section. Nothing else gives one: not the
+ * in the members file's `tiers:` section, and can revoke one from a person
+ * even when their level grants it. Nothing else gives one: not the
  * effective tier, a Discord role or being an admin. A command that needs one
  * declares `access: { minTier, capability }`, and the dispatcher requires both.
  *
@@ -75,6 +76,60 @@ export function tierGrantsFor(grants: TierGrants, level: MemberTier): string[] {
 	if (level === "guest") return [];
 	const reached = level === "member" ? [...grants.friend, ...grants.member] : grants.friend;
 	return [...new Set(reached)];
+}
+
+/**
+ * What a person holds: their own grants plus their level's, minus what was
+ * revoked from them. A revocation wins over every grant. Whether a guest's
+ * count is the dispatcher's call (they never do).
+ */
+export function heldCapabilities(
+	record: Pick<MemberRecord, "tier" | "capabilities" | "revoked">,
+	grants: TierGrants,
+): string[] {
+	const revoked = new Set(record.revoked);
+	return [...new Set([...record.capabilities, ...tierGrantsFor(grants, record.tier)])].filter(
+		(name) => !revoked.has(name),
+	);
+}
+
+/**
+ * The lists after giving someone `names`: any revocation of them is lifted, and
+ * an own grant is added only for those their level doesn't already give.
+ */
+export function withGrantedCapabilities(
+	record: Pick<MemberRecord, "tier" | "capabilities" | "revoked">,
+	names: readonly string[],
+	grants: TierGrants,
+): { capabilities: string[]; revoked: string[] } {
+	const own = record.capabilities;
+	const fromLevel = tierGrantsFor(grants, record.tier);
+	return {
+		capabilities: [
+			...own,
+			...names.filter((name) => !own.includes(name) && !fromLevel.includes(name)),
+		],
+		revoked: record.revoked.filter((name) => !names.includes(name)),
+	};
+}
+
+/**
+ * The lists after taking `names` away: their own grant is removed, and when
+ * their level still gives a name it is recorded as a revocation.
+ */
+export function withRevokedCapabilities(
+	record: Pick<MemberRecord, "tier" | "capabilities" | "revoked">,
+	names: readonly string[],
+	grants: TierGrants,
+): { capabilities: string[]; revoked: string[] } {
+	const fromLevel = new Set(tierGrantsFor(grants, record.tier));
+	return {
+		capabilities: record.capabilities.filter((name) => !names.includes(name)),
+		revoked: [
+			...record.revoked,
+			...names.filter((name) => fromLevel.has(name) && !record.revoked.includes(name)),
+		],
+	};
 }
 
 /** Every capability list in the members file: each entry's, then each level's. */

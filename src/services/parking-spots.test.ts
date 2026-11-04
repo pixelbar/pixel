@@ -66,12 +66,20 @@ describe("ParkingSpotStore", () => {
 	});
 
 	describe("add", () => {
+		it("takes a name with spaces, trimmed and with runs of spaces made one", () => {
+			const store = open();
+			expect(store.add({ name: "  by   the bins ", permanent: false }).name).toBe("by the bins");
+			expect(open().get("by the bins")).toBeDefined();
+		});
+
 		it("refuses a bad name, a repeat, too many spots, and a bad description", () => {
 			const store = open();
-			expect(() => store.add({ name: "Spot 1", permanent: false })).toThrow(ParkingError);
+			expect(() => store.add({ name: "Spot #1", permanent: false })).toThrow(ParkingError);
 			expect(() => store.add({ name: "1-spot", permanent: false })).toThrow(
 				/starting with a letter/,
 			);
+			expect(() => store.add({ name: "spot_1", permanent: false })).toThrow(ParkingError);
+			expect(() => store.add({ name: "x".repeat(33), permanent: false })).toThrow(ParkingError);
 			store.add({ name: "a", permanent: false });
 			expect(() => store.add({ name: "a", permanent: true })).toThrow(/already a spot/);
 			expect(() => store.add({ name: "b", permanent: false, description: " " })).toThrow(/1–100/);
@@ -113,12 +121,15 @@ describe("ParkingSpotStore", () => {
 
 	it("keeps capitals as written, and matches names ignoring case", () => {
 		const store = open();
-		store.add({ name: "A1", permanent: false });
-		expect(() => store.add({ name: "a1", permanent: false })).toThrow(/already a spot/);
-		expect(store.get("a1")?.name).toBe("A1");
-		expect(store.update("a1", { permanent: true })?.after).toEqual({ name: "A1", permanent: true });
-		expect(open().all()).toEqual([{ name: "A1", permanent: true }]);
-		expect(store.remove("a1")?.name).toBe("A1");
+		store.add({ name: "Bay A1", permanent: false });
+		expect(() => store.add({ name: "bay a1", permanent: false })).toThrow(/already a spot/);
+		expect(store.get("BAY a1")?.name).toBe("Bay A1");
+		expect(store.update("bay a1", { permanent: true })?.after).toEqual({
+			name: "Bay A1",
+			permanent: true,
+		});
+		expect(open().all()).toEqual([{ name: "Bay A1", permanent: true }]);
+		expect(store.remove("bay a1")?.name).toBe("Bay A1");
 		expect(open().all()).toEqual([]);
 	});
 
@@ -151,7 +162,7 @@ describe("ParkingSpotStore", () => {
 	describe("a file that can't be used", () => {
 		it.each([
 			["not YAML", "spots: [", /not valid YAML/],
-			["the wrong shape", "spots:\n  - name: Spot 1\n", /spots\.0\.name/],
+			["the wrong shape", "spots:\n  - name: Spot_1\n", /spots\.0\.name/],
 			["an unknown key", "spot: []\n", /invalid/],
 			["a bad setting", "settings:\n  resetAt: midnight\n", /settings\.resetAt/],
 			["a repeated name", "spots:\n  - name: a\n  - name: a\n", /repeats a spot name/],

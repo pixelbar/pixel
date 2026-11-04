@@ -25,7 +25,8 @@ import { ConfigTierSource } from "../../services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../services/access-store.ts";
 import { HomeDeviceStore } from "../../services/home-devices.ts";
 import { KindSwitch } from "../../services/kind-switch.ts";
-import { actor, IDS } from "../../testing/fixtures.ts";
+import { type AdminOp, runAdmin } from "../../testing/admin.ts";
+import { IDS } from "../../testing/fixtures.ts";
 import { inMemoryParking } from "../../testing/parking.ts";
 import { createAdminFeature } from "./index.ts";
 
@@ -135,21 +136,12 @@ const human = (id: string, displayName = "Someone"): ResolvedUser => ({
 
 function run(
 	dispatcher: Dispatcher,
-	subcommand: "set-level" | "sync" | "whois" | "status" | "reload",
+	subcommand: AdminOp,
 	args: Record<string, string>,
 	target?: ResolvedUser,
 	as: Partial<PlatformActor> = { userId: IDS.admin, displayName: "Ada", handle: "ada_l" },
 ) {
-	return dispatcher.dispatch({
-		actor: actor(as),
-		command: "admin",
-		// The old names are kept in the tests' vocabulary: set-level is /admin level set, whois is /admin level get.
-		...(subcommand === "set-level" || subcommand === "whois"
-			? { subgroup: "level", subcommand: subcommand === "set-level" ? "set" : "get" }
-			: { subcommand }),
-		args: target ? { user: target.id, ...args } : args,
-		...(target ? { users: { user: target } } : {}),
-	});
+	return runAdmin(dispatcher, subcommand, args, target, as);
 }
 
 type Result = Awaited<ReturnType<typeof run>>;
@@ -174,7 +166,7 @@ beforeEach(() => {
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-describe("/admin level set mirrors to Discord", () => {
+describe("/admin → People → **Change level…** mirrors to Discord", () => {
 	it("updates Pixel first, then Discord, and passes an audit-log reason naming the admin", async () => {
 		let fileWhenMirrored = "";
 		const backend = fakeBackend({
@@ -252,7 +244,7 @@ describe("/admin level set mirrors to Discord", () => {
 		expect(store.view.discord.get(TARGET)).toBe("member");
 		expect(read()).toContain(`discord:${TARGET}`);
 		expect(fieldsOf(result)["Discord roles"]).toBe(
-			"Pixel is updated, but the Discord roles weren't changed: that person isn't in the Discord server. Run /admin sync once that's fixed.",
+			"Pixel is updated, but the Discord roles weren't changed: that person isn't in the Discord server. Run /admin → Discord roles → **Sync everyone** once that's fixed.",
 		);
 	});
 
@@ -296,7 +288,6 @@ describe("/admin level set mirrors to Discord", () => {
 		const { dispatcher } = setup(backend);
 		await run(dispatcher, "set-level", { level: "guest" }, human(IDS.admin));
 		await run(dispatcher, "set-level", { level: "admin" }, human(TARGET));
-		await run(dispatcher, "set-level", { level: "member" }, { ...human(TARGET), isBot: true });
 		expect(backend.apply).not.toHaveBeenCalled();
 	});
 
@@ -311,7 +302,7 @@ describe("/admin level set mirrors to Discord", () => {
 	});
 });
 
-describe("/admin sync", () => {
+describe("/admin → Discord roles → **Sync everyone**", () => {
 	it("says there's nothing to sync when no roles are mapped", async () => {
 		const backend = fakeBackend({
 			states: async () => STATES_ON.map((s) => ({ tier: s.tier, status: "unconfigured" as const })),
@@ -377,13 +368,6 @@ describe("/admin sync", () => {
 		await run(dispatcher, "sync", {});
 		expect(read()).toBe(before);
 		expect(store.view.discord.has(IDS.guest)).toBe(false);
-	});
-
-	it("shows a placeholder while it works", () => {
-		const { commands } = setup();
-		const admin = commands.get("admin")?.definition;
-		const sync = admin?.subcommands?.find((s) => s.name === "sync");
-		expect(sync).toMatchObject({ placeholder: { text: "Syncing Discord roles…", private: true } });
 	});
 
 	describe("for everyone in Pixel's lists", () => {
@@ -459,7 +443,7 @@ describe("/admin sync", () => {
 	});
 });
 
-describe("/admin level get shows Discord roles", () => {
+describe("/admin → People → **Look someone up…** shows Discord roles", () => {
 	const inspect = (holdings: { tier: "member" | "friend"; role: string; has: boolean }[]) =>
 		fakeBackend({ inspect: async () => ({ kind: "ok", holdings }) });
 
@@ -497,7 +481,7 @@ describe("/admin level get shows Discord roles", () => {
 		const { dispatcher } = setup(inspect(holdings));
 		const result = await run(dispatcher, "whois", {}, human(id));
 		expect(fieldsOf(result)["Discord roles"]).toContain(
-			"⚠ Doesn't match their Pixel level. Run /admin sync.",
+			"⚠ Doesn't match their Pixel level. Run /admin → Discord roles → **Sync everyone**.",
 		);
 	});
 
@@ -571,7 +555,7 @@ describe("/admin level get shows Discord roles", () => {
 	});
 });
 
-describe("/admin status and reload", () => {
+describe("/admin and reload", () => {
 	it("says local unless PIXEL_RUNTIME is cloud", async () => {
 		expect(fieldsOf(await run(setup().dispatcher, "status", {})).Where).toBe("local");
 		expect(
@@ -636,7 +620,7 @@ describe("/admin status and reload", () => {
 	});
 });
 
-describe("/admin status and reload show Home Assistant", () => {
+describe("/admin and reload show Home Assistant", () => {
 	const homeBackend = (status: HomeStatus): HomeBackend & { check: ReturnType<typeof vi.fn> } => ({
 		status: () => status,
 		check: vi.fn(async () => status),
