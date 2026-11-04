@@ -29,15 +29,31 @@ export const UI_FORM_PREFIX = "pixel-ui-form:";
 const CONTROL_ID = /^pixel-ui:([0-9a-f]{24}):(\d{1,2})$/;
 const FORM_ID = /^pixel-ui-form:([0-9a-f]{24})$/;
 
+/** What was typed on a form, by field name, to fill it in again. */
+export type Refill = Readonly<Record<string, ArgValue>>;
+
 /** What a control runs, plus what a select offered. */
 export type HeldControl = {
 	call: ActionCall;
 	select?: { arg: string; values: readonly string[]; min: number; max: number };
+	/** Fix it: the form `call` opens is filled in with this, what was typed last time. */
+	refill?: Refill;
 };
 
 type Held =
 	| { kind: "controls"; owner: string; controls: readonly HeldControl[]; expires: number }
-	| { kind: "form"; owner: string; form: Form; panel?: string; expires: number };
+	| {
+			kind: "form";
+			owner: string;
+			form: Form;
+			panel?: string;
+			/** The call that opened it, to open it again for Fix it. */
+			opener?: ActionCall;
+			expires: number;
+	  };
+
+/** A held form, as taken when it's submitted. */
+export type TakenForm = { form: Form; panel?: string; opener?: ActionCall };
 
 export type Taken<T> = T | "expired" | "not-yours";
 
@@ -54,13 +70,17 @@ export class HeldControls {
 		return this.#hold({ kind: "controls", owner, controls, expires: this.#now() + HOLD_MS });
 	}
 
-	/** Keeps a form for its owner and returns the modal's custom ID. `panel` is the reply it came from. */
-	holdForm(owner: string, form: Form, panel?: string): string {
+	/**
+	 * Keeps a form for its owner and returns the modal's custom ID. `panel` is the reply
+	 * it came from, and `opener` the call that opened it.
+	 */
+	holdForm(owner: string, form: Form, panel?: string, opener?: ActionCall): string {
 		const token = this.#hold({
 			kind: "form",
 			owner,
 			form,
 			...(panel === undefined ? {} : { panel }),
+			...(opener === undefined ? {} : { opener }),
 			expires: this.#now() + HOLD_MS,
 		});
 		return `${UI_FORM_PREFIX}${token}`;
@@ -78,13 +98,17 @@ export class HeldControls {
 	}
 
 	/** Takes a submitted form, once, if it's still held and belongs to `userId`. */
-	takeForm(customId: string, userId: string): Taken<{ form: Form; panel?: string }> {
+	takeForm(customId: string, userId: string): Taken<TakenForm> {
 		const token = FORM_ID.exec(customId)?.[1];
 		const entry = this.#get(token, "form");
 		if (!token || !entry) return "expired";
 		if (entry.owner !== userId) return "not-yours";
 		this.#held.delete(token);
-		return { form: entry.form, ...(entry.panel === undefined ? {} : { panel: entry.panel }) };
+		return {
+			form: entry.form,
+			...(entry.panel === undefined ? {} : { panel: entry.panel }),
+			...(entry.opener === undefined ? {} : { opener: entry.opener }),
+		};
 	}
 
 	/** Forgets a reply's controls once the reply has been replaced. */
@@ -334,6 +358,66 @@ export type SubmittedField = {
 	/** For a user select: who was picked. The name is for display only. */
 	user?: { id: string; displayName: string; username: string; bot: boolean };
 };
+
+/**
+ * What was typed on `form` that Fix it may hold and fill in again: its fields' values,
+ * never a secret field's (it's typed again), and nothing else.
+ */
+export function refillable(form: Form, typed: Refill): Refill {
+	return Object.fromEntries(
+		form.fields.flatMap((field) => {
+			const value = typed[field.name];
+			return value === undefined || (field.kind === "text" && field.secret)
+				? []
+				: [[field.name, value]];
+		}),
+	);
+}
+
+/**
+ * `form` filled in with what was typed on it last time, for Fix it. Every field is set
+ * from `refill`: one left empty then is empty now, even if the form would start with a
+ * value. A choice that's no longer offered is dropped, and text is cut to the field's
+ * length, so nothing goes in that the form couldn't take. Only fills in: what's submitted
+ * is checked again like any form.
+ */
+export function refillForm(form: Form, refill: Refill): Form {
+	const kept = refillable(form, refill);
+	const typed = (name: string) => {
+		const value = kept[name];
+		return typeof value === "string" && value !== "" ? value : undefined;
+	};
+	const fields = form.fields.map((field): FormInput => {
+		const value = typed(field.name);
+		switch (field.kind) {
+			case "text": {
+				// A secret is never filled in: it starts as the form gives it.
+				if (field.secret) return field;
+				const { value: _, ...rest } = field;
+				const cut = value === undefined ? undefined : [...value].slice(0, field.maxLength).join("");
+				return cut === undefined ? rest : { ...rest, value: cut };
+			}
+			case "radio":
+			case "checkboxes": {
+				const chosen = new Set(
+					value === undefined ? [] : field.kind === "radio" ? [value] : value.split(", "),
+				);
+				return {
+					...field,
+					options: field.options.map(({ selected: _, ...option }) =>
+						chosen.has(option.value) ? { ...option, selected: true } : option,
+					),
+				};
+			}
+			default: {
+				// A channel or a person: the ID.
+				const { value: _, ...rest } = field;
+				return value === undefined ? rest : { ...rest, value };
+			}
+		}
+	});
+	return { ...form, fields };
+}
 
 /**
  * Turns a submitted form into arguments, checked against the form that was shown:

@@ -1,9 +1,14 @@
 import type { ActionOutcome, ActionRequest, Dispatcher } from "../../core/dispatcher.ts";
-import type { Form } from "../../core/ui.ts";
+import type { Reply } from "../../core/reply.ts";
+import type { ActionCall, Form } from "../../core/ui.ts";
 import {
 	controlArgs,
 	formArgs,
 	type HeldControls,
+	type Refill,
+	refillable,
+	refillForm,
+	renderControls,
 	renderForm,
 	type SubmittedField,
 } from "./controls.ts";
@@ -25,6 +30,7 @@ import {
 export const CONTROL_EXPIRED_MESSAGE = "That's expired. Run the command again.";
 export const NOT_YOURS_MESSAGE = "That isn't yours to use. Run the command yourself.";
 export const SLOW_FORM_MESSAGE = "That took too long to open. Try again.";
+export const FIX_IT_LABEL = "Fix it";
 
 type User = { id: string; displayName: string; username: string };
 
@@ -84,15 +90,20 @@ export function createControlHandler({
 			return;
 		}
 		const actor = discordActor(interaction.user, displayName);
+		const call = { action: held.control.call.action, args };
+		const { refill } = held.control;
 		await answer(interaction, {
-			request: { actor, action: held.control.call.action, args },
+			request: { actor, ...call },
 			dispatcher,
 			deferAfterMs,
 			controls,
-			openForm: (form) =>
-				interaction.showModal(
-					renderForm(form, controls.holdForm(interaction.user.id, form, held.token)),
-				),
+			openForm: (opened) => {
+				// Fix it: the form opens fresh, filled in with what was typed last time.
+				const form = refill ? refillForm(opened, refill) : opened;
+				return interaction.showModal(
+					renderForm(form, controls.holdForm(interaction.user.id, form, held.token, call)),
+				);
+			},
 			replaced: held.token,
 		});
 	};
@@ -130,6 +141,10 @@ export function createUiFormHandler({
 				throw new Error(`action "${held.form.submit.action}" opened a form from a form`);
 			},
 			...(held.panel === undefined ? {} : { replaced: held.panel }),
+			// A form can't open from a form either, so a problem gets a button that opens it again.
+			...(held.opener === undefined
+				? {}
+				: { fix: { opener: held.opener, refill: refillable(held.form, input.args) } }),
 		});
 	};
 }
@@ -155,6 +170,8 @@ async function answer(
 		openForm: (form: Form) => Promise<unknown>;
 		/** The token of the controls on the message, released once it's replaced. */
 		replaced?: string;
+		/** For a submitted form: how to open it again, and what was typed on it. */
+		fix?: { opener: ActionCall; refill: Refill };
 	},
 ): Promise<void> {
 	const { request, dispatcher, deferAfterMs, controls } = options;
@@ -187,8 +204,39 @@ async function answer(
 			await options.openForm(outcome.form);
 			return;
 		default: {
-			const payload = renderReply(outcome.reply, true);
+			const { fix } = options;
+			const payload =
+				outcome.problem && fix
+					? fixItReply(outcome.reply, fix, controls, request.actor.userId)
+					: renderReply(outcome.reply, true);
 			await (deferred ? interaction.followUp(payload) : interaction.reply(payload));
 		}
 	}
+}
+
+/**
+ * A form's problem, privately, with Fix it: a button that runs the call that opened the
+ * form again (through the dispatcher, like any click) and fills the new form in with
+ * what was typed, so nobody types it all again.
+ */
+function fixItReply(
+	reply: Reply,
+	fix: { opener: ActionCall; refill: Refill },
+	controls: HeldControls,
+	owner: string,
+): DiscordReplyPayload {
+	const button = {
+		kind: "button" as const,
+		label: FIX_IT_LABEL,
+		style: "primary" as const,
+		call: fix.opener,
+	};
+	return renderReply({ ...reply, controls: [[button]] }, true, (rows) =>
+		renderControls(rows, (held) =>
+			controls.holdControls(
+				owner,
+				held.map((c) => ({ ...c, refill: fix.refill })),
+			),
+		),
+	);
 }

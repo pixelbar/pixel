@@ -8,6 +8,8 @@ import {
 	formArgs,
 	type HeldControl,
 	HeldControls,
+	refillable,
+	refillForm,
 	renderControls,
 	renderForm,
 	submittedFields,
@@ -700,5 +702,99 @@ describe("submittedFields", () => {
 		expect(
 			submittedFields([{ customId: "c", values: [CHANNEL], channels }], () => null)[0]?.channel,
 		).toEqual({ id: CHANNEL, name: null, callerPermissions: null });
+	});
+});
+
+describe("refillForm", () => {
+	const form: Form = {
+		title: "Edit",
+		submit: { action: "feat.save", args: { id: "s1" } },
+		fields: [
+			{ kind: "text", name: "name", label: "Name", style: "short", maxLength: 5, value: "saved" },
+			{ kind: "text", name: "note", label: "Note", style: "short", maxLength: 50, value: "saved" },
+			{
+				kind: "radio",
+				name: "kind",
+				label: "Kind",
+				options: [
+					{ label: "A", value: "a", selected: true },
+					{ label: "B", value: "b" },
+				],
+			},
+			{
+				kind: "checkboxes",
+				name: "days",
+				label: "Days",
+				options: [
+					{ label: "Mon", value: "mon", selected: true },
+					{ label: "Tue", value: "tue" },
+					{ label: "Wed", value: "wed" },
+				],
+			},
+			{ kind: "channel", name: "channel", label: "Channel", value: CHANNEL },
+			{ kind: "user", name: "user", label: "Who" },
+		],
+	};
+
+	it("fills every field in with what was typed, leaving the form's own call alone", () => {
+		const refilled = refillForm(form, {
+			id: "ignored",
+			name: "by the bins",
+			kind: "b",
+			days: "tue, wed",
+			user: IDS.member,
+		});
+		expect(refilled.submit).toEqual(form.submit);
+		expect(refilled.fields).toEqual([
+			expect.objectContaining({ name: "name", value: "by th" }),
+			expect.not.objectContaining({ value: expect.anything() }),
+			expect.objectContaining({
+				options: [
+					{ label: "A", value: "a" },
+					{ label: "B", value: "b", selected: true },
+				],
+			}),
+			expect.objectContaining({
+				options: [
+					{ label: "Mon", value: "mon" },
+					{ label: "Tue", value: "tue", selected: true },
+					{ label: "Wed", value: "wed", selected: true },
+				],
+			}),
+			expect.not.objectContaining({ value: expect.anything() }),
+			expect.objectContaining({ name: "user", value: IDS.member }),
+		]);
+		const fits = { ...refilled, fields: refilled.fields.slice(0, 5) };
+		expect(() => renderForm(fits, `${UI_FORM_PREFIX}${"0".repeat(24)}`)).not.toThrow();
+	});
+
+	it("drops choices that aren't offered any more, and anything that isn't text", () => {
+		const refilled = refillForm(form, { kind: "c", days: "fri", note: true, channel: 5 });
+		expect(refilled.fields[1]).not.toHaveProperty("value");
+		for (const field of refilled.fields.slice(2, 4)) {
+			expect(
+				field.kind !== "text" && "options" in field && field.options.some((o) => o.selected),
+			).toBe(false);
+		}
+		expect(refilled.fields[4]).not.toHaveProperty("value");
+	});
+
+	it("never holds or fills in a secret", () => {
+		const secret: Form = {
+			title: "Code",
+			submit: { action: "feat.code" },
+			fields: [
+				{ kind: "text", name: "code", label: "Code", style: "short", maxLength: 9, secret: true },
+				{ kind: "text", name: "note", label: "Note", style: "short", maxLength: 9 },
+			],
+		};
+		expect(refillable(secret, { code: "123456", note: "hi", other: "x" })).toEqual({ note: "hi" });
+		expect(refillForm(secret, { code: "123456", note: "hi" }).fields).toEqual([
+			secret.fields[0],
+			expect.objectContaining({ name: "note", value: "hi" }),
+		]);
+		expect(JSON.stringify(renderForm(secret, `${UI_FORM_PREFIX}${"0".repeat(24)}`))).not.toContain(
+			"secret",
+		);
 	});
 });
