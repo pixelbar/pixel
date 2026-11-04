@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-11-04
+
 ### Added
 
 - The commands page on the website now covers everything `/admin` can do, section by section: People, Capabilities, Discord roles, Announcements, Closing time, Doors, OpenR and Parking.
@@ -394,7 +396,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.2...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/pixelbar/pixel/compare/v0.25.2...v0.26.0
 [0.25.2]: https://github.com/pixelbar/pixel/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/pixelbar/pixel/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/pixelbar/pixel/compare/v0.24.0...v0.25.0
