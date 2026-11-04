@@ -863,6 +863,18 @@ describe("helpers", () => {
 		store.add({ name: "a", permanent: false });
 		store.add({ name: "b", permanent: true });
 		expect(resolveSpots(store, "B a b").map((s) => s.name)).toEqual(["b", "a"]);
+		expect(resolveSpots(store, "b, a,b").map((s) => s.name)).toEqual(["b", "a"]);
+	});
+
+	it("resolves names with spaces, separated by commas", () => {
+		const store = new ParkingSpotStore({ logger: silentLogger });
+		store.add({ name: "by the bins", permanent: false });
+		store.add({ name: "a", permanent: false });
+		expect(resolveSpots(store, "By  the bins").map((s) => s.name)).toEqual(["by the bins"]);
+		expect(resolveSpots(store, "a, by the bins").map((s) => s.name)).toEqual(["a", "by the bins"]);
+		expect(() => resolveSpots(store, "by the bin")).toThrow(/no spot called/);
+		expect(() => resolveSpots(store, "a nope")).toThrow(/no spot called `nope`\./);
+		expect(() => resolveSpots(store, " , ")).toThrow(/at least one/);
 	});
 
 	it("describes a permanent spot that's closed now, or later today", () => {

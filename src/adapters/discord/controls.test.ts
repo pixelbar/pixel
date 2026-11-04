@@ -230,8 +230,8 @@ describe("controlArgs", () => {
 		expect(controlArgs({ call: { action: "feat.go" } }, ["x"])).toEqual({});
 	});
 
-	it("adds a select's chosen values, space-separated", () => {
-		expect(controlArgs(pick, ["mon", "wed"])).toEqual({ from: "list", days: "mon wed" });
+	it("adds a select's chosen values, joined with commas", () => {
+		expect(controlArgs(pick, ["mon", "wed"])).toEqual({ from: "list", days: "mon, wed" });
 		expect(controlArgs(pick, [])).toEqual({ from: "list" });
 		expect(controlArgs(pick, undefined)).toEqual({ from: "list" });
 	});
@@ -473,7 +473,7 @@ describe("formArgs", () => {
 				channel: CHANNEL,
 				when: "wed 1900",
 				repeat: "weekly",
-				days: "mon tue",
+				days: "mon, tue",
 				text: "Hello",
 			},
 			channels: {

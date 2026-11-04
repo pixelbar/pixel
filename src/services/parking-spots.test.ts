@@ -66,10 +66,18 @@ describe("ParkingSpotStore", () => {
 	});
 
 	describe("add", () => {
+		it("takes a name with spaces, trimmed and with runs of spaces made one", () => {
+			const store = open();
+			expect(store.add({ name: "  by   the bins ", permanent: false }).name).toBe("by the bins");
+			expect(open().get("by the bins")).toBeDefined();
+		});
+
 		it("refuses a bad name, a repeat, too many spots, and a bad description", () => {
 			const store = open();
 			expect(() => store.add({ name: "Spot 1", permanent: false })).toThrow(ParkingError);
 			expect(() => store.add({ name: "1-spot", permanent: false })).toThrow(/lowercase/);
+			expect(() => store.add({ name: "spot_1", permanent: false })).toThrow(ParkingError);
+			expect(() => store.add({ name: "x".repeat(33), permanent: false })).toThrow(ParkingError);
 			store.add({ name: "a", permanent: false });
 			expect(() => store.add({ name: "a", permanent: true })).toThrow(/already a spot/);
 			expect(() => store.add({ name: "b", permanent: false, description: " " })).toThrow(/1–100/);

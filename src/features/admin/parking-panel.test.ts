@@ -108,7 +108,7 @@ function setup() {
 		);
 		if (!control || control.kind === "link") throw new Error(`no control "${label}"`);
 		const args = { ...control.call.args } as Record<string, string | boolean>;
-		if (control.kind === "select") args[control.arg] = values.join(" ");
+		if (control.kind === "select") args[control.arg] = values.join(", ");
 		return act(control.call.action, args);
 	};
 	const submit = (
@@ -260,6 +260,23 @@ describe("several spots at once", () => {
 		const opened = replyOf(await t.submit(two, {}));
 		expect(opened.embeds?.[0]?.title).toBe("🅿️ Parking spots");
 		expect(said(opened)).toContain("**neighbour-1**, **neighbour-2** open from now until 23:59.");
+	});
+
+	it("handles spots whose names have spaces", async () => {
+		const t = withSpots();
+		t.spots.add({ name: "by the bins", permanent: false });
+		const panel = replyOf(await t.click(await t.open(), "Manage a spot…", ["by the bins"]));
+		expect(panel.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		const form = formOf(
+			await t.click(await t.open(), "Open spots…", ["by the bins", "neighbour-1"]),
+		);
+		expect(form.title).toBe("Open by the bins, neighbour-1");
+		const opened = replyOf(await t.submit(form, { until: "17:00" }));
+		expect(said(opened)).toContain("**by the bins**, **neighbour-1** open from now until 17:00.");
+		const open = replyOf(await t.act(PARKING_ACTIONS.spot, { spot: "by the bins" }));
+		const shut = replyOf(await t.click(open, "Close for today"));
+		expect(shut.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		expect(said(shut)).toContain("**by the bins** closed for today.");
 	});
 
 	it("closes borrowed spots straight away, and asks until when for permanent ones", async () => {

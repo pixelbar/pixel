@@ -25,6 +25,7 @@ import {
 	type ParkingAdminDeps,
 	type ParkingOperation,
 	parkingOperations,
+	splitSpots,
 } from "./parking.ts";
 
 /**
@@ -219,7 +220,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 
 	/** Back to the spot it was about, or the overview for several. */
 	const after = (ctx: ActionContext, spots: string, notice: string[]) => {
-		const names = spots.split(/\s+/).filter(Boolean);
+		const names = splitSpots(deps.spots, spots);
 		return names.length === 1 && names[0]
 			? spotPanel(ctx, names[0], notice)
 			: overview(ctx, notice);
@@ -281,9 +282,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		return spot ? { spot } : {};
 	};
 	const single = (ctx: ActionContext): string | undefined => {
-		const names = String(ctx.args.spot ?? ctx.args.spots ?? "")
-			.split(/\s+/)
-			.filter(Boolean);
+		const names = splitSpots(deps.spots, String(ctx.args.spot ?? ctx.args.spots ?? ""));
 		return names.length === 1 ? names[0] : undefined;
 	};
 	const withNotice = (reply: Reply, problem: string): Reply => {
@@ -321,7 +320,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	});
 
 	const openForm = (spots: string): Form => ({
-		title: `Open ${spots.split(/\s+/).join(", ")}`,
+		title: `Open ${splitSpots(deps.spots, spots).join(", ")}`,
 		submit: { action: PARKING_ACTIONS.open, args: { spots } },
 		fields: [
 			optionalText(
@@ -340,7 +339,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	});
 
 	const closeForm = (spots: string): Form => ({
-		title: `Close ${spots.split(/\s+/).join(", ")}`,
+		title: `Close ${splitSpots(deps.spots, spots).join(", ")}`,
 		submit: { action: PARKING_ACTIONS.close, args: { spots } },
 		fields: [
 			optionalText(
@@ -380,7 +379,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				kind: "text",
 				name: "name",
 				label: "Name",
-				description: "Lowercase words joined by -, such as neighbour-1.",
+				description: "Lowercase words joined by - or spaces, such as neighbour-1.",
 				style: "short",
 				maxLength: 32,
 				placeholder: "neighbour-1",
@@ -463,7 +462,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		})),
 		action(PARKING_ACTIONS.openPick, [spotsArg], async (ctx) => {
 			const spots = String(ctx.args.spots);
-			const names = spots.split(/\s+/).filter(Boolean);
+			const names = splitSpots(deps.spots, spots);
 			// Permanent spots only lift a closure, so there's nothing to ask.
 			if (names.every((n) => deps.spots.get(n)?.permanent)) {
 				return change(
@@ -495,7 +494,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		),
 		action(PARKING_ACTIONS.closePick, [spotsArg], async (ctx) => {
 			const spots = String(ctx.args.spots);
-			const names = spots.split(/\s+/).filter(Boolean);
+			const names = splitSpots(deps.spots, spots);
 			// Borrowed spots close for today, so there's nothing to ask.
 			if (names.some((n) => deps.spots.get(n)?.permanent)) return { form: closeForm(spots) };
 			return change(

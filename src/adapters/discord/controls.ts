@@ -241,7 +241,7 @@ export function controlArgs(
 	) {
 		return undefined;
 	}
-	if (chosen.length > 0) args[arg] = chosen.join(" ");
+	if (chosen.length > 0) args[arg] = chosen.join(", ");
 	return args;
 }
 
@@ -388,7 +388,7 @@ export function formArgs(
 					if (required) return undefined;
 					continue;
 				}
-				args[field.name] = values.join(" ");
+				args[field.name] = values.join(", ");
 				break;
 			}
 			case "user": {
