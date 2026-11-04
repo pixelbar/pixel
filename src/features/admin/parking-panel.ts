@@ -1,6 +1,7 @@
 import type { Access } from "../../core/access.ts";
 import type {
 	Args,
+	ArgValue,
 	CommandContext,
 	CommandOption,
 	SubcommandDefinition,
@@ -26,6 +27,9 @@ import {
 	type ParkingOperation,
 	parkingOperations,
 	splitSpots,
+	spotChoice,
+	spotPage,
+	spotsOnPage,
 } from "./parking.ts";
 
 /**
@@ -82,15 +86,24 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	const button = (
 		label: string,
 		action: string,
-		args: Record<string, string | boolean> = {},
+		args: Record<string, ArgValue> = {},
 		style: "primary" | "secondary" | "success" | "danger" = "secondary",
-	): Control => ({ kind: "button", label, style, call: { action, args } });
+		disabled = false,
+	): Control => ({
+		kind: "button",
+		label,
+		style,
+		call: { action, args },
+		...(disabled ? { disabled } : {}),
+	});
 
 	// ── Panels ───────────────────────────────────────────────────────────
 
-	async function overview(ctx: ActionContext, notice: string[] = []): Promise<Reply> {
-		const status = await run("status", ctx, {});
-		const spots = deps.spots.all();
+	/** Every spot, a page of 25 at a time (Discord's menus hold 25), and the settings. */
+	async function overview(ctx: ActionContext, notice: string[] = [], at = 0): Promise<Reply> {
+		const { page, pages } = spotPage(deps.spots.all().length, at);
+		const status = await run("status", ctx, { page });
+		const spots = spotsOnPage(deps.spots.all(), page);
 		const rows: ControlRow[] = [];
 		if (spots.length > 0) {
 			const options = spots.map((s) => ({
@@ -98,6 +111,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				value: s.name,
 				description: `${s.permanent ? "Permanent" : "Borrowed"}${s.description ? ` · ${s.description}` : ""}`,
 			}));
+			// Picks are joined with commas, so a comma in a name can't be in the value.
+			const several = options.map((o) => ({ ...o, value: spotChoice(o.value) }));
 			rows.push(
 				[
 					{
@@ -116,7 +131,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						arg: "spots",
 						min: 1,
 						max: options.length,
-						options,
+						options: several,
 					},
 				],
 				[
@@ -127,7 +142,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						arg: "spots",
 						min: 1,
 						max: options.length,
-						options,
+						options: several,
 					},
 				],
 			);
@@ -140,10 +155,16 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				spots.length === 0 ? "primary" : "secondary",
 			),
 			button("Settings", PARKING_ACTIONS.settingsForm),
-			button("Refresh", PARKING_ACTIONS.home),
+			button("Refresh", PARKING_ACTIONS.home, { page }),
 			// Back to the rest of `/admin`.
 			button("← Admin", "admin.home"),
 		]);
+		if (pages > 1) {
+			rows.splice(rows.length - 1, 0, [
+				button("‹ Previous", PARKING_ACTIONS.home, { page: page - 1 }, "secondary", page === 0),
+				button("Next ›", PARKING_ACTIONS.home, { page: page + 1 }, "secondary", page >= pages - 1),
+			]);
+		}
 		return {
 			embeds: [
 				{
@@ -384,7 +405,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				kind: "text",
 				name: "name",
 				label: "Name",
-				description: "Words joined by - or spaces, such as neighbour-1 or A1.",
+				description: "Up to 32 characters, such as neighbour-1, A1 or Smith & Co., no. 3.",
 				style: "short",
 				maxLength: 32,
 				placeholder: "neighbour-1",
@@ -444,6 +465,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	});
 	const spotArg = text("spot", "The spot", true);
 	const spotsArg = text("spots", "The spots", true);
+	const pageArg: CommandOption = { name: "page", description: "Which page", type: "integer" };
 	/** Set by the forms: a problem goes back with Fix it, not onto the panel. */
 	const formArg: CommandOption = {
 		name: "form",
@@ -467,7 +489,9 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		Object.fromEntries(names.flatMap((n) => (str(ctx, n) === undefined ? [] : [[n, str(ctx, n)]])));
 
 	const actions: ActionDefinition[] = [
-		action(PARKING_ACTIONS.home, [], async (ctx) => ({ reply: await overview(ctx) })),
+		action(PARKING_ACTIONS.home, [pageArg], async (ctx) => ({
+			reply: await overview(ctx, [], Number(ctx.args.page ?? 0)),
+		})),
 		action(PARKING_ACTIONS.spot, [spotArg], async (ctx) => ({
 			reply: await spotPanel(ctx, String(ctx.args.spot)),
 		})),

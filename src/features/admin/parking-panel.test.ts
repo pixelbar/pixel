@@ -35,6 +35,12 @@ function expectFits(reply: Reply) {
 	for (const row of rows) {
 		expect(row.length).toBeLessThanOrEqual(UI_LIMITS.buttonsPerRow);
 		if (row.some((c) => c.kind === "select")) expect(row).toHaveLength(1);
+		// The Discord adapter joins several picks with ", ", so it refuses commas in them.
+		for (const c of row) {
+			if (c.kind === "select" && (c.max ?? 1) > 1) {
+				expect(c.options.filter((o) => o.value.includes(","))).toEqual([]);
+			}
+		}
 	}
 }
 
@@ -183,6 +189,70 @@ describe("/admin → Parking panel", () => {
 			"Permanent · Next to the gate",
 			"Borrowed",
 		]);
+	});
+
+	it("offers spots with commas in the menus that take several", async () => {
+		const t = setup();
+		t.spots.add({ name: "Smith, J", permanent: true });
+		t.spots.add({ name: "a", permanent: true });
+		t.windows.replace(
+			{
+				windows: [],
+				blocks: ["Smith, J", "a"].map((spot) => ({
+					spot,
+					from: utc("07:00"),
+					until: utc("20:00"),
+					setBy: ALICE,
+				})),
+			},
+			NOW,
+		);
+		const reply = await t.open();
+		const menu = controlsOf(reply).find(
+			(c) => c.kind === "select" && c.placeholder === "Open spots…",
+		);
+		const values = menu?.kind === "select" ? menu.options.map((o) => o.value) : [];
+		expect(values).toEqual(["Smith| J", "a"]);
+		const opened = replyOf(await t.click(reply, "Open spots…", values));
+		expect(said(opened)).toContain("**Smith, J**");
+		expect(t.windows.entries(NOW).blocks).toEqual([]);
+	});
+
+	it("shows 25 spots a page, with menus for that page", async () => {
+		const t = setup();
+		for (let i = 1; i <= 60; i++) t.spots.add({ name: `spot ${i}`, permanent: true });
+		const options = (reply: Reply) =>
+			controlsOf(reply).flatMap((c) =>
+				c.kind === "select" && c.placeholder === "Manage a spot…"
+					? c.options.map((o) => o.value)
+					: [],
+			);
+		const pager = (reply: Reply) =>
+			controlsOf(reply).flatMap((c) =>
+				c.kind === "button" && c.label.match(/Previous|Next/) ? [Boolean(c.disabled)] : [],
+			);
+
+		const first = await t.open();
+		expect(said(first)).toContain("60 spots. Page 1 of 3.");
+		expect(said(first)).toContain("**spot 25**");
+		expect(said(first)).not.toContain("**spot 26**");
+		expect(options(first)).toHaveLength(25);
+		expect(pager(first)).toEqual([true, false]);
+
+		const second = replyOf(await t.click(first, "Next ›"));
+		expect(said(second)).toContain("Page 2 of 3.");
+		expect(options(second)[0]).toBe("spot 26");
+		expect(pager(second)).toEqual([false, false]);
+
+		const last = replyOf(await t.click(second, "Next ›"));
+		expect(said(last)).toContain("Page 3 of 3.");
+		expect(options(last)).toHaveLength(10);
+		expect(pager(last)).toEqual([false, true]);
+		expect(said(replyOf(await t.click(last, "Refresh")))).toContain("Page 3 of 3.");
+		expect(said(replyOf(await t.click(last, "‹ Previous")))).toContain("Page 2 of 3.");
+		expect(said(replyOf(await t.act(PARKING_ACTIONS.home, { page: 9 } as never)))).toContain(
+			"Page 3 of 3.",
+		);
 	});
 });
 
@@ -401,7 +471,7 @@ describe("spots and settings", () => {
 		expect(spaced.embeds?.[0]?.title).toBe("🅿️ by the bins");
 		expect(said(spaced)).toContain("Added **by the bins**");
 		expect(problemOf(await t.submit(form, { name: "Our_Spot", kind: "borrowed" }))).toContain(
-			"A spot's name is letters",
+			"A spot's name is up to 32 characters",
 		);
 		expect(t.spots.all()).toHaveLength(2);
 	});

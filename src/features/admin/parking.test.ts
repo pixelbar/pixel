@@ -6,7 +6,13 @@ import { ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { type ParkingEntry, ParkingWindowStore } from "../../services/parking-windows.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
-import { describeSpot, type ParkingOperation, parkingOperations, resolveSpots } from "./parking.ts";
+import {
+	describeSpot,
+	type ParkingOperation,
+	parkingOperations,
+	resolveSpots,
+	spotChoice,
+} from "./parking.ts";
 
 const ZONE = "Europe/Amsterdam";
 /** Saturday 24 Oct 2026, 10:00 in Amsterdam (UTC+2). The reset is 23:59, 21:59 UTC. */
@@ -152,7 +158,7 @@ describe("/admin → Parking", () => {
 		it("refuses a bad name", async () => {
 			await setup()
 				.fails("add-spot", { name: "Our_Spot" })
-				.toThrow(/starting with a letter/);
+				.toThrow(/letter or digit/);
 		});
 	});
 
@@ -875,6 +881,24 @@ describe("helpers", () => {
 		expect(() => resolveSpots(store, "by the bin")).toThrow(/no spot called/);
 		expect(() => resolveSpots(store, "a nope")).toThrow(/no spot called `nope`\./);
 		expect(() => resolveSpots(store, " , ")).toThrow(/at least one/);
+	});
+
+	it("resolves names with commas, taking the longest name that fits", () => {
+		const store = new ParkingSpotStore({ logger: silentLogger });
+		store.add({ name: "Smith, J", permanent: false });
+		store.add({ name: "a", permanent: false });
+		store.add({ name: "b", permanent: false });
+		store.add({ name: "a, b, c", permanent: false });
+		const names = (typed: string) => resolveSpots(store, typed).map((s) => s.name);
+		expect(names("smith, j")).toEqual(["Smith, J"]);
+		expect(names("a, Smith,  J,b")).toEqual(["a", "Smith, J", "b"]);
+		expect(names("a, b, c, a")).toEqual(["a, b, c", "a"]);
+		expect(names("b, a")).toEqual(["b", "a"]);
+		expect(() => resolveSpots(store, "Smith, K")).toThrow(/no spot called `Smith`, `K`\./);
+		expect(names(`${spotChoice("Smith, J")}, ${spotChoice("a, b, c")}`)).toEqual([
+			"Smith, J",
+			"a, b, c",
+		]);
 	});
 
 	it("resolves a spot with capitals however it's typed", () => {

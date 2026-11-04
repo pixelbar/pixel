@@ -9,6 +9,11 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- Parking spot names can have punctuation and accented letters, such as `'t Hoekje` or `Smith & Co., no. 3`, and can start with a digit. Only line breaks and the characters Discord reads as formatting (`\ * _ ~ | < > [ ]` and the backtick) are refused. A name with commas still works where you list several spots separated by commas.
+- Pixelbar can have up to 100 parking spots, up from 25. `/admin` → Parking shows them 25 a page with **‹ Previous** and **Next ›**, and `/park` lists as many as fit and says how many more there are.
+
 ## [0.25.1] - 2026-11-04
 
 ### Changed

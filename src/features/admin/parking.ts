@@ -4,6 +4,7 @@ import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
+import { UI_LIMITS } from "../../core/ui.ts";
 import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
@@ -58,26 +59,72 @@ export type ParkingAdminDeps = {
 
 const SPOTS_HELP = "One spot, or several separated by commas";
 
+/** Spots on one page of `/admin` → Parking (Discord shows 25 options in a menu). */
+export const SPOTS_PER_PAGE = UI_LIMITS.options;
+
+/** How many pages `count` spots fill, and `page` kept inside them. */
+export function spotPage(count: number, page: number): { page: number; pages: number } {
+	const pages = Math.max(1, Math.ceil(count / SPOTS_PER_PAGE));
+	return { page: Math.min(Math.max(0, Math.trunc(page) || 0), pages - 1), pages };
+}
+
+/** The spots on `page` (from 0) of `/admin` → Parking. */
+export function spotsOnPage<T>(spots: readonly T[], page: number): readonly T[] {
+	const start = spotPage(spots.length, page).page * SPOTS_PER_PAGE;
+	return spots.slice(start, start + SPOTS_PER_PAGE);
+}
+
 /** A change would end someone's booking, and `evict` wasn't given: ask first. */
 export class EvictNeeded extends UserFacingError {
 	override name = "EvictNeeded";
 }
 
 /**
- * The spot names in `typed`, separated by commas (names can contain spaces). A piece
- * that isn't a spot, but has a word that is, is read as names separated by spaces, as
- * before names could contain them.
+ * A spot's name as the value of a menu that takes several: the platform joins the
+ * picks with commas, so a comma is written as `|`, which a name can't contain.
+ * `splitSpots` reads it back.
+ */
+export function spotChoice(name: string): string {
+	return name.replaceAll(",", "|");
+}
+
+/**
+ * The spot names in `typed`, separated by commas. Names can contain spaces and commas
+ * too, so from each piece the longest run of pieces that names a spot is taken
+ * (`Smith, J, A1` is `Smith, J` and `A1` when there's a spot `Smith, J`). A `|` is a
+ * comma in a name picked from a menu (`spotChoice`). A piece that isn't a spot, but
+ * has a word that is, is read as names separated by spaces, as before names could
+ * contain them.
  */
 export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string): string[] {
-	return typed
-		.split(",")
-		.map(normaliseSpotName)
-		.filter(Boolean)
-		.flatMap((piece) => {
-			if (spots.get(piece)) return [piece];
-			const words = piece.split(" ");
-			return words.length > 1 && words.some((w) => spots.get(w)) ? words : [piece];
-		});
+	const pieces = typed.split(",").map((piece) => piece.replaceAll("|", ","));
+	const names: string[] = [];
+	for (let i = 0; i < pieces.length; i++) {
+		const end = longestSpotAt(spots, pieces, i);
+		if (end !== undefined) {
+			names.push(normaliseSpotName(pieces.slice(i, end).join(",")));
+			i = end - 1;
+			continue;
+		}
+		const piece = normaliseSpotName(pieces[i] as string);
+		if (!piece) continue;
+		const words = piece.split(" ");
+		names.push(...(words.length > 1 && words.some((w) => spots.get(w)) ? words : [piece]));
+	}
+	return names;
+}
+
+/** Where the longest run of `pieces` from `start` that names a spot ends, if any does. */
+function longestSpotAt(
+	spots: Pick<ParkingSpotStore, "get">,
+	pieces: readonly string[],
+	start: number,
+): number | undefined {
+	for (let end = pieces.length; end > start; end--) {
+		const name = normaliseSpotName(pieces.slice(start, end).join(","));
+		if (name && spots.get(name)) return end;
+	}
+	return undefined;
 }
 
 /** The spots named in `typed` (ignoring case), in the order given. Throws if any doesn't exist. */
@@ -278,7 +325,15 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		description: "The parking spots, when they're open, and the settings",
 		access: { minTier: "admin" },
 		private: true,
-		handler: async () => {
+		options: [
+			{
+				name: "page",
+				description: "Which page of spots, from 0",
+				type: "integer",
+				required: false,
+			},
+		],
+		handler: async ({ args }) => {
 			const at = now();
 			const lines: string[] = [];
 			if (deps.spots.problem) {
@@ -299,8 +354,12 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				const entries = deps.windows.entries(at);
 				const reset = resetAfter(at);
 				const bookings = deps.bookings.all();
+				const { page, pages } = spotPage(spots.length, Number(args.page ?? 0));
+				if (pages > 1) {
+					lines.push(`${spots.length} spots. Page ${page + 1} of ${pages}.`, "");
+				}
 				lines.push(
-					...spots.map((s) =>
+					...spotsOnPage(spots, page).map((s) =>
 						describeSpot(
 							s,
 							entries,
@@ -325,7 +384,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		options: [
 			{
 				name: "name",
-				description: "Words joined by '-' or spaces, e.g. neighbour-1 or A1",
+				description: "Up to 32 characters, e.g. neighbour-1, A1 or Smith & Co., no. 3",
 				type: "string",
 				required: true,
 			},

@@ -22,7 +22,7 @@ import { type Clock, formatParkingDuration, parseDuration } from "./parking-time
  * never silently overwritten.
  */
 
-export const MAX_SPOTS = 25;
+export const MAX_SPOTS = 100;
 export const MAX_DESCRIPTION = 100;
 /** Discord shows at most 25 suggestions. */
 export const MAX_DURATIONS = 25;
@@ -30,11 +30,15 @@ export const MAX_REMIND_MINUTES = 120;
 export const MAX_GRACE_MINUTES = 60;
 
 /**
- * Words joined by '-' or single spaces, starting with a letter, up to 32 characters:
- * `neighbour-1`, `by the bins` or `A1`. Capitals are kept as written, but names are
- * matched ignoring case, so `A1` and `a1` are one spot.
+ * Any printable characters with single spaces between them, up to 32 characters,
+ * with at least one letter or digit: `neighbour-1`, `by the bins`, `A1`,
+ * `'t Hoekje` or `Smith & Co., no. 3`. Not allowed: line breaks and other control or
+ * invisible characters, and the characters Discord reads as formatting
+ * (backslash, backtick, `* _ ~ | < > [ ]`), since names are shown as written. Capitals are kept as
+ * written, but names are matched ignoring case, so `A1` and `a1` are one spot.
  */
-export const SPOT_NAME = /^(?=.{1,32}$)[A-Za-z][A-Za-z0-9-]*(?: [A-Za-z0-9-]+)*$/;
+export const SPOT_NAME =
+	/^(?=.{1,32}$)(?=.*[\p{L}\p{N}])[^\s\p{C}\\*_~`|<>[\]]+(?: [^\s\p{C}\\*_~`|<>[\]]+)*$/u;
 
 /** Whether two spot names are the same spot. */
 export function sameSpotName(a: string, b: string): boolean {
@@ -72,9 +76,9 @@ export const DEFAULT_SETTINGS: ParkingSettings = {
 };
 
 const spotSchema = z.strictObject({
-	name: z
-		.string()
-		.regex(SPOT_NAME, { error: "must be words joined by '-' or spaces, starting with a letter" }),
+	name: z.string().regex(SPOT_NAME, {
+		error: "must be up to 32 characters, with a letter or digit and none of \\ * _ ~ ` | < > [ ]",
+	}),
 	description: z.string().min(1).max(MAX_DESCRIPTION).optional(),
 	permanent: z.boolean().default(false),
 });
@@ -160,7 +164,7 @@ export class ParkingSpotStore {
 		const spot = { ...typed, name: normaliseSpotName(typed.name) };
 		if (!SPOT_NAME.test(spot.name)) {
 			throw new ParkingError(
-				"A spot's name is letters, digits, '-' and spaces, starting with a letter, up to 32 characters.",
+				"A spot's name is up to 32 characters on one line, with at least one letter or digit and none of ``\\ * _ ~ ` | < > [ ]``.",
 			);
 		}
 		if (this.get(spot.name))

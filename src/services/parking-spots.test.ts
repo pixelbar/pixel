@@ -72,13 +72,42 @@ describe("ParkingSpotStore", () => {
 			expect(open().get("by the bins")).toBeDefined();
 		});
 
+		it("takes punctuation and other letters, and keeps them through the file", () => {
+			const store = open();
+			const names = [
+				"'t Hoekje",
+				"Smith & Co., no. 3",
+				"1st floor",
+				'bay: "north" #2',
+				"Zoë's (spare)",
+				"- a",
+				"50% off!",
+			];
+			for (const name of names) store.add({ name, permanent: false });
+			expect(
+				open()
+					.all()
+					.map((s) => s.name),
+			).toEqual(names);
+			expect(open().get("SMITH & co., NO. 3")?.name).toBe("Smith & Co., no. 3");
+		});
+
 		it("refuses a bad name, a repeat, too many spots, and a bad description", () => {
 			const store = open();
-			expect(() => store.add({ name: "Spot #1", permanent: false })).toThrow(ParkingError);
-			expect(() => store.add({ name: "1-spot", permanent: false })).toThrow(
-				/starting with a letter/,
-			);
-			expect(() => store.add({ name: "spot_1", permanent: false })).toThrow(ParkingError);
+			expect(() => store.add({ name: "spot_1", permanent: false })).toThrow(/letter or digit/);
+			for (const name of [
+				"**big**",
+				"a`b",
+				"a|b",
+				"<@1>",
+				"[x](y)",
+				"a\\b",
+				"a~b",
+				"-",
+				"a\u200bb",
+			]) {
+				expect(() => store.add({ name, permanent: false }), name).toThrow(ParkingError);
+			}
 			expect(() => store.add({ name: "x".repeat(33), permanent: false })).toThrow(ParkingError);
 			store.add({ name: "a", permanent: false });
 			expect(() => store.add({ name: "a", permanent: true })).toThrow(/already a spot/);
@@ -87,7 +116,7 @@ describe("ParkingSpotStore", () => {
 				store.add({ name: "b", permanent: false, description: "x".repeat(101) }),
 			).toThrow(/1–100/);
 			for (let i = 1; i < MAX_SPOTS; i++) store.add({ name: `s${i}`, permanent: false });
-			expect(() => store.add({ name: "one-more", permanent: false })).toThrow(/already 25/);
+			expect(() => store.add({ name: "one-more", permanent: false })).toThrow(/already 100/);
 		});
 	});
 
@@ -163,6 +192,7 @@ describe("ParkingSpotStore", () => {
 		it.each([
 			["not YAML", "spots: [", /not valid YAML/],
 			["the wrong shape", "spots:\n  - name: Spot_1\n", /spots\.0\.name/],
+			["a name with a line break", 'spots:\n  - name: "a\\nb"\n', /spots\.0\.name/],
 			["an unknown key", "spot: []\n", /invalid/],
 			["a bad setting", "settings:\n  resetAt: midnight\n", /settings\.resetAt/],
 			["a repeated name", "spots:\n  - name: a\n  - name: a\n", /repeats a spot name/],

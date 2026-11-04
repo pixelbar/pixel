@@ -121,6 +121,21 @@ const where = (spot: Pick<ParkingSpot, "name" | "description"> | undefined, name
 
 const minutes = (n: number): ParkingDuration => ({ kind: "minutes", minutes: n });
 
+/** As many whole lines as fit in `max` characters, then how many more there are. */
+export function fitLines(lines: readonly string[], max: number): string {
+	const all = lines.join("\n");
+	if (all.length <= max) return all;
+	const more = (shown: number) => `…and ${lines.length - shown} more.`;
+	// Stops before the last line, since all of them don't fit.
+	let shown = 0;
+	let length = 0;
+	while (length + (lines[shown] as string).length + 1 + more(shown + 1).length <= max) {
+		length += (lines[shown] as string).length + 1;
+		shown++;
+	}
+	return [...lines.slice(0, shown), more(shown)].join("\n");
+}
+
 export function createParkingFeature(deps: ParkingDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const zone = deps.timezone;
@@ -510,7 +525,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 	const panel = (description: string[], t: Date, controls: ControlRow[]): Reply => ({
 		embeds: [
 			{ title: "🅿️ Parking", description: description.join("\n"), accent: "brand" },
-			{ title: "Spots", description: spotLines(t).join("\n").slice(0, 4000), accent: "neutral" },
+			{ title: "Spots", description: fitLines(spotLines(t), 4000), accent: "neutral" },
 		],
 		private: true,
 		controls,
