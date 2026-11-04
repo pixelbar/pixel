@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-11-04
+
 ### Changed
 
 - Parking spot names can have punctuation and accented letters, such as `'t Hoekje` or `Smith & Co., no. 3`, and can start with a digit. Only line breaks and the characters Discord reads as formatting (`\ * _ ~ | < > [ ]` and the backtick) are refused. A name with commas still works where you list several spots separated by commas.
@@ -383,7 +385,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.2...HEAD
+[0.25.2]: https://github.com/pixelbar/pixel/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/pixelbar/pixel/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/pixelbar/pixel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/pixelbar/pixel/compare/v0.23.0...v0.24.0
