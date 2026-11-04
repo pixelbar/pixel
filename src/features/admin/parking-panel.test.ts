@@ -184,6 +184,43 @@ describe("/admin → Parking panel", () => {
 			"Borrowed",
 		]);
 	});
+
+	it("shows 25 spots a page, with menus for that page", async () => {
+		const t = setup();
+		for (let i = 1; i <= 60; i++) t.spots.add({ name: `spot ${i}`, permanent: true });
+		const options = (reply: Reply) =>
+			controlsOf(reply).flatMap((c) =>
+				c.kind === "select" && c.placeholder === "Manage a spot…"
+					? c.options.map((o) => o.value)
+					: [],
+			);
+		const pager = (reply: Reply) =>
+			controlsOf(reply).flatMap((c) =>
+				c.kind === "button" && c.label.match(/Previous|Next/) ? [Boolean(c.disabled)] : [],
+			);
+
+		const first = await t.open();
+		expect(said(first)).toContain("60 spots. Page 1 of 3.");
+		expect(said(first)).toContain("**spot 25**");
+		expect(said(first)).not.toContain("**spot 26**");
+		expect(options(first)).toHaveLength(25);
+		expect(pager(first)).toEqual([true, false]);
+
+		const second = replyOf(await t.click(first, "Next ›"));
+		expect(said(second)).toContain("Page 2 of 3.");
+		expect(options(second)[0]).toBe("spot 26");
+		expect(pager(second)).toEqual([false, false]);
+
+		const last = replyOf(await t.click(second, "Next ›"));
+		expect(said(last)).toContain("Page 3 of 3.");
+		expect(options(last)).toHaveLength(10);
+		expect(pager(last)).toEqual([false, true]);
+		expect(said(replyOf(await t.click(last, "Refresh")))).toContain("Page 3 of 3.");
+		expect(said(replyOf(await t.click(last, "‹ Previous")))).toContain("Page 2 of 3.");
+		expect(said(replyOf(await t.act(PARKING_ACTIONS.home, { page: 9 } as never)))).toContain(
+			"Page 3 of 3.",
+		);
+	});
 });
 
 describe("a spot's panel", () => {

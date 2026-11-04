@@ -10,7 +10,14 @@ import { type ParkingBooking, ParkingBookingStore } from "../../services/parking
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { ParkingWindowStore } from "../../services/parking-windows.ts";
 import { IDS, principal } from "../../testing/fixtures.ts";
-import { ACTIONS, createParkingFeature, gateLine, PARKING_CAPABILITY, TICK_MS } from "./index.ts";
+import {
+	ACTIONS,
+	createParkingFeature,
+	fitLines,
+	gateLine,
+	PARKING_CAPABILITY,
+	TICK_MS,
+} from "./index.ts";
 
 const ZONE = "Europe/Amsterdam";
 /** Saturday 24 Oct 2026, 10:00 in Amsterdam (UTC+2). The reset is 23:59, 21:59 UTC. */
@@ -895,5 +902,30 @@ describe("parking activity", () => {
 			{ kind: "ended", spot: "ours", who: "Alice", reason: "reset" },
 		]);
 		stop?.();
+	});
+});
+
+describe("fitLines", () => {
+	it("keeps whole lines that fit, then says how many more there are", () => {
+		expect(fitLines(["a", "b", "c"], 100)).toBe("a\nb\nc");
+		expect(fitLines(["x".repeat(10), "y".repeat(10), "z".repeat(10)], 32)).toBe(
+			`${"x".repeat(10)}\n${"y".repeat(10)}\n${"z".repeat(10)}`,
+		);
+		const cut = fitLines(["x".repeat(10), "y".repeat(10), "z".repeat(10)], 31);
+		expect(cut).toBe(`${"x".repeat(10)}\n…and 2 more.`);
+		expect(cut.length).toBeLessThanOrEqual(31);
+	});
+
+	it("fits a hundred spots in one embed", () => {
+		const lines = Array.from({ length: 100 }, (_, i) => `**spot ${i}** (${"d".repeat(60)}): free`);
+		const text = fitLines(lines, 4000);
+		expect(text.length).toBeLessThanOrEqual(4000);
+		expect(text).toMatch(/…and \d+ more\.$/);
+		expect(
+			text
+				.split("\n")
+				.slice(0, -1)
+				.every((l) => lines.includes(l)),
+		).toBe(true);
 	});
 });

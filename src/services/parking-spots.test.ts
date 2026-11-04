@@ -116,7 +116,7 @@ describe("ParkingSpotStore", () => {
 				store.add({ name: "b", permanent: false, description: "x".repeat(101) }),
 			).toThrow(/1–100/);
 			for (let i = 1; i < MAX_SPOTS; i++) store.add({ name: `s${i}`, permanent: false });
-			expect(() => store.add({ name: "one-more", permanent: false })).toThrow(/already 25/);
+			expect(() => store.add({ name: "one-more", permanent: false })).toThrow(/already 100/);
 		});
 	});
 

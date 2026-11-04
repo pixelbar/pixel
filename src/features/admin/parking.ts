@@ -4,6 +4,7 @@ import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
+import { UI_LIMITS } from "../../core/ui.ts";
 import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
@@ -57,6 +58,21 @@ export type ParkingAdminDeps = {
 };
 
 const SPOTS_HELP = "One spot, or several separated by commas";
+
+/** Spots on one page of `/admin` → Parking (Discord shows 25 options in a menu). */
+export const SPOTS_PER_PAGE = UI_LIMITS.options;
+
+/** How many pages `count` spots fill, and `page` kept inside them. */
+export function spotPage(count: number, page: number): { page: number; pages: number } {
+	const pages = Math.max(1, Math.ceil(count / SPOTS_PER_PAGE));
+	return { page: Math.min(Math.max(0, Math.trunc(page) || 0), pages - 1), pages };
+}
+
+/** The spots on `page` (from 0) of `/admin` → Parking. */
+export function spotsOnPage<T>(spots: readonly T[], page: number): readonly T[] {
+	const start = spotPage(spots.length, page).page * SPOTS_PER_PAGE;
+	return spots.slice(start, start + SPOTS_PER_PAGE);
+}
 
 /** A change would end someone's booking, and `evict` wasn't given: ask first. */
 export class EvictNeeded extends UserFacingError {
@@ -299,7 +315,15 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		description: "The parking spots, when they're open, and the settings",
 		access: { minTier: "admin" },
 		private: true,
-		handler: async () => {
+		options: [
+			{
+				name: "page",
+				description: "Which page of spots, from 0",
+				type: "integer",
+				required: false,
+			},
+		],
+		handler: async ({ args }) => {
 			const at = now();
 			const lines: string[] = [];
 			if (deps.spots.problem) {
@@ -320,8 +344,12 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				const entries = deps.windows.entries(at);
 				const reset = resetAfter(at);
 				const bookings = deps.bookings.all();
+				const { page, pages } = spotPage(spots.length, Number(args.page ?? 0));
+				if (pages > 1) {
+					lines.push(`${spots.length} spots. Page ${page + 1} of ${pages}.`, "");
+				}
 				lines.push(
-					...spots.map((s) =>
+					...spotsOnPage(spots, page).map((s) =>
 						describeSpot(
 							s,
 							entries,

@@ -22,7 +22,7 @@ import { type Clock, formatParkingDuration, parseDuration } from "./parking-time
  * never silently overwritten.
  */
 
-export const MAX_SPOTS = 25;
+export const MAX_SPOTS = 100;
 export const MAX_DESCRIPTION = 100;
 /** Discord shows at most 25 suggestions. */
 export const MAX_DURATIONS = 25;
