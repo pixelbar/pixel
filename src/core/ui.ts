@@ -74,6 +74,11 @@ export type FormInput =
 			maxLength: number;
 			placeholder?: string;
 			value?: string;
+			/**
+			 * A secret (a password, an emailed code): what was typed is never held for Fix it
+			 * or sent back to fill the form in again.
+			 */
+			secret?: true;
 	  })
 	/** Exactly one of 2 to 10 options. */
 	| (InputBase & { kind: "radio"; options: readonly ChoiceOption[] })

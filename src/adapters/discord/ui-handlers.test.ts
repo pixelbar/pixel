@@ -9,6 +9,7 @@ import {
 	CONTROL_EXPIRED_MESSAGE,
 	createControlHandler,
 	createUiFormHandler,
+	FIX_IT_LABEL,
 	type IncomingControl,
 	type IncomingUiForm,
 	NOT_YOURS_MESSAGE,
@@ -198,6 +199,7 @@ describe("control handler", () => {
 		expect(controls.takeForm(modal?.custom_id as string, IDS.member)).toEqual({
 			form: FORM,
 			panel: expect.any(String),
+			opener: { action: "feat.pick", args: expect.any(Object) },
 		});
 		expect(controls.control(id, IDS.member)).not.toBe("expired");
 	});
@@ -348,5 +350,115 @@ describe("form handler", () => {
 		const { controls, onForm } = setup({ kind: "form", form: FORM });
 		const i = fakeForm({ customId: controls.holdForm(IDS.member, FORM) });
 		await expect(onForm(i)).rejects.toThrow(/opened a form from a form/);
+	});
+});
+
+describe("Fix it", () => {
+	const OPENER = { action: "feat.rename-form", args: { id: "s1" } };
+	const PROBLEM: ActionOutcome = {
+		kind: "refused",
+		reply: { text: "That name is taken.", private: true },
+		problem: true,
+	};
+	type Payload = {
+		content?: string;
+		components?: { components: { custom_id?: string; label?: string }[] }[];
+	};
+	const buttonsOf = (payload: unknown) =>
+		((payload as Payload).components ?? []).flatMap((row) => row.components);
+
+	/** Submits FORM, opened by OPENER, and gets the reply's Fix it button. */
+	async function submitBadly(outcome: ActionOutcome = PROBLEM) {
+		const t = setup(outcome);
+		const i = fakeForm({ customId: t.controls.holdForm(IDS.member, FORM, undefined, OPENER) });
+		await t.onForm(i);
+		const payload = vi.mocked(i.reply).mock.calls[0]?.[0];
+		return { ...t, i, payload, buttons: buttonsOf(payload) };
+	}
+
+	it("answers a form's problem privately with Fix it", async () => {
+		const { i, payload, buttons } = await submitBadly();
+		expect(payload).toMatchObject({
+			content: "That name is taken.",
+			flags: MessageFlags.Ephemeral,
+			allowedMentions: NOBODY,
+		});
+		expect(buttons).toEqual([expect.objectContaining({ label: FIX_IT_LABEL, style: 1 })]);
+		expect(i.update).not.toHaveBeenCalled();
+	});
+
+	it("opens the form again through the dispatcher, filled in with what was typed", async () => {
+		const { controls, act, buttons } = await submitBadly();
+		act.mockResolvedValue({ kind: "form", form: FORM });
+		const click = fakeControl({ customId: buttons[0]?.custom_id as string });
+		await createControlHandler({
+			guildId: GUILD,
+			dispatcher: { act },
+			deferAfterMs: 1500,
+			controls,
+		})(click);
+		expect(act).toHaveBeenLastCalledWith(
+			expect.objectContaining({ ...OPENER, actor: expect.any(Object) }),
+		);
+		const modal = vi.mocked(click.showModal).mock.calls[0]?.[0];
+		expect(JSON.stringify(modal)).toContain('"value":"New name"');
+		// Fixed and sent again, it can be fixed again.
+		expect(controls.takeForm(modal?.custom_id as string, IDS.member)).toMatchObject({
+			opener: OPENER,
+		});
+	});
+
+	it("works only for the person who submitted the form", async () => {
+		const { controls, buttons } = await submitBadly();
+		expect(controls.control(buttons[0]?.custom_id as string, IDS.friend)).toBe("not-yours");
+	});
+
+	it("isn't offered for refusals that aren't the form's problem, or a form nothing opened", async () => {
+		const denied = await submitBadly({ kind: "refused", reply: { text: "No.", private: true } });
+		expect(denied.buttons).toEqual([]);
+		expect(denied.payload).toMatchObject({ content: "No." });
+
+		const t = setup(PROBLEM);
+		const i = fakeForm({ customId: t.controls.holdForm(IDS.member, FORM) });
+		await t.onForm(i);
+		expect(buttonsOf(vi.mocked(i.reply).mock.calls[0]?.[0])).toEqual([]);
+	});
+
+	it("comes as a follow-up when the action was slow", async () => {
+		vi.useFakeTimers();
+		try {
+			const t = setup(
+				() => new Promise<ActionOutcome>((resolve) => setTimeout(() => resolve(PROBLEM), 2000)),
+			);
+			const i = fakeForm({ customId: t.controls.holdForm(IDS.member, FORM, undefined, OPENER) });
+			const done = t.onForm(i);
+			await vi.advanceTimersByTimeAsync(2000);
+			await done;
+			expect(i.deferUpdate).toHaveBeenCalled();
+			expect(buttonsOf(vi.mocked(i.followUp).mock.calls[0]?.[0])).toEqual([
+				expect.objectContaining({ label: FIX_IT_LABEL }),
+			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("doesn't hold a secret that was typed", async () => {
+		const secret: Form = {
+			title: "Code",
+			submit: { action: "feat.code" },
+			fields: [
+				{ kind: "text", name: "code", label: "Code", style: "short", maxLength: 9, secret: true },
+			],
+		};
+		const t = setup(PROBLEM);
+		const i = fakeForm({
+			customId: t.controls.holdForm(IDS.member, secret, undefined, OPENER),
+			fields: [{ customId: "code", value: "123456" }],
+		});
+		await t.onForm(i);
+		const id = buttonsOf(vi.mocked(i.reply).mock.calls[0]?.[0])[0]?.custom_id as string;
+		const held = t.controls.control(id, IDS.member);
+		expect(held !== "expired" && held !== "not-yours" && held.control.refill).toEqual({});
 	});
 });

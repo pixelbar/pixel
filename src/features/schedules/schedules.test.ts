@@ -578,6 +578,7 @@ describe("making a message", () => {
 		expect(await act(ACTIONS.days, { draft, days: "funday" })).toEqual({
 			kind: "refused",
 			reply: { text: "Choose at least one day.", private: true },
+			problem: true,
 		});
 	});
 
@@ -639,6 +640,7 @@ describe("making a message", () => {
 		expect(outcome).toEqual({
 			kind: "refused",
 			reply: { text: expect.stringContaining("Delete one first"), private: true },
+			problem: true,
 		});
 	});
 });
@@ -728,6 +730,7 @@ describe("poll reminders", () => {
 		expect(await ctx.act(ACTIONS.reminders, { draft })).toEqual({
 			kind: "refused",
 			reply: { text: "Reminders only work for polls.", private: true },
+			problem: true,
 		});
 	});
 
@@ -952,6 +955,7 @@ describe("pausing, resuming and deleting", () => {
 		expect(await act(ACTIONS.resume, { id })).toEqual({
 			kind: "refused",
 			reply: { text: SCHEDULE_MESSAGES.cantResume, private: true },
+			problem: true,
 		});
 	});
 
@@ -986,6 +990,7 @@ describe("pausing, resuming and deleting", () => {
 			expect(await act(action, { id })).toEqual({
 				kind: "refused",
 				reply: { text: SCHEDULE_MESSAGES.notYours, private: true },
+				problem: true,
 			});
 			expect(store.get(id)).toMatchObject({ paused: false });
 			expect(info).toHaveBeenCalledWith(
@@ -1177,6 +1182,7 @@ describe("editing", () => {
 		expect(await ctx.act(ACTIONS.edit, { id })).toEqual({
 			kind: "refused",
 			reply: { text: SCHEDULE_MESSAGES.nothingLeft, private: true },
+			problem: true,
 		});
 	});
 });
@@ -1233,6 +1239,7 @@ describe("drafts", () => {
 		expect(second).toEqual({
 			kind: "refused",
 			reply: { text: SCHEDULE_MESSAGES.saving, private: true },
+			problem: true,
 		});
 		expect(store.all()).toHaveLength(1);
 	});

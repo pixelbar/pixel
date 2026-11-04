@@ -62,7 +62,12 @@ export type ActionRequest = {
 export type ActionOutcome =
 	| { kind: "update"; reply: Reply }
 	| { kind: "form"; form: Form }
-	| { kind: "refused"; reply: Reply };
+	/**
+	 * Refused. `problem` means the action itself said what's wrong with what was given
+	 * (a `UserFacingError`), so trying again with different input could work; it's never
+	 * set for access, rate limits or Pixel's own failures.
+	 */
+	| { kind: "refused"; reply: Reply; problem?: true };
 
 /** Someone is typing in an option that has live suggestions. */
 export type SuggestRequest = {
@@ -443,7 +448,7 @@ export class Dispatcher {
 		} catch (error) {
 			if (error instanceof UserFacingError) {
 				executed("user_error");
-				return refused(error.message);
+				return { kind: "refused", reply: { text: error.message, private: true }, problem: true };
 			}
 			executed("error");
 			log.error({ event: "action.failed", err: error }, "action failed");

@@ -726,7 +726,11 @@ describe("a device's panel", () => {
 			action: "ha.device",
 			args: { device: "front-door" },
 		});
-		expect(viaMenu).toEqual({ kind: "refused", reply: { text: HOME_DENIED, private: true } });
+		expect(viaMenu).toEqual({
+			kind: "refused",
+			reply: { text: HOME_DENIED, private: true },
+			problem: true,
+		});
 	});
 
 	it("says it isn't set up, from the command and from every button", async () => {

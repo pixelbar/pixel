@@ -16,7 +16,7 @@ import type {
 	ControlRow,
 	Form,
 } from "../../core/ui.ts";
-import { normaliseSpotName, resetClock } from "../../services/parking-spots.ts";
+import { resetClock } from "../../services/parking-spots.ts";
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import { openUntil } from "../../services/parking-windows.ts";
 import {
@@ -43,10 +43,8 @@ export const PARKING_ACTIONS = {
 	home: "parking-admin.home",
 	spot: "parking-admin.spot",
 	openPick: "parking-admin.open-pick",
-	openForm: "parking-admin.open-form",
 	open: "parking-admin.open",
 	closePick: "parking-admin.close-pick",
-	closeForm: "parking-admin.close-form",
 	close: "parking-admin.close",
 	editForm: "parking-admin.edit-form",
 	edit: "parking-admin.edit",
@@ -62,6 +60,9 @@ export const PARKING_ACTIONS = {
 	settingsForm: "parking-admin.settings-form",
 	settings: "parking-admin.settings",
 } as const;
+
+/** In a form's submit, so its action knows the problem should go back with Fix it. */
+const FROM_FORM = { form: true } as const;
 
 export function createParkingAdmin(deps: ParkingAdminDeps): {
 	subcommand: SubcommandDefinition;
@@ -247,7 +248,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		back: () => Promise<Reply>,
 		show: (lines: string[]) => Promise<Reply>,
 		users?: ActionContext["users"],
-		fix?: { action: string; args: Record<string, string> },
 	): Promise<ActionResult> {
 		try {
 			return { reply: await show(await run(op, users ? { ...ctx, users } : ctx, args)) };
@@ -262,30 +262,20 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					),
 				};
 			}
-			if (error instanceof UserFacingError) {
-				// A form can't open from a form, so offer to open it again with what they typed.
-				if (fix) {
-					return {
-						reply: confirm(
-							"That didn't work",
-							[`⚠️ ${error.message}`],
-							button("Fix it", fix.action, fix.args, "primary"),
-							button("Cancel", backAction(ctx), backArgs(ctx)),
-						),
-					};
-				}
+			// From a form, the problem goes back to the person with Fix it, which opens the form
+			// again with what they typed. From a button, it's shown on the panel.
+			if (error instanceof UserFacingError && ctx.args.form !== true)
 				return { reply: withNotice(await back(), error.message) };
-			}
 			throw error;
 		}
 	}
 
-	/** Runs this action again, with the same arguments, for Go ahead. */
+	/** Runs this action again, with the same arguments, for Go ahead (a button, not the form). */
 	const same = (action: string, ctx: ActionContext) => ({
 		action,
 		args: Object.fromEntries(
 			Object.entries(ctx.args).flatMap(([k, v]) =>
-				typeof v === "string" || typeof v === "boolean" ? [[k, v]] : [],
+				k !== "form" && (typeof v === "string" || typeof v === "boolean") ? [[k, v]] : [],
 			),
 		),
 	});
@@ -334,40 +324,34 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		...(value ? { value } : {}),
 	});
 
-	/** What was typed on a form that didn't work, to fill it in again. */
-	type Typed = Readonly<Record<string, string | undefined>>;
-
-	const openForm = (spots: string, typed: Typed = {}): Form => ({
+	const openForm = (spots: string): Form => ({
 		title: `Open ${splitSpots(deps.spots, spots).join(", ")}`,
-		submit: { action: PARKING_ACTIONS.open, args: { spots } },
+		submit: { action: PARKING_ACTIONS.open, args: { spots, ...FROM_FORM } },
 		fields: [
 			optionalText(
 				"from",
 				"From",
 				`When it opens, in ${zone}. Empty: now.`,
 				"now, 8:00, tomorrow 8",
-				typed.from,
 			),
 			optionalText(
 				"until",
 				"Until",
 				`When it closes. Empty: the reset (${deps.spots.settings().resetAt}).`,
 				"17:00, now+2h",
-				typed.until,
 			),
 		],
 	});
 
-	const closeForm = (spots: string, typed: Typed = {}): Form => ({
+	const closeForm = (spots: string): Form => ({
 		title: `Close ${splitSpots(deps.spots, spots).join(", ")}`,
-		submit: { action: PARKING_ACTIONS.close, args: { spots } },
+		submit: { action: PARKING_ACTIONS.close, args: { spots, ...FROM_FORM } },
 		fields: [
 			optionalText(
 				"until",
 				"Until",
 				`For permanent spots: when it opens again. Empty: the reset (${deps.spots.settings().resetAt}).`,
 				"17:00, now+2h",
-				typed.until,
 			),
 		],
 	});
@@ -392,9 +376,9 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		],
 	});
 
-	const addForm = (typed: Typed = {}): Form => ({
+	const addForm: Form = {
 		title: "Add a spot",
-		submit: { action: PARKING_ACTIONS.add },
+		submit: { action: PARKING_ACTIONS.add, args: FROM_FORM },
 		fields: [
 			{
 				kind: "text",
@@ -404,53 +388,46 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				style: "short",
 				maxLength: 32,
 				placeholder: "neighbour-1",
-				...(typed.name ? { value: typed.name } : {}),
 			},
 			optionalText(
 				"description",
 				"Where it is",
 				"Shown to people who park.",
 				"By the bins",
-				typed.description,
+				undefined,
 				100,
 			),
-			kindField(typed.kind === "permanent"),
+			kindField(false),
 		],
-	});
+	};
 
-	const settingsForm = (typed: Typed = {}): Form => {
+	const settingsForm = (): Form => {
 		const s = deps.spots.settings();
 		return {
 			title: "Parking settings",
-			submit: { action: PARKING_ACTIONS.settings },
+			submit: { action: PARKING_ACTIONS.settings, args: FROM_FORM },
 			fields: [
 				optionalText(
 					"remind",
 					"Remind",
 					"Minutes before someone's end to DM them (0–120).",
 					"15",
-					typed.remind ?? String(s.remindMinutes),
+					String(s.remindMinutes),
 				),
 				optionalText(
 					"grace",
 					"End after",
 					"Minutes after their end to end the booking (0–60).",
 					"5",
-					typed.grace ?? String(s.graceMinutes),
+					String(s.graceMinutes),
 				),
-				optionalText(
-					"reset",
-					"Reset",
-					"When every booking ends each day.",
-					"23:59",
-					typed.reset ?? s.resetAt,
-				),
+				optionalText("reset", "Reset", "When every booking ends each day.", "23:59", s.resetAt),
 				optionalText(
 					"durations",
 					"Durations offered",
 					"Separated by commas, such as 30m, 1h, 2h30, rest of day.",
 					"30m, 1h, rest of day",
-					typed.durations ?? s.durations.join(", "),
+					s.durations.join(", "),
 					400,
 				),
 			],
@@ -467,6 +444,12 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	});
 	const spotArg = text("spot", "The spot", true);
 	const spotsArg = text("spots", "The spots", true);
+	/** Set by the forms: a problem goes back with Fix it, not onto the panel. */
+	const formArg: CommandOption = {
+		name: "form",
+		description: "Submitted from a form",
+		type: "boolean",
+	};
 	const evictArg: CommandOption = {
 		name: "evict",
 		description: "End bookings it cuts into",
@@ -482,16 +465,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 	/** Form fields left empty aren't sent, so they're left out. */
 	const given = (ctx: ActionContext, ...names: string[]): Args =>
 		Object.fromEntries(names.flatMap((n) => (str(ctx, n) === undefined ? [] : [[n, str(ctx, n)]])));
-	/** The text arguments named, for Fix it. Empty ones are left out. */
-	const typedArgs = (ctx: ActionContext, ...names: string[]): Record<string, string> =>
-		given(ctx, ...names) as Record<string, string>;
-	/** Fix it: open `action`'s form again, filled in with what was typed. */
-	const fixWith = (ctx: ActionContext, action: string, ...names: string[]) => ({
-		action,
-		args: typedArgs(ctx, ...names),
-	});
-	const typedOf = (ctx: ActionContext, ...names: string[]): Typed =>
-		Object.fromEntries(names.map((n) => [n, str(ctx, n)]));
 
 	const actions: ActionDefinition[] = [
 		action(PARKING_ACTIONS.home, [], async (ctx) => ({ reply: await overview(ctx) })),
@@ -515,13 +488,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			return { form: openForm(spots) };
 		}),
 		action(
-			PARKING_ACTIONS.openForm,
-			[spotsArg, text("from", "From"), text("until", "Until")],
-			(ctx) => ({ form: openForm(String(ctx.args.spots), typedOf(ctx, "from", "until")) }),
-		),
-		action(
 			PARKING_ACTIONS.open,
-			[spotsArg, text("from", "From"), text("until", "Until"), evictArg],
+			[spotsArg, text("from", "From"), text("until", "Until"), evictArg, formArg],
 			(ctx) =>
 				change(
 					ctx,
@@ -533,8 +501,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					},
 					() => after(ctx, String(ctx.args.spots), []),
 					(lines) => after(ctx, String(ctx.args.spots), lines),
-					undefined,
-					fixWith(ctx, PARKING_ACTIONS.openForm, "spots", "from", "until"),
 				),
 		),
 		action(PARKING_ACTIONS.closePick, [spotsArg], async (ctx) => {
@@ -551,10 +517,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				(lines) => after(ctx, spots, lines),
 			);
 		}),
-		action(PARKING_ACTIONS.closeForm, [spotsArg, text("until", "Until")], (ctx) => ({
-			form: closeForm(String(ctx.args.spots), typedOf(ctx, "until")),
-		})),
-		action(PARKING_ACTIONS.close, [spotsArg, text("until", "Until"), evictArg], (ctx) =>
+		action(PARKING_ACTIONS.close, [spotsArg, text("until", "Until"), evictArg, formArg], (ctx) =>
 			change(
 				ctx,
 				same(PARKING_ACTIONS.close, ctx),
@@ -562,45 +525,37 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				{ ...given(ctx, "spots", "until"), ...(ctx.args.evict === true ? { evict: true } : {}) },
 				() => after(ctx, String(ctx.args.spots), []),
 				(lines) => after(ctx, String(ctx.args.spots), lines),
-				undefined,
-				fixWith(ctx, PARKING_ACTIONS.closeForm, "spots", "until"),
 			),
 		),
-		action(
-			PARKING_ACTIONS.editForm,
-			[spotArg, text("description", "Where it is"), text("kind", "Kind")],
-			async (ctx) => {
-				const spot = deps.spots.get(String(ctx.args.spot));
-				if (!spot)
-					return {
-						reply: await overview(ctx, [
-							`There's no spot called **${String(ctx.args.spot)}** any more.`,
-						]),
-					};
-				// Kind is always sent, so it's there when this is Fix it.
-				const again = str(ctx, "kind") !== undefined;
+		action(PARKING_ACTIONS.editForm, [spotArg], async (ctx) => {
+			const spot = deps.spots.get(String(ctx.args.spot));
+			if (!spot)
 				return {
-					form: {
-						title: `Edit ${spot.name}`,
-						submit: { action: PARKING_ACTIONS.edit, args: { spot: spot.name } },
-						fields: [
-							optionalText(
-								"description",
-								"Where it is",
-								"Shown to people who park. Empty removes it.",
-								"By the bins",
-								again ? str(ctx, "description") : spot.description,
-								100,
-							),
-							kindField(again ? ctx.args.kind === "permanent" : spot.permanent),
-						],
-					},
+					reply: await overview(ctx, [
+						`There's no spot called **${String(ctx.args.spot)}** any more.`,
+					]),
 				};
-			},
-		),
+			return {
+				form: {
+					title: `Edit ${spot.name}`,
+					submit: { action: PARKING_ACTIONS.edit, args: { spot: spot.name, ...FROM_FORM } },
+					fields: [
+						optionalText(
+							"description",
+							"Where it is",
+							"Shown to people who park. Empty removes it.",
+							"By the bins",
+							spot.description,
+							100,
+						),
+						kindField(spot.permanent),
+					],
+				},
+			};
+		}),
 		action(
 			PARKING_ACTIONS.edit,
-			[spotArg, text("description", "Where it is"), text("kind", "Kind", true), evictArg],
+			[spotArg, text("description", "Where it is"), text("kind", "Kind", true), evictArg, formArg],
 			(ctx) =>
 				change(
 					ctx,
@@ -615,8 +570,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					},
 					() => spotPanel(ctx, String(ctx.args.spot)),
 					(lines) => spotPanel(ctx, String(ctx.args.spot), lines),
-					undefined,
-					fixWith(ctx, PARKING_ACTIONS.editForm, "spot", "description", "kind"),
 				),
 		),
 		action(PARKING_ACTIONS.removeAsk, [spotArg], async (ctx) => {
@@ -680,33 +633,29 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				(lines) => spotPanel(ctx, String(ctx.args.spot), lines),
 			),
 		),
-		action(
-			PARKING_ACTIONS.assignForm,
-			// Fix it fills the form in again: the person picked (by ID) and how long.
-			[spotArg, text("user-id", "Who"), text("for", "How long")],
-			(ctx) => ({
-				form: {
-					title: `Give ${String(ctx.args.spot)} to someone`,
-					submit: { action: PARKING_ACTIONS.assign, args: { spot: String(ctx.args.spot) } },
-					fields: [
-						{
-							kind: "user",
-							name: "user",
-							label: "Who is parked there",
-							description: "They get a DM. Their booking elsewhere, if any, ends.",
-							...(str(ctx, "user-id") ? { value: str(ctx, "user-id") as string } : {}),
-						},
-						optionalText(
-							"for",
-							"How long",
-							"Such as 2h or rest of day. Empty: until the spot closes.",
-							"2h",
-							str(ctx, "for"),
-						),
-					],
+		action(PARKING_ACTIONS.assignForm, [spotArg], (ctx) => ({
+			form: {
+				title: `Give ${String(ctx.args.spot)} to someone`,
+				submit: {
+					action: PARKING_ACTIONS.assign,
+					args: { spot: String(ctx.args.spot), ...FROM_FORM },
 				},
-			}),
-		),
+				fields: [
+					{
+						kind: "user",
+						name: "user",
+						label: "Who is parked there",
+						description: "They get a DM. Their booking elsewhere, if any, ends.",
+					},
+					optionalText(
+						"for",
+						"How long",
+						"Such as 2h or rest of day. Empty: until the spot closes.",
+						"2h",
+					),
+				],
+			},
+		})),
 		action(
 			PARKING_ACTIONS.assign,
 			[
@@ -714,6 +663,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				{ name: "user", description: "Who is parked there", type: "user", required: true },
 				text("for", "How long"),
 				evictArg,
+				formArg,
 			],
 			(ctx) =>
 				change(
@@ -734,11 +684,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					},
 					() => spotPanel(ctx, String(ctx.args.spot)),
 					(lines) => spotPanel(ctx, String(ctx.args.spot), lines),
-					undefined,
-					{
-						action: PARKING_ACTIONS.assignForm,
-						args: { ...typedArgs(ctx, "spot", "for"), "user-id": String(ctx.args.user) },
-					},
 				),
 		),
 		// Go ahead after Give it to someone… would end another booking. A button can't carry
@@ -771,17 +716,17 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 							isBot: false,
 						},
 					},
-					fixWith(ctx, PARKING_ACTIONS.assignForm, "spot", "user-id", "for"),
 				),
 		),
-		action(
-			PARKING_ACTIONS.addForm,
-			[text("name", "Name"), text("description", "Where it is"), text("kind", "Kind")],
-			(ctx) => ({ form: addForm(typedOf(ctx, "name", "description", "kind")) }),
-		),
+		action(PARKING_ACTIONS.addForm, [], () => ({ form: addForm })),
 		action(
 			PARKING_ACTIONS.add,
-			[text("name", "Name", true), text("description", "Where it is"), text("kind", "Kind", true)],
+			[
+				text("name", "Name", true),
+				text("description", "Where it is"),
+				text("kind", "Kind", true),
+				formArg,
+			],
 			(ctx) =>
 				change(
 					ctx,
@@ -792,21 +737,10 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						permanent: ctx.args.kind === "permanent",
 					},
 					() => overview(ctx),
-					(lines) => spotPanel(ctx, normaliseSpotName(String(ctx.args.name)), lines),
-					undefined,
-					fixWith(ctx, PARKING_ACTIONS.addForm, "name", "description", "kind"),
+					(lines) => spotPanel(ctx, String(ctx.args.name).trim(), lines),
 				),
 		),
-		action(
-			PARKING_ACTIONS.settingsForm,
-			[
-				text("remind", "Remind"),
-				text("grace", "End after"),
-				text("reset", "Reset"),
-				text("durations", "Durations"),
-			],
-			(ctx) => ({ form: settingsForm(typedOf(ctx, "remind", "grace", "reset", "durations")) }),
-		),
+		action(PARKING_ACTIONS.settingsForm, [], () => ({ form: settingsForm() })),
 		action(
 			PARKING_ACTIONS.settings,
 			[
@@ -814,6 +748,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				text("grace", "End after"),
 				text("reset", "Reset"),
 				text("durations", "Durations"),
+				formArg,
 			],
 			(ctx) => {
 				const number = (name: string) => {
@@ -827,8 +762,6 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					{ ...number("remind"), ...number("grace"), ...given(ctx, "reset", "durations") },
 					() => overview(ctx),
 					(lines) => overview(ctx, lines),
-					undefined,
-					fixWith(ctx, PARKING_ACTIONS.settingsForm, "remind", "grace", "reset", "durations"),
 				);
 			},
 		),

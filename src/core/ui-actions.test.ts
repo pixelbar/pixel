@@ -263,6 +263,7 @@ describe("Dispatcher.act", () => {
 		expect(missing).toEqual({
 			kind: "refused",
 			reply: { text: 'Missing required option "id".', private: true },
+			problem: true,
 		});
 		expect(handler).toHaveBeenCalledTimes(1);
 	});
@@ -308,6 +309,7 @@ describe("Dispatcher.act", () => {
 		expect(await dispatcher.act({ actor: as(IDS.member), action: "feat.go", args: {} })).toEqual({
 			kind: "refused",
 			reply: { text: "Nope.", private: true },
+			problem: true,
 		});
 		expect(entries).toContainEqual(
 			expect.objectContaining({ event: "action.executed", outcome: "user_error" }),

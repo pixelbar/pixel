@@ -851,6 +851,7 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 						description: "Digits only. It's never logged.",
 						style: "short",
 						maxLength: 20,
+						secret: true,
 					},
 				],
 			},
