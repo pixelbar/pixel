@@ -178,7 +178,7 @@ describe("/admin parking", () => {
 		it("refuses a bad name", async () => {
 			await setup()
 				.fails("add-spot", { name: "Our Spot" })
-				.toThrow(/lowercase/);
+				.toThrow(/starting with a letter/);
 		});
 	});
 
@@ -898,11 +898,23 @@ describe("helpers", () => {
 		expect(suggestSpots(["x".repeat(32)], `${"y".repeat(70)} x`)).toEqual([]);
 	});
 
+	it("suggests spots with capitals, ignoring case", () => {
+		expect(suggestSpot(["A1", "b"], "a")).toEqual([{ name: "A1", value: "A1" }]);
+		expect(suggestSpots(["A1", "A2"], "a1 a")).toEqual([{ name: "a1 A2", value: "a1 A2" }]);
+	});
+
 	it("resolves spots in the order given, without repeats", () => {
 		const store = new ParkingSpotStore({ logger: silentLogger });
 		store.add({ name: "a", permanent: false });
 		store.add({ name: "b", permanent: true });
 		expect(resolveSpots(store, "B a b").map((s) => s.name)).toEqual(["b", "a"]);
+	});
+
+	it("resolves a spot with capitals however it's typed", () => {
+		const store = new ParkingSpotStore({ logger: silentLogger });
+		store.add({ name: "A1", permanent: false });
+		expect(resolveSpots(store, "a1 A1").map((s) => s.name)).toEqual(["A1"]);
+		expect(() => resolveSpots(store, "A2")).toThrow(/no spot called `A2`/);
 	});
 
 	it("describes a permanent spot that's closed now, or later today", () => {

@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- Parking spot names can have capitals, such as `A1`. Pixel keeps them as written but matches them ignoring case, so `/admin parking` finds `A1` when you type `a1`, and `a1` can't be added next to `A1`.
+
 ## [0.23.0] - 2026-11-02
 
 ### Added

@@ -395,7 +395,7 @@ Ends the booking in a spot, for someone who left without `/parking leave`. Pixel
 
 </PxCommand>
 
-<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Lowercase words joined by -, such as neighbour-1.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
+<PxCommand sig="/admin parking add-spot name: [description:] [permanent:]" tier="admin" reply="private" :options="{ 'name:': 'Words joined by -, such as neighbour-1 or A1. Capitals are kept, but a1 and A1 are the same spot.', '[description:]': 'Where it is, shown to people.', '[permanent:]': 'Pixelbar\'s own spot, open every day with no opening needed. Default: no (borrowed).' }">
 
 Adds a parking spot. A borrowed spot is closed until it's opened.
 

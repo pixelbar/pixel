@@ -69,7 +69,9 @@ describe("ParkingSpotStore", () => {
 		it("refuses a bad name, a repeat, too many spots, and a bad description", () => {
 			const store = open();
 			expect(() => store.add({ name: "Spot 1", permanent: false })).toThrow(ParkingError);
-			expect(() => store.add({ name: "1-spot", permanent: false })).toThrow(/lowercase/);
+			expect(() => store.add({ name: "1-spot", permanent: false })).toThrow(
+				/starting with a letter/,
+			);
 			store.add({ name: "a", permanent: false });
 			expect(() => store.add({ name: "a", permanent: true })).toThrow(/already a spot/);
 			expect(() => store.add({ name: "b", permanent: false, description: " " })).toThrow(/1–100/);
@@ -109,6 +111,17 @@ describe("ParkingSpotStore", () => {
 		});
 	});
 
+	it("keeps capitals as written, and matches names ignoring case", () => {
+		const store = open();
+		store.add({ name: "A1", permanent: false });
+		expect(() => store.add({ name: "a1", permanent: false })).toThrow(/already a spot/);
+		expect(store.get("a1")?.name).toBe("A1");
+		expect(store.update("a1", { permanent: true })?.after).toEqual({ name: "A1", permanent: true });
+		expect(open().all()).toEqual([{ name: "A1", permanent: true }]);
+		expect(store.remove("a1")?.name).toBe("A1");
+		expect(open().all()).toEqual([]);
+	});
+
 	it("removes a spot", () => {
 		const store = open();
 		store.add({ name: "a", permanent: false });
@@ -142,6 +155,7 @@ describe("ParkingSpotStore", () => {
 			["an unknown key", "spot: []\n", /invalid/],
 			["a bad setting", "settings:\n  resetAt: midnight\n", /settings\.resetAt/],
 			["a repeated name", "spots:\n  - name: a\n  - name: a\n", /repeats a spot name/],
+			["a name repeated in capitals", "spots:\n  - name: a\n  - name: A\n", /repeats a spot name/],
 		])("%s switches parking off and is never overwritten", (_, text, problem) => {
 			writeFile(text);
 			const store = open();

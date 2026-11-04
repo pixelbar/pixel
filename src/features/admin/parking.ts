@@ -66,38 +66,36 @@ const SPOTS_HELP = "One spot, or several separated by spaces";
 export function suggestSpot(names: readonly string[], typed: string): Suggestion[] {
 	const needle = typed.trim().toLowerCase();
 	return names
-		.filter((n) => n.includes(needle))
+		.filter((n) => n.toLowerCase().includes(needle))
 		.slice(0, 25)
 		.map((n) => ({ name: n, value: n }));
 }
 
 /** Completes the last name in a `spots` option, keeping the ones already typed. */
 export function suggestSpots(names: readonly string[], typed: string): Suggestion[] {
-	const words = typed.toLowerCase().split(/[\s,]+/);
-	const last = words.pop() ?? "";
+	const words = typed.split(/[\s,]+/);
+	const last = (words.pop() ?? "").toLowerCase();
 	const before = words.filter((w) => w !== "");
+	const taken = new Set(before.map((w) => w.toLowerCase()));
 	const prefix = before.length > 0 ? `${before.join(" ")} ` : "";
 	return names
-		.filter((n) => !before.includes(n) && n.includes(last))
+		.filter((n) => !taken.has(n.toLowerCase()) && n.toLowerCase().includes(last))
 		.map((n) => `${prefix}${n}`)
 		.filter((v) => v.length <= 100)
 		.slice(0, 25)
 		.map((v) => ({ name: v, value: v }));
 }
 
-/** The spots named in `typed`, in the order given. Throws if any doesn't exist. */
+/** The spots named in `typed` (ignoring case), in the order given. Throws if any doesn't exist. */
 export function resolveSpots(
 	spots: Pick<ParkingSpotStore, "get">,
 	typed: string,
 ): readonly ParkingSpot[] {
-	const names = [
-		...new Set(
-			typed
-				.toLowerCase()
-				.split(/[\s,]+/)
-				.filter(Boolean),
-		),
-	];
+	const byKey = new Map<string, string>();
+	for (const word of typed.split(/[\s,]+/).filter(Boolean)) {
+		if (!byKey.has(word.toLowerCase())) byKey.set(word.toLowerCase(), word);
+	}
+	const names = [...byKey.values()];
 	if (names.length === 0) throw new UserFacingError("Name at least one spot.");
 	const found = names.map((n) => ({ name: n, spot: spots.get(n) }));
 	const unknown = found.filter((f) => !f.spot).map((f) => inlineCode(f.name, 32));
@@ -333,7 +331,7 @@ export function createParkingSubgroup(deps: ParkingAdminDeps): SubgroupDefinitio
 		options: [
 			{
 				name: "name",
-				description: "Lowercase words joined by '-', e.g. neighbour-1",
+				description: "Words joined by '-', e.g. neighbour-1 or A1",
 				type: "string",
 				required: true,
 			},

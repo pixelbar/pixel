@@ -29,8 +29,16 @@ export const MAX_DURATIONS = 25;
 export const MAX_REMIND_MINUTES = 120;
 export const MAX_GRACE_MINUTES = 60;
 
-/** Lowercase words joined by '-', up to 32 characters, like Home Assistant device names. */
-export const SPOT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+/**
+ * Words joined by '-', up to 32 characters, such as `neighbour-1` or `A1`. Capitals are
+ * kept as written, but names are matched ignoring case, so `A1` and `a1` are one spot.
+ */
+export const SPOT_NAME = /^[A-Za-z][A-Za-z0-9-]{0,31}$/;
+
+/** Whether two spot names are the same spot. */
+export function sameSpotName(a: string, b: string): boolean {
+	return a.toLowerCase() === b.toLowerCase();
+}
 
 export type ParkingSpot = {
 	name: string;
@@ -58,7 +66,9 @@ export const DEFAULT_SETTINGS: ParkingSettings = {
 };
 
 const spotSchema = z.strictObject({
-	name: z.string().regex(SPOT_NAME, { error: "must be lowercase words joined by '-'" }),
+	name: z
+		.string()
+		.regex(SPOT_NAME, { error: "must be words joined by '-', starting with a letter" }),
 	description: z.string().min(1).max(MAX_DESCRIPTION).optional(),
 	permanent: z.boolean().default(false),
 });
@@ -130,8 +140,9 @@ export class ParkingSpotStore {
 		return this.#spots;
 	}
 
+	/** The spot called `name`, ignoring case. */
 	get(name: string): ParkingSpot | undefined {
-		return this.#spots.find((s) => s.name === name);
+		return this.#spots.find((s) => sameSpotName(s.name, name));
 	}
 
 	settings(): ParkingSettings {
@@ -142,7 +153,7 @@ export class ParkingSpotStore {
 		this.#writable();
 		if (!SPOT_NAME.test(spot.name)) {
 			throw new ParkingError(
-				"A spot's name is lowercase letters, digits and '-', starting with a letter, up to 32 characters.",
+				"A spot's name is letters, digits and '-', starting with a letter, up to 32 characters.",
 			);
 		}
 		if (this.get(spot.name))
@@ -170,11 +181,11 @@ export class ParkingSpotStore {
 		const description =
 			change.description === undefined ? before.description : (change.description ?? undefined);
 		const after = withDescription(
-			{ name, permanent: change.permanent ?? before.permanent },
+			{ name: before.name, permanent: change.permanent ?? before.permanent },
 			description,
 		);
 		this.#save(
-			this.#spots.map((s) => (s.name === name ? after : s)),
+			this.#spots.map((s) => (s.name === before.name ? after : s)),
 			this.#settings,
 		);
 		return { before, after };
@@ -186,7 +197,7 @@ export class ParkingSpotStore {
 		const current = this.get(name);
 		if (current) {
 			this.#save(
-				this.#spots.filter((s) => s.name !== name),
+				this.#spots.filter((s) => s.name !== current.name),
 				this.#settings,
 			);
 		}
@@ -239,7 +250,7 @@ export class ParkingSpotStore {
 			return this.#broken(`${this.#file} is invalid: ${where}`);
 		}
 		const spots = result.data.spots ?? [];
-		const names = spots.map((s) => s.name);
+		const names = spots.map((s) => s.name.toLowerCase());
 		if (new Set(names).size !== names.length) {
 			return this.#broken(`${this.#file} repeats a spot name`);
 		}
