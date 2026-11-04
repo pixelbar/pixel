@@ -401,7 +401,7 @@ describe("spots and settings", () => {
 		expect(spaced.embeds?.[0]?.title).toBe("🅿️ by the bins");
 		expect(said(spaced)).toContain("Added **by the bins**");
 		expect(problemOf(await t.submit(form, { name: "Our_Spot", kind: "borrowed" }))).toContain(
-			"A spot's name is letters",
+			"A spot's name is up to 32 characters",
 		);
 		expect(t.spots.all()).toHaveLength(2);
 	});

@@ -384,7 +384,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				kind: "text",
 				name: "name",
 				label: "Name",
-				description: "Words joined by - or spaces, such as neighbour-1 or A1.",
+				description: "Up to 32 characters, such as neighbour-1, A1 or Smith & Co., no. 3.",
 				style: "short",
 				maxLength: 32,
 				placeholder: "neighbour-1",

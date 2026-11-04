@@ -64,20 +64,41 @@ export class EvictNeeded extends UserFacingError {
 }
 
 /**
- * The spot names in `typed`, separated by commas (names can contain spaces). A piece
+ * The spot names in `typed`, separated by commas. Names can contain spaces and commas
+ * too, so from each piece the longest run of pieces that names a spot is taken
+ * (`Smith, J, A1` is `Smith, J` and `A1` when there's a spot `Smith, J`). A piece
  * that isn't a spot, but has a word that is, is read as names separated by spaces, as
  * before names could contain them.
  */
 export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string): string[] {
-	return typed
-		.split(",")
-		.map(normaliseSpotName)
-		.filter(Boolean)
-		.flatMap((piece) => {
-			if (spots.get(piece)) return [piece];
-			const words = piece.split(" ");
-			return words.length > 1 && words.some((w) => spots.get(w)) ? words : [piece];
-		});
+	const pieces = typed.split(",");
+	const names: string[] = [];
+	for (let i = 0; i < pieces.length; i++) {
+		const end = longestSpotAt(spots, pieces, i);
+		if (end !== undefined) {
+			names.push(normaliseSpotName(pieces.slice(i, end).join(",")));
+			i = end - 1;
+			continue;
+		}
+		const piece = normaliseSpotName(pieces[i] as string);
+		if (!piece) continue;
+		const words = piece.split(" ");
+		names.push(...(words.length > 1 && words.some((w) => spots.get(w)) ? words : [piece]));
+	}
+	return names;
+}
+
+/** Where the longest run of `pieces` from `start` that names a spot ends, if any does. */
+function longestSpotAt(
+	spots: Pick<ParkingSpotStore, "get">,
+	pieces: readonly string[],
+	start: number,
+): number | undefined {
+	for (let end = pieces.length; end > start; end--) {
+		const name = normaliseSpotName(pieces.slice(start, end).join(","));
+		if (name && spots.get(name)) return end;
+	}
+	return undefined;
 }
 
 /** The spots named in `typed` (ignoring case), in the order given. Throws if any doesn't exist. */
@@ -325,7 +346,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		options: [
 			{
 				name: "name",
-				description: "Words joined by '-' or spaces, e.g. neighbour-1 or A1",
+				description: "Up to 32 characters, e.g. neighbour-1, A1 or Smith & Co., no. 3",
 				type: "string",
 				required: true,
 			},
