@@ -16,7 +16,7 @@ import type {
 	ControlRow,
 	Form,
 } from "../../core/ui.ts";
-import { resetClock } from "../../services/parking-spots.ts";
+import { normaliseSpotName, resetClock } from "../../services/parking-spots.ts";
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import { openUntil } from "../../services/parking-windows.ts";
 import {
@@ -737,7 +737,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						permanent: ctx.args.kind === "permanent",
 					},
 					() => overview(ctx),
-					(lines) => spotPanel(ctx, String(ctx.args.name).trim(), lines),
+					(lines) => spotPanel(ctx, normaliseSpotName(String(ctx.args.name)), lines),
 				),
 		),
 		action(PARKING_ACTIONS.settingsForm, [], () => ({ form: settingsForm() })),

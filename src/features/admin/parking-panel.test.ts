@@ -397,10 +397,13 @@ describe("spots and settings", () => {
 		expect(added.embeds?.[0]?.title).toBe("🅿️ ours");
 		expect(said(added)).toContain("Added **ours**, a permanent spot");
 		expect(t.spots.get("ours")).toMatchObject({ permanent: true, description: "Here" });
+		const spaced = replyOf(await t.submit(form, { name: "  by   the bins ", kind: "borrowed" }));
+		expect(spaced.embeds?.[0]?.title).toBe("🅿️ by the bins");
+		expect(said(spaced)).toContain("Added **by the bins**");
 		expect(problemOf(await t.submit(form, { name: "Our Spot", kind: "borrowed" }))).toContain(
 			"A spot's name is lowercase",
 		);
-		expect(t.spots.all()).toHaveLength(1);
+		expect(t.spots.all()).toHaveLength(2);
 	});
 
 	it("edits a spot on a form filled in with what's saved, and an empty description removes it", async () => {
