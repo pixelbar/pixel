@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- The commands page on the website now covers everything `/admin` can do, section by section: People, Capabilities, Discord roles, Announcements, Closing time, Doors, OpenR and Parking.
+
 ## [0.25.2] - 2026-11-04
 
 ### Changed
