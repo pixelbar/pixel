@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- The `/park` panel lists spots in separate **Free**, **Taken** and **Closed** groups, free ones first, so you can see at a glance where there is room.
+
 ## [0.25.2] - 2026-11-04
 
 ### Changed
