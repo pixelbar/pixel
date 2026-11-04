@@ -107,7 +107,7 @@ For several related fields, open a modal with one Label per field. Inside a Labe
 
 - Five top-level components at most. If a form needs more, it's two steps or two commands.
 - Fields in a modal can't depend on each other: nothing appears or disappears while the person fills it in. Ask for everything that could matter, mark what's optional in its description, and check the combination when it's submitted.
-- A modal can't open from a modal submit. When a submit has a mistake, reply privately with what's wrong and a **Fix it** button that reopens the modal filled in with what they typed (pass it as the prefill, like `formModal`'s `values`).
+- A modal can't open from a modal submit. When a submit has a mistake, reply privately with what's wrong and a **Fix it** button that reopens the modal filled in with what they typed (pass it as the prefill, like `formModal`'s `values`). `/admin` → Parking does this for every form: the form's own opening action takes what was typed as optional arguments.
 - Opening a modal has to be the first response to an interaction, within 3 seconds, and never after a defer. The access check before it must be fast, as `prepareForm` is today.
 - Use the `Label` component, not an Action Row, for every input. Move `formModal` over when it's next changed.
 
