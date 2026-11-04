@@ -208,13 +208,13 @@ describe("/admin", () => {
 		expect(labels(home)).toEqual(["[Go to…]", "Reload the access lists", "Refresh"]);
 		const menu = controlsOf(home)[0];
 		expect(menu?.kind === "select" && menu.options.map((o) => o.value)).toEqual([
+			"parking",
 			"people",
 			"capabilities",
 			"roles",
 			"announcements",
 			"closing-time",
 			"doors",
-			"parking",
 		]);
 		const withOpenr = await setup({ openr: fakeOpenr() }).open();
 		const full = controlsOf(withOpenr)[0];

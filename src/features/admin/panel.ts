@@ -84,6 +84,7 @@ export const ADMIN_ACTIONS = {
 } as const;
 
 export const SECTIONS = [
+	{ value: "parking", label: "Parking", description: "Spots, opening times and settings" },
 	{ value: "people", label: "People", description: "Levels, capabilities and roles of one person" },
 	{
 		value: "capabilities",
@@ -95,7 +96,6 @@ export const SECTIONS = [
 	{ value: "closing-time", label: "Closing time", description: "The reminder posted at closing" },
 	{ value: "doors", label: "Doors", description: "Door control from Pixel, on or off" },
 	{ value: "openr", label: "OpenR", description: "Pixel's OpenR login and the doors" },
-	{ value: "parking", label: "Parking", description: "Spots, opening times and settings" },
 ] as const;
 type Section = (typeof SECTIONS)[number]["value"];
 

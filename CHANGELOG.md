@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- `/admin` lists Parking first in its section menu, and the Parking panel shows spots in alphabetical order (ignoring case). `/park` and the order spots are handed out in are unchanged.
+
 ## [0.25.2] - 2026-11-04
 
 ### Changed
