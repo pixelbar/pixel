@@ -12,6 +12,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - `/admin` lists Parking first in its section menu, and the Parking panel shows spots in alphabetical order (ignoring case). `/park` and the order spots are handed out in are unchanged.
+- The `/park` panel lists spots in separate **Free**, **Taken** and **Closed** groups, free ones first, so you can see at a glance where there is room.
 
 ## [0.25.2] - 2026-11-04
 

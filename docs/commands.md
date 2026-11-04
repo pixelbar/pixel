@@ -209,16 +209,16 @@ When you're not parked, pick how long. The lengths come from the parking setting
 
 <PxPanel
 	command="/park"
-	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)', '**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
+	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Free', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)'] }, { title: 'Taken', lines: ['**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
 	:rows="[[{ label: 'Park for 30m' }, { label: 'Park for 1h' }, { label: 'Park for 2h' }, { label: 'Park for 4h' }, { label: 'Park until 23:59' }], [{ label: 'Another length…' }], [{ label: 'Refresh' }]]"
-	caption="Not parked: a button for each length, and who's in which spot."
+	caption="Not parked: a button for each length, and which spots are free, taken or closed."
 />
 
 Once you're parked, the panel says where. **Open the gate** opens it again, if it didn't open or you need it again. **Leave** frees your spot when you go. The **Stay … longer** buttons only offer what fits before the spot closes, or 23:59.
 
 <PxPanel
 	command="/park"
-	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)', '**neighbour-1**: free · open until 14:00 (4h left)'] }]"
+	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Free', lines: ['**neighbour-1**: free · open until 14:00 (4h left)'] }, { title: 'Taken', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)'] }]"
 	:rows="[[{ label: 'Open the gate', style: 'primary' }, { label: 'Leave' }, { label: 'Someone\'s in my spot' }], [{ label: 'Stay 30m longer' }, { label: 'Stay 1h longer' }, { label: 'Stay 2h longer' }, { label: 'Stay 4h longer' }, { label: 'Stay until 23:59' }], [{ label: 'Refresh' }]]"
 	caption="Parked: where to park, the gate, staying longer, a taken spot and leaving."
 />

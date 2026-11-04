@@ -36,7 +36,11 @@ const said = (reply: Reply) =>
 /** The main part of a panel, without the spots. */
 const main = (reply: Reply) => reply.embeds?.[0]?.description ?? "";
 /** The list of spots on a panel. */
-const spotsOf = (reply: Reply) => reply.embeds?.[1]?.description ?? "";
+const spotsOf = (reply: Reply) =>
+	(reply.embeds ?? [])
+		.slice(1)
+		.map((e) => e.description ?? "")
+		.join("\n");
 const controlsOf = (reply: Reply): Control[] => (reply.controls ?? []).flat();
 const labels = (reply: Reply) =>
 	controlsOf(reply).map((c) =>
@@ -226,6 +230,19 @@ describe("not parked", () => {
 			"Refresh",
 		]);
 		expect(spotsOf(reply)).toContain("**ours** (Next to the \\*gate\\*): taken by Bob since 10:00");
+	});
+
+	it("lists free and taken spots in separate groups, free first", async () => {
+		const t = withSpots();
+		await t.book("1h", member(BOB, "Bob"));
+		const reply = await t.run();
+		const titles = (reply.embeds ?? []).map((e) => e.title);
+		expect(titles).toEqual(["🅿️ Parking", "Free", "Taken"]);
+		const [, free, taken] = reply.embeds ?? [];
+		expect(free?.description).toContain("free");
+		expect(free?.description).not.toContain("taken by");
+		expect(taken?.description).toContain("taken by Bob");
+		expect(taken?.description).not.toContain("free");
 	});
 
 	it("books our own spot first, opens the gate and says where", async () => {
@@ -424,9 +441,9 @@ describe("who's where", () => {
 		t.setNow(utc("09:30"));
 		expect(spotsOf(await t.run())).toBe(
 			[
-				"**ours** (Next to the \\*gate\\*): taken by Bob \\*the\\* parker since 10:00, until about 11:00 (over by 30m) · open until 23:59 (12h 29m left)",
 				"**neighbour-1**: free · open until 14:00 (2h 30m left)",
 				"**neighbour-2**: free · open until 17:00 (5h 30m left)",
+				"**ours** (Next to the \\*gate\\*): taken by Bob \\*the\\* parker since 10:00, until about 11:00 (over by 30m) · open until 23:59 (12h 29m left)",
 			].join("\n"),
 		);
 	});

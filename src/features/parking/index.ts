@@ -7,7 +7,7 @@ import { escapeMarkdown, formatDuration } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Gate, GateResult } from "../../core/ports/gate.ts";
-import type { Reply } from "../../core/reply.ts";
+import type { Embed, Reply } from "../../core/reply.ts";
 import type {
 	ActionContext,
 	ActionDefinition,
@@ -449,20 +449,28 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 
 	// ── What people see ──────────────────────────────────────────────────
 
-	/** Who's in which spot, and until when each is open. */
-	function spotLines(t: Date): string[] {
+	/** Who's in which spot, and until when each is open, grouped so the free ones are easy to find. */
+	function spotGroups(t: Date): {
+		notes: string[];
+		free: string[];
+		taken: string[];
+		closed: string[];
+	} {
 		const reset = resetAfter(t);
 		const entries = deps.windows.entries(t);
-		const lines: string[] = [];
-		if (deps.spots.problem) lines.push("⚠️ Parking is off right now.");
-		if (deps.bookings.problem) lines.push("⚠️ Pixel can't read who's parked, so no one can park.");
+		const notes: string[] = [];
+		const free: string[] = [];
+		const taken: string[] = [];
+		const closed: string[] = [];
+		if (deps.spots.problem) notes.push("⚠️ Parking is off right now.");
+		if (deps.bookings.problem) notes.push("⚠️ Pixel can't read who's parked, so no one can park.");
 		for (const spot of deps.spots.all()) {
 			const booking = deps.bookings.bySpot(spot.name);
 			const until = openUntil(spot, entries, t, reset);
 			const name = where(spot, spot.name);
 			if (!booking && !until) {
 				const block = entries.blocks.find((b) => b.spot === spot.name && b.from <= t);
-				if (block) lines.push(`${name}: closed until ${at(block.until, t)}`);
+				if (block) closed.push(`${name}: closed until ${at(block.until, t)}`);
 				continue;
 			}
 			const parts: string[] = [];
@@ -471,19 +479,20 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 				parts.push(
 					`taken by ${escapeMarkdown(booking.by.name)} since ${at(booking.since, t)}, until about ${at(booking.until, t)}${over >= 60_000 ? ` (over by ${formatDuration(over)})` : ""}`,
 				);
-			} else {
-				parts.push("free");
 			}
 			if (until) {
 				parts.push(
 					`open until ${at(until, t)} (${formatDuration(until.getTime() - t.getTime())} left)`,
 				);
 			}
-			lines.push(`${name}: ${parts.join(" · ")}`);
+			if (booking) taken.push(`${name}: ${parts.join(" · ")}`);
+			else free.push(`${name}: ${["free", ...parts].join(" · ")}`);
 		}
-		if (deps.spots.all().length === 0) lines.push("There are no parking spots yet.");
-		else if (lines.length === 0) lines.push("No spot is open right now.");
-		return lines;
+		if (deps.spots.all().length === 0) notes.push("There are no parking spots yet.");
+		else if (notes.length === 0 && free.length + taken.length + closed.length === 0) {
+			notes.push("No spot is open right now.");
+		}
+		return { notes, free, taken, closed };
 	}
 
 	const button = (
@@ -522,10 +531,24 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		];
 	}
 
+	/** Free spots first, then taken, then closed; a group with nothing in it is left out. Discord allows 6000 characters over all embeds. */
+	function spotEmbeds(t: Date): Embed[] {
+		const { notes, free, taken, closed } = spotGroups(t);
+		const groups: [string, string[], Embed["accent"]][] = [
+			["Spots", notes, "neutral"],
+			["Free", free, "positive"],
+			["Taken", taken, "neutral"],
+			["Closed", closed, "neutral"],
+		];
+		return groups
+			.filter(([, lines]) => lines.length > 0)
+			.map(([title, lines, accent]) => ({ title, description: fitLines(lines, 1400), accent }));
+	}
+
 	const panel = (description: string[], t: Date, controls: ControlRow[]): Reply => ({
 		embeds: [
 			{ title: "🅿️ Parking", description: description.join("\n"), accent: "brand" },
-			{ title: "Spots", description: fitLines(spotLines(t), 4000), accent: "neutral" },
+			...spotEmbeds(t),
 		],
 		private: true,
 		controls,
