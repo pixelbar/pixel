@@ -384,7 +384,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				kind: "text",
 				name: "name",
 				label: "Name",
-				description: "Lowercase words joined by - or spaces, such as neighbour-1.",
+				description: "Words joined by - or spaces, such as neighbour-1 or A1.",
 				style: "short",
 				maxLength: 32,
 				placeholder: "neighbour-1",

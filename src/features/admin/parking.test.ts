@@ -151,8 +151,8 @@ describe("/admin → Parking", () => {
 
 		it("refuses a bad name", async () => {
 			await setup()
-				.fails("add-spot", { name: "Our Spot" })
-				.toThrow(/lowercase/);
+				.fails("add-spot", { name: "Our_Spot" })
+				.toThrow(/starting with a letter/);
 		});
 	});
 
@@ -875,6 +875,15 @@ describe("helpers", () => {
 		expect(() => resolveSpots(store, "by the bin")).toThrow(/no spot called/);
 		expect(() => resolveSpots(store, "a nope")).toThrow(/no spot called `nope`\./);
 		expect(() => resolveSpots(store, " , ")).toThrow(/at least one/);
+	});
+
+	it("resolves a spot with capitals however it's typed", () => {
+		const store = new ParkingSpotStore({ logger: silentLogger });
+		store.add({ name: "A1", permanent: false });
+		store.add({ name: "Bay B2", permanent: false });
+		expect(resolveSpots(store, "a1, A1, bay b2").map((s) => s.name)).toEqual(["A1", "Bay B2"]);
+		expect(resolveSpots(store, "a1 A1").map((s) => s.name)).toEqual(["A1"]);
+		expect(() => resolveSpots(store, "A2")).toThrow(/no spot called `A2`/);
 	});
 
 	it("describes a permanent spot that's closed now, or later today", () => {

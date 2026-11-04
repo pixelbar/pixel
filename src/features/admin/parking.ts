@@ -70,7 +70,6 @@ export class EvictNeeded extends UserFacingError {
  */
 export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string): string[] {
 	return typed
-		.toLowerCase()
 		.split(",")
 		.map(normaliseSpotName)
 		.filter(Boolean)
@@ -81,12 +80,16 @@ export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string):
 		});
 }
 
-/** The spots named in `typed`, in the order given. Throws if any doesn't exist. */
+/** The spots named in `typed` (ignoring case), in the order given. Throws if any doesn't exist. */
 export function resolveSpots(
 	spots: Pick<ParkingSpotStore, "get">,
 	typed: string,
 ): readonly ParkingSpot[] {
-	const names = [...new Set(splitSpots(spots, typed))];
+	const byKey = new Map<string, string>();
+	for (const name of splitSpots(spots, typed)) {
+		if (!byKey.has(name.toLowerCase())) byKey.set(name.toLowerCase(), name);
+	}
+	const names = [...byKey.values()];
 	if (names.length === 0) throw new UserFacingError("Name at least one spot.");
 	const found = names.map((n) => ({ name: n, spot: spots.get(n) }));
 	const unknown = found.filter((f) => !f.spot).map((f) => inlineCode(f.name, 32));
@@ -322,7 +325,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		options: [
 			{
 				name: "name",
-				description: "Lowercase words joined by '-' or spaces, e.g. neighbour-1",
+				description: "Words joined by '-' or spaces, e.g. neighbour-1 or A1",
 				type: "string",
 				required: true,
 			},

@@ -400,8 +400,8 @@ describe("spots and settings", () => {
 		const spaced = replyOf(await t.submit(form, { name: "  by   the bins ", kind: "borrowed" }));
 		expect(spaced.embeds?.[0]?.title).toBe("🅿️ by the bins");
 		expect(said(spaced)).toContain("Added **by the bins**");
-		expect(problemOf(await t.submit(form, { name: "Our Spot", kind: "borrowed" }))).toContain(
-			"A spot's name is lowercase",
+		expect(problemOf(await t.submit(form, { name: "Our_Spot", kind: "borrowed" }))).toContain(
+			"A spot's name is letters",
 		);
 		expect(t.spots.all()).toHaveLength(2);
 	});

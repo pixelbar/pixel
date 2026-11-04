@@ -30,10 +30,16 @@ export const MAX_REMIND_MINUTES = 120;
 export const MAX_GRACE_MINUTES = 60;
 
 /**
- * Lowercase words joined by '-' or single spaces, starting with a letter, up to 32
- * characters: `neighbour-1` or `by the bins`.
+ * Words joined by '-' or single spaces, starting with a letter, up to 32 characters:
+ * `neighbour-1`, `by the bins` or `A1`. Capitals are kept as written, but names are
+ * matched ignoring case, so `A1` and `a1` are one spot.
  */
-export const SPOT_NAME = /^(?=.{1,32}$)[a-z][a-z0-9-]*(?: [a-z0-9-]+)*$/;
+export const SPOT_NAME = /^(?=.{1,32}$)[A-Za-z][A-Za-z0-9-]*(?: [A-Za-z0-9-]+)*$/;
+
+/** Whether two spot names are the same spot. */
+export function sameSpotName(a: string, b: string): boolean {
+	return a.toLowerCase() === b.toLowerCase();
+}
 
 /** A spot name as typed, trimmed and with runs of spaces made one. */
 export function normaliseSpotName(typed: string): string {
@@ -66,7 +72,9 @@ export const DEFAULT_SETTINGS: ParkingSettings = {
 };
 
 const spotSchema = z.strictObject({
-	name: z.string().regex(SPOT_NAME, { error: "must be lowercase words joined by '-' or spaces" }),
+	name: z
+		.string()
+		.regex(SPOT_NAME, { error: "must be words joined by '-' or spaces, starting with a letter" }),
 	description: z.string().min(1).max(MAX_DESCRIPTION).optional(),
 	permanent: z.boolean().default(false),
 });
@@ -138,8 +146,9 @@ export class ParkingSpotStore {
 		return this.#spots;
 	}
 
+	/** The spot called `name`, ignoring case. */
 	get(name: string): ParkingSpot | undefined {
-		return this.#spots.find((s) => s.name === name);
+		return this.#spots.find((s) => sameSpotName(s.name, name));
 	}
 
 	settings(): ParkingSettings {
@@ -151,7 +160,7 @@ export class ParkingSpotStore {
 		const spot = { ...typed, name: normaliseSpotName(typed.name) };
 		if (!SPOT_NAME.test(spot.name)) {
 			throw new ParkingError(
-				"A spot's name is lowercase letters, digits, '-' and spaces, starting with a letter, up to 32 characters.",
+				"A spot's name is letters, digits, '-' and spaces, starting with a letter, up to 32 characters.",
 			);
 		}
 		if (this.get(spot.name))
@@ -179,11 +188,11 @@ export class ParkingSpotStore {
 		const description =
 			change.description === undefined ? before.description : (change.description ?? undefined);
 		const after = withDescription(
-			{ name, permanent: change.permanent ?? before.permanent },
+			{ name: before.name, permanent: change.permanent ?? before.permanent },
 			description,
 		);
 		this.#save(
-			this.#spots.map((s) => (s.name === name ? after : s)),
+			this.#spots.map((s) => (s.name === before.name ? after : s)),
 			this.#settings,
 		);
 		return { before, after };
@@ -195,7 +204,7 @@ export class ParkingSpotStore {
 		const current = this.get(name);
 		if (current) {
 			this.#save(
-				this.#spots.filter((s) => s.name !== name),
+				this.#spots.filter((s) => s.name !== current.name),
 				this.#settings,
 			);
 		}
@@ -248,7 +257,7 @@ export class ParkingSpotStore {
 			return this.#broken(`${this.#file} is invalid: ${where}`);
 		}
 		const spots = result.data.spots ?? [];
-		const names = spots.map((s) => s.name);
+		const names = spots.map((s) => s.name.toLowerCase());
 		if (new Set(names).size !== names.length) {
 			return this.#broken(`${this.#file} repeats a spot name`);
 		}
