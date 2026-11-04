@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-11-04
+
 ### Changed
 
 - Parking spot names can have capitals, such as `A1`. Pixel keeps them as written but matches them ignoring case, so `/admin parking` finds `A1` when you type `a1`, and `a1` can't be added next to `A1`.
@@ -376,7 +378,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/pixelbar/pixel/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/pixelbar/pixel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/pixelbar/pixel/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/pixelbar/pixel/compare/v0.22.0...v0.23.0
