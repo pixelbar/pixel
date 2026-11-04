@@ -80,14 +80,24 @@ export class EvictNeeded extends UserFacingError {
 }
 
 /**
+ * A spot's name as the value of a menu that takes several: the platform joins the
+ * picks with commas, so a comma is written as `|`, which a name can't contain.
+ * `splitSpots` reads it back.
+ */
+export function spotChoice(name: string): string {
+	return name.replaceAll(",", "|");
+}
+
+/**
  * The spot names in `typed`, separated by commas. Names can contain spaces and commas
  * too, so from each piece the longest run of pieces that names a spot is taken
- * (`Smith, J, A1` is `Smith, J` and `A1` when there's a spot `Smith, J`). A piece
- * that isn't a spot, but has a word that is, is read as names separated by spaces, as
- * before names could contain them.
+ * (`Smith, J, A1` is `Smith, J` and `A1` when there's a spot `Smith, J`). A `|` is a
+ * comma in a name picked from a menu (`spotChoice`). A piece that isn't a spot, but
+ * has a word that is, is read as names separated by spaces, as before names could
+ * contain them.
  */
 export function splitSpots(spots: Pick<ParkingSpotStore, "get">, typed: string): string[] {
-	const pieces = typed.split(",");
+	const pieces = typed.split(",").map((piece) => piece.replaceAll("|", ","));
 	const names: string[] = [];
 	for (let i = 0; i < pieces.length; i++) {
 		const end = longestSpotAt(spots, pieces, i);

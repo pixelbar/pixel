@@ -6,7 +6,13 @@ import { ParkingBookingStore } from "../../services/parking-bookings.ts";
 import { ParkingSpotStore } from "../../services/parking-spots.ts";
 import { type ParkingEntry, ParkingWindowStore } from "../../services/parking-windows.ts";
 import { context, IDS, principal } from "../../testing/fixtures.ts";
-import { describeSpot, type ParkingOperation, parkingOperations, resolveSpots } from "./parking.ts";
+import {
+	describeSpot,
+	type ParkingOperation,
+	parkingOperations,
+	resolveSpots,
+	spotChoice,
+} from "./parking.ts";
 
 const ZONE = "Europe/Amsterdam";
 /** Saturday 24 Oct 2026, 10:00 in Amsterdam (UTC+2). The reset is 23:59, 21:59 UTC. */
@@ -889,6 +895,10 @@ describe("helpers", () => {
 		expect(names("a, b, c, a")).toEqual(["a, b, c", "a"]);
 		expect(names("b, a")).toEqual(["b", "a"]);
 		expect(() => resolveSpots(store, "Smith, K")).toThrow(/no spot called `Smith`, `K`\./);
+		expect(names(`${spotChoice("Smith, J")}, ${spotChoice("a, b, c")}`)).toEqual([
+			"Smith, J",
+			"a, b, c",
+		]);
 	});
 
 	it("resolves a spot with capitals however it's typed", () => {

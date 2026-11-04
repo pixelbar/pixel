@@ -27,6 +27,7 @@ import {
 	type ParkingOperation,
 	parkingOperations,
 	splitSpots,
+	spotChoice,
 	spotPage,
 	spotsOnPage,
 } from "./parking.ts";
@@ -110,6 +111,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				value: s.name,
 				description: `${s.permanent ? "Permanent" : "Borrowed"}${s.description ? ` · ${s.description}` : ""}`,
 			}));
+			// Picks are joined with commas, so a comma in a name can't be in the value.
+			const several = options.map((o) => ({ ...o, value: spotChoice(o.value) }));
 			rows.push(
 				[
 					{
@@ -128,7 +131,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						arg: "spots",
 						min: 1,
 						max: options.length,
-						options,
+						options: several,
 					},
 				],
 				[
@@ -139,7 +142,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 						arg: "spots",
 						min: 1,
 						max: options.length,
-						options,
+						options: several,
 					},
 				],
 			);

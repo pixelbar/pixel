@@ -35,6 +35,12 @@ function expectFits(reply: Reply) {
 	for (const row of rows) {
 		expect(row.length).toBeLessThanOrEqual(UI_LIMITS.buttonsPerRow);
 		if (row.some((c) => c.kind === "select")) expect(row).toHaveLength(1);
+		// The Discord adapter joins several picks with ", ", so it refuses commas in them.
+		for (const c of row) {
+			if (c.kind === "select" && (c.max ?? 1) > 1) {
+				expect(c.options.filter((o) => o.value.includes(","))).toEqual([]);
+			}
+		}
 	}
 }
 
@@ -183,6 +189,33 @@ describe("/admin → Parking panel", () => {
 			"Permanent · Next to the gate",
 			"Borrowed",
 		]);
+	});
+
+	it("offers spots with commas in the menus that take several", async () => {
+		const t = setup();
+		t.spots.add({ name: "Smith, J", permanent: true });
+		t.spots.add({ name: "a", permanent: true });
+		t.windows.replace(
+			{
+				windows: [],
+				blocks: ["Smith, J", "a"].map((spot) => ({
+					spot,
+					from: utc("07:00"),
+					until: utc("20:00"),
+					setBy: ALICE,
+				})),
+			},
+			NOW,
+		);
+		const reply = await t.open();
+		const menu = controlsOf(reply).find(
+			(c) => c.kind === "select" && c.placeholder === "Open spots…",
+		);
+		const values = menu?.kind === "select" ? menu.options.map((o) => o.value) : [];
+		expect(values).toEqual(["Smith| J", "a"]);
+		const opened = replyOf(await t.click(reply, "Open spots…", values));
+		expect(said(opened)).toContain("**Smith, J**");
+		expect(t.windows.entries(NOW).blocks).toEqual([]);
 	});
 
 	it("shows 25 spots a page, with menus for that page", async () => {
