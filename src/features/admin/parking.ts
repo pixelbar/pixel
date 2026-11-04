@@ -62,6 +62,16 @@ const SPOTS_HELP = "One spot, or several separated by commas";
 /** Spots on one page of `/admin` → Parking (Discord shows 25 options in a menu). */
 export const SPOTS_PER_PAGE = UI_LIMITS.options;
 
+/**
+ * Spots in alphabetical order, for the admin views only. The stored order is also the order
+ * ties are broken in when a spot is allocated, so it is never sorted in place.
+ */
+export function alphabetical<T extends { name: string }>(spots: readonly T[]): T[] {
+	return [...spots].sort((a, b) =>
+		a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true }),
+	);
+}
+
 /** How many pages `count` spots fill, and `page` kept inside them. */
 export function spotPage(count: number, page: number): { page: number; pages: number } {
 	const pages = Math.max(1, Math.ceil(count / SPOTS_PER_PAGE));
@@ -347,7 +357,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 					`⚠️ The opening times file couldn't be read, so borrowed spots are closed. The next \`open\` or \`close\` starts a new one (${deps.windows.problem}).`,
 				);
 			}
-			const spots = deps.spots.all();
+			const spots = alphabetical(deps.spots.all());
 			if (spots.length === 0) {
 				lines.push("There are no parking spots yet. Add one with **Add a spot**.");
 			} else {

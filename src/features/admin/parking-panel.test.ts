@@ -186,9 +186,22 @@ describe("/admin → Parking panel", () => {
 		);
 		expect(several?.kind === "select" && [several.min, several.max]).toEqual([1, 2]);
 		expect(several?.kind === "select" && several.options.map((o) => o.description)).toEqual([
-			"Permanent · Next to the gate",
 			"Borrowed",
+			"Permanent · Next to the gate",
 		]);
+	});
+
+	it("lists spots alphabetically, across pages, without changing the stored order", async () => {
+		const t = setup();
+		for (const name of ["b2", "A10", "a2", "C1"]) t.spots.add({ name, permanent: true });
+		const menu = (await t.open()).controls?.flat().find((c) => c.kind === "select");
+		expect(menu?.kind === "select" && menu.options.map((o) => o.value)).toEqual([
+			"a2",
+			"A10",
+			"b2",
+			"C1",
+		]);
+		expect(t.spots.all().map((s) => s.name)).toEqual(["b2", "A10", "a2", "C1"]);
 	});
 
 	it("offers spots with commas in the menus that take several", async () => {
@@ -212,7 +225,7 @@ describe("/admin → Parking panel", () => {
 			(c) => c.kind === "select" && c.placeholder === "Open spots…",
 		);
 		const values = menu?.kind === "select" ? menu.options.map((o) => o.value) : [];
-		expect(values).toEqual(["Smith| J", "a"]);
+		expect(values).toEqual(["a", "Smith| J"]);
 		const opened = replyOf(await t.click(reply, "Open spots…", values));
 		expect(said(opened)).toContain("**Smith, J**");
 		expect(t.windows.entries(NOW).blocks).toEqual([]);
