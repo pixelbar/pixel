@@ -215,16 +215,16 @@ When you're not parked, pick how long. The lengths come from the parking setting
 
 <PxPanel
 	command="/park"
-	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)', '**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
+	:embeds="[{ title: 'Parking', lines: ['How long do you need? Pixel finds a spot that\'s free for that whole time, opens the gate and says where to park.'] }, { title: 'Free', lines: ['**ours** (Next to the gate): free · open until 23:59 (13h 59m left)'] }, { title: 'Taken', lines: ['**neighbour-1**: taken by Another member since 09:30, until about 11:30 · open until 14:00 (4h left)'] }]"
 	:rows="[[{ label: 'Park for 30m' }, { label: 'Park for 1h' }, { label: 'Park for 2h' }, { label: 'Park for 4h' }, { label: 'Park until 23:59' }], [{ label: 'Another length…' }], [{ label: 'Refresh' }]]"
-	caption="Not parked: a button for each length, and who's in which spot."
+	caption="Not parked: a button for each length, and which spots are free, taken or closed."
 />
 
 Once you're parked, the panel says where. **Open the gate** opens it again, if it didn't open or you need it again. **Leave** frees your spot when you go. The **Stay … longer** buttons only offer what fits before the spot closes, or 23:59.
 
 <PxPanel
 	command="/park"
-	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Spots', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)', '**neighbour-1**: free · open until 14:00 (4h left)'] }]"
+	:embeds="[{ title: 'Parking', lines: ['Park in **ours** (Next to the gate). It\'s yours until 12:00.', 'The gate is opening.', 'I\'ll DM you 15 minutes before it ends (that needs DMs from server members on).', 'Press **Leave** when you go.'] }, { title: 'Free', lines: ['**neighbour-1**: free · open until 14:00 (4h left)'] }, { title: 'Taken', lines: ['**ours** (Next to the gate): taken by Example member since 10:00, until about 12:00 · open until 23:59 (13h 59m left)'] }]"
 	:rows="[[{ label: 'Open the gate', style: 'primary' }, { label: 'Leave' }, { label: 'Someone\'s in my spot' }], [{ label: 'Stay 30m longer' }, { label: 'Stay 1h longer' }, { label: 'Stay 2h longer' }, { label: 'Stay 4h longer' }, { label: 'Stay until 23:59' }], [{ label: 'Refresh' }]]"
 	caption="Parked: where to park, the gate, staying longer, a taken spot and leaving."
 />
@@ -269,3 +269,75 @@ For Pixel's operators. Every reply is private, and every change is recorded. How
 Opens the admin panel: Pixel's health, with sections for people and their access levels, capabilities, Discord roles, announcements, the closing-time reminder, doors, OpenR and parking.
 
 </PxCommand>
+
+`/admin` has no subcommands or options. Everything is buttons, menus and forms in its reply. The first panel shows Pixel's version, where it runs, its uptime, how many admins, members and friends there are, and the state of Discord roles, Home Assistant, OpenR and door control. From there:
+
+- **Go to…** opens one of the sections below.
+- **Reload the access lists** re-reads the member and admin lists and the Home Assistant devices after someone edited them by hand, and says what changed.
+- **Refresh** shows the status again.
+
+Changes that are hard to undo ask first. Changes to a person's level or capabilities, and to what a level gets, ask for an optional reason for the audit log. **← Admin** in every section goes back to the first panel.
+
+### People {#admin-people}
+
+One person's level, capabilities and Discord roles. **Look someone up…** asks who, then shows their level, where it comes from, what they hold and their roles.
+
+- **Change level…**: make them a member, a friend or a guest. Guest keeps their entry but gives no access. Admins can't be changed from Discord.
+- **Grant capabilities…** and **Revoke capabilities…**: menus of the capabilities they don't hold, and the ones they do. Revoking one they get from their level takes it away from them alone. Pixel DMs them about a grant or revoke.
+- **Grant every capability…**: every capability in one change.
+- **Sync their Discord roles**: sets their roles to match their level.
+- **Capabilities in detail**: the capabilities they hold, in full.
+
+### Capabilities {#admin-capabilities}
+
+Every capability, what it is for, how many people hold it and which levels get it. **What friends get** and **What members get** show what a level grants, with menus to grant a capability to everyone at that level, or take it back. What friends get, members get too. A level change DMs nobody.
+
+### Discord roles {#admin-roles}
+
+Whether Pixel's levels are mirrored to Discord roles. **Sync everyone** sets the roles to match Pixel's lists for everyone in them. People who hold a role but aren't listed aren't touched.
+
+### Announcements {#admin-announcements}
+
+The channels where Pixel announces that the space opened or closed, and whether each is posting. **Add a channel…** picks a channel you can post in and a style:
+
+- **Live**: one post per opening, edited when it closes.
+- **Timeline**: a new post for every open and close.
+- **Single**: only the latest; the old post is deleted.
+
+**Stop announcing in…** removes a channel. Changes take effect at once.
+
+### Closing time {#admin-closing-time}
+
+The reminder Pixel posts when the space closes, and by `/closing-time`. **Change the message…** opens the text, prefilled with the saved one. Markdown and date tokens like <code v-pre>{{date}}</code> work. With no message set, Pixel posts its own. It's posted in public, so never put door codes or other secrets in it.
+
+### Doors {#admin-doors}
+
+Door control from Pixel, on or off. **Switch door control off…** (Pixel asks first) stops every door action from Pixel at once, for everyone: Home Assistant's doors, OpenR's doors and the parking gate. **Switch door control on** brings it back. It stays as set across restarts. It doesn't lock a physical door.
+
+### OpenR {#admin-openr}
+
+Only shown where OpenR is set up. Whether Pixel is logged in to OpenR, and each door's status.
+
+- **Log in**: Pixel logs in, and OpenR emails a code.
+- **Enter the code…**: finishes logging in with that code. It's never logged.
+- **Log out…** (Pixel asks first): nobody can open a door through OpenR until an admin logs in again.
+
+### Parking {#admin-parking}
+
+Every spot, whether it's open, until when, and who's in it, 25 spots to a page.
+
+- **Manage a spot…**: opens one spot, below.
+- **Open spots…**: opens borrowed spots, from and until a time (now until the reset, unless you change it).
+- **Close spots…**: ends a borrowed spot's opening for today, or closes Pixelbar's own spot until a time you pick.
+- **Add a spot**: a name, a description shown to people who park, and its kind: **Permanent** (Pixelbar's own, open every day until the reset) or **Borrowed** (closed until an admin opens it).
+- **Settings**: how many minutes before the end Pixel reminds people, how long after the end it ends a booking, the daily reset when every booking ends, and the lengths `/park` offers.
+
+One spot's panel has:
+
+- **Open…** and **Close for today** for a borrowed spot, or **Close…** and **Open again** for Pixelbar's own.
+- **Edit…**: where it is (shown to people who park) and its kind.
+- **Remove…** (Pixel asks first): the spot and its opening times go. This can't be undone.
+- **Free the spot…**: ends the booking of someone who left without pressing **Leave**.
+- **Give it to someone…**: books it for the person who is parked there, for how long you say (such as `2h` or `rest of day`), or until the spot closes if you leave it empty. They get a DM, and a booking they had elsewhere ends. Pixel won't take a spot from someone still booked into it unless you go ahead when it asks.
+
+How to use these day to day is in the [runbook](/maintainers/runbook).
