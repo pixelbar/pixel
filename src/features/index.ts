@@ -25,6 +25,7 @@ import type { ParkingWindowStore } from "../services/parking-windows.ts";
 import type { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStateApi } from "../services/space-state-api.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
+import type { Wiki } from "../services/wiki.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createClosingTimeFeature } from "./closing-time/index.ts";
 import { createEventsFeature } from "./events/index.ts";
@@ -39,6 +40,7 @@ import { createPingFeature } from "./ping/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
+import { createWikiFeature } from "./wiki/index.ts";
 
 export type FeatureDeps = {
 	version: string;
@@ -85,6 +87,8 @@ export type FeatureDeps = {
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
+	/** Pixelbar's wiki, for `/wiki`. */
+	wiki: Wiki;
 	/** The time zone times are shown in, e.g. "Europe/Amsterdam". */
 	timezone: string;
 	logger: Logger;
@@ -132,6 +136,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		closingTime,
 		createEventsFeature({ calendar: deps.calendar, timezone: deps.timezone }),
 		createInfoFeature({ topics: deps.infoTopics }),
+		createWikiFeature({ wiki: deps.wiki, logger: deps.logger }),
 		createWhoamiFeature(),
 		createFeedbackFeature({ sink: deps.feedback }),
 		createSchedulesFeature({

@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- **`/wiki [query:]`** searches [Pixelbar's wiki](https://wiki.pixelbar.nl) and lists the matching pages as links, with **See all results** on the wiki when there are more than fit. Typing suggests page titles. When whole words find nothing, it tries them as the start of words, so `clean` finds Cleaning. `/wiki` on its own, or a search that finds nothing, replies privately with buttons for the wiki's top pages: the ones its Main Page links to, so editing that page changes them. Open to everyone. New optional setting `WIKI_API_URL` (default `https://wiki.pixelbar.nl/w/api.php`). Run `just register dev` / `just register prod` after deploying.
+
 ## [0.25.2] - 2026-11-04
 
 ### Changed

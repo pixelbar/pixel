@@ -43,6 +43,7 @@ import { ScheduleStore } from "./services/schedules.ts";
 import { HttpSpaceStateApi } from "./services/space-state-api.ts";
 import { FileSpaceStateStore } from "./services/space-state-store.ts";
 import { SpaceApiStatus, type SpaceStatus } from "./services/space-status.ts";
+import { MediaWiki } from "./services/wiki.ts";
 
 export type Core = {
 	access: AccessStore;
@@ -200,6 +201,13 @@ export function buildCore(
 	);
 	logger.info({ event: "info.loaded", topics: infoTopics.length }, "loaded /info topics");
 
+	// Read-only and anonymous. Nothing is fetched until someone uses /wiki.
+	const wiki = new MediaWiki({
+		apiUrl: config.wikiApiUrl,
+		userAgent: `Pixel/${config.version} (Pixelbar's Discord bot; https://pixelbar.nl/pixel)`,
+		...(options.fetch ? { fetch: options.fetch } : {}),
+	});
+
 	const registry = new CommandRegistry({ capabilities });
 	const features = buildFeatures({
 		version: config.version,
@@ -231,6 +239,7 @@ export function buildCore(
 		parkingChannelId: config.discord.announce.parkingChannelId,
 		canSchedule,
 		infoTopics,
+		wiki,
 		timezone: config.timezone,
 		logger,
 		closingTime: {

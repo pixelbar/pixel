@@ -53,6 +53,7 @@ describe("buildCore", () => {
 			sentryTracesSampleRate: 1,
 			sentryProfileSessionSampleRate: 1,
 			spaceApiUrl: "https://spaceapi.example/",
+			wikiApiUrl: "https://wiki.example/w/api.php",
 			spaceStateApi: undefined,
 			openr: undefined,
 			discord: {
