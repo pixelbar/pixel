@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-11-04
+
 ### Added
 
 - When something typed on a form is wrong (a bad spot name, a time Pixel can't read, an OpenR code that doesn't work), the private reply now has **Fix it**, which opens the form again filled in with what was typed, instead of starting over. Every form opened from a button or menu gets it when its action refuses what was typed, which today is every `/admin` form, including Parking (where a form's mistake now comes back this way instead of on the panel). Discord can't check a form before it's sent, so this is the nearest thing. `/schedule` already keeps what was typed in its draft, and `/park` shows its problems on its panel.
@@ -370,7 +372,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/pixelbar/pixel/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/pixelbar/pixel/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/pixelbar/pixel/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/pixelbar/pixel/compare/v0.21.0...v0.22.0
