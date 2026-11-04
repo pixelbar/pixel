@@ -32,8 +32,8 @@ just test             # tests only
 just fmt              # auto-format (Biome, and Terraform if `terraform` is on PATH)
 just validate-config  # validate the access list files
 just validate-secrets # validate infra/secrets.manifest.yaml and list the Key Vault secrets
-just pull dev         # pull tfvars, app secrets and read-only share mirrors for that env
-just push dev         # diff tfvars + app secrets + members.yaml against Key Vault and push on a yes (never prod from an agent)
+just pull dev         # pull tfvars, app secrets and every share file (members, devices, data/) for that env
+just push dev         # diff tfvars + app secrets + edited share files and push on a yes (never prod from an agent)
 just secrets-pull dev # pull that env's app secrets from Key Vault into .env.dev + config/admins.dev.yaml
 just secrets-push dev # diff local app secrets against Key Vault and push on a yes (never prod from an agent)
 just restart dev      # restart that env's Container App so it reads its secrets again

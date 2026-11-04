@@ -228,16 +228,17 @@ openr-doors env:
     pnpm exec tsx scripts/openr-doors.ts {{env}}
 
 # Pulls terraform-tfvars into infra/envs/<env>/terraform.tfvars, the app secrets (as
-# secrets-pull), and read-only mirrors of members.yaml, devices.yaml and announcement-routes.yaml.
+# secrets-pull), and mirrors of the share: members.yaml, devices.yaml and data/ (schedules,
+# parking, announcement routes, closing time), never the door session or logs.
 # Pull everything for an env (tfvars, secrets, share config) to edit, plan or sync: `just pull dev|prod`
 [group('environments')]
 pull env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} pull --all
 
 # Diffs against the live vault and pushes on a yes. Refuses tfvars that hold a secret or
-# are for the other env. members.yaml goes back to the share too, checked with admins.yaml,
-# and only if Pixel hasn't changed it since; the other mirrors never go back up.
-# Push an env's tfvars, app secrets and members.yaml after showing the diff: `just push dev|prod`
+# are for the other env. Share files you edited since the pull go back too, checked the way
+# Pixel reads them, and only if Pixel hasn't changed them since; then it offers a restart.
+# Push an env's tfvars, app secrets and edited share files after showing the diff: `just push dev|prod`
 [group('environments')]
 push env:
     pnpm exec tsx scripts/secrets-sync.ts {{env}} push --all

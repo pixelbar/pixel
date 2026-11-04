@@ -159,7 +159,8 @@ describe("localFiles", () => {
 			adminsFile: "config/admins.dev.yaml",
 			membersFile: "config/dev/members.yaml",
 			homeAssistantDir: "config/home-assistant/dev",
-			announcementRoutesFile: "config/dev/announcement-routes.yaml",
+			dataDir: "config/dev/data",
+			pulledFile: "config/dev/pulled.json",
 		});
 		expect(Object.values(localFiles("prod"))).not.toContain("config/admins.yaml");
 	});

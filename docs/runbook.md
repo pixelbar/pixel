@@ -153,7 +153,7 @@ That's all: Pixel updates `members.yaml` itself (writing the person's Discord us
 **Azure (`dev`):**
 
 - **`admins.yaml`:** Key Vault secret `admins-yaml`, mounted read-only. `just secrets-pull dev` writes it to `config/admins.dev.yaml`; edit that, then `just secrets-push dev`, which checks it against the env's `members.yaml` and offers the restart (see [Sync secrets with Key Vault](#sync-secrets-with-key-vault)). Versions of the secret are history.
-- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit of `members.yaml`: `just pull dev`, edit `config/dev/members.yaml`, `just push dev` (see [Pull and push an environment](#pull-and-push-an-environment)), then `/admin` → **Reload the access lists**, or restart. Daily backups of the share keep 14 days.
+- **`members.yaml` and Home Assistant files:** on the Azure Files share. Admin commands already rewrite `members.yaml` in place. A hand edit of `members.yaml` (or any file on the share): `just pull dev`, edit `config/dev/members.yaml`, `just push dev` (see [Pull and push an environment](#pull-and-push-an-environment)), then `/admin` → **Reload the access lists**, or restart. Daily backups of the share keep 14 days.
 - Prod (#12) will be the same layout in `pixel-prod`.
 
 ## Moderation
@@ -484,11 +484,18 @@ These local files are gitignored and written readable only by you. **You need:**
 | --- | --- | --- | --- |
 | Stack settings | `infra/envs/<env>/terraform.tfvars` | Key Vault secret `terraform-tfvars` (the `tooling` group) | Yes |
 | App secrets | `.env.<env>`, `config/admins.<env>.yaml` | Key Vault (as `just secrets-pull`, above) | Yes |
-| `members.yaml` | `config/<env>/members.yaml` | File share | Yes, for a hand edit (prefer `/admin`) |
-| `devices.yaml` | `config/home-assistant/<env>/devices.yaml` | File share | Never: use `just ha-devices` |
-| `announcement-routes.yaml` | `config/<env>/announcement-routes.yaml` | File share (`data/`) | Never: `/admin` → Announcements |
+| `members.yaml` | `config/<env>/members.yaml` | File share | Yes, if you edited it (prefer `/admin`). Then `/admin` → **Reload the access lists** |
+| `devices.yaml` | `config/home-assistant/<env>/devices.yaml` | File share | Yes, if you edited it (prefer `just ha-devices`). Then **Reload the access lists** |
+| `schedules.yaml`, `parking-spots.yaml`, `parking-windows.yaml`, `parking-bookings.yaml`, `announcement-routes.yaml` | `config/<env>/data/` | File share (`data/`) | Yes, if you edited it (prefer `/schedule`, `/admin`). Then a restart, which it offers |
+| `closing-time.md` | `config/<env>/data/closing-time.md` | File share (`data/`) | Yes, if you edited it. Used from the next post |
 
-All of them are gitignored. `devices.yaml` and `announcement-routes.yaml` are **read-only mirrors**: edit the real thing through Pixel or `just ha-devices`, not the mirror. If a mirror differs from the share, `just pull` shows the diff and asks before replacing it.
+All of them are gitignored. Never mirrored: `data/openr-session.json` (the door session's cookies) and `data/logs/`.
+
+`just pull` records what each share file was in `config/<env>/pulled.json`. That is how `just push` tells your edits from changes Pixel made since: it sends back **only the files you edited since the pull**, so a mirror you didn't touch never goes back over a booking or a schedule Pixel saved meanwhile. If a file you edited also changed on the share since the pull, the push stops: pull again (it shows both and asks before replacing your edit), redo it, and push. A mirror you haven't edited is refreshed by the next pull without asking. Each edited file is checked the way Pixel reads it before anything is pushed, and the push shows the diff, asks, uploads only if the share's copy hasn't changed since it was read, and reads it back.
+
+Pixel reads `schedules.yaml`, the parking files and `announcement-routes.yaml` only when it starts, and its next change to one (a booking, a schedule post) writes what it holds in memory back over the file. So a push of one of those offers to restart the Container App straight away (yes by default): say yes, or restart before anyone uses that feature. Prefer Pixel's own commands for these; a hand edit is for what they can't do.
+
+**Mirrors from before `pulled.json`:** a push lists a mirror that differs from the share with no record of its pull as `?` and leaves it alone. Run `just pull <env>` once; if you have an edit in a mirror, it shows the diff and asks, and saying no keeps your edit for the next push.
 
 **Edit `members.yaml` by hand** (to delete an entry, say; `/admin` → People → **Change level…** and `/admin` → Capabilities are still quicker for what they cover): `just pull dev`, edit `config/dev/members.yaml`, then `just push dev`. It shows the diff against the share, checks the file with the vault's `admins.yaml` (or your local one, if you're pushing that too) the way Pixel does at startup, and asks. It uploads only if the share's copy hasn't changed since it was read: an admin command in the meantime stops it, so pull again and redo the edit. It reads the file back afterwards. Then run `/admin` → **Reload the access lists** in that env (or let it restart). Before asking, it lists each change as an `access.changed` record (a person's level or capabilities, a level's capabilities, someone removed; a note alone isn't one), and after the upload it sends them to that env's Sentry Logs, like Pixel's own, with `user` set to your Azure account (`azure:<you>`) and `source: just-push`. Without a `SENTRY_DSN` for that env it says so and pushes anyway.
 

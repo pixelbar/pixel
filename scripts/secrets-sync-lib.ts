@@ -5,9 +5,21 @@
  * secret by its name and length. File secrets (admins.yaml, terraform.tfvars) hold no
  * tokens, so their diffs are shown.
  */
+import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEnv } from "node:util";
+import { HOME_KINDS } from "../src/core/home-kinds/index.ts";
+import { type Logger, silentLogger } from "../src/core/logger.ts";
+import { AnnouncementRouteStore } from "../src/services/announcement-routes.ts";
+import { HomeDevicesError } from "../src/services/home-devices.ts";
+import { ParkingBookingStore } from "../src/services/parking-bookings.ts";
+import { ParkingSpotStore } from "../src/services/parking-spots.ts";
+import { ParkingWindowStore } from "../src/services/parking-windows.ts";
+import { ScheduleStore } from "../src/services/schedules.ts";
 import { ENVS, localFiles, type Target } from "./envs.ts";
+import { validateDevices } from "./ha-devices-lib.ts";
 import type { SecretEntry, SecretsManifest } from "./secrets-manifest.ts";
 
 /** Where each env's secrets live on Azure, and the Container App that reads them. */
@@ -360,41 +372,253 @@ export function tfvarsProblems(
 }
 
 /**
- * Files on the env's share that `just pull` mirrors locally. `just push` sends back
- * only the ones marked `push` (members.yaml, a hand edit); Pixel and `just ha-devices`
- * are the only writers of the rest, so those mirrors are read-only.
+ * What Pixel needs before it uses a pushed share file. `reload`: `/admin` → Reload the
+ * access lists, or a restart. `restart`: it reads the file only when it starts, and its
+ * next change writes what it holds in memory back over the file. `none`: it reads the
+ * file each time it uses it.
  */
-export type ShareFile = { path: string; mirror: string; push: boolean };
+export type Pickup = "reload" | "restart" | "none";
+
+/**
+ * A file on the env's share that `just pull` mirrors and `just push` sends back when
+ * you've edited the mirror. `check` reads the text the way Pixel does and says what's
+ * wrong with it (members.yaml is checked with admins.yaml instead). Never mirrored:
+ * `data/openr-session.json` (the door session's cookies) and `data/logs/`.
+ */
+export type ShareFile = {
+	path: string;
+	mirror: string;
+	pickup: Pickup;
+	check?: (text: string, label: string) => string | undefined;
+};
+
+/**
+ * Loads a data file's text through Pixel's own store in a scratch folder, and returns
+ * its problem with the scratch path replaced by `label`. `open` returns the store's
+ * problem; a store without one counts an error it logs as one.
+ */
+function storeCheck(
+	name: string,
+	open: (file: string, logger: Logger) => string | undefined,
+): NonNullable<ShareFile["check"]> {
+	return (text, label) => {
+		const dir = mkdtempSync(join(tmpdir(), "pixel-share-"));
+		const file = join(dir, name);
+		let logged: string | undefined;
+		const logger: Logger = {
+			...silentLogger,
+			error: () => {
+				logged ??= `${label} is invalid`;
+			},
+			child: () => logger,
+		};
+		try {
+			writeFileSync(file, text, { mode: 0o600 });
+			return (open(file, logger) ?? logged)?.replaceAll(file, label);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	};
+}
+
+function devicesCheck(text: string, label: string): string | undefined {
+	try {
+		validateDevices(text, HOME_KINDS);
+		return undefined;
+	} catch (error) {
+		if (!(error instanceof HomeDevicesError)) throw error;
+		return `${label}: ${error.message.replace(/^.*?devices\.yaml: /, "")}`;
+	}
+}
+
+/** Pixel's `data/` files, by name: how each is checked and picked up. */
+const DATA_FILES: readonly Omit<ShareFile, "mirror">[] = [
+	{
+		path: "schedules.yaml",
+		pickup: "restart",
+		check: storeCheck(
+			"schedules.yaml",
+			(file, logger) => new ScheduleStore({ file, logger }).problem,
+		),
+	},
+	{
+		path: "parking-spots.yaml",
+		pickup: "restart",
+		check: storeCheck(
+			"parking-spots.yaml",
+			(file, logger) => new ParkingSpotStore({ file, logger }).problem,
+		),
+	},
+	{
+		path: "parking-windows.yaml",
+		pickup: "restart",
+		check: storeCheck(
+			"parking-windows.yaml",
+			(file, logger) => new ParkingWindowStore({ file, logger }).problem,
+		),
+	},
+	{
+		path: "parking-bookings.yaml",
+		pickup: "restart",
+		check: storeCheck(
+			"parking-bookings.yaml",
+			(file, logger) => new ParkingBookingStore({ file, logger }).problem,
+		),
+	},
+	{
+		path: "announcement-routes.yaml",
+		pickup: "restart",
+		check: storeCheck("announcement-routes.yaml", (file, logger) => {
+			new AnnouncementRouteStore({ file, logger });
+			return undefined;
+		}),
+	},
+	{ path: "closing-time.md", pickup: "none" },
+];
 
 export function shareFiles(target: Target): ShareFile[] {
 	const files = localFiles(target);
 	return [
-		{ path: "members.yaml", mirror: files.membersFile, push: true },
+		{ path: "members.yaml", mirror: files.membersFile, pickup: "reload" },
 		{
 			path: "home-assistant/devices.yaml",
 			mirror: join(files.homeAssistantDir, "devices.yaml"),
-			push: false,
+			pickup: "reload",
+			check: devicesCheck,
 		},
-		{ path: "data/announcement-routes.yaml", mirror: files.announcementRoutesFile, push: false },
+		...DATA_FILES.map((file) => ({
+			...file,
+			path: `data/${file.path}`,
+			mirror: join(files.dataDir, file.path),
+		})),
 	];
 }
 
-/** One line for a pushed share file: local mirror → the share. */
-export function describeShareFile(
-	file: ShareFile,
-	local: string | undefined,
-	remote: string | undefined,
-): string {
-	if (local === undefined) return `  - ${file.path}: no ${file.mirror} (left as it is)`;
-	if (remote === undefined) return `  + ${file.path}: new on the share (from ${file.mirror})`;
-	return local === remote
-		? `  = ${file.path}: the same`
-		: `  ~ ${file.path}: changes (from ${file.mirror})`;
+/**
+ * What each share file was when it was last pulled, by share path: a SHA-256 of its
+ * text, or null when it wasn't on the share. Kept in `pulledFile` so a push can tell
+ * your edits from changes Pixel made since.
+ */
+export type Pulled = Record<string, string | null>;
+
+export function digest(text: string): string {
+	return createHash("sha256").update(text).digest("hex");
 }
 
-/** Whether a push uploads the mirror: there is one, and it differs from the share. */
-export function shareFileChanges(local: string | undefined, remote: string | undefined): boolean {
-	return local !== undefined && local !== remote;
+/** The pull record. A missing or unreadable one is empty: nothing counts as pulled. */
+export function parsePulled(text: string | undefined): Pulled {
+	if (text === undefined) return {};
+	let data: unknown;
+	try {
+		data = JSON.parse(text);
+	} catch {
+		return {};
+	}
+	if (typeof data !== "object" || data === null || Array.isArray(data)) return {};
+	return Object.fromEntries(
+		Object.entries(data).filter(([, v]) => v === null || typeof v === "string"),
+	) as Pulled;
+}
+
+/** The record of a pull: the state of every share file just read. */
+export function pulledRecord(remotes: ReadonlyMap<string, string | undefined>): Pulled {
+	return Object.fromEntries(
+		[...remotes].map(([path, text]) => [path, text === undefined ? null : digest(text)]),
+	);
+}
+
+/**
+ * Whether the mirror changed since it was pulled (`base`). With no record of the pull,
+ * any difference from the share counts, as it might be an edit.
+ */
+function edited(
+	local: string | undefined,
+	remote: string | undefined,
+	base: string | null | undefined,
+): boolean {
+	if (local === undefined) return false;
+	if (base === undefined) return local !== remote;
+	return base === null || digest(local) !== base;
+}
+
+/**
+ * What a pull does with one share file. `write` refreshes a mirror you haven't edited,
+ * `remove` drops one whose file left the share, `ask` is your edit against a different
+ * file on the share, and `keep` your new file the share doesn't have.
+ */
+export type PullStep = "same" | "absent" | "write" | "remove" | "ask" | "keep";
+
+export function pullStep(
+	local: string | undefined,
+	remote: string | undefined,
+	base: string | null | undefined,
+): PullStep {
+	if (local === remote) return remote === undefined ? "absent" : "same";
+	if (!edited(local, remote, base)) return remote === undefined ? "remove" : "write";
+	return remote === undefined ? "keep" : "ask";
+}
+
+export function describePull(file: ShareFile, step: PullStep): string {
+	switch (step) {
+		case "same":
+			return `  = ${file.path} → ${file.mirror}`;
+		case "absent":
+			return `  - ${file.path}: not on the share`;
+		case "write":
+			return `  ~ ${file.path} → ${file.mirror}`;
+		case "remove":
+			return `  - ${file.path}: gone from the share, so ${file.mirror} is removed`;
+		case "ask":
+			return `  ! ${file.path}: you edited ${file.mirror}, and the share's differs`;
+		case "keep":
+			return `  + ${file.path}: only in ${file.mirror} (just push sends it)`;
+	}
+}
+
+/**
+ * What a push does with one share file. `create` and `change` send your edit;
+ * `unedited` leaves a mirror you haven't touched since the pull (even if the share has
+ * moved on); `unknown` is a mirror that differs with no record of its pull; `moved` is
+ * your edit to a file that changed on the share since you pulled it.
+ */
+export type PushStep = "missing" | "same" | "unedited" | "unknown" | "moved" | "create" | "change";
+
+export function pushStep(
+	local: string | undefined,
+	remote: string | undefined,
+	base: string | null | undefined,
+): PushStep {
+	if (local === undefined) return "missing";
+	if (local === remote) return "same";
+	if (base === undefined) return "unknown";
+	if (!edited(local, remote, base)) return "unedited";
+	if ((remote === undefined ? null : digest(remote)) !== base) return "moved";
+	return remote === undefined ? "create" : "change";
+}
+
+/** Whether a push uploads the mirror. */
+export function pushes(step: PushStep): boolean {
+	return step === "create" || step === "change";
+}
+
+/** One line for a share file in a push: local mirror → the share. Never its contents. */
+export function describePush(file: ShareFile, step: PushStep, target: Target): string {
+	switch (step) {
+		case "missing":
+			return `  - ${file.path}: no ${file.mirror} (left as it is)`;
+		case "same":
+			return `  = ${file.path}: the same`;
+		case "unedited":
+			return `  = ${file.path}: not edited since the pull (left as it is)`;
+		case "unknown":
+			return `  ? ${file.path}: ${file.mirror} differs, but there's no record of pulling it (left as it is: run just pull ${target} first)`;
+		case "moved":
+			return `  ! ${file.path}: changed on the share since you pulled it`;
+		case "create":
+			return `  + ${file.path}: new on the share (from ${file.mirror})`;
+		case "change":
+			return `  ~ ${file.path}: changes (from ${file.mirror})`;
+	}
 }
 
 /** Whether `az storage file download` failed because the file isn't on the share. */

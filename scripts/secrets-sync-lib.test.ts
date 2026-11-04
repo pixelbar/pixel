@@ -8,7 +8,9 @@ import {
 	azShowArgs,
 	compare,
 	describe,
-	describeShareFile,
+	describePull,
+	describePush,
+	digest,
 	envFile,
 	envValue,
 	isFile,
@@ -19,13 +21,18 @@ import {
 	localValues,
 	newEnvFile,
 	otherEnvFiles,
+	parsePulled,
 	parseShown,
 	pixelEnvOf,
+	pulledRecord,
+	pullStep,
+	pushes,
+	pushStep,
 	redactTfvars,
 	reusedDiscordToken,
+	type ShareFile,
 	secretTfvarsFile,
 	setEnvValues,
-	shareFileChanges,
 	shareFiles,
 	stackVariables,
 	syncedSecrets,
@@ -403,51 +410,131 @@ variable "discord_token" {
 });
 
 group("share files", () => {
-	it("mirrors the share's config files under config/, never next to the real ones", () => {
-		expect(shareFiles("prod")).toEqual([
-			{ path: "members.yaml", mirror: "config/prod/members.yaml", push: true },
-			{
-				path: "home-assistant/devices.yaml",
-				mirror: "config/home-assistant/prod/devices.yaml",
-				push: false,
-			},
-			{
-				path: "data/announcement-routes.yaml",
-				mirror: "config/prod/announcement-routes.yaml",
-				push: false,
-			},
+	const at = (path: string): ShareFile => {
+		const file = shareFiles("dev").find((f) => f.path === path);
+		if (file === undefined) throw new Error(`no ${path}`);
+		return file;
+	};
+	const check = (path: string, text: string) => at(path).check?.(text, `mirror/${path}`);
+
+	it("mirrors every config and data file on the share under config/<env>/", () => {
+		expect(shareFiles("prod").map((f) => [f.path, f.mirror, f.pickup])).toEqual([
+			["members.yaml", "config/prod/members.yaml", "reload"],
+			["home-assistant/devices.yaml", "config/home-assistant/prod/devices.yaml", "reload"],
+			["data/schedules.yaml", "config/prod/data/schedules.yaml", "restart"],
+			["data/parking-spots.yaml", "config/prod/data/parking-spots.yaml", "restart"],
+			["data/parking-windows.yaml", "config/prod/data/parking-windows.yaml", "restart"],
+			["data/parking-bookings.yaml", "config/prod/data/parking-bookings.yaml", "restart"],
+			["data/announcement-routes.yaml", "config/prod/data/announcement-routes.yaml", "restart"],
+			["data/closing-time.md", "config/prod/data/closing-time.md", "none"],
 		]);
 	});
 
-	it("pushes only members.yaml back", () => {
+	it("never mirrors the door session or the logs", () => {
+		const paths = shareFiles("dev").map((f) => f.path);
+		expect(paths).not.toContain("data/openr-session.json");
+		expect(paths.some((p) => p.startsWith("data/logs"))).toBe(false);
+	});
+
+	it("checks each data file the way Pixel loads it, naming the mirror", () => {
+		for (const path of [
+			"data/schedules.yaml",
+			"data/parking-spots.yaml",
+			"data/parking-windows.yaml",
+			"data/parking-bookings.yaml",
+		]) {
+			expect(check(path, "{")).toMatch(new RegExp(`^mirror/${path} `));
+		}
+		expect(check("data/announcement-routes.yaml", "routes: nope")).toBe(
+			"mirror/data/announcement-routes.yaml is invalid",
+		);
+		expect(check("home-assistant/devices.yaml", "{")).toMatch(
+			/^mirror\/home-assistant\/devices\.yaml: invalid YAML/,
+		);
+		expect(at("data/closing-time.md").check).toBeUndefined();
+		expect(at("members.yaml").check).toBeUndefined();
+	});
+
+	it("passes files Pixel can read", () => {
+		expect(check("data/schedules.yaml", "schedules: []\n")).toBeUndefined();
+		expect(check("data/announcement-routes.yaml", "routes: []\n")).toBeUndefined();
+		expect(check("home-assistant/devices.yaml", "devices: []\n")).toBeUndefined();
+	});
+
+	it("records what each file was when pulled", () => {
+		const pulled = pulledRecord(
+			new Map([
+				["members.yaml", "a"],
+				["data/schedules.yaml", undefined],
+			]),
+		);
+		expect(pulled).toEqual({ "members.yaml": digest("a"), "data/schedules.yaml": null });
+		expect(parsePulled(JSON.stringify(pulled))).toEqual(pulled);
+	});
+
+	it("reads a missing or broken record as nothing pulled", () => {
+		expect(parsePulled(undefined)).toEqual({});
+		expect(parsePulled("{")).toEqual({});
+		expect(parsePulled("[]")).toEqual({});
+		expect(parsePulled("null")).toEqual({});
+		expect(parsePulled('{"a": 1, "b": null, "c": "x"}')).toEqual({ b: null, c: "x" });
+	});
+
+	it("refreshes mirrors you haven't edited and asks about ones you have", () => {
+		const base = digest("old");
+		expect(pullStep("x", "x", base)).toBe("same");
+		expect(pullStep(undefined, undefined, undefined)).toBe("absent");
+		expect(pullStep("old", "new", base)).toBe("write");
+		expect(pullStep(undefined, "new", base)).toBe("write");
+		expect(pullStep("old", undefined, base)).toBe("remove");
+		expect(pullStep("mine", "new", base)).toBe("ask");
+		expect(pullStep("mine", undefined, base)).toBe("keep");
+		expect(pullStep("mine", undefined, null)).toBe("keep");
+		// Without a record, any difference might be an edit.
+		expect(pullStep("mine", "new", undefined)).toBe("ask");
+		expect(pullStep("mine", undefined, undefined)).toBe("keep");
+	});
+
+	it("pushes only your edits, and only over what you pulled", () => {
+		const base = digest("old");
+		expect(pushStep(undefined, "old", base)).toBe("missing");
+		expect(pushStep("x", "x", base)).toBe("same");
+		// A stale mirror never goes back over Pixel's changes.
+		expect(pushStep("old", "newer", base)).toBe("unedited");
+		expect(pushStep("mine", "newer", undefined)).toBe("unknown");
+		expect(pushStep("mine", "newer", base)).toBe("moved");
+		expect(pushStep("mine", undefined, base)).toBe("moved");
+		expect(pushStep("mine", "old", base)).toBe("change");
+		expect(pushStep("mine", undefined, null)).toBe("create");
+		expect(pushStep("mine", "new", null)).toBe("moved");
 		expect(
-			shareFiles("dev")
-				.filter((f) => f.push)
-				.map((f) => f.path),
-		).toEqual(["members.yaml"]);
+			(["missing", "same", "unedited", "unknown", "moved", "create", "change"] as const).filter(
+				pushes,
+			),
+		).toEqual(["create", "change"]);
 	});
 
-	it("uploads a mirror only when there is one and it differs", () => {
-		expect(shareFileChanges("a", "b")).toBe(true);
-		expect(shareFileChanges("a", undefined)).toBe(true);
-		expect(shareFileChanges("a", "a")).toBe(false);
-		expect(shareFileChanges(undefined, "a")).toBe(false);
-		expect(shareFileChanges(undefined, undefined)).toBe(false);
-	});
-
-	it("describes a pushed share file without its contents", () => {
-		const [members] = shareFiles("dev");
-		if (members === undefined) throw new Error("no members.yaml");
-		expect(describeShareFile(members, "x", "x")).toBe("  = members.yaml: the same");
-		expect(describeShareFile(members, "x", "y")).toBe(
+	it("describes a share file without its contents", () => {
+		const members = at("members.yaml");
+		expect(describePush(members, "same", "dev")).toBe("  = members.yaml: the same");
+		expect(describePush(members, "change", "dev")).toBe(
 			"  ~ members.yaml: changes (from config/dev/members.yaml)",
 		);
-		expect(describeShareFile(members, "x", undefined)).toBe(
+		expect(describePush(members, "create", "dev")).toBe(
 			"  + members.yaml: new on the share (from config/dev/members.yaml)",
 		);
-		expect(describeShareFile(members, undefined, "y")).toBe(
+		expect(describePush(members, "missing", "dev")).toBe(
 			"  - members.yaml: no config/dev/members.yaml (left as it is)",
 		);
+		expect(describePush(members, "unedited", "dev")).toContain("not edited since the pull");
+		expect(describePush(members, "unknown", "dev")).toContain("run just pull dev first");
+		expect(describePush(members, "moved", "dev")).toContain("changed on the share");
+		expect(describePull(members, "same")).toBe("  = members.yaml → config/dev/members.yaml");
+		expect(describePull(members, "write")).toBe("  ~ members.yaml → config/dev/members.yaml");
+		expect(describePull(members, "absent")).toBe("  - members.yaml: not on the share");
+		expect(describePull(members, "remove")).toContain("gone from the share");
+		expect(describePull(members, "ask")).toContain("you edited config/dev/members.yaml");
+		expect(describePull(members, "keep")).toContain("just push sends it");
 	});
 
 	it("tells a missing file from other failures", () => {

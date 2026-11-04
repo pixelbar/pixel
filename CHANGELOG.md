@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- `just pull dev|prod` now mirrors every file on the env's share: `members.yaml`, `devices.yaml` and all of `data/` (schedules, parking spots, opening times and bookings, announcement routes, the closing-time message) into `config/<env>/`, never the OpenR session or the logs. `just push` sends back any of them you edited since the pull, checked the way Pixel reads them, and only if Pixel hasn't changed them since; a mirror you didn't touch is never pushed over Pixel's changes. Files Pixel reads only at startup make it offer a restart straight away. The announcement routes mirror moved to `config/<env>/data/`. Run `just pull` once before your next push.
+
 ## [0.25.2] - 2026-11-04
 
 ### Changed
