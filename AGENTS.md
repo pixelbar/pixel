@@ -74,6 +74,7 @@ src/
 config/                 # *.example.yaml committed; real admins.yaml / members.yaml gitignored
 data/                   # runtime state; gitignored. Safe to delete EXCEPT schedules.yaml, parking-*.yaml and (while a poll is open) attendance.yaml
 content/info/           # markdown for /info topics, one file per topic; PUBLIC, reviewed
+tests/                  # every *.test.ts, mirroring src/ (tests/core/x.test.ts tests src/core/x.ts); tests/scripts/ for scripts/
 scripts/                # envs (the one definition of dev/prod), register-commands, validate-config, changelog check/bump
 docs/                   # architecture, identity, infra, Home Assistant setup, ADRs, runbook;
                         #   also the VitePress website: see docs/AGENTS.md before changing it
