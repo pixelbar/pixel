@@ -9,6 +9,7 @@ import {
 } from "../../core/recurrence.ts";
 import { describeWhen } from "../../core/when.ts";
 import {
+	MAX_ATTENDANCE_LABEL,
 	MAX_MESSAGE_LENGTH,
 	MAX_POLL_ANSWER,
 	MAX_POLL_QUESTION,
@@ -35,6 +36,11 @@ export function overLimit(post: ChannelPost): string | undefined {
 	}
 	if (length(post.question) > MAX_POLL_QUESTION) {
 		return `the question would be over Discord's ${MAX_POLL_QUESTION}-character limit`;
+	}
+	if (post.kind === "attendance") {
+		return post.answers.some((answer) => length(answer.label) > MAX_ATTENDANCE_LABEL)
+			? `an answer would be over the ${MAX_ATTENDANCE_LABEL}-character limit`
+			: undefined;
 	}
 	if (post.answers.some((answer) => length(answer) > MAX_POLL_ANSWER)) {
 		return `an answer would be over Discord's ${MAX_POLL_ANSWER}-character limit`;
@@ -83,6 +89,16 @@ export function clipToLimits(post: ChannelPost): { post: ChannelPost; clipped: b
 	if (!overLimit(post)) return { post, clipped: false };
 	if (post.kind === "message") {
 		return { post: { ...post, text: clip(post.text, MAX_MESSAGE_LENGTH) }, clipped: true };
+	}
+	if (post.kind === "attendance") {
+		return {
+			post: {
+				...post,
+				question: clip(post.question, MAX_POLL_QUESTION),
+				answers: post.answers.map((a) => ({ ...a, label: clip(a.label, MAX_ATTENDANCE_LABEL) })),
+			},
+			clipped: true,
+		};
 	}
 	return {
 		post: {

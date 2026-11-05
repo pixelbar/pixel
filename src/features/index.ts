@@ -14,6 +14,7 @@ import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
 import { type Gate, notConnectedGate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
+import type { AttendanceStore } from "../services/attendance.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
@@ -62,6 +63,8 @@ export type FeatureDeps = {
 	/** Where scheduled posts go, once the platform adapter is ready. */
 	channelPosts: ChannelPosts;
 	schedules: ScheduleStore;
+	/** Attendance polls Pixel has posted, and their votes. */
+	attendance: AttendanceStore;
 	/** Parking spots and settings (`data/parking-spots.yaml`). */
 	parkingSpots: ParkingSpotStore;
 	/** When parking spots are open or closed (`data/parking-windows.yaml`). */
@@ -136,6 +139,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createFeedbackFeature({ sink: deps.feedback }),
 		createSchedulesFeature({
 			store: deps.schedules,
+			attendance: deps.attendance,
 			posts: deps.channelPosts,
 			timezone: deps.timezone,
 			stillAllowed: deps.canSchedule,

@@ -171,3 +171,48 @@ describe("interpolateChannelPost", () => {
 		});
 	});
 });
+
+describe("values for one post", () => {
+	it("fills them in next to the date tokens, and leaves offsets and unknown names as written", () => {
+		const fill = interpolator();
+		expect(
+			fill.interpolate("{{count}} coming on {{day}}: {{names}} {{count+1}} {{other}}", SUNDAY, {
+				count: "3",
+				names: "Ada and Sam",
+			}),
+		).toBe("3 coming on Sunday: Ada and Sam {{count+1}} {{other}}");
+		expect(fill.interpolate("{{count}}")).toBe("{{count}}");
+	});
+
+	it("refuses one that would stand in for a registered token, or isn't a name", () => {
+		const fill = interpolator();
+		expect(() => fill.interpolate("{{date}}", SUNDAY, { date: "never" })).toThrow(InterpolateError);
+		expect(() => fill.interpolate("x", SUNDAY, { "a b": "x" })).toThrow(InterpolateError);
+	});
+
+	it("fills an attendance poll's question and answer labels, keeping what counts", () => {
+		const fill = interpolator();
+		expect(
+			interpolateChannelPost(
+				{
+					kind: "attendance",
+					question: "Who's in on {{day}}?",
+					answers: [
+						{ label: "Coming {{day}}", counts: true },
+						{ label: "No", counts: false },
+					],
+					durationHours: 8,
+				},
+				(t) => fill.interpolate(t),
+			),
+		).toEqual({
+			kind: "attendance",
+			question: "Who's in on Sunday?",
+			answers: [
+				{ label: "Coming Sunday", counts: true },
+				{ label: "No", counts: false },
+			],
+			durationHours: 8,
+		});
+	});
+});

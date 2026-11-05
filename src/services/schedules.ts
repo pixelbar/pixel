@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
-import type { ChannelPost } from "../core/channel-posts.ts";
+import { type ChannelPost, MAX_ATTENDANCE_ANSWERS } from "../core/channel-posts.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import { parseLocal, type Recurrence, WEEKDAYS } from "../core/recurrence.ts";
@@ -21,6 +21,10 @@ export const MAX_MESSAGE_LENGTH = 2000;
 export const MAX_POLL_QUESTION = 300;
 export const MAX_POLL_ANSWER = 55;
 export const MAX_POLL_ANSWERS = 10;
+/** An attendance poll's button label (Discord allows 80; this keeps them readable). */
+export const MAX_ATTENDANCE_LABEL = 40;
+/** A results template, before tokens are filled. */
+export const MAX_RESULTS_TEXT = 500;
 
 export type Schedule = {
 	/** Short and typeable: six lowercase letters and digits. */
@@ -42,6 +46,8 @@ export type Schedule = {
 	lastRunAt: string | null;
 	/** For a poll: a reminder posted every day while it's open, in another channel. */
 	reminder?: PollReminder;
+	/** For an attendance poll: where and when Pixel posts who's coming. */
+	results?: AttendanceResults;
 	/** The poll posted last, so reminders can link to it and stop when it closes. */
 	lastPoll?: PostedPoll;
 	/** The last reminder handled (posted or skipped), so none is posted twice. */
@@ -54,6 +60,22 @@ export type PollReminder = {
 	channelName: string;
 	/** Wall clock in the configured zone, every day: "18:00". */
 	at: string;
+};
+
+/**
+ * An attendance poll's results posts, in a channel its creator picked: one with the
+ * totals so far at `statusAt` on the day it closes (if it's still open then), and one
+ * when it closes. Both texts are templates: `{{count}}`, `{{names}}` and the date
+ * tokens fill in when they're posted.
+ */
+export type AttendanceResults = {
+	channelId: string;
+	/** For display; the channel may have been renamed since. */
+	channelName: string;
+	/** Wall clock in the configured zone, on the day it closes: "17:00". Unset for no status post. */
+	statusAt?: string;
+	statusText: string;
+	closedText: string;
 };
 
 export type PostedPoll = {
@@ -81,6 +103,23 @@ const postSchema = z.discriminatedUnion("kind", [
 		durationHours: z.number().int().min(1).max(768),
 		multiple: z.boolean(),
 	}),
+	z.strictObject({
+		kind: z.literal("attendance"),
+		question: z.string().min(1).max(MAX_POLL_QUESTION),
+		answers: z
+			.array(
+				z.strictObject({
+					label: z.string().min(1).max(MAX_ATTENDANCE_LABEL),
+					counts: z.boolean(),
+				}),
+			)
+			.min(1)
+			.max(MAX_ATTENDANCE_ANSWERS)
+			.refine((answers) => answers.some((a) => a.counts), {
+				error: "at least one answer must count as coming",
+			}),
+		durationHours: z.number().int().min(1).max(768),
+	}),
 ]);
 
 const recurrenceSchema = z.discriminatedUnion("kind", [
@@ -102,6 +141,14 @@ const reminderSchema = z.strictObject({
 	channelId: snowflake,
 	channelName: z.string().max(100),
 	at: z.string().regex(CLOCK),
+});
+
+export const resultsSchema = z.strictObject({
+	channelId: snowflake,
+	channelName: z.string().max(100),
+	statusAt: z.string().regex(CLOCK).optional(),
+	statusText: z.string().min(1).max(MAX_RESULTS_TEXT),
+	closedText: z.string().min(1).max(MAX_RESULTS_TEXT),
 });
 
 const postedPollSchema = z.strictObject({
@@ -127,12 +174,17 @@ const scheduleSchema = z
 		createdAt: z.iso.datetime(),
 		lastRunAt: z.iso.datetime().nullable(),
 		reminder: reminderSchema.optional(),
+		results: resultsSchema.optional(),
 		lastPoll: postedPollSchema.optional(),
 		lastReminderAt: z.iso.datetime().optional(),
 	})
-	.refine((s) => s.reminder === undefined || s.post.kind === "poll", {
+	.refine((s) => s.reminder === undefined || s.post.kind !== "message", {
 		error: "only a poll can have a reminder",
 		path: ["reminder"],
+	})
+	.refine((s) => s.results === undefined || s.post.kind === "attendance", {
+		error: "only an attendance poll can have results posts",
+		path: ["results"],
 	});
 
 const fileSchema = z.strictObject({ schedules: z.array(scheduleSchema).max(MAX_SCHEDULES) });

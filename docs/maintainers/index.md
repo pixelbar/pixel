@@ -47,6 +47,7 @@ Architecture decision records, newest last.
 | [0022](./adr/0022-openr-doors) | OpenR doors and the parking gate: one Pixel account, logged in by an admin and kept alive by Pixel. |
 | [0023](./adr/0023-components-and-actions) | Buttons, select menus and forms run registered actions through the dispatcher. |
 | [0024](./adr/0024-capability-revocation) | A capability can be revoked from one person even when their level grants it. |
+| [0025](./adr/0025-attendance-poll-buttons) | Attendance polls: public buttons that survive a restart, each running one fixed action through the dispatcher. |
 
 ## Working on the site
 

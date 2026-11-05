@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor, Tier } from "../../core/access.ts";
 import { CapabilityRegistry } from "../../core/capabilities.ts";
-import { type ChannelCheck, type ChannelPost, ChannelPosts } from "../../core/channel-posts.ts";
+import {
+	ATTEND_ACTION,
+	type AttendanceMessage,
+	type ChannelCheck,
+	type ChannelPost,
+	ChannelPosts,
+} from "../../core/channel-posts.ts";
 import type { ResolvedChannel } from "../../core/command.ts";
 import { type ActionOutcome, Dispatcher, MESSAGES } from "../../core/dispatcher.ts";
 import { IdentityService } from "../../core/identity.ts";
@@ -12,8 +18,10 @@ import { RateLimiter } from "../../core/rate-limit.ts";
 import { CommandRegistry } from "../../core/registry.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
 import { type Control, type Form, UI_LIMITS } from "../../core/ui.ts";
+import { AttendanceStore } from "../../services/attendance.ts";
 import { MAX_SCHEDULES, type Schedule, ScheduleStore } from "../../services/schedules.ts";
 import { actor, IDS } from "../../testing/fixtures.ts";
+import { DEFAULT_CLOSED_TEXT, DEFAULT_STATUS_TEXT } from "./attendance.ts";
 import {
 	ACTIONS,
 	createSchedulesFeature,
@@ -88,6 +96,9 @@ function setup(options: { check?: ChannelCheck } = {}) {
 	const store = new ScheduleStore({ logger: silentLogger });
 	const posts = new ChannelPosts();
 	const posted: ChannelPost[] = [];
+	const attendancePosts: AttendanceMessage[] = [];
+	const attendanceEdits: AttendanceMessage[] = [];
+	const attendance = new AttendanceStore({ logger: silentLogger });
 	const clock = { now: NOW };
 	const poster = {
 		check: vi.fn(
@@ -96,7 +107,20 @@ function setup(options: { check?: ChannelCheck } = {}) {
 		),
 		post: vi.fn(async (_id: string, post: ChannelPost) => {
 			posted.push(post);
-			return { url: `https://discord.com/channels/1/2/${posted.length}` };
+			return {
+				url: `https://discord.com/channels/1/2/${posted.length}`,
+				messageId: String(posted.length),
+			};
+		}),
+		postAttendance: vi.fn(async (_id: string, message: AttendanceMessage) => {
+			attendancePosts.push(message);
+			return {
+				url: `https://discord.com/channels/1/2/9${attendancePosts.length}`,
+				messageId: `9${attendancePosts.length}`,
+			};
+		}),
+		editAttendance: vi.fn(async (_id: string, _message: string, message: AttendanceMessage) => {
+			attendanceEdits.push(message);
 		}),
 	};
 	posts.use(poster);
@@ -111,6 +135,7 @@ function setup(options: { check?: ChannelCheck } = {}) {
 		interpolator: createInterpolator({ timezone: AMS, now: () => clock.now }),
 		logger,
 		reporter: nullErrorReporter,
+		attendance,
 		now: () => clock.now,
 	});
 	const registry = new CommandRegistry({
@@ -185,10 +210,10 @@ function setup(options: { check?: ChannelCheck } = {}) {
 	};
 
 	/** Opens the form for a new message or poll. */
-	const newForm = async (kind: "message" | "poll") => {
+	const newForm = async (kind: "message" | "poll" | "attendance") => {
 		const outcome = await click(
 			(await open()).reply,
-			kind === "message" ? "New message" : "New poll",
+			kind === "message" ? "New message" : kind === "poll" ? "New poll" : "New attendance poll",
 		);
 		if (outcome.kind !== "form") throw new Error("expected a form");
 		return outcome.form;
@@ -233,8 +258,28 @@ function setup(options: { check?: ChannelCheck } = {}) {
 		stop?.();
 	};
 
+	const draftAttendance = async (
+		fields: Record<string, string> = {},
+		ch: ResolvedChannel = channel(),
+	) =>
+		submit(
+			await newForm("attendance"),
+			{
+				when: "wed 19:00",
+				repeat: "once",
+				question: "Who's coming on {{day}}?",
+				answers: "Coming\nNot coming",
+				...fields,
+			},
+			{ channel: ch },
+		);
+
 	return {
 		store,
+		attendance,
+		attendancePosts,
+		attendanceEdits,
+		draftAttendance,
 		poster,
 		posted,
 		clock,
@@ -328,7 +373,7 @@ describe("who may schedule", () => {
 		}
 	});
 
-	it("is one command with no options, and every action needs the same access", () => {
+	it("is one command with no options, and every action but voting needs the same access", () => {
 		const { feature } = setup();
 		expect(feature.commands).toEqual([
 			expect.objectContaining({ name: "schedule", private: true, access: expect.anything() }),
@@ -336,10 +381,14 @@ describe("who may schedule", () => {
 		expect(feature.commands?.[0]).not.toHaveProperty("subcommands");
 		expect(feature.commands?.[0]?.options).toBeUndefined();
 		for (const action of feature.actions ?? []) {
-			expect(action.access).toEqual({ minTier: "member", capability: "schedule-posts" });
+			expect(action.access).toEqual(
+				action.name === ATTEND_ACTION
+					? { minTier: "guest" }
+					: { minTier: "member", capability: "schedule-posts" },
+			);
 		}
 		expect((feature.actions ?? []).map((a) => a.name).sort()).toEqual(
-			Object.values(ACTIONS).sort(),
+			[...Object.values(ACTIONS), ATTEND_ACTION].sort(),
 		);
 	});
 
@@ -357,7 +406,7 @@ describe("the list", () => {
 		const { reply } = await open();
 		expect(reply.private).toBe(true);
 		expect(said(reply.embeds?.[0])).toContain("Nothing is scheduled yet");
-		expect(labels(reply)).toEqual(["New message", "New poll"]);
+		expect(labels(reply)).toEqual(["New message", "New poll", "New attendance poll"]);
 		expect(button(reply, "New message")?.style).toBe("primary");
 	});
 
@@ -394,7 +443,12 @@ describe("the list", () => {
 			"#general · paused · once",
 			"#general · finished · once",
 		]);
-		expect(labels(reply)).toEqual(["[Choose a schedule…]", "New message", "New poll"]);
+		expect(labels(reply)).toEqual([
+			"[Choose a schedule…]",
+			"New message",
+			"New poll",
+			"New attendance poll",
+		]);
 	});
 
 	it("pages past 25, with Previous and Next", async () => {
@@ -856,6 +910,295 @@ describe("poll reminders", () => {
 	});
 });
 
+describe("attendance polls", () => {
+	const resultsOf = async (ctx: ReturnType<typeof setup>, reply: Reply) =>
+		formOf(await ctx.click(reply, "Results"));
+	const setResults = (
+		ctx: ReturnType<typeof setup>,
+		form: Form,
+		fields: Record<string, string>,
+		ch?: ResolvedChannel,
+	) =>
+		ctx.act(
+			form.submit.action,
+			{
+				...(form.submit.args as Record<string, string>),
+				...fields,
+				...(ch ? { "results-in": ch.id } : {}),
+			},
+			ch ? { channels: { "results-in": ch } } : {},
+		);
+
+	it("ask for the question and up to five answers on the form", async () => {
+		const { newForm } = setup();
+		const form = await newForm("attendance");
+		expect(form.title).toBe("New attendance poll");
+		expect(form.fields.map((f) => f.name)).toEqual([
+			"channel",
+			"when",
+			"repeat",
+			"question",
+			"answers",
+		]);
+		expect(form.fields.find((f) => f.name === "answers")?.label).toBe(
+			"Answers, one per line (1 to 5)",
+		);
+	});
+
+	it("count the first answer as coming until told otherwise, and show the buttons it will have", async () => {
+		const { draftAttendance } = setup();
+		const reply = replyOf(await draftAttendance());
+		expect(said(reply.embeds?.[0])).toContain(
+			"An attendance poll open for 1 day, counting “Coming” as coming",
+		);
+		expect(said(reply.embeds?.[0])).toContain("Results: None: the totals show on the poll only");
+		expect(said(reply.embeds?.[1])).toContain("🙋 Who's coming on Wednesday?");
+		expect(said(reply.embeds?.[1])).toContain("• Coming (counts as coming)\n• Not coming");
+		const counting = selectOf(reply, "Which answers count as coming?");
+		expect(counting?.options.map((o) => [o.value, o.selected ?? false])).toEqual([
+			["0", true],
+			["1", false],
+		]);
+		expect(labels(reply)).toEqual(expect.arrayContaining(["Reminders: off", "Results: off"]));
+		expect(labels(reply)).not.toContain("Several answers: off");
+	});
+
+	it("save which answers count, how long it's open and where the results go", async () => {
+		const ctx = setup();
+		const draft = replyOf(await ctx.draftAttendance({ answers: "Coming\nMaybe\nNot coming" }));
+		const counting = replyOf(await ctx.click(draft, "Which answers count as coming?", ["0", "1"]));
+		expect(said(counting.embeds?.[0])).toContain("counting “Coming” and “Maybe” as coming");
+		const longer = replyOf(await ctx.click(counting, "How long can people vote?", ["8 hours"]));
+		const form = await resultsOf(ctx, longer);
+		expect(form.title).toBe("Results");
+		expect(form.fields.map((f) => [f.kind, f.name, f.required])).toEqual([
+			["channel", "results-in", false],
+			["text", "status-at", false],
+			["text", "status-text", false],
+			["text", "closed-text", false],
+		]);
+		const set = replyOf(
+			await setResults(ctx, form, { "status-at": "5pm" }, channel({}, OTHER_CHANNEL)),
+		);
+		expect(labels(set)).toContain("Results: in #events");
+		expect(said(set.embeds?.[0])).toContain(
+			`Results: In #general: the totals so far at 17:00 (${AMS}) on the day it closes, and when it closes`,
+		);
+		const reopened = await resultsOf(ctx, set);
+		expect(reopened.fields).toEqual([
+			expect.objectContaining({ name: "results-in", value: OTHER_CHANNEL }),
+			expect.objectContaining({ name: "status-at", value: "5pm" }),
+			expect.not.objectContaining({ value: expect.anything() }),
+			expect.not.objectContaining({ value: expect.anything() }),
+		]);
+		const saved = replyOf(await ctx.click(set, "Schedule"));
+		expect(said(saved.embeds?.[0])).toContain("Results: In #general: the totals so far at 17:00");
+		const [schedule] = ctx.store.all();
+		expect(schedule?.post).toEqual({
+			kind: "attendance",
+			question: "Who's coming on {{day}}?",
+			answers: [
+				{ label: "Coming", counts: true },
+				{ label: "Maybe", counts: true },
+				{ label: "Not coming", counts: false },
+			],
+			durationHours: 8,
+		});
+		expect(schedule?.results).toEqual({
+			channelId: OTHER_CHANNEL,
+			channelName: "general",
+			statusAt: "17:00",
+			statusText: DEFAULT_STATUS_TEXT,
+			closedText: DEFAULT_CLOSED_TEXT,
+		});
+		expect(schedule?.name).toBe("Who's coming on {{day}}?");
+	});
+
+	it("keep the creator's own wording, and have no results when the channel is cleared", async () => {
+		const ctx = setup();
+		const draft = replyOf(await ctx.draftAttendance());
+		const set = replyOf(
+			await setResults(
+				ctx,
+				await resultsOf(ctx, draft),
+				{ "status-text": " {{count}} so far ", "closed-text": "{{count}} came" },
+				channel({}, OTHER_CHANNEL),
+			),
+		);
+		expect(said(set.embeds?.[0])).toContain("Results: In #general, when it closes");
+		await ctx.click(set, "Schedule");
+		expect(ctx.store.all()[0]?.results).toEqual({
+			channelId: OTHER_CHANNEL,
+			channelName: "general",
+			statusText: "{{count}} so far",
+			closedText: "{{count}} came",
+		});
+		const another = replyOf(
+			await setResults(
+				ctx,
+				await resultsOf(ctx, replyOf(await ctx.draftAttendance())),
+				{},
+				channel({}, OTHER_CHANNEL),
+			),
+		);
+		const off = replyOf(await setResults(ctx, await resultsOf(ctx, another), {}));
+		expect(labels(off)).toContain("Results: off");
+	});
+
+	it.each<[string, Record<string, string>, ResolvedChannel, string]>([
+		["a time it can't read", { "status-at": "teatime" }, channel(), "couldn't understand the time"],
+		[
+			"a channel the person can't post in",
+			{},
+			channel({ canPost: false }),
+			SCHEDULE_MESSAGES.cantPostResults,
+		],
+	])("explain %s in Results on the draft", async (_, fields, ch, problem) => {
+		const ctx = setup();
+		const form = await resultsOf(ctx, replyOf(await ctx.draftAttendance()));
+		const reply = replyOf(await setResults(ctx, form, fields, ch));
+		expect(said(reply.embeds?.[0])).toContain(problem);
+		expect(said(reply.embeds?.[0])).toContain("Results: Not set up yet");
+		expect(button(reply, "Schedule")?.disabled).toBe(true);
+	});
+
+	it("say why Pixel itself can't post the results there", async () => {
+		const ctx = setup();
+		const form = await resultsOf(ctx, replyOf(await ctx.draftAttendance()));
+		ctx.poster.check.mockImplementation(
+			async (id: string): Promise<ChannelCheck> =>
+				id === OTHER_CHANNEL
+					? { ok: false, problem: "it can't see the channel" }
+					: { ok: true, name: "general" },
+		);
+		const reply = replyOf(await setResults(ctx, form, {}, channel({}, OTHER_CHANNEL)));
+		expect(said(reply.embeds?.[0])).toContain(
+			"I can't post results there: it can't see the channel.",
+		);
+	});
+
+	it.each<[string, string, string | RegExp]>([
+		["no answers", " \n ", /1 to 5 different answers/],
+		["six answers", "a\nb\nc\nd\ne\nf", /1 to 5 different answers/],
+		["a long answer", "x".repeat(41), /at most 40 characters/],
+	])("explain %s in the draft", async (_, answers, problem) => {
+		const { draftAttendance } = setup();
+		const reply = replyOf(await draftAttendance({ answers }));
+		expect(said(reply.embeds?.[0])).toMatch(problem);
+		expect(selectOf(reply, "Which answers count as coming?")).toBeUndefined();
+		expect(button(reply, "Schedule")?.disabled).toBe(true);
+	});
+
+	it("allow a single answer, and don't need the person to be able to make platform polls", async () => {
+		const { draftAttendance, click, store } = setup();
+		const reply = replyOf(
+			await draftAttendance({ answers: "I'm coming" }, channel({ canCreatePolls: false })),
+		);
+		await click(reply, "Schedule");
+		expect(store.all()[0]?.post).toEqual(
+			expect.objectContaining({ answers: [{ label: "I'm coming", counts: true }] }),
+		);
+	});
+
+	it("refuse choosing what counts, or results, on anything else", async () => {
+		const ctx = setup();
+		const poll = replyOf(await ctx.draftPoll());
+		const draft = button(poll, "Rename")?.call.args?.draft as string;
+		for (const [action, args] of [
+			[ACTIONS.counting, { draft, counting: "0" }],
+			[ACTIONS.results, { draft }],
+		] as const) {
+			const outcome = await ctx.act(action, args);
+			expect(outcome.kind).toBe("refused");
+		}
+		const attendance = replyOf(await ctx.draftAttendance());
+		const id = button(attendance, "Rename")?.call.args?.draft as string;
+		expect(await ctx.act(ACTIONS.counting, { draft: id, counting: "7, x" })).toEqual(
+			expect.objectContaining({ kind: "refused", problem: true }),
+		);
+	});
+
+	it("post at their time with Pixel's buttons, and anyone may answer", async () => {
+		const ctx = setup();
+		const draft = replyOf(await ctx.draftAttendance());
+		await ctx.click(draft, "Schedule");
+		ctx.clock.now = new Date("2026-10-14T17:00:10Z");
+		await ctx.tick();
+		expect(ctx.posted).toEqual([]);
+		expect(ctx.attendancePosts).toHaveLength(1);
+		const [message] = ctx.attendancePosts;
+		expect(message?.answers).toEqual(["Coming", "Not coming"]);
+		expect(message?.text).toContain("**Who's coming on Wednesday?**");
+		const [poll] = ctx.attendance.all();
+		expect(poll?.id).toBe(message?.pollId);
+		const vote = await ctx.dispatcher.act({
+			actor: actor({ userId: IDS.guest, displayName: "Kim" }),
+			action: ATTEND_ACTION,
+			args: { poll: poll?.id as string, answer: 0 },
+		});
+		expect(vote).toEqual({
+			kind: "update",
+			reply: {
+				private: true,
+				text: "You're down as **Coming**. Press it again to take that back.",
+			},
+		});
+		expect(ctx.attendance.get(poll?.id as string)?.votes).toEqual([
+			{ ref: `discord:${IDS.guest}`, name: "Kim", answer: 0 },
+		]);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(ctx.attendanceEdits.at(-1)?.text).toContain("**Coming**: 1 · Kim");
+	});
+
+	it("keep what counts and the results on an edit", async () => {
+		const ctx = setup();
+		const { id } = add(ctx.store, {
+			post: {
+				kind: "attendance",
+				question: "Q?",
+				answers: [
+					{ label: "a", counts: false },
+					{ label: "b", counts: true },
+				],
+				durationHours: 24,
+			},
+			results: {
+				channelId: OTHER_CHANNEL,
+				channelName: "events",
+				statusText: "s",
+				closedText: "c",
+			},
+		});
+		const shown = replyOf(await ctx.panel(id));
+		expect(shown.embeds?.[0]?.title).toBe("🙋 Pizza");
+		expect(said(shown.embeds?.[0])).toContain("Results: In #events, when it closes");
+		const form = formOf(await ctx.click(shown, "Edit"));
+		expect(form.title).toBe("Edit attendance poll");
+		expect(form.fields.find((f) => f.name === "answers")).toEqual(
+			expect.objectContaining({ value: "a\nb" }),
+		);
+		const draft = replyOf(
+			await ctx.submit(form, {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				question: "Q?",
+				answers: "a\nb",
+			}),
+		);
+		expect(
+			selectOf(draft, "Which answers count as coming?")?.options.find((o) => o.selected)?.value,
+		).toBe("1");
+		expect(labels(draft)).toContain("Results: in #events");
+		await ctx.click(draft, "Save changes");
+		expect(ctx.store.get(id)?.results).toEqual({
+			channelId: OTHER_CHANNEL,
+			channelName: "general",
+			statusText: "s",
+			closedText: "c",
+		});
+	});
+});
+
 describe("a schedule's panel", () => {
 	it("shows the owner what it will post next, with Edit, Pause and Delete", async () => {
 		const { panel, store } = setup();
@@ -1262,8 +1605,13 @@ describe("the background runner", () => {
 	it("checks straight away and every 30 seconds, and stops when told", async () => {
 		const store = new ScheduleStore({ logger: silentLogger });
 		const posts = new ChannelPosts();
-		const post = vi.fn(async () => ({ url: "https://discord.com/channels/1/2/3" }));
-		posts.use({ check: async () => ({ ok: true, name: "g" }), post });
+		const post = vi.fn(async () => ({ url: "https://discord.com/channels/1/2/3", messageId: "3" }));
+		posts.use({
+			check: async () => ({ ok: true, name: "g" }),
+			post,
+			postAttendance: post,
+			editAttendance: async () => {},
+		});
 		add(store, { start: "2026-10-14T19:01" });
 		const feature = createSchedulesFeature({
 			store,

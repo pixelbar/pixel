@@ -32,7 +32,7 @@ function setup(options: { allowed?: boolean; fail?: boolean; ready?: boolean } =
 		post: vi.fn(async (channelId: string, post: ChannelPost) => {
 			if (options.fail) throw new Error("discord down");
 			posted.push([channelId, post]);
-			return { url: `https://example.test/m/${posted.length}` };
+			return { url: `https://example.test/m/${posted.length}`, messageId: String(posted.length) };
 		}),
 	};
 	const warn = vi.fn();
@@ -277,7 +277,7 @@ describe("runDue", () => {
 			ctx.posts.post.mockImplementationOnce(async (channelId: string, post: ChannelPost) => {
 				ctx.posted.push([channelId, post]);
 				change(ctx.store, second.id);
-				return { url: "https://example.test/m/1" };
+				return { url: "https://example.test/m/1", messageId: "1" };
 			});
 			await ctx.run(plus(10_000));
 			return { ...ctx, second };
@@ -559,5 +559,59 @@ describe("poll reminders", () => {
 		await ctx.run(at("2026-10-17T17:00:11"));
 		expect(ctx.error).toHaveBeenCalledTimes(2);
 		expect(ctx.store.get(id)).toBeDefined();
+	});
+});
+
+describe("attendance polls", () => {
+	const attendance = {
+		kind: "attendance" as const,
+		question: "Who's coming on {{day}}?",
+		answers: [{ label: "Coming", counts: true }],
+		durationHours: 8,
+	};
+
+	it("are posted through the attendance polls, filled in, and remembered for reminders", async () => {
+		const t = setup();
+		const post = vi.fn(async () => ({
+			question: "Who's coming on Wednesday?",
+			url: "https://example.test/m/9",
+			postedAt: WED_19.toISOString(),
+			closesAt: plus(8 * 3_600_000).toISOString(),
+		}));
+		const runDueAttendance = vi.fn(async () => {});
+		const { id } = t.store.add(sample({ post: attendance }));
+		await runDue(
+			{
+				store: t.store,
+				posts: t.posts,
+				timezone: AMS,
+				interpolator: createInterpolator({ timezone: AMS }),
+				stillAllowed: t.stillAllowed,
+				logger: silentLogger,
+				reporter: t.reporter,
+				handled: t.handled,
+				attendance: { post, runDue: runDueAttendance },
+			},
+			WED_19,
+		);
+		expect(t.posted).toEqual([]);
+		expect(post).toHaveBeenCalledWith(
+			expect.objectContaining({ id }),
+			{ ...attendance, question: "Who's coming on Wednesday?" },
+			WED_19,
+		);
+		expect(t.store.get(id)?.lastPoll?.url).toBe("https://example.test/m/9");
+		expect(runDueAttendance).toHaveBeenCalledWith(WED_19, t.stillAllowed, t.handled);
+	});
+
+	it("fail, logged and reported, without the attendance polls set up", async () => {
+		const t = setup();
+		t.store.add(sample({ post: attendance }));
+		await t.run(WED_19);
+		expect(t.error).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.failed" }),
+			expect.any(String),
+		);
+		expect(t.reporter.captureBackground).toHaveBeenCalled();
 	});
 });

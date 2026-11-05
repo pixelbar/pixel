@@ -145,7 +145,7 @@ A door has **Lock** and **Unlock**, for members with `ha-doors` or `ha-admin`. P
 
 ### Scheduled posts
 
-Messages and polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
+Messages, polls and attendance polls that Pixel posts in a channel, once or on a repeat. These need the `schedule-posts` capability, and you can only schedule in channels you can post in yourself. Times are in Europe/Amsterdam.
 
 <PxCommand :level="4" sig="/schedule" tier="member" reply="private" :caps="['schedule-posts']">
 
@@ -158,11 +158,11 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 <PxPanel
 	command="/schedule"
 	:embeds="[{ title: 'Scheduled posts', lines: ['**3** scheduled · **2** yours · **1** paused', 'Choose one to see what it will post, change it or delete it.', 'Times are in Europe/Amsterdam.'] }]"
-	:rows="[[{ select: 'Choose a schedule…' }], [{ label: 'New message', style: 'primary' }, { label: 'New poll' }]]"
-	caption="The list: a menu of every scheduled post, and New message and New poll."
+	:rows="[[{ select: 'Choose a schedule…' }], [{ label: 'New message', style: 'primary' }, { label: 'New poll' }, { label: 'New attendance poll' }]]"
+	caption="The list: a menu of every scheduled post, and New message, New poll and New attendance poll."
 />
 
-**New message** and **New poll** open a form. When is a day, a time or both, such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
+**New message**, **New poll** and **New attendance poll** open a form. When is a day, a time or both, such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
 <PxModal
 	title="New message"
@@ -194,6 +194,21 @@ Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exact
 	:rows="[[{ label: 'Edit', style: 'primary' }, { label: 'Pause' }, { label: 'Delete', style: 'danger' }], [{ label: '← All schedules' }]]"
 	caption="One of your schedules: what it will post next, with Edit, Pause and Delete."
 />
+
+#### Attendance polls
+
+An **attendance poll** is for "who's coming?". A Discord poll always ends by announcing a winner ("the winner is No with 30%"). Pixel counts an attendance poll itself, so it ends with how many are coming instead. Its form asks for the question and 1 to 5 answers, one per line, such as `Coming` and `Not coming`, or just `I'm coming`. Each answer becomes a button.
+
+On the draft, choose **which answers count as coming** (the first one does to begin with) and how long it's open. **Results** picks a channel for the totals: the totals so far at a time on the day it closes (say `17:00` for a poll open until midnight), and the final totals when it closes. You write what they say, with <code v-pre>{{count}}</code>, <code v-pre>{{names}}</code>, <code v-pre>{{question}}</code>, <code v-pre>{{link}}</code> and the date tokens, for example <code v-pre>Poll is closed - {{count}} people are coming to the Pixelbar!</code> Leave Results off and the totals only show on the poll. Reminders work as for a poll.
+
+<PxPanel
+	command="/schedule"
+	:content="['🗳️ **Who\'s coming on Friday?**', '', '**Coming**: 3 · Ada, Sam and Kim', '**Not coming**: 1 · Robin', '', 'Open until Fri 6 Nov 2026, 23:59. Press an answer to pick it, and again to take it back.']"
+	:rows="[[{ label: 'Coming' }, { label: 'Not coming' }]]"
+	caption="The poll in the channel: each answer's total and who picked it, with a button per answer."
+/>
+
+Anyone in the server can answer, once: pressing another answer switches, and pressing yours again takes it back. Pixel tells you privately what you picked. Your name shows on the poll and in its results, like a Discord poll's voters. The buttons keep working when Pixel restarts, and go when the poll closes.
 
 ### Parking
 

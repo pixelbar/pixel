@@ -87,7 +87,7 @@ describe("parking activity", () => {
 	);
 
 	it("posts to the parking channel with mentions off, and counts it", async () => {
-		const post = vi.fn(async () => ({ url: "https://example.test/m/1" }));
+		const post = vi.fn(async () => ({ url: "https://example.test/m/1", messageId: "1" }));
 		const count = vi.fn();
 		const activity = new ParkingActivity({
 			posts: { post },
@@ -107,7 +107,7 @@ describe("parking activity", () => {
 	});
 
 	it("only counts when there's no channel, or no metrics", async () => {
-		const post = vi.fn(async () => ({ url: "https://example.test/m/1" }));
+		const post = vi.fn(async () => ({ url: "https://example.test/m/1", messageId: "1" }));
 		const count = vi.fn();
 		const off = new ParkingActivity({
 			posts: { post },
