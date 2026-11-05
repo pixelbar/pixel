@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-11-05
+
 ### Added
 
 - `/schedule` can post **attendance polls** for "who's coming?" (#199). Unlike a Discord poll, there's no winner: Pixel posts a message with a button per answer (1 to 5), counts the answers itself and shows each answer's total and who picked it. Anyone in the server can answer once: pressing another answer switches, and pressing yours again takes it back. On the draft, choose which answers count as coming and, with **Results**, a channel for the totals so far at a time on the day it closes (such as 17:00 for a poll open until midnight) and the final totals when it closes, in your own words with `{{count}}`, `{{names}}`, `{{question}}` and `{{link}}`. When the results channel is the poll's own channel, both posts reply to the poll. **Colours** on the draft picks each answer's button colour: grey (the default), blue, green or red. The buttons keep working across restarts. Votes are kept in `data/attendance.yaml`: back it up with `schedules.yaml`, and don't delete it while a poll is open.
@@ -402,7 +404,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/pixelbar/pixel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/pixelbar/pixel/compare/v0.25.2...v0.26.0
 [0.25.2]: https://github.com/pixelbar/pixel/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/pixelbar/pixel/compare/v0.25.0...v0.25.1
