@@ -4,6 +4,7 @@ import type {
 	ChannelCheck,
 	ChannelPost,
 	ChannelPoster,
+	PostOptions,
 } from "../../core/channel-posts.ts";
 import { missingPermissions } from "./announce-channel.ts";
 import { attendanceComponents } from "./attendance-buttons.ts";
@@ -23,8 +24,20 @@ export function requiredPermissions(post: ChannelPost): bigint[] {
 	return post.mentions ? [...base, PermissionFlagsBits.MentionEveryone] : base;
 }
 
-/** The message Discord is sent for a post (the API's shape). */
-export function toDiscordMessage(post: ChannelPost) {
+/** The message Discord is sent for a post (the API's shape), as a reply if asked. */
+export function toDiscordMessage(post: ChannelPost, options: PostOptions = {}) {
+	return { ...messageBody(post), ...replyTo(options) };
+}
+
+/**
+ * A reply to a message in the same channel. It never pings that message's author, and
+ * still posts if the message has gone.
+ */
+function replyTo({ replyTo }: PostOptions) {
+	return replyTo ? { reply: { messageReference: replyTo, failIfNotExists: false } } : {};
+}
+
+function messageBody(post: ChannelPost) {
 	if (post.kind === "attendance") {
 		// Its message needs a poll ID for the buttons: that's `toAttendanceMessage`.
 		throw new Error("an attendance poll is posted with postAttendance");
@@ -33,8 +46,11 @@ export function toDiscordMessage(post: ChannelPost) {
 		return {
 			content: post.text,
 			allowedMentions: post.mentions
-				? { parse: ["everyone" as const, "roles" as const, "users" as const] }
-				: { parse: [] },
+				? {
+						parse: ["everyone" as const, "roles" as const, "users" as const],
+						repliedUser: false,
+					}
+				: { parse: [], repliedUser: false },
 		};
 	}
 	return {
@@ -44,7 +60,7 @@ export function toDiscordMessage(post: ChannelPost) {
 			duration: post.durationHours,
 			allowMultiselect: post.multiple,
 		},
-		allowedMentions: { parse: [] },
+		allowedMentions: { parse: [], repliedUser: false },
 	};
 }
 
@@ -94,10 +110,10 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 				? { ok: true, name: "name" in opened.channel ? String(opened.channel.name) : channelId }
 				: opened;
 		},
-		async post(channelId, post) {
+		async post(channelId, post, options) {
 			const opened = await open(channelId, post);
 			if (!opened.ok) throw new Error(`Can't post a scheduled post: ${opened.problem}`);
-			const sent = await opened.channel.send(toDiscordMessage(post));
+			const sent = await opened.channel.send(toDiscordMessage(post, options));
 			return { url: sent.url, messageId: sent.id };
 		},
 		async postAttendance(channelId, message) {

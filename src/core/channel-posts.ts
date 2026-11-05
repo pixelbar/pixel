@@ -67,13 +67,22 @@ export const MAX_ATTENDANCE_ANSWERS = 5;
 /** A post the platform has sent: a link people can follow to it, and its ID there. */
 export type PostedMessage = { url: string; messageId: string };
 
+/** How a post is sent, besides what it says. */
+export type PostOptions = {
+	/**
+	 * A message in the same channel to post it as a reply to. If that message has gone,
+	 * the post still goes out, just not as a reply.
+	 */
+	replyTo?: string;
+};
+
 /** What the platform says about posting in a channel, or why Pixel can't. */
 export type ChannelCheck = { ok: true; name: string } | { ok: false; problem: string };
 
 export type ChannelPoster = {
 	/** Whether Pixel can make this kind of post in the channel. */
 	check(channelId: string, post: ChannelPost): Promise<ChannelCheck>;
-	post(channelId: string, post: ChannelPost): Promise<PostedMessage>;
+	post(channelId: string, post: ChannelPost, options?: PostOptions): Promise<PostedMessage>;
 	/** Posts an attendance poll's message. */
 	postAttendance(channelId: string, message: AttendanceMessage): Promise<PostedMessage>;
 	/** Replaces an attendance poll's message, to show new totals or that it has closed. */
@@ -102,8 +111,8 @@ export class ChannelPosts {
 		return this.#require().check(channelId, post);
 	}
 
-	post(channelId: string, post: ChannelPost): Promise<PostedMessage> {
-		return this.#require().post(channelId, post);
+	post(channelId: string, post: ChannelPost, options?: PostOptions): Promise<PostedMessage> {
+		return this.#require().post(channelId, post, options);
 	}
 
 	postAttendance(channelId: string, message: AttendanceMessage): Promise<PostedMessage> {

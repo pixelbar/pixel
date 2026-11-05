@@ -4,6 +4,7 @@ import {
 	ATTEND_ACTION,
 	type AttendanceMessage,
 	type ChannelPost,
+	type PostOptions,
 } from "../../core/channel-posts.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { createInterpolator } from "../../core/interpolate.ts";
@@ -187,7 +188,7 @@ function setup(options: { allowed?: boolean; ready?: boolean } = {}) {
 	const store = new AttendanceStore({ logger: silentLogger });
 	const clock = { now: NOW };
 	const edits: AttendanceMessage[] = [];
-	const posted: { channelId: string; post: ChannelPost }[] = [];
+	const posted: { channelId: string; post: ChannelPost; options?: PostOptions }[] = [];
 	let editFails = false;
 	let release: (() => void) | undefined;
 	const posts = {
@@ -205,8 +206,8 @@ function setup(options: { allowed?: boolean; ready?: boolean } = {}) {
 			if (editFails) throw new Error("Missing Access");
 			edits.push(message);
 		}),
-		post: vi.fn(async (channelId: string, post: ChannelPost) => {
-			posted.push({ channelId, post });
+		post: vi.fn(async (channelId: string, post: ChannelPost, options?: PostOptions) => {
+			posted.push({ channelId, post, ...(options ? { options } : {}) });
 			return { url: "https://discord.com/channels/1/2/4", messageId: "4" };
 		}),
 	};
@@ -501,6 +502,48 @@ describe("results", () => {
 		]);
 		expect(t.store.get("0123456789ab")?.statusHandled).toBe(true);
 		expect(t.stillAllowed).toHaveBeenCalledWith(ADA);
+	});
+
+	it("replies to the poll when the results go in its own channel", async () => {
+		const t = setup();
+		const own = withResults({ statusHandled: true });
+		t.store.add(
+			{
+				...own,
+				results: { ...(own.results as NonNullable<typeof own.results>), channelId: CHANNEL },
+			},
+			NOW,
+		);
+		const closing = new Date("2026-11-06T22:00:10.000Z");
+		t.clock.now = closing;
+		await t.run(closing);
+		expect(t.posted).toEqual([
+			{
+				channelId: CHANNEL,
+				post: { kind: "message", text: "Closed: 1 coming on Friday", mentions: false },
+				options: { replyTo: "100000000000000099" },
+			},
+		]);
+	});
+
+	it("replies to the poll with the totals so far, too", async () => {
+		const t = setup();
+		const own = withResults();
+		t.store.add(
+			{
+				...own,
+				results: { ...(own.results as NonNullable<typeof own.results>), channelId: CHANNEL },
+			},
+			NOW,
+		);
+		await t.run(new Date("2026-11-06T16:00:30.000Z"));
+		expect(t.posted).toEqual([
+			{
+				channelId: CHANNEL,
+				post: { kind: "message", text: "So far 1: Ada", mentions: false },
+				options: { replyTo: "100000000000000099" },
+			},
+		]);
 	});
 
 	it("closes it: the buttons go, and the closing totals are posted once", async () => {
