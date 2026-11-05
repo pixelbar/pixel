@@ -1100,6 +1100,88 @@ describe("attendance polls", () => {
 		);
 	});
 
+	it("let the creator pick each answer's button colour", async () => {
+		const ctx = setup();
+		const draft = replyOf(await ctx.draftAttendance({ answers: "Coming\nMaybe\nNot coming" }));
+		const form = formOf(await ctx.click(draft, "Colours: all grey"));
+		expect(form.title).toBe("Button colours");
+		expect(
+			form.fields.map((f) => [
+				f.kind,
+				f.name,
+				f.label,
+				f.kind === "radio" ? f.options.map((o) => [o.value, o.selected ?? false]) : [],
+			]),
+		).toEqual(
+			["Coming", "Maybe", "Not coming"].map((label, i) => [
+				"radio",
+				`colour-${i}`,
+				label,
+				[
+					["grey", true],
+					["blue", false],
+					["green", false],
+					["red", false],
+				],
+			]),
+		);
+		const set = replyOf(
+			await ctx.act(form.submit.action, {
+				...(form.submit.args as Record<string, string>),
+				"colour-0": "green",
+				"colour-1": "blue",
+				"colour-2": "red",
+			}),
+		);
+		expect(labels(set)).toContain("Colours: green, blue, red");
+		expect(said(set.embeds?.[1])).toContain(
+			"• Coming (green, counts as coming)\n• Maybe (blue)\n• Not coming (red)",
+		);
+		const reopened = formOf(await ctx.click(set, "Colours: green, blue, red"));
+		expect(
+			reopened.fields.map((f) =>
+				f.kind === "radio" ? f.options.find((o) => o.selected)?.value : undefined,
+			),
+		).toEqual(["green", "blue", "red"]);
+		await ctx.click(set, "Schedule");
+		expect(ctx.store.all()[0]?.post).toEqual(
+			expect.objectContaining({
+				answers: [
+					{ label: "Coming", counts: true, colour: "green" },
+					{ label: "Maybe", counts: false, colour: "blue" },
+					{ label: "Not coming", counts: false, colour: "red" },
+				],
+			}),
+		);
+		ctx.clock.now = new Date("2026-10-14T17:00:10Z");
+		await ctx.tick();
+		expect(ctx.attendancePosts[0]?.colours).toEqual(["green", "blue", "red"]);
+		expect(ctx.attendance.all()[0]?.answers.map((a) => a.colour)).toEqual(["green", "blue", "red"]);
+	});
+
+	it("keep a colour when what's sent isn't one, and leave grey answers without one", async () => {
+		const ctx = setup();
+		const draft = replyOf(await ctx.draftAttendance());
+		const form = formOf(await ctx.click(draft, "Colours: all grey"));
+		const set = replyOf(
+			await ctx.act(form.submit.action, {
+				...(form.submit.args as Record<string, string>),
+				"colour-0": "purple",
+				"colour-1": "red",
+			}),
+		);
+		expect(labels(set)).toContain("Colours: grey, red");
+		await ctx.click(set, "Schedule");
+		expect(ctx.store.all()[0]?.post).toEqual(
+			expect.objectContaining({
+				answers: [
+					{ label: "Coming", counts: true },
+					{ label: "Not coming", counts: false, colour: "red" },
+				],
+			}),
+		);
+	});
+
 	it("refuse choosing what counts, or results, on anything else", async () => {
 		const ctx = setup();
 		const poll = replyOf(await ctx.draftPoll());
@@ -1107,6 +1189,8 @@ describe("attendance polls", () => {
 		for (const [action, args] of [
 			[ACTIONS.counting, { draft, counting: "0" }],
 			[ACTIONS.results, { draft }],
+			[ACTIONS.colours, { draft }],
+			[ACTIONS.coloured, { draft, "colour-0": "red" }],
 		] as const) {
 			const outcome = await ctx.act(action, args);
 			expect(outcome.kind).toBe("refused");
@@ -1150,7 +1234,7 @@ describe("attendance polls", () => {
 		expect(ctx.attendanceEdits.at(-1)?.text).toContain("**Coming**: 1 · Kim");
 	});
 
-	it("keep what counts and the results on an edit", async () => {
+	it("keep what counts, the colours and the results on an edit", async () => {
 		const ctx = setup();
 		const { id } = add(ctx.store, {
 			post: {
@@ -1158,7 +1242,7 @@ describe("attendance polls", () => {
 				question: "Q?",
 				answers: [
 					{ label: "a", counts: false },
-					{ label: "b", counts: true },
+					{ label: "b", counts: true, colour: "green" },
 				],
 				durationHours: 24,
 			},
@@ -1189,7 +1273,16 @@ describe("attendance polls", () => {
 			selectOf(draft, "Which answers count as coming?")?.options.find((o) => o.selected)?.value,
 		).toBe("1");
 		expect(labels(draft)).toContain("Results: in #events");
+		expect(labels(draft)).toContain("Colours: grey, green");
 		await ctx.click(draft, "Save changes");
+		expect(ctx.store.get(id)?.post).toEqual(
+			expect.objectContaining({
+				answers: [
+					{ label: "a", counts: false },
+					{ label: "b", counts: true, colour: "green" },
+				],
+			}),
+		);
 		expect(ctx.store.get(id)?.results).toEqual({
 			channelId: OTHER_CHANNEL,
 			channelName: "general",

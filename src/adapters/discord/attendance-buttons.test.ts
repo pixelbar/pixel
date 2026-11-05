@@ -73,6 +73,16 @@ describe("attendanceComponents", () => {
 		expect(attendanceComponents(message({ open: false }))).toEqual([]);
 	});
 
+	it("colours each button as its creator picked, grey for the rest", () => {
+		const answers = ["Blue", "Grey", "Green", "Red", "Unset"];
+		const [row] = attendanceComponents(
+			message({ answers, colours: ["blue", "grey", "green", "red"] }),
+		);
+		expect(row?.components.map((c) => ("style" in c ? c.style : undefined))).toEqual([
+			1, 2, 3, 4, 2,
+		]);
+	});
+
 	it("keeps labels within Discord's 80 characters", () => {
 		const [row] = attendanceComponents(message({ answers: ["x".repeat(90)] }));
 		const [button] = row?.components ?? [];

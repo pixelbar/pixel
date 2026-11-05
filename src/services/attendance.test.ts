@@ -55,6 +55,10 @@ describe("AttendanceStore", () => {
 		expect(store.problem).toBeUndefined();
 		expect(store.all()).toEqual([]);
 		const poll = sample({
+			answers: [
+				{ label: "Coming", counts: true, colour: "green" },
+				{ label: "Not coming", counts: false, colour: "red" },
+			],
 			results: {
 				channelId: "100000000000000051",
 				statusAt: "2026-11-06T16:00:00.000Z",
@@ -153,6 +157,7 @@ describe("AttendanceStore", () => {
 			"polls:\n  - id: nope\n",
 			`polls:\n${[sample(), sample()].map((p) => `  - ${JSON.stringify(p)}`).join("\n")}\n`,
 			`polls:\n  - ${JSON.stringify(sample({ votes: [{ ref: ADA, name: "Ada", answer: 5 }] }))}\n`,
+			`polls:\n  - ${JSON.stringify({ ...sample(), answers: [{ label: "Coming", counts: true, colour: "pink" }] })}\n`,
 			`polls:\n  - ${JSON.stringify(
 				sample({
 					votes: [

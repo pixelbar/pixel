@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { AttendanceColour } from "../../core/channel-posts.ts";
 import type { ResolvedChannel } from "../../core/command.ts";
 import type { Weekday } from "../../core/recurrence.ts";
 
@@ -35,6 +36,8 @@ export type Draft = {
 	multiple: boolean;
 	/** For an attendance poll: which answers count as coming, by position. Unset means the first. */
 	counting?: readonly number[];
+	/** For an attendance poll: each answer's button colour, by position. Missing ones are grey. */
+	colours?: readonly AttendanceColour[];
 	/** Unset means the start of the text. */
 	name?: string;
 	/**

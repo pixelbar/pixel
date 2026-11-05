@@ -1,5 +1,8 @@
 import { type Access, actorLogFields, actorRef, type Principal } from "../../core/access.ts";
 import {
+	ATTENDANCE_COLOURS,
+	type AttendanceAnswer,
+	type AttendanceColour,
 	type ChannelPost,
 	type ChannelPosts,
 	MAX_ATTENDANCE_ANSWERS,
@@ -108,6 +111,8 @@ export const ACTIONS = {
 	reminders: "schedule.reminders",
 	reminded: "schedule.reminded",
 	counting: "schedule.counting",
+	colours: "schedule.colours",
+	coloured: "schedule.coloured",
 	results: "schedule.results",
 	resulted: "schedule.resulted",
 	rename: "schedule.rename",
@@ -126,6 +131,7 @@ export const SCHEDULE_MESSAGES = {
 	nothingLeft:
 		"That would leave it with nothing to post: a one-off needs a time that's still to come. Change **When** in Edit details.",
 	noChannel: "Pick a channel in Edit details.",
+	noColours: "Colours are for an attendance poll's answers: add them in Edit details first.",
 	cantPost:
 		"You can only schedule posts in channels where you can post yourself. Pick another channel.",
 	cantPoll: "You can't create polls in that channel yourself, so I won't schedule one there.",
@@ -253,14 +259,10 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const question = draft.question.trim();
 		if (question === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyQuestion);
 		if (draft.kind === "attendance") {
-			const counting = countingOf(draft, parseAttendanceAnswers(draft.answers).length);
 			return {
 				kind: "attendance",
 				question,
-				answers: parseAttendanceAnswers(draft.answers).map((label, i) => ({
-					label,
-					counts: counting.includes(i),
-				})),
+				answers: attendanceAnswers(draft, parseAttendanceAnswers(draft.answers)),
 				durationHours: draft.durationHours,
 			};
 		}
@@ -727,6 +729,15 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 								ACTIONS.results,
 								{ draft: draft.id },
 							),
+							...(answers
+								? [
+										button(
+											`Colours: ${colourSummary(coloursOf(draft, answers.length))}`,
+											ACTIONS.colours,
+											{ draft: draft.id },
+										),
+									]
+								: []),
 						]
 					: []),
 			]);
@@ -879,6 +890,25 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					...(channel ? { value: channel.id } : {}),
 				},
 			],
+		};
+	}
+
+	function coloursForm(draft: Draft, answers: readonly string[]): Form {
+		const colours = coloursOf(draft, answers.length);
+		return {
+			title: "Button colours",
+			submit: call(ACTIONS.coloured, { draft: draft.id }),
+			fields: answers.map((label, i) => ({
+				kind: "radio" as const,
+				name: `colour-${i}`,
+				// Answers are at most 40 characters, which fits a field's label.
+				label,
+				options: ATTENDANCE_COLOURS.map((colour) => ({
+					label: COLOUR_NAMES[colour],
+					value: colour,
+					...(colours[i] === colour ? { selected: true } : {}),
+				})),
+			})),
 		};
 	}
 
@@ -1135,6 +1165,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				...(schedule.post.kind === "attendance"
 					? {
 							counting: schedule.post.answers.flatMap((a, i) => (a.counts ? [i] : [])),
+							colours: schedule.post.answers.map((a) => a.colour ?? "grey"),
 						}
 					: {}),
 				...(schedule.results
@@ -1262,6 +1293,31 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				return {
 					reply: await draftPanel(drafts.update(draft, { counting: [...new Set(picked)] })),
 				};
+			},
+		),
+		onDraft(ACTIONS.colours, [], (_, draft) => {
+			const answers = draft.kind === "attendance" ? tryAttendanceAnswers(draft.answers) : undefined;
+			if (!answers) throw new UserFacingError(SCHEDULE_MESSAGES.noColours);
+			return { form: coloursForm(draft, answers) };
+		}),
+		onDraft(
+			ACTIONS.coloured,
+			Array.from({ length: MAX_ATTENDANCE_ANSWERS }, (_, i) => ({
+				name: `colour-${i}`,
+				description: `Answer ${i + 1}'s colour`,
+				type: "string" as const,
+			})),
+			async (ctx, draft) => {
+				const answers =
+					draft.kind === "attendance" ? tryAttendanceAnswers(draft.answers) : undefined;
+				if (!answers) throw new UserFacingError(SCHEDULE_MESSAGES.noColours);
+				// Anything that isn't one of the colours keeps what it was.
+				const before = coloursOf(draft, answers.length);
+				const colours = answers.map((_, i) => {
+					const picked = ctx.args[`colour-${i}`];
+					return isColour(picked) ? picked : (before[i] ?? "grey");
+				});
+				return { reply: await draftPanel(drafts.update(draft, { colours })) };
 			},
 		),
 		onDraft(ACTIONS.results, [], (_, draft) => {
@@ -1410,12 +1466,10 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 /** The settings part of a draft, as a post, for describing it. */
 function postSettings(draft: Draft): ChannelPost {
 	if (draft.kind === "attendance") {
-		const answers = tryAttendanceAnswers(draft.answers) ?? [];
-		const counting = countingOf(draft, answers.length);
 		return {
 			kind: "attendance",
 			question: draft.question,
-			answers: answers.map((label, i) => ({ label, counts: counting.includes(i) })),
+			answers: attendanceAnswers(draft, tryAttendanceAnswers(draft.answers) ?? []),
 			durationHours: draft.durationHours,
 		};
 	}
@@ -1552,7 +1606,13 @@ function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embe
 		return {
 			title: `🙋 ${escapeMarkdown(post.question)}`,
 			description: post.answers
-				.map((a) => `• ${escapeMarkdown(a.label)}${a.counts ? " (counts as coming)" : ""}`)
+				.map((a) => {
+					const notes = [
+						...(a.colour ? [COLOUR_NAMES[a.colour].toLowerCase()] : []),
+						...(a.counts ? ["counts as coming"] : []),
+					];
+					return `• ${escapeMarkdown(a.label)}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`;
+				})
 				.join("\n"),
 			fields: [
 				{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
@@ -1614,6 +1674,42 @@ function tryAttendanceAnswers(text: string): string[] | undefined {
 	} catch {
 		return undefined;
 	}
+}
+
+const COLOUR_NAMES: Record<AttendanceColour, string> = {
+	grey: "Grey",
+	blue: "Blue",
+	green: "Green",
+	red: "Red",
+};
+
+function isColour(value: unknown): value is AttendanceColour {
+	return typeof value === "string" && (ATTENDANCE_COLOURS as readonly string[]).includes(value);
+}
+
+/** Each answer's colour, by position: the ones picked, and grey for the rest. */
+function coloursOf(draft: Pick<Draft, "colours">, answers: number): AttendanceColour[] {
+	return Array.from({ length: answers }, (_, i) => draft.colours?.[i] ?? "grey");
+}
+
+/** "all grey", or each answer's colour in order, for the draft's button. */
+function colourSummary(colours: readonly AttendanceColour[]): string {
+	return colours.every((c) => c === "grey")
+		? "all grey"
+		: colours.map((c) => COLOUR_NAMES[c].toLowerCase()).join(", ");
+}
+
+/** A draft's attendance answers as posted: which count, and colours other than grey. */
+function attendanceAnswers(
+	draft: Pick<Draft, "counting" | "colours">,
+	labels: readonly string[],
+): AttendanceAnswer[] {
+	const counting = countingOf(draft, labels.length);
+	const colours = coloursOf(draft, labels.length);
+	return labels.map((label, i) => {
+		const colour = colours[i] ?? "grey";
+		return { label, counts: counting.includes(i), ...(colour === "grey" ? {} : { colour }) };
+	});
 }
 
 /** Which answers count as coming: the ones picked that still exist, or else the first. */

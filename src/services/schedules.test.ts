@@ -126,6 +126,10 @@ describe("ScheduleStore", () => {
 			"    post: { kind: attendance, question: q, answers: [{ label: a, counts: false }], durationHours: 1 }\n",
 		],
 		[
+			"an attendance poll with a colour that isn't one of Discord's",
+			"    post: { kind: attendance, question: q, answers: [{ label: a, counts: true, colour: purple }], durationHours: 1 }\n",
+		],
+		[
 			"an attendance poll with six answers",
 			`    post: { kind: attendance, question: q, answers: [${"{ label: a, counts: true }, ".repeat(6)}], durationHours: 1 }\n`,
 		],
@@ -156,7 +160,7 @@ describe("ScheduleStore", () => {
 					kind: "attendance",
 					question: "Who's coming?",
 					answers: [
-						{ label: "Coming", counts: true },
+						{ label: "Coming", counts: true, colour: "green" },
 						{ label: "Not coming", counts: false },
 					],
 					durationHours: 14,

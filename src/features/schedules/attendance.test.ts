@@ -113,6 +113,17 @@ describe("totals", () => {
 });
 
 describe("attendanceMessage", () => {
+	it("gives each button its answer's colour, and none when they're all grey", () => {
+		expect(attendanceMessage(poll(), AMS, NOW).colours).toBeUndefined();
+		const coloured = poll({
+			answers: [
+				{ label: "Coming", counts: true, colour: "green" },
+				{ label: "Not coming", counts: false },
+			],
+		});
+		expect(attendanceMessage(coloured, AMS, NOW).colours).toEqual(["green", "grey"]);
+	});
+
 	it("shows each answer's total and who picked it, and when it closes", () => {
 		const message = attendanceMessage(
 			poll({ votes: [vote(1, "Ada", 0), vote(2, "Sam", 0)] }),
