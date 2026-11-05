@@ -63,6 +63,11 @@ export type AttendancePoll = {
 	statusHandled?: boolean;
 	/** It has closed and its close has been handled. */
 	closed: boolean;
+	/**
+	 * Its message has been edited to show it closed (the buttons gone). Until then the
+	 * runner keeps trying, so a failed edit never leaves buttons on a closed poll.
+	 */
+	closeShown?: boolean;
 	votes: readonly AttendanceVote[];
 };
 
@@ -95,6 +100,7 @@ const pollSchema = z
 			.optional(),
 		statusHandled: z.boolean().optional(),
 		closed: z.boolean(),
+		closeShown: z.boolean().optional(),
 		votes: z
 			.array(
 				z.strictObject({
@@ -200,7 +206,7 @@ export class AttendanceStore {
 	/** Changes a poll. Undefined if it has gone. */
 	update(
 		id: string,
-		change: Partial<Pick<AttendancePoll, "statusHandled" | "closed">>,
+		change: Partial<Pick<AttendancePoll, "statusHandled" | "closed" | "closeShown">>,
 	): AttendancePoll | undefined {
 		this.#writable();
 		const poll = this.get(id);

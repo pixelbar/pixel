@@ -32,12 +32,16 @@ export const ATTEND_ACCESS: Access = { minTier: "guest" };
 
 /** A results post up to this late (Pixel was down) still goes out. */
 const LATE_LIMIT_MS = 60 * 60_000;
+/** How long after closing Pixel keeps trying to take a poll's buttons away. */
+const CLOSE_RETRY_MS = 24 * 3_600_000;
 
 export const DEFAULT_STATUS_TEXT = "📊 So far, {{count}} coming: {{names}}";
 export const DEFAULT_CLOSED_TEXT = "🗳️ The poll has closed. {{count}} coming: {{names}}";
 
 export const ATTEND_MESSAGES = {
 	gone: "That poll isn't running any more.",
+	unavailable:
+		"Attendance polls aren't working right now. An admin has been told. Try again later.",
 	closed: "That poll has closed.",
 	chose: (label: string) =>
 		`You're down as **${escapeMarkdown(label)}**. Press it again to take that back.`,
@@ -169,37 +173,41 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 	const now = deps.now ?? (() => new Date());
 	const log = deps.logger.child({ component: "attendance" });
 	/** Message edits in flight, by poll; a click meanwhile asks for one more. */
-	const refreshing = new Map<string, { again: boolean; done: Promise<void> }>();
+	const refreshing = new Map<string, { again: boolean; done: Promise<boolean> }>();
 
 	/**
 	 * Brings the poll's message up to date. Edits for one poll run one at a time, and
 	 * clicks while one runs make one more edit from the latest totals, never one each.
+	 * Resolves to whether the message now shows the latest; a failure is logged and
+	 * reported, never thrown.
 	 */
-	function refresh(id: string): Promise<void> {
+	function refresh(id: string): Promise<boolean> {
 		const running = refreshing.get(id);
 		if (running) {
 			running.again = true;
 			return running.done;
 		}
-		const state = { again: false, done: Promise.resolve() };
+		const state = { again: false, done: Promise.resolve(true) };
 		state.done = (async () => {
 			try {
 				do {
 					state.again = false;
 					const poll = deps.store.get(id);
-					if (!poll) return;
+					if (!poll) return true;
 					await deps.posts.editAttendance(
 						poll.channelId,
 						poll.messageId,
 						attendanceMessage(poll, deps.timezone, now()),
 					);
 				} while (state.again);
+				return true;
 			} catch (error) {
 				log.error(
 					{ event: "attendance.refresh_failed", poll: id, err: error },
 					"couldn't update an attendance poll's message",
 				);
 				deps.reporter.captureBackground(error, "attendance");
+				return false;
 			} finally {
 				refreshing.delete(id);
 			}
@@ -216,6 +224,8 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 			{ name: "answer", description: "Which answer", type: "integer", required: true },
 		],
 		handler: async (ctx) => {
+			// An unreadable file looks like no polls at all: say what's really wrong.
+			if (deps.store.problem) throw new UserFacingError(ATTEND_MESSAGES.unavailable);
 			const id = String(ctx.args.poll);
 			const answer = Number(ctx.args.answer);
 			const poll = POLL_ID.test(id) ? deps.store.get(id) : undefined;
@@ -320,12 +330,19 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 		if (deps.store.problem || !deps.posts.ready) return;
 		for (const { id } of deps.store.all()) {
 			const poll = deps.store.get(id);
-			if (!poll || poll.closed) continue;
+			if (!poll) continue;
 			const closesAt = new Date(poll.closesAt);
+			if (poll.closed) {
+				// Its last edit failed: keep trying to take the buttons away, for a day.
+				if (!poll.closeShown && at.getTime() - closesAt.getTime() < CLOSE_RETRY_MS) {
+					await attempt(poll, () => showClosed(id));
+				}
+				continue;
+			}
 			if (at >= closesAt) {
 				await handle(`${id}~close`, handled, poll, async () => {
 					const closed = deps.store.update(id, { closed: true }) as AttendancePoll;
-					await refresh(id);
+					await showClosed(id);
 					if (closed.results) {
 						await results(closed, "close", closed.results.closedText, closesAt, at, stillAllowed);
 					}
@@ -343,6 +360,11 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 		}
 	}
 
+	/** Edits a closed poll's message to show it closed, and remembers once that worked. */
+	async function showClosed(id: string): Promise<void> {
+		if (await refresh(id)) deps.store.update(id, { closeShown: true });
+	}
+
 	async function handle(
 		key: string,
 		handled: Set<string>,
@@ -351,6 +373,11 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 	): Promise<void> {
 		if (handled.has(key)) return;
 		handled.add(key);
+		await attempt(poll, run);
+	}
+
+	/** Runs one step for a poll; a failure is logged and reported, never thrown. */
+	async function attempt(poll: AttendancePoll, run: () => Promise<void>): Promise<void> {
 		try {
 			await run();
 		} catch (error) {

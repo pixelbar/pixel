@@ -259,8 +259,8 @@ function setup(options: { allowed?: boolean; ready?: boolean } = {}) {
 		warn,
 		error,
 		stillAllowed,
-		failEdits: () => {
-			editFails = true;
+		failEdits: (fail = true) => {
+			editFails = fail;
 		},
 		holdEdits: () => {
 			hold = true;
@@ -415,6 +415,15 @@ describe("voting", () => {
 		expect(t.store.get("0123456789ab")?.votes).toEqual([]);
 	});
 
+	it("says attendance polls aren't working, not that the poll has gone, while the file is broken", async () => {
+		const t = setup();
+		t.store.add(poll(), NOW);
+		Object.defineProperty(t.store, "problem", { value: "broken" });
+		await expect(t.click({ poll: "0123456789ab", answer: 0 })).rejects.toThrow(
+			new UserFacingError(ATTEND_MESSAGES.unavailable),
+		);
+	});
+
 	it("refuses once it has closed, even before the runner has closed it", async () => {
 		const t = setup();
 		t.store.add(poll(), NOW);
@@ -510,6 +519,49 @@ describe("results", () => {
 				post: { kind: "message", text: "Closed: 1 coming on Friday", mentions: false },
 			},
 		]);
+	});
+
+	it("keeps trying to take a closed poll's buttons away until the edit works, posting its results once", async () => {
+		const t = setup();
+		t.store.add(withResults({ statusHandled: true }), NOW);
+		t.failEdits();
+		await t.run(new Date("2026-11-06T22:00:10.000Z"));
+		expect(t.store.get("0123456789ab")?.closed).toBe(true);
+		expect(t.store.get("0123456789ab")?.closeShown).toBeUndefined();
+		await t.run(new Date("2026-11-06T22:00:40.000Z"));
+		expect(t.edits).toEqual([]);
+		t.failEdits(false);
+		await t.run(new Date("2026-11-06T22:01:10.000Z"));
+		expect(t.edits).toHaveLength(1);
+		expect(t.edits[0]?.open).toBe(false);
+		expect(t.store.get("0123456789ab")?.closeShown).toBe(true);
+		await t.run(new Date("2026-11-06T22:01:40.000Z"));
+		expect(t.edits).toHaveLength(1);
+		expect(t.posted).toHaveLength(1);
+		expect(t.posts.editAttendance).toHaveBeenCalledTimes(3);
+	});
+
+	it("gives up taking the buttons away a day after it closed", async () => {
+		const t = setup();
+		t.store.add(poll({ closed: true }), NOW);
+		await t.run(new Date("2026-11-07T22:00:00.000Z"));
+		expect(t.posts.editAttendance).not.toHaveBeenCalled();
+		await t.run(new Date("2026-11-07T21:59:00.000Z"));
+		expect(t.posts.editAttendance).toHaveBeenCalledTimes(1);
+	});
+
+	it("logs and reports a closed poll it can't record as shown", async () => {
+		const t = setup();
+		t.store.add(poll({ closed: true }), NOW);
+		const update = vi.spyOn(t.store, "update").mockImplementation(() => {
+			throw new Error("disk full");
+		});
+		await t.run(new Date("2026-11-06T22:10:00.000Z"));
+		expect(t.error).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "attendance.failed", poll: "0123456789ab" }),
+			expect.any(String),
+		);
+		update.mockRestore();
 	});
 
 	it("closes one without results by removing its buttons only", async () => {
