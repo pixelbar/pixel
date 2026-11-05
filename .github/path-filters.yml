@@ -43,7 +43,7 @@ check:
   - "docs/architecture.md"
   - "docs/infra.md"
 
-# What the Dockerfile copies. Tests are copied but never compiled into the image.
+# What the Dockerfile copies. Tests live in tests/, outside src/, so they never reach the image.
 image:
   - "src/**"
   - "!src/testing/**"
