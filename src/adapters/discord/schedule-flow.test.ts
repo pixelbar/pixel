@@ -127,12 +127,26 @@ describe("the poster's Discord messages", () => {
 	it("send a message with pings off unless allowed", () => {
 		expect(toDiscordMessage({ kind: "message", text: "hi @everyone", mentions: false })).toEqual({
 			content: "hi @everyone",
-			allowedMentions: { parse: [] },
+			allowedMentions: { parse: [], repliedUser: false },
 		});
 		expect(
 			toDiscordMessage({ kind: "message", text: "hi", mentions: true }).allowedMentions,
 		).toEqual({
 			parse: ["everyone", "roles", "users"],
+			repliedUser: false,
+		});
+	});
+
+	it("send a reply to a message in the channel, without pinging its author, even if it has gone", () => {
+		expect(
+			toDiscordMessage(
+				{ kind: "message", text: "So far 3", mentions: false },
+				{ replyTo: "100000000000000099" },
+			),
+		).toEqual({
+			content: "So far 3",
+			allowedMentions: { parse: [], repliedUser: false },
+			reply: { messageReference: "100000000000000099", failIfNotExists: false },
 		});
 	});
 
@@ -152,7 +166,7 @@ describe("the poster's Discord messages", () => {
 				duration: 24,
 				allowMultiselect: true,
 			},
-			allowedMentions: { parse: [] },
+			allowedMentions: { parse: [], repliedUser: false },
 		});
 	});
 

@@ -20,7 +20,8 @@ import { MAX_MESSAGE_LENGTH, type PostedPoll, type Schedule } from "../../servic
  * Attendance polls: Pixel's own "who's coming" poll. It's a message with a button per
  * answer; Pixel counts the clicks, keeps the totals on the message up to date, and,
  * if its creator set a results channel, posts who's coming there at a set time on the
- * day it closes and again when it closes. Unlike a platform poll, there's no winner.
+ * day it closes and again when it closes (as a reply to the poll, when that's its
+ * channel). Unlike a platform poll, there's no winner.
  *
  * Anyone in the server may vote (guest), once: picking another answer switches, and
  * picking yours again takes it back. Each click is `ATTEND_ACTION` through the
@@ -415,7 +416,14 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 		}
 		// The latest totals, read again after the wait.
 		const current = deps.store.get(poll.id) ?? poll;
-		await deps.posts.post(target, resultsPost(template, current, deps.interpolator));
+		const post = resultsPost(template, current, deps.interpolator);
+		// In the poll's own channel, the results reply to it. Discord can't reply across
+		// channels, so elsewhere they're a plain post (`{{link}}` points back).
+		if (target === poll.channelId) {
+			await deps.posts.post(target, post, { replyTo: poll.messageId });
+		} else {
+			await deps.posts.post(target, post);
+		}
 		log.info({ event: "attendance.results_posted", ...fields }, "posted attendance results");
 		deps.reporter.breadcrumb("attendance", `posted ${kind} for ${poll.id}`, fields);
 	}

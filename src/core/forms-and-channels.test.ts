@@ -461,7 +461,9 @@ describe("ChannelPosts", () => {
 			url: "https://example.test/m/1",
 			messageId: "1",
 		});
-		expect(poster.post).toHaveBeenCalledWith("1", post);
+		expect(poster.post).toHaveBeenCalledWith("1", post, undefined);
+		await posts.post("1", post, { replyTo: "2" });
+		expect(poster.post).toHaveBeenLastCalledWith("1", post, { replyTo: "2" });
 		const message = { pollId: "0123456789ab", text: "Who?", answers: ["Coming"], open: true };
 		expect(await posts.postAttendance("1", message)).toEqual({
 			url: "https://example.test/m/2",
