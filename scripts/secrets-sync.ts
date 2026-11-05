@@ -369,7 +369,15 @@ async function pullShare(target: Target): Promise<void> {
 			writePrivate(f.file.mirror, f.remote);
 		if (f.step === "remove") rmSync(f.file.mirror, { force: true });
 	}
-	writePulled(target, pulledRecord(new Map(files.map((f) => [f.file.path, f.remote]))));
+	// A file whose edit you kept keeps its old record, so a push still sees the share moved.
+	const record = pulledRecord(new Map(files.map((f) => [f.file.path, f.remote])));
+	if (!replace) {
+		for (const f of asks) {
+			if (pulled[f.file.path] === undefined) delete record[f.file.path];
+			else record[f.file.path] = pulled[f.file.path] as string | null;
+		}
+	}
+	writePulled(target, record);
 }
 
 async function pull(target: Target, entries: readonly SecretEntry[], scope: Scope): Promise<void> {
