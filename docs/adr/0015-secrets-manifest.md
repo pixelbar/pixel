@@ -13,7 +13,7 @@ Which secrets Pixel keeps in Azure Key Vault was written down in several places 
 - **Two groups.** `app` secrets belong to the Pixel app and are what the sync tool will manage. `infra` secrets (`tailscale-auth-key`, `ghcr-pull-token`) belong to the platform around it, and Terraform keeps writing them.
 - **Terraform reads the manifest.** `infra/modules/pixel/locals.tf` derives `kv_secret_names` and `pixel_secret_env` from it with `yamldecode`. The only thing still written in HCL is the condition behind each feature name (`secret_features`).
 - **[`scripts/secrets-manifest.ts`](../../scripts/secrets-manifest.ts) loads and validates it** (`just validate-secrets`). It collects every problem, and never repeats a value from the file.
-- **A parity test fails on drift.** `scripts/secrets-manifest.test.ts` checks the manifest against `secrets.tf`, the Terraform variables (ephemeral and sensitive, in the module and both stacks), `config.ts`, `.env.example`, the architecture config table, the runbook and the infra doc, and names whatever is missing.
+- **A parity test fails on drift.** `tests/scripts/secrets-manifest.test.ts` checks the manifest against `secrets.tf`, the Terraform variables (ephemeral and sensitive, in the module and both stacks), `config.ts`, `.env.example`, the architecture config table, the runbook and the infra doc, and names whatever is missing.
 - **Terraform still writes the values for now.** Moving the app group's values to a sync tool is a later change.
 
 ## Consequences

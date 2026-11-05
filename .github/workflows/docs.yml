@@ -8,7 +8,7 @@ name: Docs site
 
 on:
   pull_request:
-    # The `docs` list in .github/path-filters.yml (scripts/path-filters.test.ts
+    # The `docs` list in .github/path-filters.yml (tests/scripts/path-filters.test.ts
     # keeps this in step).
     paths:
       - "docs/**"

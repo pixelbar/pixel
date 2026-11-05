@@ -17,6 +17,7 @@
 check:
   - "src/**"
   - "scripts/**"
+  - "tests/**"
   - "content/**"
   - "config/**"
   # vitest.config.ts; Biome lints the rest.
@@ -33,7 +34,7 @@ check:
   # Fail closed: a workflow or filter change still runs just check.
   - ".github/workflows/**"
   - ".github/path-filters.yml"
-  # scripts/secrets-manifest.test.ts checks these against infra/secrets.manifest.yaml (ADR 0015).
+  # tests/scripts/secrets-manifest.test.ts checks these against infra/secrets.manifest.yaml (ADR 0015).
   - "infra/secrets.manifest.yaml"
   - "infra/modules/pixel/*.tf"
   - "infra/envs/*/*.tf"
@@ -42,10 +43,9 @@ check:
   - "docs/architecture.md"
   - "docs/infra.md"
 
-# What the Dockerfile copies. Tests are copied but never compiled into the image.
+# What the Dockerfile copies. Tests live in tests/, outside src/, so they never reach the image.
 image:
   - "src/**"
-  - "!src/**/*.test.ts"
   - "!src/testing/**"
   - "content/**"
   - "package.json"

@@ -1,0 +1,758 @@
+import { describe, expect, it } from "vitest";
+import { ConfigError, loadConfig, loadOpenrAccount, loadSentryConfig } from "../src/config.ts";
+
+const VALID = {
+	DISCORD_TOKEN: "not-a-real-token",
+	DISCORD_APP_ID: "100000000000000010",
+	DISCORD_GUILD_ID: "100000000000000020",
+};
+
+describe("loadConfig", () => {
+	it("applies defaults", () => {
+		const config = loadConfig(VALID);
+		expect(config).toMatchObject({
+			env: "local",
+			runtime: "local",
+			logLevel: "info",
+			access: { adminsFile: "config/admins.yaml", membersFile: "config/members.yaml" },
+			dataDir: "data",
+			healthPort: 8080,
+			sentryDsn: undefined,
+			sentryTracesSampleRate: 1,
+			sentryProfileSessionSampleRate: 1,
+			spaceApiUrl: "https://spaceapi.pixelbar.nl/",
+			wikiApiUrl: "https://wiki.pixelbar.nl/w/api.php",
+		});
+	});
+
+	it("reads content from ./content unless told otherwise", () => {
+		expect(loadConfig(VALID).contentDir).toBe("content");
+		expect(loadConfig({ ...VALID, PIXEL_CONTENT_DIR: "/srv/pixel/content" }).contentDir).toBe(
+			"/srv/pixel/content",
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_CONTENT_DIR: "" })).toThrow(/PIXEL_CONTENT_DIR/);
+	});
+
+	it("shows times in Amsterdam unless told otherwise, and rejects unknown time zones", () => {
+		expect(loadConfig(VALID).timezone).toBe("Europe/Amsterdam");
+		expect(loadConfig({ ...VALID, PIXEL_TIMEZONE: "UTC" }).timezone).toBe("UTC");
+		expect(() => loadConfig({ ...VALID, PIXEL_TIMEZONE: "Europe/Atlantis" })).toThrow(
+			/PIXEL_TIMEZONE/,
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_TIMEZONE: "" })).toThrow(/PIXEL_TIMEZONE/);
+	});
+
+	it("has no announcements channel unless configured, and rejects one that isn't a Discord ID", () => {
+		expect(loadConfig(VALID).discord.announcementsChannelId).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "" }).discord.announcementsChannelId,
+		).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000031" }).discord
+				.announcementsChannelId,
+		).toBe("100000000000000031");
+		expect(() =>
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "#announcements" }),
+		).toThrow(/DISCORD_ANNOUNCEMENTS_CHANNEL_ID/);
+	});
+
+	it("mirrors no tier to a Discord role unless configured", () => {
+		expect(loadConfig(VALID).discord.roles).toEqual({ member: undefined, friend: undefined });
+		expect(
+			loadConfig({ ...VALID, DISCORD_ROLE_MEMBER: "", DISCORD_ROLE_FRIEND: "" }).discord.roles,
+		).toEqual({ member: undefined, friend: undefined });
+	});
+
+	it("reads a role name or ID for each tier, trimmed", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				DISCORD_ROLE_MEMBER: "  member ",
+				DISCORD_ROLE_FRIEND: "100000000000000102",
+			}).discord.roles,
+		).toEqual({ member: "member", friend: "100000000000000102" });
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_FRIEND: "friend" }).discord.roles).toEqual({
+			member: undefined,
+			friend: "friend",
+		});
+	});
+
+	it("reads roles back only when the role sync is on", () => {
+		expect(loadConfig(VALID).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "" }).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "off" }).discord.roleSync).toBe(false);
+		expect(loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "on" }).discord.roleSync).toBe(true);
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_SYNC: "yes" })).toThrow(/DISCORD_ROLE_SYNC/);
+	});
+
+	it("rejects a blank or over-long role setting", () => {
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_MEMBER: "   " })).toThrow(
+			/DISCORD_ROLE_MEMBER/,
+		);
+		expect(() => loadConfig({ ...VALID, DISCORD_ROLE_FRIEND: "x".repeat(101) })).toThrow(
+			/DISCORD_ROLE_FRIEND/,
+		);
+	});
+
+	it("has no announcement channels unless configured", () => {
+		expect(loadConfig(VALID).discord.announce).toEqual({
+			botChannelId: undefined,
+			closingTimeChannelId: undefined,
+		});
+	});
+
+	it("ignores the old open/closed channel variables: admins set those with /admin → Announcements", () => {
+		// A deploy that still has them set must keep starting.
+		const announce = loadConfig({
+			...VALID,
+			DISCORD_ANNOUNCE_LIVE_CHANNEL_ID: "100000000000000031",
+			DISCORD_ANNOUNCE_TIMELINE_CHANNEL_ID: "not even an id",
+		}).discord.announce;
+		expect(announce).toEqual({ botChannelId: undefined, closingTimeChannelId: undefined });
+	});
+
+	it("treats the parking channel off, none, or empty as disabled, and accepts a Discord ID", () => {
+		expect(
+			loadConfig({ ...VALID, DISCORD_PARKING_CHANNEL_ID: "100000000000000098" }).discord.announce
+				.parkingChannelId,
+		).toBe("100000000000000098");
+		for (const value of [undefined, "", "off", "NONE"]) {
+			expect(
+				loadConfig({ ...VALID, DISCORD_PARKING_CHANNEL_ID: value }).discord.announce
+					.parkingChannelId,
+			).toBeUndefined();
+		}
+	});
+
+	it("treats closing-time channel off, none, or empty as disabled, and accepts a Discord ID", () => {
+		expect(loadConfig(VALID).discord.announce.closingTimeChannelId).toBeUndefined();
+		for (const value of ["", "off", "OFF", "none", "None"]) {
+			expect(
+				loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: value }).discord.announce
+					.closingTimeChannelId,
+			).toBeUndefined();
+		}
+		expect(
+			loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: "100000000000000099" }).discord
+				.announce.closingTimeChannelId,
+		).toBe("100000000000000099");
+		expect(() => loadConfig({ ...VALID, DISCORD_CLOSING_TIME_CHANNEL_ID: "#members" })).toThrow(
+			/DISCORD_CLOSING_TIME_CHANNEL_ID/,
+		);
+	});
+
+	it("defaults the closing-time file to data/closing-time.md, or a custom path", () => {
+		expect(loadConfig(VALID).closingTimeFile).toBe("data/closing-time.md");
+		expect(loadConfig({ ...VALID, PIXEL_DATA_DIR: "/var/lib/pixel" }).closingTimeFile).toBe(
+			"/var/lib/pixel/closing-time.md",
+		);
+		expect(
+			loadConfig({ ...VALID, PIXEL_CLOSING_TIME_FILE: " /etc/pixel/closing.md " }).closingTimeFile,
+		).toBe("/etc/pixel/closing.md");
+		expect(loadConfig({ ...VALID, PIXEL_CLOSING_TIME_FILE: "" }).closingTimeFile).toBe(
+			"data/closing-time.md",
+		);
+	});
+
+	it("takes the data directory from PIXEL_DATA_DIR and rejects an empty one", () => {
+		expect(loadConfig({ ...VALID, PIXEL_DATA_DIR: "/var/lib/pixel" }).dataDir).toBe(
+			"/var/lib/pixel",
+		);
+		expect(() => loadConfig({ ...VALID, PIXEL_DATA_DIR: "" })).toThrow(/PIXEL_DATA_DIR/);
+	});
+
+	it("accepts a custom SpaceAPI URL but only over http(s)", () => {
+		expect(loadConfig({ ...VALID, SPACEAPI_URL: "https://example.org/space" }).spaceApiUrl).toBe(
+			"https://example.org/space",
+		);
+		expect(() => loadConfig({ ...VALID, SPACEAPI_URL: "file:///etc/passwd" })).toThrow(
+			/SPACEAPI_URL/,
+		);
+	});
+
+	it("searches Pixelbar's wiki unless told otherwise, and only over https", () => {
+		expect(loadConfig({ ...VALID, WIKI_API_URL: "https://wiki.example/api.php" }).wikiApiUrl).toBe(
+			"https://wiki.example/api.php",
+		);
+		expect(() => loadConfig({ ...VALID, WIKI_API_URL: "http://wiki.example/api.php" })).toThrow(
+			/WIKI_API_URL/,
+		);
+	});
+
+	it("treats an empty SENTRY_DSN as unset", () => {
+		expect(loadConfig({ ...VALID, SENTRY_DSN: "" }).sentryDsn).toBeUndefined();
+	});
+
+	it("defaults PIXEL_RUNTIME to local, and accepts cloud", () => {
+		expect(loadConfig(VALID).runtime).toBe("local");
+		expect(loadConfig({ ...VALID, PIXEL_RUNTIME: "cloud" }).runtime).toBe("cloud");
+		expect(() => loadConfig({ ...VALID, PIXEL_RUNTIME: "azure" })).toThrow(/PIXEL_RUNTIME/);
+	});
+
+	it("lists every invalid variable without echoing values", () => {
+		const secret = "https://secret-key-in-a-bad-dsn";
+		let message = "";
+		try {
+			loadConfig({
+				...VALID,
+				SENTRY_DSN: `${secret} not a url`,
+				DISCORD_GUILD_ID: "abc",
+				DISCORD_TOKEN: undefined,
+			});
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toContain("SENTRY_DSN");
+		expect(message).toContain("DISCORD_GUILD_ID");
+		expect(message).toContain("DISCORD_TOKEN");
+		expect(message).not.toContain(secret);
+	});
+});
+
+describe("loadSentryConfig", () => {
+	it("is undefined without a DSN", () => {
+		expect(loadSentryConfig({})).toBeUndefined();
+	});
+
+	it("is undefined for an invalid DSN instead of throwing", () => {
+		expect(loadSentryConfig({ SENTRY_DSN: "not a url" })).toBeUndefined();
+	});
+
+	it("returns DSN, environment, release and sample rates of 1", () => {
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				PIXEL_ENV: "prod",
+				PIXEL_VERSION: "abc123",
+			}),
+		).toEqual({
+			dsn: "https://key@o0.ingest.sentry.io/1",
+			environment: "prod",
+			release: "abc123",
+			tracesSampleRate: 1,
+			profileSessionSampleRate: 1,
+		});
+	});
+
+	it("keeps sample rates from the environment", () => {
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_TRACES_SAMPLE_RATE: "0.25",
+				SENTRY_PROFILE_SESSION_SAMPLE_RATE: "0.5",
+			}),
+		).toMatchObject({ tracesSampleRate: 0.25, profileSessionSampleRate: 0.5 });
+	});
+
+	it("is undefined for an invalid sample rate instead of throwing", () => {
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_TRACES_SAMPLE_RATE: "2",
+			}),
+		).toBeUndefined();
+		expect(
+			loadSentryConfig({
+				SENTRY_DSN: "https://key@o0.ingest.sentry.io/1",
+				SENTRY_PROFILE_SESSION_SAMPLE_RATE: "2",
+			}),
+		).toBeUndefined();
+	});
+});
+
+describe.each([
+	["traces", "SENTRY_TRACES_SAMPLE_RATE", "sentryTracesSampleRate"],
+	["profile session", "SENTRY_PROFILE_SESSION_SAMPLE_RATE", "sentryProfileSessionSampleRate"],
+] as const)("the %s sample rate", (_label, envKey, configKey) => {
+	it("defaults to 1, and accepts 0 through 1", () => {
+		expect(loadConfig(VALID)[configKey]).toBe(1);
+		expect(loadConfig({ ...VALID, [envKey]: "" })[configKey]).toBe(1);
+		expect(loadConfig({ ...VALID, [envKey]: "0" })[configKey]).toBe(0);
+		expect(loadConfig({ ...VALID, [envKey]: "0.5" })[configKey]).toBe(0.5);
+	});
+
+	it("rejects a rate outside 0–1", () => {
+		expect(() => loadConfig({ ...VALID, [envKey]: "-0.1" })).toThrow(new RegExp(envKey));
+		expect(() => loadConfig({ ...VALID, [envKey]: "2" })).toThrow(new RegExp(envKey));
+		expect(() => loadConfig({ ...VALID, [envKey]: "nope" })).toThrow(new RegExp(envKey));
+	});
+});
+
+describe("Home Assistant settings", () => {
+	const URL = "https://example123.ui.nabu.casa";
+	const TOKEN = "a-long-lived-token-value";
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).homeAssistant).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: "", HOME_ASSISTANT_TOKEN: "" }).homeAssistant,
+		).toBeUndefined();
+	});
+
+	it("reads the address and the token", () => {
+		expect(
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: URL, HOME_ASSISTANT_TOKEN: ` ${TOKEN} ` })
+				.homeAssistant,
+		).toEqual({ url: URL, token: TOKEN });
+		expect(
+			loadConfig({
+				...VALID,
+				HOME_ASSISTANT_URL: "http://homeassistant.local:8123",
+				HOME_ASSISTANT_TOKEN: TOKEN,
+			}).homeAssistant?.url,
+		).toBe("http://homeassistant.local:8123");
+	});
+
+	it.each([
+		["only the address", { HOME_ASSISTANT_URL: URL }],
+		["only the token", { HOME_ASSISTANT_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing either value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/set both HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN, or neither/);
+		expect(message).not.toContain(TOKEN);
+		expect(message).not.toContain(URL);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the address %j", (url) => {
+		expect(() =>
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: url, HOME_ASSISTANT_TOKEN: TOKEN }),
+		).toThrow(/HOME_ASSISTANT_URL/);
+	});
+
+	it("rejects a blank token", () => {
+		expect(() =>
+			loadConfig({ ...VALID, HOME_ASSISTANT_URL: URL, HOME_ASSISTANT_TOKEN: "   " }),
+		).toThrow(/HOME_ASSISTANT_TOKEN/);
+	});
+});
+
+describe("the Home Assistant devices directory", () => {
+	it("defaults to config/home-assistant", () => {
+		expect(loadConfig(VALID).homeAssistantDir).toBe("config/home-assistant");
+	});
+
+	it("can be pointed elsewhere, but not at nothing", () => {
+		expect(
+			loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "/etc/pixel/ha" }).homeAssistantDir,
+		).toBe("/etc/pixel/ha");
+		expect(() => loadConfig({ ...VALID, PIXEL_HOME_ASSISTANT_DIR: "" })).toThrow(
+			/PIXEL_HOME_ASSISTANT_DIR/,
+		);
+	});
+});
+
+describe("the log directory", () => {
+	it("defaults to data/logs", () => {
+		expect(loadConfig(VALID).logDir).toBe("data/logs");
+	});
+
+	it("can be moved", () => {
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: " /var/log/pixel " }).logDir).toBe(
+			"/var/log/pixel",
+		);
+	});
+
+	it("turns the log file off when empty, leaving the console and Sentry", () => {
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: "" }).logDir).toBeUndefined();
+		expect(loadConfig({ ...VALID, PIXEL_LOG_DIR: "   " }).logDir).toBeUndefined();
+	});
+});
+
+describe("space state API settings", () => {
+	const URL_ = "https://space.example/api/state";
+	const USER = "pixel-test-user";
+	const TOKEN = "spacestate-test-token";
+	const ALL = { SPACESTATE_API_URL: URL_, SPACESTATE_USER: USER, SPACESTATE_TOKEN: TOKEN };
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).spaceStateApi).toBeUndefined();
+		expect(
+			loadConfig({
+				...VALID,
+				SPACESTATE_API_URL: "",
+				SPACESTATE_USER: "",
+				SPACESTATE_TOKEN: "",
+			}).spaceStateApi,
+		).toBeUndefined();
+	});
+
+	it("reads the address, user and token, trimmed", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				SPACESTATE_API_URL: URL_,
+				SPACESTATE_USER: ` ${USER} `,
+				SPACESTATE_TOKEN: ` ${TOKEN} `,
+			}).spaceStateApi,
+		).toEqual({ url: URL_, user: USER, token: TOKEN, headers: {} });
+	});
+
+	it.each([
+		["only the address", { SPACESTATE_API_URL: URL_ }],
+		["only the user", { SPACESTATE_USER: USER }],
+		["only the token", { SPACESTATE_TOKEN: TOKEN }],
+		["no token", { SPACESTATE_API_URL: URL_, SPACESTATE_USER: USER }],
+		["no address", { SPACESTATE_USER: USER, SPACESTATE_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing any value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/SPACESTATE_API_URL, SPACESTATE_USER and SPACESTATE_TOKEN together/);
+		for (const value of [URL_, USER, TOKEN]) expect(message).not.toContain(value);
+	});
+
+	it("reads the extra headers, and defaults to none", () => {
+		expect(loadConfig({ ...VALID, ...ALL }).spaceStateApi?.headers).toEqual({});
+		expect(
+			loadConfig({
+				...VALID,
+				...ALL,
+				SPACESTATE_ADDITIONAL_HEADERS: ' {"X-Example": " value-1 "} ',
+			}).spaceStateApi?.headers,
+		).toEqual({ "X-Example": "value-1" });
+		expect(
+			loadConfig({ ...VALID, ...ALL, SPACESTATE_ADDITIONAL_HEADERS: "" }).spaceStateApi?.headers,
+		).toEqual({});
+	});
+
+	it.each([
+		"not json",
+		"[]",
+		"{}",
+		'"x"',
+		'{"X-A": 1}',
+		'{"X-A": ""}',
+		'{"bad name": "v"}',
+		'{"X-A": "a\\nb"}',
+	])("rejects the extra headers %j without echoing them", (headers) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...ALL, SPACESTATE_ADDITIONAL_HEADERS: headers });
+		} catch (error) {
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/SPACESTATE_ADDITIONAL_HEADERS/);
+		expect(message).not.toContain(headers);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the address %j", (url) => {
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_API_URL: url })).toThrow(
+			/SPACESTATE_API_URL/,
+		);
+	});
+
+	it("rejects a blank-only user or token", () => {
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_TOKEN: "   " })).toThrow(
+			/SPACESTATE_TOKEN/,
+		);
+		expect(() => loadConfig({ ...VALID, ...ALL, SPACESTATE_USER: "   " })).toThrow(
+			/SPACESTATE_USER/,
+		);
+	});
+});
+
+describe("Mastodon settings", () => {
+	const INSTANCE = "https://mastodon.example";
+	const TOKEN = "mastodon-test-token";
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).mastodon).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, MASTODON_INSTANCE: "", MASTODON_ACCESS_TOKEN: "" }).mastodon,
+		).toBeUndefined();
+	});
+
+	it("reads the instance, token, optional account and defaults", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: `${INSTANCE}/@someone`,
+				MASTODON_ACCESS_TOKEN: ` ${TOKEN} `,
+				MASTODON_ACCOUNT: " pixel@mastodon.example ",
+			}).mastodon,
+		).toEqual({
+			instanceUrl: INSTANCE,
+			token: TOKEN,
+			account: "pixel@mastodon.example",
+			visibility: "unlisted",
+			kinds: ["space.status"],
+		});
+	});
+
+	it("keeps visibility and routed kinds from the environment", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_VISIBILITY: "public",
+				MASTODON_ANNOUNCE_KINDS: "space.status, closing.time",
+			}).mastodon,
+		).toMatchObject({
+			visibility: "public",
+			kinds: ["space.status", "closing.time"],
+		});
+	});
+
+	it("treats announce kinds off, none, or empty as no kinds", () => {
+		for (const value of ["off", "OFF", "none", "None"]) {
+			expect(
+				loadConfig({
+					...VALID,
+					MASTODON_INSTANCE: INSTANCE,
+					MASTODON_ACCESS_TOKEN: TOKEN,
+					MASTODON_ANNOUNCE_KINDS: value,
+				}).mastodon?.kinds,
+			).toEqual([]);
+		}
+		expect(
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_ANNOUNCE_KINDS: "",
+			}).mastodon?.kinds,
+		).toEqual(["space.status"]);
+	});
+
+	it.each([
+		["only the instance", { MASTODON_INSTANCE: INSTANCE }],
+		["only the token", { MASTODON_ACCESS_TOKEN: TOKEN }],
+	])("refuses to start with %s, without echoing either value", (_label, env) => {
+		let message = "";
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toMatch(/set both MASTODON_INSTANCE and MASTODON_ACCESS_TOKEN, or neither/);
+		expect(message).not.toContain(TOKEN);
+		expect(message).not.toContain(INSTANCE);
+	});
+
+	it.each(["not a url", "ftp://example.com", "example.com"])("rejects the instance %j", (url) => {
+		expect(() =>
+			loadConfig({ ...VALID, MASTODON_INSTANCE: url, MASTODON_ACCESS_TOKEN: TOKEN }),
+		).toThrow(/MASTODON_INSTANCE/);
+	});
+
+	it("rejects a blank token, a bad visibility, or an unknown kind", () => {
+		expect(() =>
+			loadConfig({ ...VALID, MASTODON_INSTANCE: INSTANCE, MASTODON_ACCESS_TOKEN: "   " }),
+		).toThrow(/MASTODON_ACCESS_TOKEN/);
+		expect(() =>
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_VISIBILITY: "direct",
+			}),
+		).toThrow(/MASTODON_VISIBILITY/);
+		expect(() =>
+			loadConfig({
+				...VALID,
+				MASTODON_INSTANCE: INSTANCE,
+				MASTODON_ACCESS_TOKEN: TOKEN,
+				MASTODON_ANNOUNCE_KINDS: "space.status,direct-message",
+			}),
+		).toThrow(/MASTODON_ANNOUNCE_KINDS/);
+	});
+});
+
+describe("the heartbeat interval", () => {
+	it("defaults to five minutes", () => {
+		expect(loadConfig(VALID).heartbeatMinutes).toBe(5);
+	});
+
+	it("can be changed, or set to 0 to turn the heartbeat off", () => {
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "1" }).heartbeatMinutes).toBe(1);
+		expect(loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: "0" }).heartbeatMinutes).toBe(0);
+	});
+
+	it.each(["-1", "2.5", "61", "often"])("refuses %s", (value) => {
+		expect(() => loadConfig({ ...VALID, PIXEL_HEARTBEAT_MINUTES: value })).toThrow(
+			/PIXEL_HEARTBEAT_MINUTES/,
+		);
+	});
+});
+
+describe("the bot status channel and build info", () => {
+	it("posts Pixel's online status in the announcements channel unless told otherwise", () => {
+		expect(
+			loadConfig({ ...VALID, DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000041" }).discord
+				.announce.botChannelId,
+		).toBe("100000000000000041");
+		expect(
+			loadConfig({
+				...VALID,
+				DISCORD_ANNOUNCEMENTS_CHANNEL_ID: "100000000000000041",
+				DISCORD_ANNOUNCE_BOT_CHANNEL_ID: "100000000000000042",
+			}).discord.announce.botChannelId,
+		).toBe("100000000000000042");
+		expect(() => loadConfig({ ...VALID, DISCORD_ANNOUNCE_BOT_CHANNEL_ID: "123" })).toThrow(
+			/DISCORD_ANNOUNCE_BOT_CHANNEL_ID/,
+		);
+	});
+
+	it("reads the git commit and branch when given, and checks the commit looks like one", () => {
+		expect(loadConfig(VALID)).toMatchObject({ gitSha: undefined, gitBranch: undefined });
+		expect(
+			loadConfig({ ...VALID, PIXEL_GIT_SHA: "abc1234def", PIXEL_GIT_BRANCH: "feature/doors" }),
+		).toMatchObject({ gitSha: "abc1234def", gitBranch: "feature/doors" });
+		expect(() => loadConfig({ ...VALID, PIXEL_GIT_SHA: "not a sha" })).toThrow(/PIXEL_GIT_SHA/);
+	});
+});
+
+describe("OpenR settings", () => {
+	// Obviously fake values.
+	const EMAIL = "pixel@example.invalid";
+	const PASSWORD = "not-a-real-password";
+	const ACCOUNT = { OPENR_BUILDING_ID: "49", OPENR_EMAIL: EMAIL, OPENR_PASSWORD: PASSWORD };
+	const errorOf = (env: Record<string, string>): string => {
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			return (error as Error).message;
+		}
+		throw new Error("expected a ConfigError");
+	};
+
+	it("is off unless configured", () => {
+		expect(loadConfig(VALID).openr).toBeUndefined();
+		expect(
+			loadConfig({ ...VALID, OPENR_BUILDING_ID: "", OPENR_EMAIL: "", OPENR_PASSWORD: "" }).openr,
+		).toBeUndefined();
+	});
+
+	it("reads the account, the doors and the gate, with OpenR's own address by default", () => {
+		expect(
+			loadConfig({
+				...VALID,
+				...ACCOUNT,
+				OPENR_EMAIL: ` ${EMAIL} `,
+				OPENR_DOORS: " Entrance=103, Living room = 203 ,Outdoor area=126, ",
+				OPENR_GATE_DOOR: " 125 ",
+			}).openr,
+		).toEqual({
+			url: "https://dashboard.openr.nl/api/v4",
+			buildingId: "49",
+			email: EMAIL,
+			password: PASSWORD,
+			doors: [
+				{ name: "Entrance", id: "103" },
+				{ name: "Living room", id: "203" },
+				{ name: "Outdoor area", id: "126" },
+			],
+			gateDoor: "125",
+		});
+	});
+
+	it("works with only doors, or only the gate, and takes another address", () => {
+		expect(loadConfig({ ...VALID, ...ACCOUNT, OPENR_DOORS: "Entrance=103" }).openr).toMatchObject({
+			doors: [{ name: "Entrance", id: "103" }],
+			gateDoor: undefined,
+		});
+		expect(
+			loadConfig({
+				...VALID,
+				...ACCOUNT,
+				OPENR_GATE_DOOR: "125",
+				OPENR_URL: "https://openr.example/api/v4",
+			}).openr,
+		).toMatchObject({ url: "https://openr.example/api/v4", doors: [], gateDoor: "125" });
+	});
+
+	it.each([
+		["only the building", { OPENR_BUILDING_ID: "49", OPENR_GATE_DOOR: "1" }],
+		["no password", { OPENR_BUILDING_ID: "49", OPENR_EMAIL: EMAIL, OPENR_GATE_DOOR: "1" }],
+		["no building", { OPENR_EMAIL: EMAIL, OPENR_PASSWORD: PASSWORD }],
+	])("refuses to start with %s, without echoing any value", (_label, env) => {
+		const message = errorOf(env);
+		expect(message).toMatch(/OPENR_BUILDING_ID, OPENR_EMAIL and OPENR_PASSWORD together/);
+		for (const value of [EMAIL, PASSWORD]) expect(message).not.toContain(value);
+	});
+
+	it("needs a door or a gate once it's on", () => {
+		expect(errorOf(ACCOUNT)).toMatch(/set OPENR_DOORS, OPENR_GATE_DOOR or both/);
+	});
+
+	it("needs the building for doors or a gate", () => {
+		expect(errorOf({ OPENR_GATE_DOOR: "125" })).toMatch(/need OPENR_BUILDING_ID/);
+		expect(errorOf({ OPENR_DOORS: "Entrance=103" })).toMatch(/need OPENR_BUILDING_ID/);
+	});
+
+	it("never offers the gate as a door", () => {
+		expect(
+			errorOf({ ...ACCOUNT, OPENR_DOORS: "Entrance=103,Gate=125", OPENR_GATE_DOOR: "125" }),
+		).toMatch(/OPENR_DOORS: must not include the parking gate/);
+	});
+
+	it.each([
+		["no ID", "Front door"],
+		["no name", "=777"],
+		["an ID that isn't digits", "Front door=abc"],
+		["a name that's too long", `${"x".repeat(51)}=1`],
+		["nothing at all", " , "],
+		["a name twice", "Entrance=1,entrance=2"],
+		["an ID twice", "Entrance=1,Back=1"],
+		["too many doors", Array.from({ length: 26 }, (_, i) => `D${i}=${i}`).join(",")],
+	])("refuses doors with %s, without echoing them", (_label, doors) => {
+		const message = errorOf({ ...ACCOUNT, OPENR_DOORS: doors });
+		expect(message).toMatch(/OPENR_DOORS/);
+		expect(message).not.toContain(doors);
+	});
+
+	it.each([
+		["OPENR_BUILDING_ID", { ...ACCOUNT, OPENR_BUILDING_ID: "forty-nine", OPENR_GATE_DOOR: "1" }],
+		["OPENR_GATE_DOOR", { ...ACCOUNT, OPENR_GATE_DOOR: "1; drop" }],
+		["OPENR_URL", { ...ACCOUNT, OPENR_GATE_DOOR: "1", OPENR_URL: "http://openr.example" }],
+	])("refuses a bad %s", (name, env) => {
+		expect(errorOf(env)).toContain(name);
+	});
+});
+
+describe("loadOpenrAccount", () => {
+	const EMAIL = "pixel@example.invalid";
+	const PASSWORD = "not-a-real-password";
+
+	it("reads just the account, with OpenR's address by default", () => {
+		expect(loadOpenrAccount({ OPENR_EMAIL: ` ${EMAIL} `, OPENR_PASSWORD: PASSWORD })).toEqual({
+			url: "https://dashboard.openr.nl/api/v4",
+			email: EMAIL,
+			password: PASSWORD,
+		});
+		expect(
+			loadOpenrAccount({
+				OPENR_EMAIL: EMAIL,
+				OPENR_PASSWORD: PASSWORD,
+				OPENR_URL: "https://openr.example/api/v4",
+			}).url,
+		).toBe("https://openr.example/api/v4");
+	});
+
+	it("names what's missing, without echoing any value", () => {
+		expect(() => loadOpenrAccount({})).toThrow("Set OPENR_EMAIL and OPENR_PASSWORD");
+		let message = "";
+		try {
+			loadOpenrAccount({ OPENR_EMAIL: EMAIL, OPENR_PASSWORD: "", OPENR_URL: "http://x" });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			message = (error as Error).message;
+		}
+		expect(message).toBe("Set OPENR_URL and OPENR_PASSWORD (see .env.example, OpenR)");
+		expect(message).not.toContain(EMAIL);
+	});
+});

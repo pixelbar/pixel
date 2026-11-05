@@ -8,7 +8,7 @@ name: Terraform
 on:
   pull_request:
     # Positive patterns of the `terraform` list in .github/path-filters.yml
-    # (scripts/path-filters.test.ts keeps these in step). infra/** includes
+    # (tests/scripts/path-filters.test.ts keeps these in step). infra/** includes
     # markdown so the workflow still starts; the inner filter then skips.
     paths:
       - "infra/**"

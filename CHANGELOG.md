@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- Tests now live in a top-level `tests/` folder that mirrors `src/` and `scripts/`, so a change to a test is easy to tell from a change to the code it covers. No behaviour change.
+
 ## [0.27.0] - 2026-11-05
 
 ### Added
