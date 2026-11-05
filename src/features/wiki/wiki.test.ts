@@ -157,6 +157,17 @@ describe("/wiki", () => {
 			]);
 		});
 
+		it("links to the search that found the results, wildcards included", async () => {
+			const many = Array.from({ length: 14 }, (_, i) => wikiPage(`Meetings ${i}`));
+			const reply = await setup(many).run("meet");
+			const description = reply.embeds?.[0]?.description ?? "";
+			// Shown as typed, but the wiki's own search page only finds them with the wildcard.
+			expect(description).toContain("14 pages on the wiki match `meet`.");
+			const all = "https://wiki.example/w/index.php?search=meet*";
+			expect(reply.embeds?.[0]?.url).toBe(all);
+			expect(links(reply)[0]).toEqual({ label: "See all 14 results", url: all });
+		});
+
 		it("says privately when nothing matches, with the top pages", async () => {
 			const reply = await setup().run("unicorn");
 			expect(reply.private).toBe(true);

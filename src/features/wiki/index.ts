@@ -88,7 +88,7 @@ export function createWikiFeature({ wiki, logger }: WikiDeps): Feature {
 						);
 					}
 
-					let found: WikiSearch;
+					let found: Searched;
 					try {
 						found = await searchWithPrefixes(wiki, query);
 					} catch (error) {
@@ -104,18 +104,22 @@ export function createWikiFeature({ wiki, logger }: WikiDeps): Feature {
 	};
 }
 
+/** What the wiki found, and the query that found it (which links to the full results must use). */
+type Searched = WikiSearch & { searched: string };
+
 /**
  * The wiki's search only matches whole words, so "clean" doesn't find "cleaning".
  * When a plain search finds nothing, try again with every word as a prefix.
  */
-async function searchWithPrefixes(wiki: Wiki, query: string): Promise<WikiSearch> {
+async function searchWithPrefixes(wiki: Wiki, query: string): Promise<Searched> {
 	const found = await wiki.search(query, MAX_RESULTS);
-	if (found.pages.length > 0 || /[*"]/.test(query)) return found;
+	if (found.pages.length > 0 || /[*"]/.test(query)) return { ...found, searched: query };
 	const prefixes = query
 		.split(" ")
 		.map((word) => (/^[\p{L}\p{N}]/u.test(word) ? `${word}*` : word))
 		.join(" ");
-	return prefixes === query ? found : wiki.search(prefixes, MAX_RESULTS);
+	if (prefixes === query) return { ...found, searched: query };
+	return { ...(await wiki.search(prefixes, MAX_RESULTS)), searched: prefixes };
 }
 
 function cleanQuery(text: string): string {
@@ -145,7 +149,8 @@ function home(wiki: Wiki, top: ControlRow[]): Reply {
 	};
 }
 
-function results(wiki: Wiki, query: string, found: WikiSearch): Reply {
+/** `query` is what the person typed, shown as written; `found.searched` is what the wiki was asked. */
+function results(wiki: Wiki, query: string, found: Searched): Reply {
 	// Whole links only: a link cut off by the embed's limit would be broken.
 	const lines: string[] = [];
 	let length = 0;
@@ -157,15 +162,15 @@ function results(wiki: Wiki, query: string, found: WikiSearch): Reply {
 	}
 	const more = found.total > lines.length;
 	const heading = `${count(found.total, "page")} on the wiki ${found.total === 1 ? "matches" : "match"} ${inlineCode(query, MAX_QUERY_LENGTH)}${more ? `. Here are the first ${lines.length}` : ""}:`;
+	const allResults = wiki.searchUrl(found.searched);
 	const row: Control[] = [];
-	if (more)
-		row.push({ kind: "link", label: `See all ${found.total} results`, url: wiki.searchUrl(query) });
+	if (more) row.push({ kind: "link", label: `See all ${found.total} results`, url: allResults });
 	row.push(openWiki(wiki));
 	return {
 		embeds: [
 			{
 				title: "📚 Wiki search",
-				url: wiki.searchUrl(query),
+				url: allResults,
 				description: `${heading}\n\n${lines.join("\n")}`,
 				accent: "brand",
 			},
