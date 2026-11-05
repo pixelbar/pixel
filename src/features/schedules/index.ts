@@ -1,5 +1,9 @@
 import { type Access, actorLogFields, actorRef, type Principal } from "../../core/access.ts";
-import type { ChannelPost, ChannelPosts } from "../../core/channel-posts.ts";
+import {
+	type ChannelPost,
+	type ChannelPosts,
+	MAX_ATTENDANCE_ANSWERS,
+} from "../../core/channel-posts.ts";
 import type { CommandOption, ResolvedChannel } from "../../core/command.ts";
 import { formatMinutes, parseDurationMinutes } from "../../core/duration.ts";
 import { UserFacingError } from "../../core/errors.ts";
@@ -38,15 +42,20 @@ import {
 	parseTimeOfDay,
 	parseWhen,
 } from "../../core/when.ts";
+import { AttendanceStore } from "../../services/attendance.ts";
 import {
+	type AttendanceResults,
+	MAX_ATTENDANCE_LABEL,
 	MAX_MESSAGE_LENGTH,
 	MAX_POLL_ANSWER,
 	MAX_POLL_ANSWERS,
 	MAX_POLL_QUESTION,
+	MAX_RESULTS_TEXT,
 	type PollReminder,
 	type Schedule,
 	type ScheduleStore,
 } from "../../services/schedules.ts";
+import { createAttendancePolls, DEFAULT_CLOSED_TEXT, DEFAULT_STATUS_TEXT } from "./attendance.ts";
 import { type Draft, Drafts, REPEATS, type Repeat } from "./drafts.ts";
 import { checkFilledLength } from "./limits.ts";
 import { runDue } from "./runner.ts";
@@ -98,6 +107,9 @@ export const ACTIONS = {
 	toggle: "schedule.toggle",
 	reminders: "schedule.reminders",
 	reminded: "schedule.reminded",
+	counting: "schedule.counting",
+	results: "schedule.results",
+	resulted: "schedule.resulted",
 	rename: "schedule.rename",
 	renamed: "schedule.renamed",
 	save: "schedule.save",
@@ -130,6 +142,10 @@ export const SCHEDULE_MESSAGES = {
 	noReminderChannel: "Pick a channel to remind people in, in Reminders.",
 	cantRemind:
 		"You can only send reminders to channels where you can post yourself. Pick another one in Reminders.",
+	badResultsTime: (zone: string) =>
+		`I couldn't understand the time for the totals so far. Type a time of day in ${zone}, for example \`17:00\` or \`5pm\`, in Results, or leave it empty.`,
+	cantPostResults:
+		"You can only post results in channels where you can post yourself. Pick another one in Results.",
 } as const;
 
 export type SchedulesDeps = {
@@ -141,6 +157,8 @@ export type SchedulesDeps = {
 	interpolator: Interpolate;
 	logger: Logger;
 	reporter: Pick<ErrorReporter, "captureBackground" | "breadcrumb">;
+	/** Attendance polls and their votes. Defaults to one kept in memory only, for tests. */
+	attendance?: AttendanceStore;
 	now?: () => Date;
 };
 
@@ -152,6 +170,7 @@ type Ready = {
 	channel: { id: string; name: string };
 	name: string;
 	reminder?: PollReminder;
+	results?: AttendanceResults;
 	/** Whether the time or repeat changed, for an edit. */
 	retimed: boolean;
 };
@@ -168,6 +187,15 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 	const now = deps.now ?? (() => new Date());
 	const zone = deps.timezone;
 	const drafts = new Drafts(() => now().getTime());
+	const attendance = createAttendancePolls({
+		store: deps.attendance ?? new AttendanceStore({ logger: deps.logger }),
+		posts: deps.posts,
+		timezone: zone,
+		interpolator: deps.interpolator,
+		logger: deps.logger,
+		reporter: deps.reporter,
+		now,
+	});
 	/** Drafts being saved. Checks wait on Discord, so a double click mustn't save twice. */
 	const saving = new Set<string>();
 
@@ -224,6 +252,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		}
 		const question = draft.question.trim();
 		if (question === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyQuestion);
+		if (draft.kind === "attendance") {
+			const counting = countingOf(draft, parseAttendanceAnswers(draft.answers).length);
+			return {
+				kind: "attendance",
+				question,
+				answers: parseAttendanceAnswers(draft.answers).map((label, i) => ({
+					label,
+					counts: counting.includes(i),
+				})),
+				durationHours: draft.durationHours,
+			};
+		}
 		return {
 			kind: "poll",
 			question,
@@ -260,8 +300,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		checkFilledLength(post, timing, zone, now(), deps.interpolator);
 		const channel = await checkChannel(draft.channel, post);
 		const name = draft.name ?? cleanName(post.kind === "message" ? post.text : post.question);
-		const reminder = post.kind === "poll" ? await checkReminder(draft) : undefined;
-		return { ...timing, post, channel, name, ...(reminder ? { reminder } : {}) };
+		const reminder = post.kind !== "message" ? await checkReminder(draft) : undefined;
+		const results = post.kind === "attendance" ? await checkResults(draft) : undefined;
+		return {
+			...timing,
+			post,
+			channel,
+			name,
+			...(reminder ? { reminder } : {}),
+			...(results ? { results } : {}),
+		};
 	}
 
 	/**
@@ -284,6 +332,34 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		});
 		if (!check.ok) throw new UserFacingError(`I can't send reminders there: ${check.problem}.`);
 		return { channelId: channel.id, channelName: check.name, at: formatTimeOfDay(time) };
+	}
+
+	/**
+	 * An attendance poll's results posts, if it has them. Like a reminder: a channel picked
+	 * on the form must be one the person can post in, and Pixel must be able to post there.
+	 */
+	async function checkResults(draft: Draft): Promise<AttendanceResults | undefined> {
+		if (!draft.results) return undefined;
+		const typed = draft.results.at.trim();
+		const time = typed === "" ? undefined : parseTimeOfDay(typed);
+		if (typed !== "" && !time) throw new UserFacingError(SCHEDULE_MESSAGES.badResultsTime(zone));
+		const channel = draft.results.channel;
+		if (channel.caller && !channel.caller.canPost) {
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantPostResults);
+		}
+		const check = await deps.posts.check(channel.id, {
+			kind: "message",
+			text: ".",
+			mentions: false,
+		});
+		if (!check.ok) throw new UserFacingError(`I can't post results there: ${check.problem}.`);
+		return {
+			channelId: channel.id,
+			channelName: check.name,
+			...(time ? { statusAt: formatTimeOfDay(time) } : {}),
+			statusText: draft.results.statusText.trim() || DEFAULT_STATUS_TEXT,
+			closedText: draft.results.closedText.trim() || DEFAULT_CLOSED_TEXT,
+		};
 	}
 
 	// ── Whose is what ────────────────────────────────────────────────────
@@ -349,7 +425,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const lines = [
 			...(notice ? [notice, ""] : []),
 			all.length === 0
-				? "Nothing is scheduled yet. Make a message or a poll with the buttons below."
+				? "Nothing is scheduled yet. Make a message, a poll or an attendance poll with the buttons below."
 				: [
 						`**${all.length}** scheduled · **${mine}** yours${paused > 0 ? ` · **${paused}** paused` : ""}`,
 						"Choose one to see what it will post, change it or delete it.",
@@ -372,6 +448,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		rows.push([
 			button("New message", ACTIONS.new, { kind: "message" }, "primary"),
 			button("New poll", ACTIONS.new, { kind: "poll" }),
+			button("New attendance poll", ACTIONS.new, { kind: "attendance" }),
 		]);
 		if (pages > 1) {
 			rows.push([
@@ -396,7 +473,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			...(owns(schedule, principal) ? [] : [`by ${schedule.createdBy.name}`]),
 		];
 		return {
-			label: `${schedule.post.kind === "poll" ? "🗳" : "💬"} ${schedule.name}`,
+			label: `${icon(schedule.post)} ${schedule.name}`,
 			value: schedule.id,
 			description: parts.join(" · "),
 		};
@@ -439,7 +516,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		].join("\n");
 		const times = schedule.paused ? [] : upcoming(schedule, zone, now(), 3);
 		const summary: Embed = {
-			title: `${post.kind === "poll" ? "🗳" : "💬"} ${escapeMarkdown(schedule.name)}`,
+			title: `${icon(post)} ${escapeMarkdown(schedule.name)}`,
 			description,
 			fields: [
 				{ name: "Channel", value: `#${escapeMarkdown(schedule.channelName)}`, inline: true },
@@ -447,6 +524,9 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				{ name: "What", value: describeWhat(schedule.post) },
 				...(schedule.reminder
 					? [{ name: "Reminders", value: describeReminder(schedule.reminder, zone) }]
+					: []),
+				...(schedule.post.kind === "attendance"
+					? [{ name: "Results", value: describeResults(schedule.results, zone) }]
 					: []),
 				...(times.length > 0
 					? [
@@ -514,7 +594,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		}
 		const editing = draft.editing !== undefined;
 		const saveLabel = editing ? "Save changes" : "Schedule";
-		const what = draft.kind === "message" ? "message" : "poll";
+		const what = WHAT[draft.kind];
 		const lines: string[] = [];
 		let preview: ChannelPost | undefined;
 		if (ready) {
@@ -539,7 +619,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			fields: [
 				{ name: "Name", value: escapeMarkdown(name), inline: true },
 				{ name: "What", value: describeWhat(postSettings(draft)), inline: true },
-				...(draft.kind === "poll"
+				...(draft.kind !== "message"
 					? [
 							{
 								name: "Reminders",
@@ -548,6 +628,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 									: draft.reminder
 										? "Not set up yet: see above"
 										: "None",
+							},
+						]
+					: []),
+				...(draft.kind === "attendance"
+					? [
+							{
+								name: "Results",
+								value: ready
+									? describeResults(ready.results, zone)
+									: draft.results
+										? "Not set up yet: see above"
+										: describeResults(undefined, zone),
 							},
 						]
 					: []),
@@ -575,7 +667,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				},
 			]);
 		}
-		if (draft.kind === "poll") {
+		if (draft.kind !== "message") {
 			rows.push([
 				{
 					kind: "select",
@@ -589,11 +681,36 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					})),
 				},
 			]);
+		}
+		const answers = draft.kind === "attendance" ? tryAttendanceAnswers(draft.answers) : undefined;
+		if (answers) {
+			const counting = countingOf(draft, answers.length);
 			rows.push([
-				button(`Several answers: ${draft.multiple ? "on" : "off"}`, ACTIONS.toggle, {
-					draft: draft.id,
-					setting: "multiple",
-				}),
+				{
+					kind: "select",
+					placeholder: "Which answers count as coming?",
+					call: call(ACTIONS.counting, { draft: draft.id }),
+					arg: "counting",
+					min: 1,
+					max: answers.length,
+					options: answers.map((label, i) => ({
+						label: `Counts as coming: ${[...label].slice(0, 70).join("")}`,
+						value: String(i),
+						...(counting.includes(i) ? { selected: true } : {}),
+					})),
+				},
+			]);
+		}
+		if (draft.kind !== "message") {
+			rows.push([
+				...(draft.kind === "poll"
+					? [
+							button(`Several answers: ${draft.multiple ? "on" : "off"}`, ACTIONS.toggle, {
+								draft: draft.id,
+								setting: "multiple",
+							}),
+						]
+					: []),
 				button(
 					draft.reminder
 						? `Reminders: daily at ${reminderClock(draft.reminder.at)}`
@@ -601,6 +718,17 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					ACTIONS.reminders,
 					{ draft: draft.id },
 				),
+				...(draft.kind === "attendance"
+					? [
+							button(
+								draft.results
+									? `Results: in #${[...draft.results.channel.name].slice(0, 20).join("")}`
+									: "Results: off",
+								ACTIONS.results,
+								{ draft: draft.id },
+							),
+						]
+					: []),
 			]);
 		} else if (draft.mentions || draft.channel?.caller.canMentionEveryone) {
 			// Only offered where the person could ping everyone themselves, or to turn it off.
@@ -629,7 +757,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			...(draft.kind === "message" && draft.text.trim() !== ""
 				? { text: draft.text.trim().slice(0, 2000) }
 				: {}),
-			embeds: [summary, ...(preview?.kind === "poll" ? [pollPreviewEmbed(preview)] : [])],
+			embeds: [summary, ...(preview ? [pollPreviewEmbed(preview)] : [])],
 			private: true,
 			controls: rows,
 		};
@@ -643,7 +771,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 
 	function detailsForm(draft: Draft): Form {
 		const editing = draft.editing !== undefined;
-		const what = draft.kind === "message" ? "message" : "poll";
+		const what = WHAT[draft.kind];
+		const attending = draft.kind === "attendance";
 		const body =
 			draft.kind === "message"
 				? [
@@ -671,10 +800,20 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 						{
 							kind: "text" as const,
 							name: "answers",
-							label: `Answers, one per line (2 to ${MAX_POLL_ANSWERS})`,
+							label: attending
+								? `Answers, one per line (1 to ${MAX_ATTENDANCE_ANSWERS})`
+								: `Answers, one per line (2 to ${MAX_POLL_ANSWERS})`,
+							...(attending
+								? {
+										description:
+											"A button each. Pick which count as coming after this. Pressing one again takes it back.",
+									}
+								: {}),
 							style: "paragraph" as const,
-							maxLength: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
-							placeholder: "Yes\nNo\nMaybe",
+							maxLength: attending
+								? MAX_ATTENDANCE_ANSWERS * (MAX_ATTENDANCE_LABEL + 1)
+								: MAX_POLL_ANSWERS * (MAX_POLL_ANSWER + 1),
+							placeholder: attending ? "Coming\nNot coming" : "Yes\nNo\nMaybe",
 							...(draft.answers ? { value: draft.answers } : {}),
 						},
 					];
@@ -743,6 +882,58 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		};
 	}
 
+	function resultsForm(draft: Draft): Form {
+		const results = draft.results;
+		const tokens = "{{count}}, {{names}}, {{question}}, {{link}} and {{date}} fill in.";
+		return {
+			title: "Results",
+			submit: call(ACTIONS.resulted, { draft: draft.id }),
+			fields: [
+				{
+					kind: "channel",
+					name: "results-in",
+					label: "Post the results in",
+					description: "You need to be able to post there yourself. Empty for no results posts.",
+					required: false,
+					...(results ? { value: results.channel.id } : {}),
+				},
+				{
+					kind: "text",
+					name: "status-at",
+					label: "Totals so far at",
+					description: `A time of day in ${zone}, on the day it closes. Empty for none.`,
+					style: "short",
+					maxLength: 20,
+					placeholder: "17:00",
+					required: false,
+					...(results?.at ? { value: results.at } : {}),
+				},
+				{
+					kind: "text",
+					name: "status-text",
+					label: "Totals so far say",
+					description: tokens,
+					style: "paragraph",
+					maxLength: MAX_RESULTS_TEXT,
+					placeholder: DEFAULT_STATUS_TEXT,
+					required: false,
+					...(results?.statusText ? { value: results.statusText } : {}),
+				},
+				{
+					kind: "text",
+					name: "closed-text",
+					label: "When it closes, say",
+					description: tokens,
+					style: "paragraph",
+					maxLength: MAX_RESULTS_TEXT,
+					placeholder: DEFAULT_CLOSED_TEXT,
+					required: false,
+					...(results?.closedText ? { value: results.closedText } : {}),
+				},
+			],
+		};
+	}
+
 	function renameForm(draft: Draft): Form {
 		return {
 			title: "Rename",
@@ -787,7 +978,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			if (error instanceof UserFacingError) return draftPanel(draft);
 			throw error;
 		}
-		const { start, recurrence, post, channel, name, retimed, reminder } = ready;
+		const { start, recurrence, post, channel, name, retimed, reminder, results } = ready;
 		if (draft.editing === undefined) {
 			const schedule = deps.store.add({
 				name,
@@ -801,6 +992,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				createdAt: now().toISOString(),
 				lastRunAt: null,
 				...(reminder ? { reminder } : {}),
+				...(results ? { results } : {}),
 			});
 			drafts.remove(draft.id);
 			ctx.logger.info(
@@ -826,6 +1018,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			start: formatLocal(start),
 			recurrence,
 			reminder,
+			results,
 			// New timing counts from now, like resume: nothing it "missed" before the edit goes out.
 			...(retimed ? { lastRunAt: fromNow(schedule, now()) } : {}),
 		});
@@ -896,16 +1089,17 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			[
 				{
 					name: "kind",
-					description: "Message or poll",
+					description: "Message, poll or attendance poll",
 					type: "string",
 					required: true,
-					choices: ["message", "poll"],
+					choices: ["message", "poll", "attendance"],
 				},
 			],
 			(ctx) => {
 				const draft = drafts.create({
 					owner: actorRef(ctx.principal),
-					kind: ctx.args.kind === "poll" ? "poll" : "message",
+					kind:
+						ctx.args.kind === "poll" || ctx.args.kind === "attendance" ? ctx.args.kind : "message",
 					when: "",
 					repeat: "once",
 					text: "",
@@ -934,10 +1128,25 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				...(schedule.recurrence.kind === "weekly" ? { days: schedule.recurrence.days } : {}),
 				text: schedule.post.kind === "message" ? schedule.post.text : "",
 				mentions: schedule.post.kind === "message" && schedule.post.mentions,
-				question: schedule.post.kind === "poll" ? schedule.post.question : "",
-				answers: schedule.post.kind === "poll" ? schedule.post.answers.join("\n") : "",
-				durationHours: schedule.post.kind === "poll" ? schedule.post.durationHours : 24,
+				question: schedule.post.kind === "message" ? "" : schedule.post.question,
+				answers: answersText(schedule.post),
+				durationHours: schedule.post.kind === "message" ? 24 : schedule.post.durationHours,
 				multiple: schedule.post.kind === "poll" && schedule.post.multiple,
+				...(schedule.post.kind === "attendance"
+					? {
+							counting: schedule.post.answers.flatMap((a, i) => (a.counts ? [i] : [])),
+						}
+					: {}),
+				...(schedule.results
+					? {
+							results: {
+								at: schedule.results.statusAt ?? "",
+								statusText: schedule.results.statusText,
+								closedText: schedule.results.closedText,
+								channel: { id: schedule.results.channelId, name: schedule.results.channelName },
+							},
+						}
+					: {}),
 				name: schedule.name,
 				...(schedule.reminder
 					? {
@@ -1033,9 +1242,60 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			},
 		),
 		onDraft(ACTIONS.reminders, [], (_, draft) => {
-			if (draft.kind !== "poll") throw new UserFacingError("Reminders only work for polls.");
+			if (draft.kind === "message") throw new UserFacingError("Reminders only work for polls.");
 			return { form: remindersForm(draft) };
 		}),
+		onDraft(
+			ACTIONS.counting,
+			[{ name: "counting", description: "Which answers count", type: "string", required: true }],
+			async (ctx, draft) => {
+				const answers = tryAttendanceAnswers(draft.answers);
+				const picked = String(ctx.args.counting)
+					.split(",")
+					.map((v) => v.trim())
+					.filter((v) => /^\d$/.test(v))
+					.map(Number)
+					.filter((i) => answers !== undefined && i < answers.length);
+				if (draft.kind !== "attendance" || picked.length === 0) {
+					throw new UserFacingError("Choose at least one answer that counts as coming.");
+				}
+				return {
+					reply: await draftPanel(drafts.update(draft, { counting: [...new Set(picked)] })),
+				};
+			},
+		),
+		onDraft(ACTIONS.results, [], (_, draft) => {
+			if (draft.kind !== "attendance") {
+				throw new UserFacingError("Results only work for attendance polls.");
+			}
+			return { form: resultsForm(draft) };
+		}),
+		onDraft(
+			ACTIONS.resulted,
+			[
+				{ name: "results-in", description: "Where", type: "channel" },
+				{ name: "status-at", description: "When", type: "string" },
+				{ name: "status-text", description: "Totals so far", type: "string" },
+				{ name: "closed-text", description: "When it closes", type: "string" },
+			],
+			async (ctx, draft) => {
+				const text = (name: string) =>
+					typeof ctx.args[name] === "string" ? (ctx.args[name] as string).trim() : "";
+				const picked = ctx.channels["results-in"];
+				const updated = drafts.update(draft, {
+					// No channel means no results posts.
+					results: picked
+						? {
+								at: text("status-at"),
+								statusText: text("status-text"),
+								closedText: text("closed-text"),
+								channel: { id: picked.id, name: picked.name, caller: picked.caller },
+							}
+						: undefined,
+				});
+				return { reply: await draftPanel(updated) };
+			},
+		),
 		onDraft(
 			ACTIONS.reminded,
 			[
@@ -1123,7 +1383,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				handler: async (ctx) => home(ctx.principal),
 			},
 		],
-		actions,
+		actions: [...actions, attendance.action],
 		start: () => {
 			const handled = new Set<string>();
 			let running = false;
@@ -1131,7 +1391,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				if (running) return;
 				running = true;
 				try {
-					await runDue({ ...deps, handled }, now());
+					await runDue({ ...deps, attendance, handled }, now());
 				} catch (error) {
 					// runDue doesn't throw, but nothing from a timer may escape.
 					deps.logger.error({ event: "schedule.tick_failed", err: error }, "schedule check failed");
@@ -1149,6 +1409,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 
 /** The settings part of a draft, as a post, for describing it. */
 function postSettings(draft: Draft): ChannelPost {
+	if (draft.kind === "attendance") {
+		const answers = tryAttendanceAnswers(draft.answers) ?? [];
+		const counting = countingOf(draft, answers.length);
+		return {
+			kind: "attendance",
+			question: draft.question,
+			answers: answers.map((label, i) => ({ label, counts: counting.includes(i) })),
+			durationHours: draft.durationHours,
+		};
+	}
 	return draft.kind === "message"
 		? { kind: "message", text: draft.text, mentions: draft.mentions }
 		: {
@@ -1161,6 +1431,10 @@ function postSettings(draft: Draft): ChannelPost {
 }
 
 function describeWhat(post: ChannelPost): string {
+	if (post.kind === "attendance") {
+		const counted = post.answers.filter((a) => a.counts).map((a) => `“${escapeMarkdown(a.label)}”`);
+		return `An attendance poll open for ${durationLabel(post.durationHours)}${counted.length > 0 ? `, counting ${counted.join(" and ")} as coming` : ""}`;
+	}
 	return post.kind === "message"
 		? `A message, pings ${post.mentions ? "on" : "off"}`
 		: `A poll open for ${durationLabel(post.durationHours)}, ${post.multiple ? "several answers allowed" : "one answer each"}`;
@@ -1273,7 +1547,20 @@ function filledPost(
 	return interpolateChannelPost(schedule.post, (text) => interpolator.interpolate(text, at));
 }
 
-function pollPreviewEmbed(post: Extract<ChannelPost, { kind: "poll" }>): Embed {
+function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embed {
+	if (post.kind === "attendance") {
+		return {
+			title: `🙋 ${escapeMarkdown(post.question)}`,
+			description: post.answers
+				.map((a) => `• ${escapeMarkdown(a.label)}${a.counts ? " (counts as coming)" : ""}`)
+				.join("\n"),
+			fields: [
+				{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
+				{ name: "Answers", value: "One each, by button", inline: true },
+			],
+			accent: "brand",
+		};
+	}
 	return {
 		title: `🗳 ${escapeMarkdown(post.question)}`,
 		description: post.answers.map((a) => `• ${escapeMarkdown(a)}`).join("\n"),
@@ -1283,4 +1570,63 @@ function pollPreviewEmbed(post: Extract<ChannelPost, { kind: "poll" }>): Embed {
 		],
 		accent: "brand",
 	};
+}
+
+const WHAT = { message: "message", poll: "poll", attendance: "attendance poll" } as const;
+
+function icon(post: ChannelPost): string {
+	return post.kind === "message" ? "💬" : post.kind === "poll" ? "🗳" : "🙋";
+}
+
+/** A schedule's answers as typed on the form: one per line. */
+function answersText(post: ChannelPost): string {
+	if (post.kind === "message") return "";
+	return post.kind === "poll"
+		? post.answers.join("\n")
+		: post.answers.map((a) => a.label).join("\n");
+}
+
+/** An attendance poll's answers from the form: one per line, trimmed, no blanks or repeats. */
+export function parseAttendanceAnswers(text: string): string[] {
+	const answers = [
+		...new Set(
+			text
+				.split("\n")
+				.map((a) => a.trim())
+				.filter((a) => a !== ""),
+		),
+	];
+	if (answers.length < 1 || answers.length > MAX_ATTENDANCE_ANSWERS) {
+		throw new UserFacingError(
+			`An attendance poll needs 1 to ${MAX_ATTENDANCE_ANSWERS} different answers, one per line.`,
+		);
+	}
+	const long = answers.find((a) => [...a].length > MAX_ATTENDANCE_LABEL);
+	if (long) {
+		throw new UserFacingError(`Each answer can be at most ${MAX_ATTENDANCE_LABEL} characters.`);
+	}
+	return answers;
+}
+
+function tryAttendanceAnswers(text: string): string[] | undefined {
+	try {
+		return parseAttendanceAnswers(text);
+	} catch {
+		return undefined;
+	}
+}
+
+/** Which answers count as coming: the ones picked that still exist, or else the first. */
+function countingOf(draft: Pick<Draft, "counting">, answers: number): number[] {
+	const picked = (draft.counting ?? []).filter((i) => i < answers);
+	return picked.length > 0 ? [...picked] : [0];
+}
+
+/** "In #general: the totals so far at 17:00 on the day it closes, and again when it closes" */
+function describeResults(results: AttendanceResults | undefined, zone: string): string {
+	if (!results) return "None: the totals show on the poll only";
+	const channel = `#${escapeMarkdown(results.channelName)}`;
+	return results.statusAt
+		? `In ${channel}: the totals so far at ${results.statusAt} (${zone}) on the day it closes, and when it closes`
+		: `In ${channel}, when it closes`;
 }

@@ -103,3 +103,24 @@ describe("clipToLimits", () => {
 		expect(post).toEqual(poll(`${"q".repeat(299)}…`, ["Yes", `${"🍕".repeat(54)}…`]));
 	});
 });
+
+describe("attendance polls", () => {
+	const attendance = (question: string, labels: string[]): ChannelPost => ({
+		kind: "attendance",
+		question,
+		answers: labels.map((label, i) => ({ label, counts: i === 0 })),
+		durationHours: 8,
+	});
+
+	it("are over the limit for a long question or a label over 40 characters", () => {
+		expect(overLimit(attendance("x".repeat(300), ["x".repeat(40)]))).toBeUndefined();
+		expect(overLimit(attendance("x".repeat(301), ["a"]))).toMatch(/question/);
+		expect(overLimit(attendance("q", ["a", "x".repeat(41)]))).toMatch(/40-character/);
+	});
+
+	it("are cut down to fit, keeping which answers count", () => {
+		const { post, clipped } = clipToLimits(attendance("q".repeat(310), ["Coming", "x".repeat(50)]));
+		expect(clipped).toBe(true);
+		expect(post).toEqual(attendance(`${"q".repeat(299)}…`, ["Coming", `${"x".repeat(39)}…`]));
+	});
+});

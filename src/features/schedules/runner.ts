@@ -14,6 +14,7 @@ import {
 } from "../../core/recurrence.ts";
 import { describeWhen } from "../../core/when.ts";
 import type { PostedPoll, Schedule, ScheduleStore } from "../../services/schedules.ts";
+import type { AttendancePolls } from "./attendance.ts";
 import { clipToLimits } from "./limits.ts";
 
 /** A post up to this late (Pixel was down) still goes out; later than that it's skipped. */
@@ -29,6 +30,8 @@ export type RunnerDeps = {
 	stillAllowed: (ref: string) => Promise<boolean>;
 	logger: Logger;
 	reporter: Pick<ErrorReporter, "captureBackground" | "breadcrumb">;
+	/** Posts attendance polls and handles their results. Without it, none are posted. */
+	attendance?: Pick<AttendancePolls, "post" | "runDue">;
 	/**
 	 * Occurrences already handled in this process ("id@time"), so that if saving fails a
 	 * post still never goes out twice. Keep one set for the life of the runner.
@@ -122,7 +125,7 @@ export function reminderPost(poll: PostedPoll, timezone: string): ChannelPost {
  * one-off is removed once handled. Each schedule is read again just before it's
  * handled and after every wait, so one deleted, paused or edited meanwhile (say while
  * an earlier one was posting) is never posted as it was. Then posts the polls'
- * reminders that are due. Never throws.
+ * reminders that are due, and the attendance polls' results. Never throws.
  */
 export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 	if (deps.store.problem || !deps.posts.ready) return;
@@ -171,15 +174,22 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 					// Tokens made it longer than the platform allows. Never log the text itself.
 					log.warn({ event: "schedule.clipped", ...fields }, "filled post too long, clipped it");
 				}
-				const sent = await deps.posts.post(current.channelId, filled.post);
-				if (filled.post.kind === "poll") {
-					polled = {
-						question: filled.post.question,
-						url: sent.url,
-						postedAt: due.at.toISOString(),
-						// Discord counts from when it's sent, not from the occurrence.
-						closesAt: new Date(now.getTime() + filled.post.durationHours * 3_600_000).toISOString(),
-					};
+				if (filled.post.kind === "attendance") {
+					if (!deps.attendance) throw new Error("attendance polls aren't set up");
+					polled = await deps.attendance.post(current, filled.post, due.at);
+				} else {
+					const sent = await deps.posts.post(current.channelId, filled.post);
+					if (filled.post.kind === "poll") {
+						polled = {
+							question: filled.post.question,
+							url: sent.url,
+							postedAt: due.at.toISOString(),
+							// Discord counts from when it's sent, not from the occurrence.
+							closesAt: new Date(
+								now.getTime() + filled.post.durationHours * 3_600_000,
+							).toISOString(),
+						};
+					}
 				}
 				log.info(
 					{ event: "schedule.posted", ...fields, due: due.at.toISOString() },
@@ -215,6 +225,7 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 		}
 	}
 	await remindDue(deps, now, log);
+	await deps.attendance?.runDue(now, deps.stillAllowed, deps.handled);
 }
 
 /**

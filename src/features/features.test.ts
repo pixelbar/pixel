@@ -17,6 +17,7 @@ import { nullFeedbackSink } from "../core/ports/feedback.ts";
 import { notConnectedGate } from "../core/ports/gate.ts";
 import { CommandRegistry } from "../core/registry.ts";
 import { RoleMirror } from "../core/role-mirror.ts";
+import { AttendanceStore } from "../services/attendance.ts";
 import { HomeDeviceStore } from "../services/home-devices.ts";
 import { KindSwitch } from "../services/kind-switch.ts";
 import { ScheduleStore } from "../services/schedules.ts";
@@ -76,6 +77,7 @@ const deps = () => ({
 	calendar: new Calendar({ logger: silentLogger, reporter: nullErrorReporter }),
 	channelPosts: new ChannelPosts(),
 	schedules: new ScheduleStore({ logger: silentLogger }),
+	attendance: new AttendanceStore({ logger: silentLogger }),
 	parkingSpots: inMemoryParking().spots,
 	parkingWindows: inMemoryParking().windows,
 	parkingBookings: inMemoryParking().bookings,

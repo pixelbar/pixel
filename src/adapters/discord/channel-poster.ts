@@ -1,22 +1,34 @@
 import { type Client, PermissionFlagsBits } from "discord.js";
-import type { ChannelCheck, ChannelPost, ChannelPoster } from "../../core/channel-posts.ts";
+import type {
+	AttendanceMessage,
+	ChannelCheck,
+	ChannelPost,
+	ChannelPoster,
+} from "../../core/channel-posts.ts";
 import { missingPermissions } from "./announce-channel.ts";
+import { attendanceComponents } from "./attendance-buttons.ts";
 
 /**
- * Scheduled posts on Discord: a plain message, or a native Discord poll, which
- * Discord counts and closes itself (and announces the result). Pings only fire when
- * the schedule allows them.
+ * Scheduled posts on Discord: a plain message, a native Discord poll, which
+ * Discord counts and closes itself (and announces the result), or an attendance
+ * poll, a message with Pixel's buttons that Pixel counts and edits itself. Pings only
+ * fire when the schedule allows them; an attendance poll never pings.
  */
 
 /** What a post needs from the bot in the channel. */
 export function requiredPermissions(post: ChannelPost): bigint[] {
 	const base = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
 	if (post.kind === "poll") return [...base, PermissionFlagsBits.SendPolls];
+	if (post.kind === "attendance") return base;
 	return post.mentions ? [...base, PermissionFlagsBits.MentionEveryone] : base;
 }
 
 /** The message Discord is sent for a post (the API's shape). */
 export function toDiscordMessage(post: ChannelPost) {
+	if (post.kind === "attendance") {
+		// Its message needs a poll ID for the buttons: that's `toAttendanceMessage`.
+		throw new Error("an attendance poll is posted with postAttendance");
+	}
 	if (post.kind === "message") {
 		return {
 			content: post.text,
@@ -35,6 +47,24 @@ export function toDiscordMessage(post: ChannelPost) {
 		allowedMentions: { parse: [] },
 	};
 }
+
+/** An attendance poll's message: its text, and a button per answer while it's open. */
+export function toAttendanceMessage(message: AttendanceMessage) {
+	return {
+		content: message.text,
+		// Always set, so closing it removes the buttons.
+		components: attendanceComponents(message),
+		allowedMentions: { parse: [] },
+	};
+}
+
+/** What an attendance poll's message needs (only the kind matters). */
+const ATTENDANCE_CHECK: ChannelPost = {
+	kind: "attendance",
+	question: ".",
+	answers: [],
+	durationHours: 1,
+};
 
 export function createDiscordPoster(client: Client<true>, guildId: string): ChannelPoster {
 	async function open(channelId: string, post: ChannelPost) {
@@ -68,7 +98,18 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 			const opened = await open(channelId, post);
 			if (!opened.ok) throw new Error(`Can't post a scheduled post: ${opened.problem}`);
 			const sent = await opened.channel.send(toDiscordMessage(post));
-			return { url: sent.url };
+			return { url: sent.url, messageId: sent.id };
+		},
+		async postAttendance(channelId, message) {
+			const opened = await open(channelId, ATTENDANCE_CHECK);
+			if (!opened.ok) throw new Error(`Can't post an attendance poll: ${opened.problem}`);
+			const sent = await opened.channel.send(toAttendanceMessage(message));
+			return { url: sent.url, messageId: sent.id };
+		},
+		async editAttendance(channelId, messageId, message) {
+			const opened = await open(channelId, ATTENDANCE_CHECK);
+			if (!opened.ok) throw new Error(`Can't update an attendance poll: ${opened.problem}`);
+			await opened.channel.messages.edit(messageId, toAttendanceMessage(message));
 		},
 	};
 }

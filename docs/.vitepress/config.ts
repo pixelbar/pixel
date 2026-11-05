@@ -192,6 +192,10 @@ export default defineConfig({
 							text: "0024 · Capability revocation",
 							link: "/maintainers/adr/0024-capability-revocation",
 						},
+						{
+							text: "0025 · Attendance poll buttons",
+							link: "/maintainers/adr/0025-attendance-poll-buttons",
+						},
 					],
 				},
 			],

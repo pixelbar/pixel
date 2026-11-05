@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- `/schedule` can post **attendance polls** for "who's coming?" (#199). Unlike a Discord poll, there's no winner: Pixel posts a message with a button per answer (1 to 5), counts the answers itself and shows each answer's total and who picked it. Anyone in the server can answer once: pressing another answer switches, and pressing yours again takes it back. On the draft, choose which answers count as coming and, with **Results**, a channel for the totals so far at a time on the day it closes (such as 17:00 for a poll open until midnight) and the final totals when it closes, in your own words with `{{count}}`, `{{names}}`, `{{question}}` and `{{link}}`. The buttons keep working across restarts. Votes are kept in `data/attendance.yaml`: back it up with `schedules.yaml`, and don't delete it while a poll is open.
+
 ## [0.26.0] - 2026-11-04
 
 ### Added

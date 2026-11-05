@@ -16,7 +16,7 @@ The guide first proposed that every control run an existing slash command with i
 - **Every use is `Dispatcher.act`.** Rate limit, identity, the action's access (tier, capability, context), argument validation against its declared options, then the handler, with the same logging (`action.executed`, `action.denied`) and error mapping as `dispatch`. The actor is whoever used the control, by ID.
 - **What a control runs stays on the server.** The Discord adapter holds each reply's `ActionCall`s, and each form, under a random token in the `custom_id` (`controls.ts`), for the person the reply was for, for 15 minutes from when it was shown. A click says only which control was used and what was chosen; chosen values must be among those offered, and a submitted form must match the form shown (its fields, lengths and choices). Anything else, someone else's control, or an expired one gets "That's expired" or "That isn't yours" privately, without reaching the dispatcher. A channel picked in a form carries what the submitter may do there, as a `channel` option does.
 - **Legacy components, not Components V2,** for now: content and embeds as today, with action rows under them. It reuses the existing renderer and its limits, and avoids V2's one-way switch on a message. A layout that needs V2 can move later behind the same core types.
-- **No stateless controls yet.** Held controls don't survive a restart, so long-lived public panels aren't supported; that needs its own decision.
+- **No stateless controls yet.** Held controls don't survive a restart, so long-lived public panels aren't supported; that needs its own decision. [ADR 0025](0025-attendance-poll-buttons.md) makes one exception, for attendance polls.
 
 ## Consequences
 

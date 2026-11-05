@@ -33,6 +33,7 @@ import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
+import { AttendanceStore } from "./services/attendance.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
@@ -162,6 +163,9 @@ export function buildCore(
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
 	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
 	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
+	// Nor does an invalid attendance file: no votes are taken and no poll is posted until it's fixed.
+	const attendance = new AttendanceStore({ file: join(config.dataDir, "attendance.yaml"), logger });
+	if (attendance.problem) reporter.captureBackground(new Error(attendance.problem), "attendance");
 	// Invalid parking files don't stop Pixel either: parking (or its borrowed spots) is off until fixed.
 	const parkingSpots = new ParkingSpotStore({
 		file: join(config.dataDir, "parking-spots.yaml"),
@@ -220,6 +224,7 @@ export function buildCore(
 		calendar,
 		channelPosts,
 		schedules,
+		attendance,
 		parkingSpots,
 		parkingWindows,
 		parkingBookings,

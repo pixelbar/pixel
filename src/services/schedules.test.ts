@@ -118,6 +118,22 @@ describe("ScheduleStore", () => {
 			"    post: { kind: poll, question: q, answers: [a, b], durationHours: 1, multiple: false }\n    reminder: { channelId: '100000000000000051', channelName: c, at: '24:00' }\n",
 		],
 		[
+			"results on a poll that isn't an attendance poll",
+			"    post: { kind: poll, question: q, answers: [a, b], durationHours: 1, multiple: false }\n    results: { channelId: '100000000000000051', channelName: c, statusText: s, closedText: c }\n",
+		],
+		[
+			"an attendance poll where no answer counts",
+			"    post: { kind: attendance, question: q, answers: [{ label: a, counts: false }], durationHours: 1 }\n",
+		],
+		[
+			"an attendance poll with six answers",
+			`    post: { kind: attendance, question: q, answers: [${"{ label: a, counts: true }, ".repeat(6)}], durationHours: 1 }\n`,
+		],
+		[
+			"a status time that isn't a time of day",
+			"    post: { kind: attendance, question: q, answers: [{ label: a, counts: true }], durationHours: 1 }\n    results: { channelId: '100000000000000051', channelName: c, statusAt: '5pm', statusText: s, closedText: c }\n",
+		],
+		[
 			"a poll link that isn't https",
 			"    lastPoll: { question: q, url: 'javascript:alert(1)', postedAt: 2026-10-14T17:00:00.000Z, closesAt: 2026-10-15T17:00:00.000Z }\n",
 		],
@@ -130,6 +146,32 @@ describe("ScheduleStore", () => {
 			: "    post: { kind: message, text: hi, mentions: false }\n";
 		writeFileSync(file, base + post + extra);
 		expect(new ScheduleStore({ file, logger: logs().logger }).problem).toBeDefined();
+	});
+
+	it("keeps an attendance poll, its reminder and its results across a restart", () => {
+		const store = new ScheduleStore({ file, logger: silentLogger });
+		store.add(
+			sample({
+				post: {
+					kind: "attendance",
+					question: "Who's coming?",
+					answers: [
+						{ label: "Coming", counts: true },
+						{ label: "Not coming", counts: false },
+					],
+					durationHours: 14,
+				},
+				reminder: { channelId: "100000000000000051", channelName: "chat", at: "12:00" },
+				results: {
+					channelId: "100000000000000052",
+					channelName: "results",
+					statusAt: "17:00",
+					statusText: "{{count}} so far",
+					closedText: "{{count}} came",
+				},
+			}),
+		);
+		expect(new ScheduleStore({ file, logger: silentLogger }).all()).toEqual(store.all());
 	});
 
 	it("refuses more than the limit", () => {

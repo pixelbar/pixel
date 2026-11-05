@@ -30,6 +30,7 @@ import {
 import { DiscordAnnouncementRoutes, type DiscordRoutesOptions } from "./announce-routes.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import type { DiscordOption } from "./args.ts";
+import { ATTEND_PREFIX, createAttendanceHandler } from "./attendance-buttons.ts";
 import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
@@ -142,6 +143,11 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		dispatcher,
 		deferAfterMs: DEFER_AFTER_MS,
 		controls,
+	});
+	const handleAttendance = createAttendanceHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
 	});
 	const handleAutocomplete = createAutocompleteHandler({ guildId, dispatcher });
 	const leaveIfForeign = createGuildGuard({ guildId, logger, reportError });
@@ -281,6 +287,27 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				logger.warn(
 					{ err: error, command: interaction.commandName },
 					"couldn't answer autocomplete",
+				);
+			});
+			return;
+		}
+		if (interaction.isButton() && interaction.customId.startsWith(ATTEND_PREFIX)) {
+			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+			handleAttendance(
+				{
+					guildId: interaction.guildId,
+					customId: interaction.customId,
+					user: interaction.user,
+					reply: (payload) => interaction.reply(payload),
+					deferReply: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
+					editReply: (payload) => interaction.editReply(payload),
+				},
+				displayName,
+			).catch((error: unknown) => {
+				handleInteractionFailure(
+					error,
+					{ logger, reportError },
+					{ actor: discordActor(interaction.user, displayName) },
 				);
 			});
 			return;

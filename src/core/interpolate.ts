@@ -25,6 +25,13 @@ export type TokenProvider = {
 	resolve(ctx: TokenContext): string;
 };
 
+/**
+ * Values that only mean something for one post, like an attendance poll's
+ * `{{count}}`. Already safe to show (a feature escapes names before passing them).
+ * They can't share a name with a registered token.
+ */
+export type TokenValues = Readonly<Record<string, string>>;
+
 /** The slice features need: fill tokens in a user-set body at post time. */
 export type Interpolate = Pick<Interpolator, "interpolate">;
 
@@ -86,16 +93,29 @@ export class Interpolator {
 	 * at `at` (or `now`). For `/schedule`, pass the scheduled occurrence, not
 	 * the clock when Pixel actually sends. Unknown tokens, empty `{{}}`, a
 	 * bad offset, and anything that isn't a registered name stay as written.
-	 * Never logs the template or the result.
+	 * `values` fill in tokens for this one post (no offsets). Never logs the
+	 * template or the result.
 	 */
-	interpolate(template: string, at?: Date): string {
+	interpolate(template: string, at?: Date, values?: TokenValues): string {
 		const now = at ?? this.#now();
+		if (values) {
+			for (const name of Object.keys(values)) {
+				// A value for this one post can't stand in for a registered token: that's a bug.
+				if (!TOKEN_NAME.test(name) || this.#tokens.has(name)) {
+					throw new InterpolateError(`Token value ${JSON.stringify(name)} can't be used`);
+				}
+			}
+		}
 		return template.replace(TOKEN, (whole, inner: string) => {
 			const ref = parseTokenRef(inner);
 			if (!ref) return whole;
 			const provider = this.#tokens.get(ref.name);
-			if (!provider) return whole;
-			return provider.resolve({ now, timezone: this.#timezone, offsetDays: ref.offsetDays });
+			if (provider) {
+				return provider.resolve({ now, timezone: this.#timezone, offsetDays: ref.offsetDays });
+			}
+			// A value takes no offset: `{{count+1}}` stays as written.
+			const value = ref.offsetDays === 0 && !/[+-]/.test(inner) ? values?.[ref.name] : undefined;
+			return value ?? whole;
 		});
 	}
 }
@@ -214,6 +234,13 @@ export function interpolateChannelPost(
 ): ChannelPost {
 	if (post.kind === "message") {
 		return { ...post, text: interpolate(post.text) };
+	}
+	if (post.kind === "attendance") {
+		return {
+			...post,
+			question: interpolate(post.question),
+			answers: post.answers.map((answer) => ({ ...answer, label: interpolate(answer.label) })),
+		};
 	}
 	return {
 		...post,

@@ -449,14 +449,26 @@ describe("ChannelPosts", () => {
 		expect(posts.ready).toBe(false);
 		const poster = {
 			check: vi.fn(async () => ({ ok: true as const, name: "g" })),
-			post: vi.fn(async () => ({ url: "https://example.test/m/1" })),
+			post: vi.fn(async () => ({ url: "https://example.test/m/1", messageId: "1" })),
+			postAttendance: vi.fn(async () => ({ url: "https://example.test/m/2", messageId: "2" })),
+			editAttendance: vi.fn(async () => {}),
 		};
 		posts.use(poster);
 		expect(posts.ready).toBe(true);
 		const post = { kind: "message" as const, text: "hi", mentions: false };
 		expect(await posts.check("1", post)).toEqual({ ok: true, name: "g" });
-		expect(await posts.post("1", post)).toEqual({ url: "https://example.test/m/1" });
+		expect(await posts.post("1", post)).toEqual({
+			url: "https://example.test/m/1",
+			messageId: "1",
+		});
 		expect(poster.post).toHaveBeenCalledWith("1", post);
+		const message = { pollId: "0123456789ab", text: "Who?", answers: ["Coming"], open: true };
+		expect(await posts.postAttendance("1", message)).toEqual({
+			url: "https://example.test/m/2",
+			messageId: "2",
+		});
+		await posts.editAttendance("1", "2", message);
+		expect(poster.editAttendance).toHaveBeenCalledWith("1", "2", message);
 	});
 
 	it("says posting isn't available before then", () => {

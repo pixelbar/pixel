@@ -107,7 +107,7 @@ docker run -d --name pixel \
   -p 8080:8080 pixel:local
 ```
 
-Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` and the three `data/parking-*.yaml` files are not safe to delete** (the scheduled posts, and the parking spots, today's opening times and who is parked). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
+Mount the **config directory writable**: `members.yaml` is changed by admin commands (written to a temp file next to it, then renamed, with the previous copy kept as `members.yaml.bak`). `data/` holds state and the log files. **`data/schedules.yaml` and the three `data/parking-*.yaml` files are not safe to delete** (the scheduled posts, and the parking spots, today's opening times and who is parked). Nor is `data/attendance.yaml` while an attendance poll is open (its votes). The rest of `data/` is. See [`architecture.md`](architecture.md) for every setting.
 
 Only ever run one copy. Before starting one: `docker ps`, and check nobody else has Pixel running with the same token.
 
@@ -260,15 +260,18 @@ That restarts the running revision (`az containerapp revision restart`); it does
 
 ## Scheduled posts
 
-Members with the `schedule-posts` capability schedule messages and polls with `/schedule` (`/admin` → People → **Grant capabilities…**). `/schedule` opens a private panel that lists them all; who made each is in the file.
+Members with the `schedule-posts` capability schedule messages, polls and attendance polls with `/schedule` (`/admin` → People → **Grant capabilities…**). `/schedule` opens a private panel that lists them all; who made each is in the file.
 
-After a deploy that adds `/schedule`, run **`just register dev`** or **`just register prod`** so Discord lists the commands, then grant the capability. No new environment variables: times use `PIXEL_TIMEZONE` (Europe/Amsterdam). The bot needs Send Messages in the target channel, and Send Polls if it will post polls.
+After a deploy that adds `/schedule`, run **`just register dev`** or **`just register prod`** so Discord lists the commands, then grant the capability. No new environment variables: times use `PIXEL_TIMEZONE` (Europe/Amsterdam). The bot needs Send Messages in the target channel, and Send Polls if it will post native polls (attendance polls don't need it).
 
 - **They live in `data/schedules.yaml`.** Back it up with the access files; deleting it deletes every schedule.
 - **Tokens** in the message, poll question or answers (`{{date}}`, `{{day}}`, `{{month}}`, `{{year}}`, `{{dateWithTime}}`) fill in when the post goes out, in `PIXEL_TIMEZONE`. A whole-day offset (`{{date+2}}`, `{{day+2}}`) is from the scheduled day, so a Monday post can say Wednesday. A name Pixel doesn't know is left as written. Discord's limits (2000 characters for a message, 300 for a poll question, 55 for an answer) count the filled text, so `/schedule` refuses a post its tokens would push over. `schedule.clipped` in the logs means one still came out too long and was cut to fit. Don't put secrets in a scheduled post.
 - **Change one before it posts:** pick it in `/schedule` and press **Edit** (only the person who scheduled it sees Edit, Pause and Delete). Nothing changes until they press **Save changes**.
 - **Stop one now:** the person who made it presses **Pause** or **Delete** on it in `/schedule`. Nobody else can, admins included: to stop someone's schedules, revoke their capability (each of theirs pauses the next time it's due), or remove the entry from `data/schedules.yaml` and restart.
 - **Poll reminders:** a poll with a reminder (set with **Reminders** on its draft) gets a daily reminder in that channel while it's open, linking to it. `schedule.reminded` in the logs means one went out; `schedule.reminder_failed` (Pixel can't post in the reminder channel) and `schedule.reminder_skipped` (more than an hour late) mean it didn't. To stop them, its creator edits the poll and clears the time in **Reminders**, or pauses it.
+- **Attendance polls** ("who's coming", [ADR 0025](adr/0025-attendance-poll-buttons.md)): **New attendance poll** in `/schedule`. Pixel posts a message with a button per answer and counts the clicks itself, so there's no "winner". Anyone in the server can press one (once: another switches, the same one again takes it back), and the message shows each answer's total and who picked it. On the draft, choose which answers count as coming, and with **Results** a channel for the totals: the totals so far at a time on the day it closes (say `17:00` for a poll open until midnight), and the closing totals when it closes. Their wording is the creator's, with `{{count}}`, `{{names}}`, `{{question}}`, `{{link}}` and the date tokens. The buttons keep working across deploys and restarts, and go when the poll closes.
+  - **The votes live in `data/attendance.yaml`.** Back it up with `schedules.yaml`. Deleting it while a poll is open loses that poll's votes, and its buttons then say "That poll isn't running any more." Closed polls drop out a week after they close. If it's invalid (a bad hand edit), no votes are taken and no attendance poll is posted until it's fixed (`attendance.unreadable` in the logs), and Pixel never overwrites it.
+  - **Results didn't go out:** look for `attendance.results_skipped` (Pixel was down more than an hour past the time), `attendance.results_no_access` (the creator lost `schedule-posts`) or `attendance.failed` (Pixel can't post in the results channel). `attendance.refresh_failed` means the totals on the poll couldn't be updated (permissions, or the message was deleted); the next click tries again. A poll that's already out keeps its results settings even if the schedule is edited or deleted.
 - **"That's expired. Run the command again."** The panel's buttons last 15 minutes from the last click, and a deploy or restart drops them and any unsaved draft. Nothing that was saved is lost.
 - **A post didn't go out:** look in the logs for `schedule.failed` (Pixel can't post there any more: permissions, a deleted channel), `schedule.skipped` (Pixel was down more than an hour past the time) or `schedule.paused_no_access`. Pixel never retries a failed post; the next occurrence tries again.
 - **If the file is invalid** (a bad hand edit), nothing is posted or changed, and `/schedule` says so. Fix it or restore it from backup, then restart. Pixel never overwrites it while it's invalid.
@@ -724,6 +727,7 @@ Under GDPR, someone can ask what Pixel holds about them, or ask for it to be del
 | `members.yaml` (and `members.yaml.bak`) | ID, tier, any note, capabilities | Until removed |
 | `admins.yaml` (host file, and Azure Key Vault) | Admin Discord IDs | Until removed |
 | `data/schedules.yaml` | Creator ID and name, channel, scheduled message or poll text | Until the schedule is deleted |
+| `data/attendance.yaml` | Each attendance poll's creator ID, and every voter's ID, display name and answer | A week after the poll closes |
 | `data/parking-windows.yaml` | ID and name of the admin who set each opening or closure | Until it ends (the daily reset at the latest) |
 | `data/parking-bookings.yaml` | ID and name of who is parked, which spot, since and until when | Until the booking ends (the daily reset at the latest) |
 | Azure Files backups of those files | The same files | 14 days |
@@ -737,7 +741,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 **Access request ("what do you have on me?"):**
 
 1. `/admin` → People → **Look someone up…** for their tier, note and capabilities, or read their entry in `members.yaml`.
-2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules, and `data/parking-bookings.yaml` (`by.ref`) and `data/parking-windows.yaml` (`setBy.ref`) for a booking or opening times they set.
+2. Search `data/schedules.yaml` for their ID (`createdBy.ref`) and list those schedules, `data/attendance.yaml` (`votes[].ref`, `createdBy`) for their answers on attendance polls, and `data/parking-bookings.yaml` (`by.ref`) and `data/parking-windows.yaml` (`setBy.ref`) for a booking or opening times they set.
 3. Search the logs by their ID (see [Moderation](#moderation)): the rotating file, Sentry **Logs**, and Azure Log Analytics when Pixel is in the cloud.
 4. In Sentry, search Issues, Logs and User Feedback for their ID.
 5. Send them a copy of what you found, and no one else's data.
@@ -746,7 +750,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 1. Remove their entry from `members.yaml` by hand (and `admins.yaml`, if they were an admin), then `/admin` → **Reload the access lists**. If they were an admin, update the Key Vault `admins.yaml` secret too. Keep the entry's removal out of any shared notes: don't write their name or ID in the git repo or a public issue.
 2. Delete `members.yaml.bak` if it still has their entry (or wait for the next rewrite after another access change).
-3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). End any parking booking they hold (**Free the spot…** in `/admin` → Parking); entries they set in `data/parking-windows.yaml` end by the next reset.
+3. Delete their scheduled posts (remove those entries from `data/schedules.yaml` and restart; only they can delete them in `/schedule`). Remove their votes from `data/attendance.yaml` and restart, or wait: closed polls drop out a week after they close. They can also take back an answer on an open poll by pressing it again. End any parking booking they hold (**Free the spot…** in `/admin` → Parking); entries they set in `data/parking-windows.yaml` end by the next reset.
 4. Logs: the file ages out within about 14 days; Azure Log Analytics within 30. If it must be sooner, remove their lines from the log files and from Log Analytics. 🚧
 5. Sentry: delete their events, logs and feedback using Sentry's data deletion tools.
 6. Azure Files backups of the persist share age out in 14 days. Do not restore an old share after a deletion unless you have stripped that person out first.
@@ -754,7 +758,7 @@ Pixel has no database. Message content and command arguments are never logged, e
 
 ## Disaster recovery
 
-**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts) and `data/parking-spots.yaml` (the parking spots and settings). Not needed: the rest of `data/` (state and logs, safe to delete; don't back up `openr-session.json`, which is a door credential: after a restore an admin logs in to OpenR again), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
+**What to back up:** `config/admins.yaml`, `config/members.yaml` (it changes at runtime, so it needs regular snapshots; `members.yaml.bak` is only the previous copy), `config/home-assistant/devices.yaml`, and the values of the secrets. `data/schedules.yaml` (the scheduled posts), `data/attendance.yaml` (the votes on open attendance polls) and `data/parking-spots.yaml` (the parking spots and settings). Not needed: the rest of `data/` (state and logs, safe to delete; don't back up `openr-session.json`, which is a door credential: after a restore an admin logs in to OpenR again), a leftover `inventory.yaml`, `dist/` and `node_modules/`. The code is in git, and `content/` (the `/info` topics) is in the image.
 
 **Rebuild from scratch (today):**
 

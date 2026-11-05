@@ -14,6 +14,7 @@ Pixel stores as little as it can. It has no database. It identifies people only 
 | --- | --- |
 | Discord user ID, membership tier, optional note, and any named capabilities | Access control: so Pixel knows which commands you may use |
 | Creator ID and display name, channel, and the text of a scheduled message or poll | To post it later, if you used `/schedule` |
+| Your Discord ID, display name and answer, when you press a button on an attendance poll ("who's coming") | To count the answers and show who's coming. Your name and answer are shown publicly on the poll and in its results posts, like a Discord poll's voters. Press your answer again to take it back |
 | Discord ID, display name, handle, and what you did (command name and outcome, not the words you typed) | Moderation and debugging |
 | Errors, with the same identity fields when they happened during a command | Debugging |
 | A `/feedback` message, with your Discord name, handle and ID | So maintainers can follow up. This is the only place Pixel keeps words you typed |
@@ -23,7 +24,7 @@ Pixel stores as little as it can. It has no database. It identifies people only 
 ## What Pixel does not store
 
 - Ordinary Discord message content, and command arguments (except `/feedback`)
-- Votes on polls Pixel posts (Discord counts those)
+- Votes on native Discord polls Pixel posts (Discord counts those)
 - Anything Discord itself holds about your account or messages. That is Discord's data: see [Discord's privacy policy](https://discord.com/privacy)
 
 When you open a door with `/openr open` or the gate with `/park`, Pixel asks OpenR (the building's door system) as Pixel's own account. OpenR is told which door, never who asked: who opened what is only in Pixel's logs, like any other command.
@@ -36,6 +37,7 @@ Pixel never logs secrets. Token-shaped strings are scrubbed from logs and Sentry
 | --- | --- |
 | Access lists (`config/members.yaml`, `config/admins.yaml`) on the host, and the previous `members.yaml.bak` | Until you are removed. Admin IDs also live in Azure Key Vault |
 | Scheduled posts (`data/schedules.yaml`) | Until that schedule is deleted |
+| Attendance poll answers (`data/attendance.yaml`) | A week after that poll closes |
 | Parking opening times (`data/parking-windows.yaml`): the admin who set each one | Until it ends, the same day at the latest |
 | Parking bookings (`data/parking-bookings.yaml`): who is parked, where, since and until when | Until the booking ends, 23:59 the same day at the latest. No history is kept |
 | Parking channel posts (when the channel is set): the display name of who parked, left, extended or reported a spot taken, and which spot | Until someone deletes them in Discord. Only admins should see that channel |

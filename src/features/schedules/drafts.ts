@@ -16,7 +16,7 @@ export type Draft = {
 	owner: string;
 	/** The schedule it changes, for an edit. */
 	editing?: string;
-	kind: "message" | "poll";
+	kind: "message" | "poll" | "attendance";
 	/** As picked on the form, with what the person may do there. */
 	channel?: ResolvedChannel;
 	/** As typed. */
@@ -33,6 +33,8 @@ export type Draft = {
 	answers: string;
 	durationHours: number;
 	multiple: boolean;
+	/** For an attendance poll: which answers count as coming, by position. Unset means the first. */
+	counting?: readonly number[];
 	/** Unset means the start of the text. */
 	name?: string;
 	/**
@@ -42,6 +44,17 @@ export type Draft = {
 	reminder?: {
 		at: string;
 		channel?: { id: string; name: string; caller?: ResolvedChannel["caller"] };
+	};
+	/**
+	 * For an attendance poll: where and when the totals are posted. `at` is as typed
+	 * (empty for no status post), and the channel is as for `reminder`. Unset means no
+	 * results posts: the totals only show on the poll.
+	 */
+	results?: {
+		at: string;
+		statusText: string;
+		closedText: string;
+		channel: { id: string; name: string; caller?: ResolvedChannel["caller"] };
 	};
 };
 
