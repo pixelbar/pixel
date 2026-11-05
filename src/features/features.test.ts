@@ -22,6 +22,7 @@ import { HomeDeviceStore } from "../services/home-devices.ts";
 import { KindSwitch } from "../services/kind-switch.ts";
 import { ScheduleStore } from "../services/schedules.ts";
 import type { SpaceStatus } from "../services/space-status.ts";
+import { FakeWiki } from "../testing/fake-wiki.ts";
 import { context, IDS, plain, principal } from "../testing/fixtures.ts";
 import { inMemoryParking } from "../testing/parking.ts";
 import { createAdminFeature } from "./admin/index.ts";
@@ -91,6 +92,7 @@ const deps = () => ({
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
 	],
+	wiki: new FakeWiki(),
 	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
 	closingTime: {
@@ -198,6 +200,7 @@ describe("buildFeatures", () => {
 			"schedule",
 			"status",
 			"whoami",
+			"wiki",
 		]);
 	});
 
@@ -220,7 +223,7 @@ describe("buildFeatures", () => {
 		}
 	});
 
-	it("restricts /admin to admins and opens /status, /events and /info to guests", () => {
+	it("restricts /admin to admins and opens /status, /events, /info and /wiki to guests", () => {
 		const registry = new CommandRegistry({ capabilities: new CapabilityRegistry(CAPABILITIES) });
 		for (const f of buildFeatures(deps())) registry.register(f);
 		const admin = registry.get("admin")?.definition;
@@ -231,6 +234,7 @@ describe("buildFeatures", () => {
 		expect(registry.get("status")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("events")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("info")?.definition.access.minTier).toBe("guest");
+		expect(registry.get("wiki")?.definition.access.minTier).toBe("guest");
 		expect(registry.get("closing-time")?.definition.access.minTier).toBe("member");
 	});
 });

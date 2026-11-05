@@ -126,6 +126,8 @@ const envSchema = z
 		// Same for CPU profiles of those traces. Empty uses the default (1).
 		SENTRY_PROFILE_SESSION_SAMPLE_RATE: sampleRate,
 		SPACEAPI_URL: z.url({ protocol: /^https?$/ }).default("https://spaceapi.pixelbar.nl/"),
+		// The wiki `/wiki` searches: its MediaWiki `api.php`. Links only ever point at this origin.
+		WIKI_API_URL: z.url({ protocol: /^https$/ }).default("https://wiki.pixelbar.nl/w/api.php"),
 		// All three unset means `/spacestate` is off. Setting only some is a mistake, so it stops startup.
 		SPACESTATE_API_URL: optional(z.url({ protocol: /^https?$/ })),
 		SPACESTATE_USER: optional(z.string().trim().min(1).max(100)),
@@ -269,6 +271,8 @@ export type Config = {
 	/** How many of those traces get a CPU profile (0–1). Default 1. Unused without a DSN. */
 	sentryProfileSessionSampleRate: number;
 	spaceApiUrl: string;
+	/** The MediaWiki API `/wiki` searches. Pages are linked only on its origin. */
+	wikiApiUrl: string;
 	/**
 	 * The API `/spacestate` calls to set the space open or closed: its address, and the
 	 * user and token it is called with. The user and token come from Key Vault when hosted
@@ -383,6 +387,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		sentryTracesSampleRate: e.SENTRY_TRACES_SAMPLE_RATE ?? 1,
 		sentryProfileSessionSampleRate: e.SENTRY_PROFILE_SESSION_SAMPLE_RATE ?? 1,
 		spaceApiUrl: e.SPACEAPI_URL,
+		wikiApiUrl: e.WIKI_API_URL,
 		spaceStateApi:
 			e.SPACESTATE_API_URL !== undefined &&
 			e.SPACESTATE_USER !== undefined &&

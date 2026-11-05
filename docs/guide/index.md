@@ -13,6 +13,7 @@ A few you'll use most:
 - `/status`: is Pixelbar open right now, and for how long?
 - `/events`: what's coming up.
 - `/info`: short answers about Pixelbar. With no topic, it lists them.
+- `/wiki`: search Pixelbar's wiki. With no query, it shows the wiki's top pages.
 - `/help`: the commands you can use. It only lists the ones your tier allows.
 
 The [commands](/commands) page has every command, who can use it and what it needs.

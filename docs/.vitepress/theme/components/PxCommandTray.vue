@@ -54,6 +54,7 @@ const COMMANDS: readonly Command[] = [
 		name: "/info",
 		description: "Find out about Pixelbar: where, how to join, house rules and more",
 	},
+	{ name: "/wiki", description: "Search Pixelbar's wiki, or see its top pages" },
 	{ name: "/whoami", description: "See what Pixel knows about you" },
 	{ name: "/ping", description: "Check that Pixel is alive" },
 	{

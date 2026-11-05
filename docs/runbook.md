@@ -72,6 +72,7 @@ Admin tasks in Discord are in one private panel, `/admin`. This runbook writes t
 | Make Discord pick up new or changed commands | Prod: a Release does it (the `register-prod` job, after a second Environment `prod` approval). Dev: `just deploy dev` or the Deploy dev workflow does it. By hand (rollbacks, or before `github_register_principal_id` is applied): `just register dev` or `just register prod`. Prod uses `.env.prod` (`PIXEL_ENV=prod`), never the Mini Pixel Dev token |
 | Add Pixel to a Discord server | [Adding Pixel to a Discord server](#adding-pixel-to-a-discord-server) |
 | Turn closing-time posts on or off, or change the text | [Closing-time](#closing-time) |
+| Change the top pages `/wiki` shows | Edit the links on the wiki's [Main Page](https://wiki.pixelbar.nl/Main_Page): `/wiki` offers the pages it links to, by title. Pixel picks up a change within 15 minutes. Nothing to restart |
 | Look up a person | `/admin` → People → **Look someone up…** (admins only) |
 | See what changed between versions | [`CHANGELOG.md`](../CHANGELOG.md) |
 | Cut a production release | GitHub → Actions → **Release** → Run workflow on `main` |
@@ -687,6 +688,10 @@ The message says why. "there's no channel with that ID": the channel was deleted
 **SpaceAPI is down** (`/status` says "Couldn't check")
 
 Pixel can't tell whether the space is open, so it says so rather than guess. Check `https://spaceapi.pixelbar.nl/` yourself. When it's back, `/status` works again by itself and changes are announced as normal. Nothing to restart. Pixel never announces a change it didn't see itself, so a restart or an outage never produces a stale announcement. If it stays down, that is a problem with the space's own server, not with Pixel.
+
+**The wiki is down** (`/wiki` says "Couldn't search the wiki"; log `wiki.search_failed`)
+
+`/wiki` still answers, with a link to the wiki, and keeps showing the top pages it last read. Check `https://wiki.pixelbar.nl/` yourself. When it's back, `/wiki` works again by itself. Nothing to restart. If the wiki has moved, set `WIKI_API_URL` to its new `api.php` and restart: Pixel doesn't follow redirects.
 
 **Mastodon is down or rejecting toots** (Sentry `announcer:mastodon`)
 

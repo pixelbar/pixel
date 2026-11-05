@@ -21,6 +21,7 @@ describe("loadConfig", () => {
 			sentryTracesSampleRate: 1,
 			sentryProfileSessionSampleRate: 1,
 			spaceApiUrl: "https://spaceapi.pixelbar.nl/",
+			wikiApiUrl: "https://wiki.pixelbar.nl/w/api.php",
 		});
 	});
 
@@ -166,6 +167,15 @@ describe("loadConfig", () => {
 		);
 		expect(() => loadConfig({ ...VALID, SPACEAPI_URL: "file:///etc/passwd" })).toThrow(
 			/SPACEAPI_URL/,
+		);
+	});
+
+	it("searches Pixelbar's wiki unless told otherwise, and only over https", () => {
+		expect(loadConfig({ ...VALID, WIKI_API_URL: "https://wiki.example/api.php" }).wikiApiUrl).toBe(
+			"https://wiki.example/api.php",
+		);
+		expect(() => loadConfig({ ...VALID, WIKI_API_URL: "http://wiki.example/api.php" })).toThrow(
+			/WIKI_API_URL/,
 		);
 	});
 

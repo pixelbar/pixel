@@ -35,6 +35,12 @@ Short answers about Pixelbar: where it is, visiting, membership, the house rules
 
 </PxCommand>
 
+<PxCommand sig="/wiki [query:]" tier="guest" reply="public" autocomplete :options="{ '[query:]': 'What to look for. Start typing for page titles. Leave it out to see the top pages, which only you see.' }">
+
+Searches Pixelbar's [wiki](https://wiki.pixelbar.nl) and lists the matching pages as links, with a button to see every result on the wiki. Words match whole words first, then as the start of a word, so `clean` finds Cleaning. Without a query, or when nothing matches, it replies privately with buttons for the wiki's top pages: the ones its main page links to.
+
+</PxCommand>
+
 <PxCommand sig="/whoami" tier="guest" reply="private">
 
 What Pixel knows about you: your tier and your Discord ID.
