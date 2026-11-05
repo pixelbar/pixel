@@ -134,7 +134,15 @@ export function attendanceMessage(
 	for (let max = 40; [...text].length > MAX_MESSAGE_LENGTH && max >= 0; max -= 5) {
 		text = render(max);
 	}
-	return { pollId: poll.id, text, answers: poll.answers.map((a) => a.label), open };
+	return {
+		pollId: poll.id,
+		text,
+		answers: poll.answers.map((a) => a.label),
+		...(poll.answers.some((a) => a.colour)
+			? { colours: poll.answers.map((a) => a.colour ?? "grey") }
+			: {}),
+		open,
+	};
 }
 
 /**
@@ -288,7 +296,11 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 			createdBy: schedule.createdBy.ref,
 			channelId: schedule.channelId,
 			question: filled.question,
-			answers: filled.answers.map((a) => ({ label: a.label, counts: a.counts })),
+			answers: filled.answers.map((a) => ({
+				label: a.label,
+				counts: a.counts,
+				...(a.colour ? { colour: a.colour } : {}),
+			})),
 			postedAt: occurrence.toISOString(),
 			closesAt: closesAt.toISOString(),
 			...(results

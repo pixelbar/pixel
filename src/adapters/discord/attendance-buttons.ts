@@ -1,5 +1,6 @@
 import {
 	ATTEND_ACTION,
+	type AttendanceColour,
 	type AttendanceMessage,
 	MAX_ATTENDANCE_ANSWERS,
 } from "../../core/channel-posts.ts";
@@ -32,6 +33,14 @@ export function parseAttendId(customId: string): { poll: string; answer: number 
 	return { poll: match[1] as string, answer: Number(match[2]) };
 }
 
+/** Discord's button style for each colour. */
+const BUTTON_STYLE: Record<AttendanceColour, 1 | 2 | 3 | 4> = {
+	blue: 1,
+	grey: 2,
+	green: 3,
+	red: 4,
+};
+
 /** A button per answer while the poll is open, and none once it has closed. */
 export function attendanceComponents(message: AttendanceMessage): RowJson[] {
 	if (!message.open) return [];
@@ -44,8 +53,8 @@ export function attendanceComponents(message: AttendanceMessage): RowJson[] {
 			type: 1,
 			components: message.answers.map((label, i) => ({
 				type: 2 as const,
-				// Secondary: no answer looks like the "right" one.
-				style: 2 as const,
+				// Grey unless the creator picked a colour, so no answer looks like the "right" one.
+				style: BUTTON_STYLE[message.colours?.[i] ?? "grey"],
 				label: [...label].length > 80 ? `${[...label].slice(0, 79).join("")}…` : label,
 				custom_id: `${ATTEND_PREFIX}${message.pollId}:${i}`,
 			})),

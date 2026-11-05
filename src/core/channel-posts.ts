@@ -40,7 +40,13 @@ export type AttendanceAnswer = {
 	label: string;
 	/** Whether picking it counts as coming, for the totals Pixel posts. */
 	counts: boolean;
+	/** Its button's colour. Unset means grey. */
+	colour?: AttendanceColour;
 };
+
+/** The colours an attendance poll's buttons can be, grey first (the default). */
+export const ATTENDANCE_COLOURS = ["grey", "blue", "green", "red"] as const;
+export type AttendanceColour = (typeof ATTENDANCE_COLOURS)[number];
 
 /**
  * An attendance poll as it's shown: text the feature wrote, and a button per answer
@@ -54,6 +60,8 @@ export type AttendanceMessage = {
 	text: string;
 	/** Button labels, in order. */
 	answers: readonly string[];
+	/** Each button's colour, by position. Missing ones are grey. */
+	colours?: readonly AttendanceColour[];
 	/** False once it has closed: the buttons go. */
 	open: boolean;
 };

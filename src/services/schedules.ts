@@ -3,7 +3,11 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { z } from "zod";
-import { type ChannelPost, MAX_ATTENDANCE_ANSWERS } from "../core/channel-posts.ts";
+import {
+	ATTENDANCE_COLOURS,
+	type ChannelPost,
+	MAX_ATTENDANCE_ANSWERS,
+} from "../core/channel-posts.ts";
 import { UserFacingError } from "../core/errors.ts";
 import type { Logger } from "../core/logger.ts";
 import { parseLocal, type Recurrence, WEEKDAYS } from "../core/recurrence.ts";
@@ -111,6 +115,7 @@ const postSchema = z.discriminatedUnion("kind", [
 				z.strictObject({
 					label: z.string().min(1).max(MAX_ATTENDANCE_LABEL),
 					counts: z.boolean(),
+					colour: z.enum(ATTENDANCE_COLOURS).optional(),
 				}),
 			)
 			.min(1)
