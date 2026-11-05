@@ -244,7 +244,7 @@ return {
 
 ## Testing
 
-- Test a feature's actions as plain functions with a fake context, like its commands: what each returns, and which controls each reply offers to whom. The adapter's tests (`controls.test.ts`, `ui-handlers.test.ts`) already cover drawing and checking, so a feature doesn't repeat them.
+- Test a feature's actions as plain functions with a fake context, like its commands: what each returns, and which controls each reply offers to whom. The adapter's tests (`tests/adapters/discord/controls.test.ts`, `ui-handlers.test.ts`) already cover drawing and checking, so a feature doesn't repeat them.
 - For every component handler, test the refusals: the wrong guild, an expired token, someone else's token, a malformed `custom_id`, an unknown select value, a tier or capability that's missing at click time (not just when the message was sent), and a rate limit.
 - Test that a feature's replies fit the limits, for example by rendering them with `renderControls` and `renderForm` in a test. A long list must page, not throw.
 - Test that what a select offers equals what the clicker could use, for each tier.

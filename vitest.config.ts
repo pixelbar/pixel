@@ -2,11 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
-		include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
+		include: ["tests/**/*.test.ts"],
 		coverage: {
 			provider: "v8",
 			include: ["src/**/*.ts"],
-			exclude: ["src/**/*.test.ts", "src/testing/**"],
+			exclude: ["src/testing/**"],
 			reporter: ["text", "html"],
 			// `just check` fails below these. The overall floor is lower because
 			// entry points (src/index.ts, src/instrument.ts) and the discord.js

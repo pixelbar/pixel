@@ -21,4 +21,4 @@ After [ADR 0016](0016-secrets-sync.md), two things wrote the manifest's `app` se
 - Turning on a feature that needs an app secret is: `just secrets-push <env>` first, then set the feature in the tfvars and apply. The apply only references the secret; the Container App won't start a revision until it exists.
 - `write_secrets = true` still needs the infra inputs (`tailscale_auth_key`, `container_registry_password`) for the infra features that are on, and turning it off later removes the infra secrets Terraform wrote from Key Vault, as before. Keep it on while Terraform owns them, or set them with `az` and leave it off from the start.
 - The Release workflow's identity may read `discord-token` (ADR 0014). That role assignment is scoped to the secret, so push `discord-token` before the first apply that sets `github_register_principal_id`.
-- `scripts/secrets-manifest.test.ts` fails if Terraform's write map names an app secret, or if the `removed` block goes missing.
+- `tests/scripts/secrets-manifest.test.ts` fails if Terraform's write map names an app secret, or if the `removed` block goes missing.

@@ -549,7 +549,7 @@ Each expensive job runs only when a path in its list in [`.github/path-filters.y
 
 **Check** (`just check` + `just build`): `src/`, `scripts/`, `content/` (including `content/info/`), `config/`, root `*.ts` and `*.json` (`package.json`, tsconfigs, `biome.json`, `vitest.config.ts`), lockfile, `.nvmrc`, `.gitignore`, `justfile`, Dockerfile, `.github/workflows/**`, `.github/path-filters.yml`, plus the files the secrets manifest test reads: `infra/secrets.manifest.yaml`, `infra/modules/pixel/*.tf`, `infra/envs/*/*.tf`, `.env.example`, `docs/runbook.md`, `docs/architecture.md`, `docs/infra.md`.
 
-**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without tests (`*.test.ts`, `src/testing/`), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`, plus `ci.yml`, `cd.yml` and the filter file.
+**Image** (Docker smoke on PRs and `main`; GHCR + Sentry on `main`): what the Dockerfile copies: `src/` without `src/testing/` (tests live in `tests/` and are not copied), `content/`, lockfile / `package.json`, `tsconfig.json`, `tsconfig.build.json`, Dockerfile, `.dockerignore`, plus `ci.yml`, `cd.yml` and the filter file.
 
 **Docs** (`docs/`, root `package.json` / lockfile, `biome.json`, `.gitignore`, `.nvmrc`, `justfile`, `docs.yml`, the filter file): Biome lint + VitePress build. Not app CI.
 
