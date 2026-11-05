@@ -26,7 +26,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import { HomeAssistantBackend } from "../src/adapters/home-assistant/backend.ts";
@@ -39,6 +39,7 @@ import {
 	type HomeDevicesView,
 } from "../src/services/home-devices.ts";
 import { devicePicker } from "./device-picker.ts";
+import { localFiles } from "./envs.ts";
 import {
 	actionChoices,
 	appendDevices,
@@ -57,6 +58,7 @@ import {
 	validateDevices,
 } from "./ha-devices-lib.ts";
 import { buildInventory, type InventoryEntry } from "./ha-inventory.ts";
+import { digest, parsePulled } from "./secrets-sync-lib.ts";
 import { azDownloadArgs, azUploadArgs, shareRemote } from "./share.ts";
 import { loadTarget } from "./target.ts";
 
@@ -95,6 +97,17 @@ function writeMirror(text: string): void {
 	const file = join(dir, DEVICES_FILE);
 	writeFileSync(`${file}.tmp`, text, { mode: 0o600 });
 	renameSync(`${file}.tmp`, file);
+	recordPulled(text);
+}
+
+/** Notes the mirror now matches the share, so `just push` doesn't see the share as moved. */
+function recordPulled(text: string): void {
+	const { pulledFile } = localFiles(target);
+	const record = parsePulled(existsSync(pulledFile) ? readFileSync(pulledFile, "utf8") : undefined);
+	record[DEVICES_PATH] = digest(text);
+	mkdirSync(dirname(pulledFile), { recursive: true });
+	writeFileSync(`${pulledFile}.tmp`, `${JSON.stringify(record, null, "\t")}\n`, { mode: 0o600 });
+	renameSync(`${pulledFile}.tmp`, pulledFile);
 }
 
 async function showDiff(local: string, remoteText: string): Promise<void> {
@@ -210,6 +223,7 @@ async function main(): Promise<void> {
 			writeMirror(pulled);
 			break;
 		case "same":
+			recordPulled(pulled);
 			break;
 		case "differs": {
 			say(`${mirror} has changes that aren't on ${target}:`);

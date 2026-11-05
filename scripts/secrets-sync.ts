@@ -9,10 +9,11 @@
  *   - `tooling` (just pull / push only): the stack's settings, `terraform-tfvars`, in
  *     `infra/envs/<env>/terraform.tfvars`. Secret Terraform inputs never go in it: they
  *     belong in `secrets.auto.tfvars`, which stays on the laptop.
- *   - just pull also mirrors `members.yaml`, `devices.yaml` and `announcement-routes.yaml`
- *     from the env's file share. just push sends a hand-edited `members.yaml` back (shown
- *     as a diff, checked with admins.yaml, and only if Pixel hasn't changed it since); the
- *     other two are read-only: Pixel and `just ha-devices` write those.
+ *   - just pull also mirrors the env's file share: `members.yaml`, `devices.yaml` and
+ *     Pixel's `data/` files (schedules, parking, announcement routes, closing time), and
+ *     records what it pulled. just push sends back the ones you edited since (shown as a
+ *     diff, checked the way Pixel reads them, and only if Pixel hasn't changed them
+ *     since). The door session's cookies and the logs are never mirrored.
  * `infra` secrets stay with Terraform and are never touched.
  *
  * pull: reads every managed secret from the env's vault and writes it locally, so you
@@ -58,14 +59,22 @@ import {
 	describeAudit,
 	membersAudit,
 } from "./access-audit.ts";
-import { assertPixelEnv, ENVS, EnvError, type Target } from "./envs.ts";
+import {
+	assertPixelEnv,
+	ENVS,
+	EnvError,
+	localFiles as envLocalFiles,
+	type Target,
+} from "./envs.ts";
 import { loadSecretsManifest, type SecretEntry, SecretsManifestError } from "./secrets-manifest.ts";
 import {
 	azSetArgs,
 	azShowArgs,
 	compare,
 	describe,
-	describeShareFile,
+	describePull,
+	describePush,
+	digest,
 	envFile,
 	isFile,
 	isNotFound,
@@ -74,14 +83,20 @@ import {
 	localValues,
 	newEnvFile,
 	otherEnvFiles,
+	type Pulled,
+	type PushStep,
+	parsePulled,
 	parseShown,
 	pixelEnvOf,
+	pulledRecord,
+	pullStep,
+	pushes,
+	pushStep,
 	type Row,
 	redactTfvars,
 	reusedDiscordToken,
 	type ShareFile,
 	setEnvValues,
-	shareFileChanges,
 	shareFiles,
 	stackVariables,
 	syncedSecrets,
@@ -255,28 +270,50 @@ async function sendAudit(
 	);
 }
 
-/** A share file `just push` sends back, when the local mirror differs from the share. */
-type SharePush = { file: ShareFile; local: string; remote: string | undefined };
+/** A share file `just push` sends back: your edit, and what the share has now. */
+type SharePush = { file: ShareFile; local: string; remote: string | undefined; step: PushStep };
 
-/** Compares the pushable mirrors with the share, one line each, and returns the changes. */
+function readPulled(target: Target): Pulled {
+	return parsePulled(readText(envLocalFiles(target).pulledFile));
+}
+
+function writePulled(target: Target, pulled: Pulled): void {
+	writePrivate(envLocalFiles(target).pulledFile, `${JSON.stringify(pulled, null, "\t")}\n`);
+}
+
+/**
+ * Compares each mirror with the share and with what was pulled, one line each, and
+ * returns your edits. Stops if one of them changed on the share since the pull, or
+ * isn't a file Pixel can read.
+ */
 async function planShare(target: Target): Promise<SharePush[]> {
 	say(`Reading config files from ${ENVS[target].storageAccount} (${target})…`);
+	const pulled = readPulled(target);
 	const files = await Promise.all(
-		shareFiles(target)
-			.filter((file) => file.push)
-			.map(async (file) => ({
-				file,
-				local: readText(file.mirror),
-				remote: await download(target, file.path),
-			})),
+		shareFiles(target).map(async (file) => {
+			const local = readText(file.mirror);
+			const remote = await download(target, file.path);
+			return { file, local, remote, step: pushStep(local, remote, pulled[file.path]) };
+		}),
 	);
-	for (const f of files) say(describeShareFile(f.file, f.local, f.remote));
+	for (const f of files) say(describePush(f.file, f.step, target));
 	say();
-	return files.flatMap((f) =>
-		f.local !== undefined && shareFileChanges(f.local, f.remote)
-			? [{ file: f.file, local: f.local, remote: f.remote }]
+	const moved = files.filter((f) => f.step === "moved").map((f) => f.file.path);
+	if (moved.length > 0) {
+		throw new Stop(
+			`${moved.join(", ")} changed on ${target}'s share since you pulled (Pixel, or someone else). Run just pull ${target}, which shows both and asks, redo your edit, and push again. Nothing was pushed.`,
+		);
+	}
+	const edits = files.flatMap((f) =>
+		f.local !== undefined && pushes(f.step)
+			? [{ file: f.file, local: f.local, remote: f.remote, step: f.step }]
 			: [],
 	);
+	const problems = edits.flatMap((f) => f.file.check?.(f.local, f.file.mirror) ?? []);
+	if (problems.length > 0) {
+		throw new Stop(`Pixel couldn't read this:\n${problems.join("\n")}\nNothing was pushed.`);
+	}
+	return edits;
 }
 
 function variablesOf(target: Target) {
@@ -300,37 +337,47 @@ function summary(rows: readonly Row[], mode: Mode, target: Target): void {
 	say();
 }
 
-/** Mirrors the share's config files, read-only, asking before replacing one that differs. */
+/**
+ * Mirrors the share's files, keeping the ones you've edited unless you say otherwise,
+ * and records what the share had so a push can tell your edits from Pixel's changes.
+ */
 async function pullShare(target: Target): Promise<void> {
 	say(`Reading config files from ${ENVS[target].storageAccount} (${target})…`);
+	const pulled = readPulled(target);
 	const files = await Promise.all(
-		shareFiles(target).map(async (file) => ({
-			...file,
-			remote: await download(target, file.path),
-		})),
+		shareFiles(target).map(async (file) => {
+			const local = readText(file.mirror);
+			const remote = await download(target, file.path);
+			return { file, local, remote, step: pullStep(local, remote, pulled[file.path]) };
+		}),
 	);
-	const differs = files.filter((f) => {
-		const local = readText(f.mirror);
-		return f.remote !== undefined && local !== undefined && local !== f.remote;
-	});
-	for (const f of files) {
-		if (f.remote === undefined) say(`  - ${f.path}: not on the share`);
-		else say(`  ${differs.includes(f) ? "~" : "="} ${f.path} → ${f.mirror}`);
-	}
+	for (const f of files) say(describePull(f.file, f.step));
 	say();
-	if (differs.length > 0) {
-		for (const f of differs)
-			await showDiff(readText(f.mirror), f.remote as string, [f.mirror, f.path]);
-		const ok = await confirm({
-			message: `Replace ${differs.length} local mirror(s) with ${target}'s? Local edits to members.yaml you haven't pushed are lost.`,
-			default: true,
+	const asks = files.filter((f) => f.step === "ask");
+	let replace = false;
+	if (asks.length > 0) {
+		for (const f of asks) await showDiff(f.local, f.remote as string, [f.file.mirror, f.file.path]);
+		replace = await confirm({
+			message: `Replace your edits to ${asks.length} file(s) with ${target}'s? Your edits are lost.`,
+			default: false,
 		});
-		if (!ok) {
-			say("Left the mirrors as they are.");
-			return;
+		if (!replace)
+			say(`Kept your edits. just push ${target} sends them over what's on the share now.`);
+	}
+	for (const f of files) {
+		if (f.remote !== undefined && (f.step === "write" || (f.step === "ask" && replace)))
+			writePrivate(f.file.mirror, f.remote);
+		if (f.step === "remove") rmSync(f.file.mirror, { force: true });
+	}
+	// A file whose edit you kept keeps its old record, so a push still sees the share moved.
+	const record = pulledRecord(new Map(files.map((f) => [f.file.path, f.remote])));
+	if (!replace) {
+		for (const f of asks) {
+			if (pulled[f.file.path] === undefined) delete record[f.file.path];
+			else record[f.file.path] = pulled[f.file.path] as string | null;
 		}
 	}
-	for (const f of files) if (f.remote !== undefined) writePrivate(f.mirror, f.remote);
+	writePulled(target, record);
 }
 
 async function pull(target: Target, entries: readonly SecretEntry[], scope: Scope): Promise<void> {
@@ -438,6 +485,14 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 			`${ENVS[target].storageAccount}/${f.file.path}`,
 			f.file.mirror,
 		]);
+	}
+	if (share.some((f) => f.file.pickup === "restart")) {
+		say(
+			`Pixel reads ${share
+				.filter((f) => f.file.pickup === "restart")
+				.map((f) => f.file.path)
+				.join(", ")} only when it starts, so pushing means restarting ${vault.app} right after.`,
+		);
 	}
 
 	// Pixel refuses to start unless admins.yaml and members.yaml agree, so check the pair
@@ -560,6 +615,11 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 			done.push(f.file.path);
 			say(`Uploaded ${f.file.path} to ${ENVS[target].storageAccount}.`);
 		}
+		if (share.length > 0) {
+			const pulled = readPulled(target);
+			for (const f of share) pulled[f.file.path] = digest(f.local);
+			writePulled(target, pulled);
+		}
 	} finally {
 		if (operator !== undefined && dsn !== undefined && audited.length > 0)
 			await sendAudit(dsn, target, operator, audited);
@@ -571,18 +631,31 @@ async function push(target: Target, entries: readonly SecretEntry[], scope: Scop
 		);
 	}
 	const appChanged = changing.some((e) => e.group === "app");
-	if (!appChanged && share.length === 0) return;
+	const restartFiles = share.filter((f) => f.file.pickup === "restart").map((f) => f.file.path);
+	const reloadFiles = share.filter((f) => f.file.pickup === "reload").map((f) => f.file.path);
+	if (!appChanged && restartFiles.length === 0 && reloadFiles.length === 0) return;
 	if (appChanged) {
 		say(`${vault.app} reads secrets when it starts, so it keeps the old values until it restarts.`);
-	} else {
-		say(`${vault.app} keeps the old members.yaml until /admin reload in Discord, or a restart.`);
+	}
+	if (restartFiles.length > 0) {
+		say(
+			`${vault.app} reads ${restartFiles.join(", ")} only when it starts, and its next change to one writes what it holds back over your edit. Restart it now.`,
+		);
+	} else if (!appChanged) {
+		say(
+			`${vault.app} keeps the old ${reloadFiles.join(", ")} until /admin → Reload the access lists in Discord, or a restart.`,
+		);
 	}
 	const restart = await confirm({
 		message: `Restart ${vault.app} now (just restart ${target})?`,
-		default: false,
+		default: restartFiles.length > 0,
 	});
 	if (!restart) {
-		say(`Restart it when you're ready: just restart ${target}`);
+		say(
+			restartFiles.length > 0
+				? `Restart it as soon as you can, before anyone changes ${restartFiles.join(", ")} through Pixel: just restart ${target}`
+				: `Restart it when you're ready: just restart ${target}`,
+		);
 		return;
 	}
 	const result = spawnSync("just", ["restart", target], { stdio: "inherit" });

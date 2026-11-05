@@ -69,12 +69,14 @@ export const ENV_FILES = [".env", ".env.dev", ".env.prod"] as const;
 export type LocalFiles = {
 	/** The `admins-yaml` Key Vault secret. */
 	adminsFile: string;
-	/** Read-only mirror of the share's `members.yaml`. */
+	/** Mirror of the share's `members.yaml`. */
 	membersFile: string;
-	/** Holds the read-only mirror of the share's `home-assistant/devices.yaml`. */
+	/** Holds the mirror of the share's `home-assistant/devices.yaml`. */
 	homeAssistantDir: string;
-	/** Read-only mirror of the share's `data/announcement-routes.yaml`. */
-	announcementRoutesFile: string;
+	/** Mirror of the share's `data/` (schedules, parking, announcement routes, closing time). */
+	dataDir: string;
+	/** What each share file was when it was last pulled, so a push sends only your edits. */
+	pulledFile: string;
 };
 
 export function localFiles(target: Target): LocalFiles {
@@ -82,7 +84,8 @@ export function localFiles(target: Target): LocalFiles {
 		adminsFile: join("config", `admins.${target}.yaml`),
 		membersFile: join("config", target, "members.yaml"),
 		homeAssistantDir: join("config", "home-assistant", target),
-		announcementRoutesFile: join("config", target, "announcement-routes.yaml"),
+		dataDir: join("config", target, "data"),
+		pulledFile: join("config", target, "pulled.json"),
 	};
 }
 
