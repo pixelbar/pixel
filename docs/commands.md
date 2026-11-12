@@ -181,7 +181,7 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 	caption="The form for a new message: the channel, when, how often, and the text."
 />
 
-Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders**; and **Pings**, only where you could ping everyone yourself. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
+Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders** (a link to the poll, never in its last 30 minutes); and **Pings**, only where you could ping everyone yourself. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
 
 <PxPanel
 	command="/schedule"
