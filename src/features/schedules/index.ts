@@ -874,7 +874,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					kind: "text",
 					name: "remind-at",
 					label: "Remind every day at",
-					description: `A time of day in ${zone}, while the poll is open. Empty for no reminders.`,
+					description: `A time of day in ${zone}, not in the poll's last 30 minutes. Empty for none.`,
 					style: "short",
 					maxLength: 20,
 					placeholder: "18:00",

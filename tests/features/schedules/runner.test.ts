@@ -412,7 +412,7 @@ describe("poll reminders", () => {
 				REMIND,
 				{
 					kind: "message",
-					text: "🗳️ Reminder: vote on **Who's \\*coming\\*?** before Sat 17 Oct 2026, 19:00: https://example.test/m/1",
+					text: "🗳️ Reminder: vote on **Who's \\*coming\\*?**: https://example.test/m/1",
 					mentions: false,
 				},
 			],
@@ -452,6 +452,40 @@ describe("poll reminders", () => {
 		expect(dueReminder({ lastPoll }, AMS, now)).toBeUndefined();
 		expect(dueReminder({ reminder }, AMS, now)).toBeUndefined();
 		expect(dueReminder({ reminder, lastPoll }, AMS, now)?.at).toEqual(at("2026-10-15T16:00:00"));
+	});
+
+	it("has no reminder due within 30 minutes of the poll closing", () => {
+		// Closes Saturday at 19:00 Amsterdam (17:00 UTC).
+		const lastPoll = {
+			question: "Q",
+			url: "https://example.test/m/1",
+			postedAt: WED_19.toISOString(),
+			closesAt: plus(72 * 3_600_000).toISOString(),
+		};
+		const lastReminderAt = at("2026-10-16T16:00:00").toISOString();
+		const saturday = at("2026-10-17T16:45:00");
+		const remindAt = (time: string) => ({
+			reminder: { channelId: REMIND, channelName: "chat", at: time },
+			lastPoll,
+			lastReminderAt,
+		});
+		expect(dueReminder(remindAt("18:29"), AMS, saturday)?.at).toEqual(at("2026-10-17T16:29:00"));
+		expect(dueReminder(remindAt("18:30"), AMS, saturday)).toBeUndefined();
+		expect(dueReminder(remindAt("18:45"), AMS, saturday)).toBeUndefined();
+	});
+
+	it("skips a late reminder that would land within 30 minutes of the poll closing", async () => {
+		const ctx = setup();
+		const { id } = ctx.store.add(withReminder());
+		await ctx.run(plus(10_000));
+		// Saturday's 18:00 reminder, 40 minutes late: the poll closes at 19:00.
+		await ctx.run(at("2026-10-17T16:40:00"));
+		expect(ctx.posted).toHaveLength(1);
+		expect(ctx.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ event: "schedule.reminder_skipped" }),
+			expect.any(String),
+		);
+		expect(ctx.store.get(id)?.lastReminderAt).toBe(at("2026-10-17T16:00:00").toISOString());
 	});
 
 	it("skips a reminder more than an hour late, and remembers it", async () => {

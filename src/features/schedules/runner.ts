@@ -12,13 +12,15 @@ import {
 	toLocal,
 	WEEKDAYS,
 } from "../../core/recurrence.ts";
-import { describeWhen } from "../../core/when.ts";
 import type { PostedPoll, Schedule, ScheduleStore } from "../../services/schedules.ts";
 import type { AttendancePolls } from "./attendance.ts";
 import { clipToLimits } from "./limits.ts";
 
 /** A post up to this late (Pixel was down) still goes out; later than that it's skipped. */
 export const LATE_LIMIT_MS = 60 * 60_000;
+
+/** No reminder goes out this close to its poll closing: by then it's only noise. */
+export const REMINDER_CUTOFF_MS = 30 * 60_000;
 
 export type RunnerDeps = {
 	store: Pick<ScheduleStore, "all" | "get" | "update" | "remove" | "problem">;
@@ -68,7 +70,7 @@ const EVERY_DAY: Recurrence = { kind: "weekly", everyWeeks: 1, days: WEEKDAYS };
 /**
  * The reminder a poll schedule should post at `now`, if one is due: the latest of its
  * daily times after the poll went out and after the last reminder, while the poll is
- * still open.
+ * still open for more than {@link REMINDER_CUTOFF_MS}.
  */
 export function dueReminder(
 	schedule: Pick<Schedule, "reminder" | "lastPoll" | "lastReminderAt">,
@@ -89,7 +91,8 @@ export function dueReminder(
 		timezone,
 		now,
 	);
-	return due && due.at < new Date(lastPoll.closesAt) ? due : undefined;
+	const cutoff = new Date(lastPoll.closesAt).getTime() - REMINDER_CUTOFF_MS;
+	return due && due.at.getTime() < cutoff ? due : undefined;
 }
 
 /**
@@ -110,11 +113,10 @@ function postsAgain(
 }
 
 /** The reminder message for a poll. Never pings anyone. */
-export function reminderPost(poll: PostedPoll, timezone: string): ChannelPost {
-	const closes = describeWhen(toLocal(new Date(poll.closesAt), timezone));
+export function reminderPost(poll: PostedPoll): ChannelPost {
 	return {
 		kind: "message",
-		text: `🗳️ Reminder: vote on **${escapeMarkdown(poll.question)}** before ${closes}: ${poll.url}`,
+		text: `🗳️ Reminder: vote on **${escapeMarkdown(poll.question)}**: ${poll.url}`,
 		mentions: false,
 	};
 }
@@ -271,6 +273,14 @@ async function remindDue(deps: RunnerDeps, now: Date, log: Logger): Promise<void
 					{ event: "schedule.reminder_skipped", ...fields, due: due.at.toISOString() },
 					"too late to remind, skipped",
 				);
+			} else if (
+				new Date(schedule.lastPoll.closesAt).getTime() - now.getTime() <=
+				REMINDER_CUTOFF_MS
+			) {
+				log.warn(
+					{ event: "schedule.reminder_skipped", ...fields, due: due.at.toISOString() },
+					"too close to the poll closing to remind, skipped",
+				);
 			} else if (!(await deps.stillAllowed(schedule.createdBy.ref))) {
 				deps.store.update(schedule.id, { paused: true });
 				log.warn(
@@ -282,10 +292,7 @@ async function remindDue(deps: RunnerDeps, now: Date, log: Logger): Promise<void
 				const current = deps.store.get(schedule.id);
 				if (!current?.reminder || !current.lastPoll || current.paused) continue;
 				if (dueReminder(current, deps.timezone, now)?.at.getTime() !== due.at.getTime()) continue;
-				await deps.posts.post(
-					current.reminder.channelId,
-					reminderPost(current.lastPoll, deps.timezone),
-				);
+				await deps.posts.post(current.reminder.channelId, reminderPost(current.lastPoll));
 				log.info(
 					{ event: "schedule.reminded", ...fields, due: due.at.toISOString() },
 					"posted a poll reminder",

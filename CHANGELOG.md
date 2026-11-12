@@ -11,6 +11,9 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- Poll reminders no longer say when the poll closes, just which poll and a link to it (#210).
+- No poll reminder is posted in the last 30 minutes before a poll closes, including one that's running late (#213).
+
 - Tests now live in a top-level `tests/` folder that mirrors `src/` and `scripts/`, so a change to a test is easy to tell from a change to the code it covers. No behaviour change.
 
 ## [0.27.0] - 2026-11-05
