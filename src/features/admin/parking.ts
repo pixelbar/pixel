@@ -4,8 +4,9 @@ import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
+import { timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
 import { UI_LIMITS } from "../../core/ui.ts";
-import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
+import { formatTimeOfDay, parseTimeOfDay, readWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
@@ -240,13 +241,20 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		const typed = args[name];
 		if (typeof typed !== "string") return undefined;
 		// "now+2h" is from the real now, even when the rest is read after `from`.
-		const local = parseWhen(typed, after, zone, { now: now() });
-		if (!local) {
+		const real = now();
+		const read = readWhen(typed, after, zone, { now: real });
+		if (!read.ok) {
+			const { problem } = read;
 			throw new UserFacingError(
-				`I couldn't understand **${name === "from" ? "From" : "Until"}**, or it's in the past. Type a time in ${zone}, for example \`17:00\`, \`5pm\`, \`tomorrow 8\` or \`now+2h\`.`,
+				whenRefusal(
+					problem.kind === "past" && after > real
+						? { kind: "before-start", at: problem.at }
+						: problem,
+					{ field: name === "from" ? "From" : "Until", zone },
+				),
 			);
 		}
-		return toInstant(local, zone);
+		return toInstant(read.at, zone);
 	};
 
 	const spotOption = {
@@ -937,7 +945,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			if (grace !== undefined) change.graceMinutes = grace;
 			if (typeof args.reset === "string") {
 				const clock = parseTimeOfDay(args.reset);
-				if (!clock) throw new UserFacingError("**Reset** is a time like `23:59` or `11:59pm`.");
+				if (!clock) throw new UserFacingError(timeOfDayRefusal({ field: "Reset", zone }));
 				change.resetAt = formatTimeOfDay(clock);
 			}
 			if (typeof args.durations === "string") {

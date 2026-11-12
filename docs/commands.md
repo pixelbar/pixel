@@ -168,7 +168,7 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 	caption="The list: a menu of every scheduled post, and New message, New poll and New attendance poll."
 />
 
-**New message**, **New poll** and **New attendance poll** open a form. When is a day, a time or both, such as `wed 1900`, `14 oct 19:00`, `tomorrow 9am`, `now` or `now+1h`. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
+**New message**, **New poll** and **New attendance poll** open a form. When is a day, a time or both, such as `wed 1900`, `14th oct 19:00`, `tomorrow noon`, `tonight 8`, `next fri`, `now` or `in 1 hour`. `next fri` is Friday of next week; `fri` is the coming one. A poll's form asks for the question and its answers, one per line (2 to 10), instead of the message. Date tokens like <code v-pre>{{date}}</code> are filled in when it's posted.
 
 <PxModal
 	title="New message"

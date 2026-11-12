@@ -311,7 +311,7 @@ describe("a spot's panel", () => {
 		const form = formOf(await t.act(PARKING_ACTIONS.openPick, { spots: "neighbour-1" }));
 		expect(form.submit.args).toEqual({ spots: "neighbour-1", form: true });
 		expect(problemOf(await t.submit(form, { until: "later" }))).toContain(
-			"I couldn't understand **Until**",
+			"**Until**: `later` is too vague",
 		);
 		expect(t.windows.entries(NOW).windows).toEqual([]);
 	});

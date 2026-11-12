@@ -541,8 +541,8 @@ describe("making a message", () => {
 	});
 
 	it.each<[string, Record<string, string>, ResolvedChannel | undefined, string]>([
-		["a time it can't read", { when: "someday" }, undefined, "couldn't understand that time"],
-		["a time that's passed", { when: "today 9:00" }, undefined, "couldn't understand that time"],
+		["a time it can't read", { when: "someday" }, undefined, "**When**: I couldn't understand it."],
+		["a time that's passed", { when: "today 9:00" }, undefined, "09:00, which has already passed"],
 		["an empty message", { text: "   " }, undefined, SCHEDULE_MESSAGES.emptyMessage],
 		["a channel they can't post in", {}, channel({ canPost: false }), SCHEDULE_MESSAGES.cantPost],
 	])("explains %s in the draft, and won't save it", async (_, fields, ch, problem) => {
@@ -829,7 +829,7 @@ describe("poll reminders", () => {
 			"a time it can't read",
 			{ "remind-at": "teatime" },
 			channel(),
-			"couldn't understand the reminder time",
+			"**Remind every day at**: I couldn't understand it.",
 		],
 		["no channel", { "remind-at": "18:00" }, undefined, SCHEDULE_MESSAGES.noReminderChannel],
 		[
@@ -1049,7 +1049,12 @@ describe("attendance polls", () => {
 	});
 
 	it.each<[string, Record<string, string>, ResolvedChannel, string]>([
-		["a time it can't read", { "status-at": "teatime" }, channel(), "couldn't understand the time"],
+		[
+			"a time it can't read",
+			{ "status-at": "teatime" },
+			channel(),
+			"**Totals so far at**: I couldn't understand it.",
+		],
 		[
 			"a channel the person can't post in",
 			{},
