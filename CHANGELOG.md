@@ -12,6 +12,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Added
 
 - Times are easier to type wherever Pixel asks for one (`/schedule`, `/admin` → Parking) (#200). New: `in 30 minutes` / `in 2 hours` / `in 3 days`; ordinals such as `14th oct`, `oct 1st` and `the 3rd`; `noon` and `midnight` (the end of that day); `tonight`, `this evening`, `fri evening` (19:00), and `tonight 8` (20:00). A time of day, such as a poll's reminder or the parking reset, also takes `noon` and `midnight`. Words for a stretch of time (`morning`, `next week`) are still refused, not guessed.
+- `/park for:` now previews what you type: `2h → until 12:30`, or what to try when it can't read it, plus the offered lengths that contain what you typed. It's the only slash option that takes a time; elsewhere times are typed on forms, which Discord can't autocomplete (#200).
 - When Pixel can't use a time, it now names the field, says why when it can (it has passed, there's no 31 Feb, `morning` is too vague) and shows examples that work, the same way everywhere.
 
 ### Changed

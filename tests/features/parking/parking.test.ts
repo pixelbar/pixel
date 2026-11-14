@@ -205,14 +205,23 @@ describe("parking", () => {
 		for (const action of feature.actions ?? []) expect(action.access).toEqual(access);
 	});
 
-	it("suggests the durations from the settings", async () => {
+	it("suggests the durations from the settings, with when each would end", async () => {
 		const { park } = setup();
 		const option = park.options?.[0];
 		if (!option || !("suggest" in option) || !option.suggest) throw new Error("no suggest");
-		expect(await option.suggest({ typed: " H" } as SuggestContext)).toEqual([
-			{ name: "1h", value: "1h" },
-			{ name: "2h", value: "2h" },
-			{ name: "4h", value: "4h" },
+		const suggest = (typed: string) => option.suggest?.({ typed } as SuggestContext);
+		// It's 10:00 in Amsterdam.
+		expect(await suggest(" H")).toEqual([
+			{ name: "1h → until 11:00", value: "1h" },
+			{ name: "2h → until 12:00", value: "2h" },
+			{ name: "4h → until 14:00", value: "4h" },
+		]);
+		expect(await suggest("90 min")).toEqual([{ name: "90 min → until 11:30", value: "90 min" }]);
+		expect(await suggest("rest of day")).toEqual([
+			{ name: "rest of day → until 23:59", value: "rest of day" },
+		]);
+		expect(await suggest("ages")).toEqual([
+			{ name: "Not understood yet. Try 30m, 2h30, rest of day", value: "ages" },
 		]);
 	});
 });
