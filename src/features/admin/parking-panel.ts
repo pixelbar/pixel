@@ -45,9 +45,12 @@ import {
 
 const ACCESS: Access = { minTier: "admin" };
 
-/** What the From and Until fields show as examples. */
+/**
+ * What the From and Until fields show as examples. Until's are all before the
+ * reset (23:59 by default), since nothing can run past it: not "midnight".
+ */
 const FROM_EXAMPLES = ["now", "in 1 hour", "8:00", "tomorrow 8"];
-const UNTIL_EXAMPLES = ["17:00", "in 2 hours", "midnight"];
+const UNTIL_EXAMPLES = ["17:00", "5pm", "in 2 hours"];
 
 export const PARKING_ACTIONS = {
 	home: "parking-admin.home",
