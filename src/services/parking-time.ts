@@ -1,6 +1,6 @@
 import { formatMinutes, parseDurationMinutes } from "../core/duration.ts";
 import { toInstant, toLocal } from "../core/recurrence.ts";
-import type { Preview } from "../core/time-suggest.ts";
+import { type Preview, whyNot } from "../core/time-suggest.ts";
 import { addDays, describeWhen, formatTimeOfDay, type TimeOfDay } from "../core/when.ts";
 
 /**
@@ -63,7 +63,8 @@ export function previewParkingDuration(
 	zone: string,
 ): Preview {
 	const duration = parseDuration(typed);
-	if (!duration) return { ok: false, why: "Not understood yet. Try 30m, 2h30, rest of day" };
+	if (!duration)
+		return { ok: false, why: whyNot({ kind: "unclear" }, ["30m", "2h30", "rest of day"]) };
 	const end =
 		duration.kind === "rest-of-day"
 			? nextReset(now, reset, zone)
