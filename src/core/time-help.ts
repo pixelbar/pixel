@@ -1,5 +1,4 @@
-import type { HowLongProblem } from "./how-long.ts";
-import { describeDate, describeWhen } from "./when.ts";
+import { describeDate, describeWhen, type WhenProblem } from "./when.ts";
 
 /**
  * What Pixel says when it can't use a time someone typed: which field, why
@@ -23,7 +22,7 @@ export const TIME_OF_DAY_EXAMPLES = ["17:00", "5pm", "1730", "noon", "midnight"]
 export type TimeField = { field: string; zone: string; hint?: string };
 
 /** "**When**: that's Mon 12 Oct 2026, 09:00, which has already passed. Type a day, a time or both in …, for example …" */
-export function whenRefusal(problem: HowLongProblem, where: TimeField): string {
+export function whenRefusal(problem: WhenProblem, where: TimeField): string {
 	return refusal(
 		where,
 		reason(problem),
@@ -33,7 +32,7 @@ export function whenRefusal(problem: HowLongProblem, where: TimeField): string {
 
 /** As `whenRefusal`, for how long something lasts. `examples` replaces the usual ones. */
 export function howLongRefusal(
-	problem: HowLongProblem,
+	problem: WhenProblem,
 	where: TimeField & { examples?: readonly string[] },
 ): string {
 	return refusal(
@@ -63,7 +62,7 @@ function refusal(where: TimeField, why: string, how: string): string {
 	return [`**${where.field}**: ${why}`, how, where.hint].filter(Boolean).join(" ");
 }
 
-function reason(problem: HowLongProblem): string {
+function reason(problem: WhenProblem): string {
 	switch (problem.kind) {
 		case "empty":
 			return "it's empty.";

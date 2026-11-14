@@ -99,6 +99,22 @@ describe("parseWhen: now", () => {
 		expect(local ? formatLocal(local) : undefined).toBe("2026-10-12T15:00");
 		expect(parseWhen("now+1h", later, AMS, { now: at })).toBeUndefined();
 	});
+
+	it("says a moment before a later reference is before it starts, not past", () => {
+		const later = new Date("2026-10-12T12:00:00Z");
+		expect(readWhen("now+1h", later, AMS, { now: at })).toEqual({
+			ok: false,
+			problem: {
+				kind: "before-start",
+				at: { year: 2026, month: 10, day: 12, hour: 11, minute: 0 },
+			},
+		});
+		expect(readWhen("2026-10-01T19:00", later, AMS, { now: at })).toMatchObject({
+			problem: { kind: "before-start" },
+		});
+		// With no other reference, it's simply past.
+		expect(readWhen("today 9", at, AMS, { now: at })).toMatchObject({ problem: { kind: "past" } });
+	});
 });
 
 describe("parseWhen", () => {

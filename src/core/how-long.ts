@@ -1,5 +1,5 @@
 import { parseDurationMinutes } from "./duration.ts";
-import { type LocalDateTime, toInstant } from "./recurrence.ts";
+import { toInstant } from "./recurrence.ts";
 import { readWhen, type WhenProblem } from "./when.ts";
 
 /**
@@ -12,11 +12,8 @@ import { readWhen, type WhenProblem } from "./when.ts";
  * poll) are the caller's: this only says what was meant.
  */
 
-/** Why `readHowLong` refused what was typed. */
-export type HowLongProblem =
-	| WhenProblem
-	/** An end that isn't after a `start` later than now. */
-	| { kind: "before-start"; at: LocalDateTime };
+/** Why `readHowLong` refused what was typed: the same reasons as `readWhen`. */
+export type HowLongProblem = WhenProblem;
 
 /** How long, and when that ends. `by` says which way it was typed. */
 export type HowLong = { end: Date; minutes: number; by: "duration" | "end" };
@@ -46,16 +43,10 @@ export function readHowLong(
 		return { ok: true, value: { end, minutes, by: "duration" } };
 	}
 
-	const now = options.now ?? start;
-	const read = readWhen(UNTIL.exec(trimmed)?.[1] ?? trimmed, start, zone, { now });
-	if (!read.ok) {
-		const { problem } = read;
-		return {
-			ok: false,
-			problem:
-				problem.kind === "past" && start > now ? { kind: "before-start", at: problem.at } : problem,
-		};
-	}
+	const read = readWhen(UNTIL.exec(trimmed)?.[1] ?? trimmed, start, zone, {
+		now: options.now ?? start,
+	});
+	if (!read.ok) return read;
 	const end = toInstant(read.at, zone);
 	return {
 		ok: true,

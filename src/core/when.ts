@@ -115,8 +115,10 @@ type DaySpec =
 export type WhenProblem =
 	| { kind: "empty" }
 	| { kind: "unclear" }
-	/** Understood, but not after the reference time. */
+	/** Understood, but it has already passed. */
 	| { kind: "past"; at: LocalDateTime }
+	/** Understood, but not after a reference later than now, such as the start of a window. */
+	| { kind: "before-start"; at: LocalDateTime }
 	/** A day and month that don't exist that year, such as 31 Feb. */
 	| { kind: "no-such-date"; day: number; month: number; year: number }
 	/** A word for a stretch of time ("morning", "week"); one of a fixed set, never other input. */
@@ -177,7 +179,8 @@ export function parseWhen(
  * can't be used. A day or a time on its own is read relative to `now`. "now",
  * "now+<duration>" and "in <duration>" are relative to `options.now` (default
  * `now`): pass the real time when `now` is another reference, such as the start
- * of a window whose end is being read.
+ * of a window whose end is being read. Then a moment that isn't after `now` is
+ * "before-start" rather than "past".
  */
 export function readWhen(
 	typed: string,
@@ -188,12 +191,18 @@ export function readWhen(
 	const trimmed = typed.trim();
 	if (trimmed === "") return refuse({ kind: "empty" });
 
-	const relative = fromNow(trimmed, options.now ?? now, zone);
+	const real = options.now ?? now;
+	const future = (local: LocalDateTime): WhenResult =>
+		toInstant(local, zone) > now
+			? accept(local)
+			: refuse({ kind: now > real ? "before-start" : "past", at: local });
+
+	const relative = fromNow(trimmed, real, zone);
 	if (relative === "invalid") return refuse({ kind: "unclear" });
-	if (relative) return future(relative, now, zone);
+	if (relative) return future(relative);
 
 	const exact = parseLocal(trimmed);
-	if (exact) return future(exact, now, zone);
+	if (exact) return future(exact);
 
 	const today = toLocal(now, zone);
 	const tokens = trimmed
@@ -224,16 +233,12 @@ export function readWhen(
 		return accept(toInstant(todayAt, zone) > now ? todayAt : on(addDays(today, 1)));
 	}
 	if (spec.kind === "weekday") {
-		if (spec.nextWeek) return future(on(weekdayNextWeek(today, spec.weekday)), now, zone);
+		if (spec.nextWeek) return future(on(weekdayNextWeek(today, spec.weekday)));
 		const date = nextWeekdayOnOrAfter(today, spec.weekday);
 		const local = on(date);
 		return accept(toInstant(local, zone) > now ? local : on(addDays(date, 7)));
 	}
-	return future(on(spec.date), now, zone);
-}
-
-function future(local: LocalDateTime, now: Date, zone: string): WhenResult {
-	return toInstant(local, zone) > now ? accept(local) : refuse({ kind: "past", at: local });
+	return future(on(spec.date));
 }
 
 /**

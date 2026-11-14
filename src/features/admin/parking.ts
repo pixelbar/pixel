@@ -241,17 +241,10 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		const typed = args[name];
 		if (typeof typed !== "string") return undefined;
 		// "now+2h" is from the real now, even when the rest is read after `from`.
-		const real = now();
-		const read = readWhen(typed, after, zone, { now: real });
+		const read = readWhen(typed, after, zone, { now: now() });
 		if (!read.ok) {
-			const { problem } = read;
 			throw new UserFacingError(
-				whenRefusal(
-					problem.kind === "past" && after > real
-						? { kind: "before-start", at: problem.at }
-						: problem,
-					{ field: name === "from" ? "From" : "Until", zone },
-				),
+				whenRefusal(read.problem, { field: name === "from" ? "From" : "Until", zone }),
 			);
 		}
 		return toInstant(read.at, zone);
