@@ -222,7 +222,7 @@ Getting a parking spot at the gate. These need the `parking` capability. Every r
 
 <PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h, 2h30 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
 
-Opens your parking panel. Everything else is buttons. `/park for:` books straight away, for when you're at the gate and know how long.
+Opens your parking panel. Everything else is buttons. `/park for:` books straight away, for when you're at the gate and know how long. As you type, the suggestions show when each length would end (`2h → until 12:30`).
 
 </PxCommand>
 
