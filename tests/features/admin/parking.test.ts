@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Args, SuggestContext } from "../../../src/core/command.ts";
+import type { Args } from "../../../src/core/command.ts";
 import { UserFacingError } from "../../../src/core/errors.ts";
 import { silentLogger } from "../../../src/core/logger.ts";
 import {
@@ -924,75 +924,5 @@ describe("helpers", () => {
 		expect(
 			describeSpot(ours, { windows: [], blocks: [block("12:00", "13:00")] }, NOW, RESET, ZONE),
 		).toBe("**ours** (permanent)\n  open until 14:00 · closed 14:00 to 15:00");
-	});
-});
-
-describe("/admin → Parking suggestions", () => {
-	/** What an option suggests for `typed`, with the other options as `args`. */
-	const suggest = async (sub: string, option: string, typed: string, args: Args = {}) => {
-		const t = setup();
-		const found = t.sub(sub).options?.find((o) => o.name === option);
-		if (!found || !("suggest" in found) || !found.suggest) throw new Error("no suggest");
-		return found.suggest({ typed, args } as SuggestContext);
-	};
-	const names = async (...a: Parameters<typeof suggest>) =>
-		(await suggest(...a)).map((s) => s.name);
-
-	it("shows when From means, with examples before anything is typed", async () => {
-		expect(await suggest("open", "from", "tomorrow 8")).toEqual([
-			{ name: "tomorrow 8 → Sun 25 Oct 2026, 08:00", value: "tomorrow 8" },
-		]);
-		expect(await names("open", "from", "")).toEqual([
-			"now → Sat 24 Oct 2026, 10:01",
-			"in 1 hour → Sat 24 Oct 2026, 11:00",
-			"8:00 → Sun 25 Oct 2026, 08:00",
-			"tomorrow 8 → Sun 25 Oct 2026, 08:00",
-			"fri 8:00 → Fri 30 Oct 2026, 08:00",
-		]);
-	});
-
-	it("reads Until after From, as the command will", async () => {
-		// Examples that contain what was typed come after it.
-		expect(await names("open", "until", "17:00")).toEqual([
-			"17:00 → Sat 24 Oct 2026, 17:00",
-			"fri 17:00 → Fri 30 Oct 2026, 17:00",
-		]);
-		expect(await names("open", "until", "17:00", { from: "tomorrow 8" })).toEqual([
-			"17:00 → Sun 25 Oct 2026, 17:00",
-			"fri 17:00 → Fri 30 Oct 2026, 17:00",
-		]);
-		// From that can't be read yet counts from now.
-		expect((await names("open", "until", "17:00", { from: "tomorr" }))[0]).toBe(
-			"17:00 → Sat 24 Oct 2026, 17:00",
-		);
-		expect(await names("open", "until", "now+1h", { from: "tomorrow 8" })).toEqual([
-			"That's Sat 24 Oct 2026, 11:00, which isn't after it starts.",
-		]);
-		expect(await names("close", "until", "midnight")).toEqual([
-			"midnight → Sun 25 Oct 2026, 00:00",
-		]);
-	});
-
-	it("shows when a length given with assign would end", async () => {
-		expect(await suggest("assign", "for", "2h")).toEqual([
-			{ name: "2h → until 12:00", value: "2h" },
-		]);
-		expect(await names("assign", "for", "ages")).toEqual([
-			"Not understood yet. Try 30m, 2h30, rest of day",
-		]);
-	});
-
-	it("shows the reset as a time of day", async () => {
-		expect(await suggest("settings", "reset", "11pm")).toEqual([
-			{ name: "11pm → 23:00", value: "11pm" },
-		]);
-		expect(await names("settings", "reset", "")).toEqual([
-			"23:59 → 23:59",
-			"midnight → 00:00",
-			"22:00 → 22:00",
-		]);
-		expect(await names("settings", "reset", "teatime")).toEqual([
-			"Not understood yet. Try 23:59, midnight, 22:00",
-		]);
 	});
 });

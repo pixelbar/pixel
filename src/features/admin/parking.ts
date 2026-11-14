@@ -1,11 +1,10 @@
 import { actorLogFields, actorRef, type Principal } from "../../core/access.ts";
-import type { Args, SubcommandDefinition, SuggestFn } from "../../core/command.ts";
+import type { Args, SubcommandDefinition } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
 import { timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
-import { previewSuggestions, suggestTimeOfDay, suggestWhen } from "../../core/time-suggest.ts";
 import { UI_LIMITS } from "../../core/ui.ts";
 import { formatTimeOfDay, parseTimeOfDay, readWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
@@ -23,12 +22,7 @@ import {
 	type ParkingSpotStore,
 	resetClock,
 } from "../../services/parking-spots.ts";
-import {
-	describeInstant,
-	nextReset,
-	parseDuration,
-	previewParkingDuration,
-} from "../../services/parking-time.ts";
+import { describeInstant, nextReset, parseDuration } from "../../services/parking-time.ts";
 import {
 	clipToReset,
 	fitEntries,
@@ -38,10 +32,6 @@ import {
 	type ParkingWindowStore,
 } from "../../services/parking-windows.ts";
 
-/** What From, Until and Reset suggest before anything is typed. */
-const FROM_EXAMPLES = ["now", "in 1 hour", "8:00", "tomorrow 8", "fri 8:00"];
-const UNTIL_EXAMPLES = ["17:00", "in 2 hours", "midnight", "tomorrow noon", "fri 17:00"];
-const RESET_EXAMPLES = ["23:59", "midnight", "22:00"];
 /**
  * `/admin` → Parking: the spots, when they're open, and the parking settings. Admins
  * only, private. Spots rarely change and live in `data/parking-spots.yaml`; opening
@@ -258,24 +248,6 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			);
 		}
 		return toInstant(read.at, zone);
-	};
-
-	/**
-	 * Autocomplete for From or Until: what it means, read as the command will read
-	 * it. Until counts from From when that's filled in and understood.
-	 */
-	const suggestTime =
-		(name: "from" | "until", examples: readonly string[]): SuggestFn =>
-		async ({ typed, args }) => {
-			const real = now();
-			const from = name === "until" ? timeArgPreview(args.from, real) : undefined;
-			return suggestWhen(typed, from ?? real, zone, { now: real, examples });
-		};
-	/** When `typed` (From) means, if it's understood; for previews only. */
-	const timeArgPreview = (typed: unknown, real: Date): Date | undefined => {
-		if (typeof typed !== "string") return undefined;
-		const read = readWhen(typed, real, zone);
-		return read.ok ? toInstant(read.at, zone) : undefined;
 	};
 
 	const spotOption = {
@@ -581,13 +553,11 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				name: "from",
 				description: "When it opens (default: now), e.g. 8:00 or tomorrow 8",
 				type: "string",
-				suggest: suggestTime("from", FROM_EXAMPLES),
 			},
 			{
 				name: "until",
-				description: "When it closes (default: the reset), e.g. 17:00 or in 2 hours",
+				description: "When it closes (default: the reset), e.g. 17:00 or now+2h",
 				type: "string",
-				suggest: suggestTime("until", UNTIL_EXAMPLES),
 			},
 			evictOption,
 		],
@@ -672,7 +642,6 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				name: "until",
 				description: "Permanent spots: when it reopens (default: the reset)",
 				type: "string",
-				suggest: suggestTime("until", UNTIL_EXAMPLES),
 			},
 			evictOption,
 		],
@@ -782,16 +751,6 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				name: "for",
 				description: "How long (default: until the spot closes)",
 				type: "string",
-				// What each length means right now: "2h → until 12:30".
-				suggest: async ({ typed }) => {
-					const at = now();
-					const settings = deps.spots.settings();
-					return previewSuggestions(
-						typed,
-						(text) => previewParkingDuration(text, at, resetClock(settings), zone),
-						settings.durations,
-					);
-				},
 			},
 			{
 				...evictOption,
@@ -954,7 +913,6 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				name: "reset",
 				description: "When every booking ends each day, e.g. 23:59",
 				type: "string",
-				suggest: async ({ typed }) => suggestTimeOfDay(typed, RESET_EXAMPLES),
 			},
 			{
 				name: "durations",
