@@ -194,7 +194,7 @@ describe("ParkingSpotStore", () => {
 			["the wrong shape", "spots:\n  - name: Spot_1\n", /spots\.0\.name/],
 			["a name with a line break", 'spots:\n  - name: "a\\nb"\n', /spots\.0\.name/],
 			["an unknown key", "spot: []\n", /invalid/],
-			["a bad setting", "settings:\n  resetAt: midnight\n", /settings\.resetAt/],
+			["a bad setting", "settings:\n  resetAt: teatime\n", /settings\.resetAt/],
 			["a repeated name", "spots:\n  - name: a\n  - name: a\n", /repeats a spot name/],
 			["a name repeated in capitals", "spots:\n  - name: a\n  - name: A\n", /repeats a spot name/],
 		])("%s switches parking off and is never overwritten", (_, text, problem) => {

@@ -9,8 +9,14 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- Times are easier to type wherever Pixel asks for one (`/schedule`, `/admin` → Parking) (#200). New: `in 30 minutes` / `in 2 hours` / `in 3 days`; ordinals such as `14th oct`, `oct 1st` and `the 3rd`; `noon` and `midnight` (the end of that day); `tonight`, `this evening`, `fri evening` (19:00), and `tonight 8` (20:00). A time of day, such as a poll's reminder or the parking reset, also takes `noon` and `midnight`. Words for a stretch of time (`morning`, `next week`) are still refused, not guessed.
+- When Pixel can't use a time, it now names the field, says why when it can (it has passed, there's no 31 Feb, `morning` is too vague) and shows examples that work, the same way everywhere.
+
 ### Changed
 
+- **`next fri`** now means Friday of next week (weeks start on Monday), not the coming Friday. `fri` or `this fri` is the coming one (#200).
 - Poll reminders no longer say when the poll closes, just which poll and a link to it (#210).
 - No poll reminder is posted in the last 30 minutes before a poll closes, including one that's running late (#213).
 
