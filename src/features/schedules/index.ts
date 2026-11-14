@@ -29,7 +29,12 @@ import {
 	weekdayOf,
 } from "../../core/recurrence.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
-import { timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
+import {
+	placeholderOf,
+	timeOfDayRefusal,
+	WHEN_EXAMPLES,
+	whenRefusal,
+} from "../../core/time-help.ts";
 import type {
 	ActionContext,
 	ActionDefinition,
@@ -856,7 +861,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					description: `In ${zone}. A day, a time or both.`,
 					style: "short",
 					maxLength: 100,
-					placeholder: "wed 1900 · tomorrow 9am · 14 oct 19:00 · now+1h",
+					placeholder: placeholderOf(WHEN_EXAMPLES),
 					...(draft.when ? { value: draft.when } : {}),
 				},
 				{
@@ -887,7 +892,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					description: `A time of day in ${zone}, not in the poll's last 30 minutes. Empty for none.`,
 					style: "short",
 					maxLength: 20,
-					placeholder: "18:00",
+					placeholder: placeholderOf(["18:00", "6pm"]),
 					required: false,
 					...(draft.reminder ? { value: draft.reminder.at } : {}),
 				},
@@ -944,7 +949,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					description: `A time of day in ${zone}, on the day it closes. Empty for none.`,
 					style: "short",
 					maxLength: 20,
-					placeholder: "17:00",
+					placeholder: placeholderOf(["17:00", "5pm"]),
 					required: false,
 					...(results?.at ? { value: results.at } : {}),
 				},

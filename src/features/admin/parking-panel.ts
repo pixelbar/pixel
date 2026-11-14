@@ -9,6 +9,7 @@ import type {
 import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import type { Reply } from "../../core/reply.ts";
+import { placeholderOf } from "../../core/time-help.ts";
 import type {
 	ActionContext,
 	ActionDefinition,
@@ -43,6 +44,10 @@ import {
  */
 
 const ACCESS: Access = { minTier: "admin" };
+
+/** What the From and Until fields show as examples. */
+const FROM_EXAMPLES = ["now", "in 1 hour", "8:00", "tomorrow 8"];
+const UNTIL_EXAMPLES = ["17:00", "in 2 hours", "midnight"];
 
 export const PARKING_ACTIONS = {
 	home: "parking-admin.home",
@@ -355,13 +360,13 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 				"from",
 				"From",
 				`When it opens, in ${zone}. Empty: now.`,
-				"now, 8:00, tomorrow 8",
+				placeholderOf(FROM_EXAMPLES),
 			),
 			optionalText(
 				"until",
 				"Until",
-				`When it closes. Empty: the reset (${deps.spots.settings().resetAt}).`,
-				"17:00, now+2h",
+				`When it closes, in ${zone}. Empty: the reset (${deps.spots.settings().resetAt}).`,
+				placeholderOf(UNTIL_EXAMPLES),
 			),
 		],
 	});
@@ -373,8 +378,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			optionalText(
 				"until",
 				"Until",
-				`For permanent spots: when it opens again. Empty: the reset (${deps.spots.settings().resetAt}).`,
-				"17:00, now+2h",
+				`For permanent spots: when it opens again, in ${zone}. Empty: the reset (${deps.spots.settings().resetAt}).`,
+				placeholderOf(UNTIL_EXAMPLES),
 			),
 		],
 	});
@@ -444,7 +449,13 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					"5",
 					String(s.graceMinutes),
 				),
-				optionalText("reset", "Reset", "When every booking ends each day.", "23:59", s.resetAt),
+				optionalText(
+					"reset",
+					"Reset",
+					`When every booking ends each day, in ${zone}.`,
+					placeholderOf(["23:59", "midnight"]),
+					s.resetAt,
+				),
 				optionalText(
 					"durations",
 					"Durations offered",
@@ -676,8 +687,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 					optionalText(
 						"for",
 						"How long",
-						"Such as 2h or rest of day. Empty: until the spot closes.",
-						"2h",
+						"Such as 2h, until 17:00 or rest of day. Empty: until the spot closes.",
+						placeholderOf(["2h", "until 17:00", "rest of day"]),
 					),
 				],
 			},

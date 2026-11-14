@@ -8,6 +8,7 @@ import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Gate, GateResult } from "../../core/ports/gate.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
+import { howLongRefusal, placeholderOf } from "../../core/time-help.ts";
 import { previewSuggestions } from "../../core/time-suggest.ts";
 import type {
 	ActionContext,
@@ -40,9 +41,12 @@ import {
 	describeInstant,
 	formatParkingDuration,
 	nextReset,
+	PARKING_LENGTH_EXAMPLES,
 	type ParkingDuration,
+	type ParkingLength,
 	parseDuration,
 	previewParkingDuration,
+	readParkingLength,
 } from "../../services/parking-time.ts";
 import { openUntil, type ParkingWindowStore } from "../../services/parking-windows.ts";
 
@@ -178,6 +182,24 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 
 	// ── What people do ───────────────────────────────────────────────────
 
+	/**
+	 * When a length typed for How long ends, from `base` (now, or the end
+	 * they have when extending). Throws the shared help when it can't be used.
+	 */
+	const lengthOf = (typed: string, base: Date, reset: Date, real: Date): ParkingLength => {
+		const read = readParkingLength(typed, base, reset, zone, { now: real });
+		if (!read.ok) {
+			throw new UserFacingError(
+				howLongRefusal(read.problem, {
+					field: "How long",
+					zone,
+					examples: PARKING_LENGTH_EXAMPLES,
+				}),
+			);
+		}
+		return read.value;
+	};
+
 	/** Books a spot for `typed` and opens the gate. The lines to show. */
 	async function book(
 		principal: Principal,
@@ -185,18 +207,9 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		typed: string,
 	): Promise<{ lines: string[] }> {
 		usable();
-		const duration = parseDuration(typed);
-		if (!duration) {
-			throw new UserFacingError(
-				"I couldn't understand how long. Try something like `30m`, `2h`, `2h30` or `rest of day`.",
-			);
-		}
 		const start = now();
 		const reset = resetAfter(start);
-		const end =
-			duration.kind === "rest-of-day"
-				? reset
-				: new Date(start.getTime() + duration.minutes * 60_000);
+		const { end } = lengthOf(typed, start, reset, start);
 		const ref = actorRef(principal);
 		const existing = deps.bookings.byPerson(ref);
 		if (!existing && end > reset) {
@@ -274,15 +287,9 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		const t = now();
 		const booking = deps.bookings.byPerson(actorRef(principal));
 		if (!booking) throw new UserFacingError("You're not parked anywhere.");
-		const duration = parseDuration(typed);
-		if (!duration) {
-			throw new UserFacingError(
-				"I couldn't understand how long. Try something like `30m`, `1h` or `rest of day`.",
-			);
-		}
 		const { limit, base, reset } = extendLimit(booking, t);
-		const until =
-			duration.kind === "rest-of-day" ? reset : new Date(base + duration.minutes * 60_000);
+		const length = lengthOf(typed, new Date(base), reset, t);
+		const until = length.end;
 		const spare = Math.floor((limit.getTime() - base) / 60_000);
 		if (until > limit) {
 			const why =
@@ -317,9 +324,11 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			t,
 		);
 		const lines = [
-			duration.kind === "rest-of-day"
+			length.by === "rest-of-day"
 				? "✅ Extended until the end of the day."
-				: `✅ Extended by ${formatParkingDuration(duration)}.`,
+				: length.by === "end"
+					? `✅ Extended until ${at(until, t)}.`
+					: `✅ Extended by ${formatParkingDuration(minutes((until.getTime() - base) / 60_000))}.`,
 		];
 		if (remindAt > t) lines.push(`I'll DM you ${remindMinutes} minutes before it ends.`);
 		return lines;
@@ -720,10 +729,10 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 				kind: "text",
 				name: "for",
 				label: "How long",
-				description: "Such as 45m, 2h30 or rest of day.",
+				description: `Such as 45m, 2h30, until 17:00 or rest of day, in ${zone}.`,
 				style: "short",
 				maxLength: 30,
-				placeholder: "2h30",
+				placeholder: placeholderOf(PARKING_LENGTH_EXAMPLES),
 			},
 		],
 	};
@@ -732,7 +741,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 
 	const forOption: CommandOption = {
 		name: "for",
-		description: "How long, e.g. 30m, 2h, 2h30 or rest of day (leave out to choose)",
+		description: "How long, e.g. 2h30, until 17:00 or rest of day (leave out to choose)",
 		type: "string",
 		// What each length means right now: "2h → until 12:30".
 		suggest: async ({ typed }) => {
