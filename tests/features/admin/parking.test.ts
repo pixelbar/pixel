@@ -794,9 +794,17 @@ describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 			"**neighbour-1** is only open until 17:00. Leave **How long** empty to give it until then.",
 		);
 		await expect(assign(t, { spot: "neighbour-1", for: "ages" })).rejects.toThrow(
-			/couldn't understand how long/,
+			/\*\*How long\*\*: I couldn't understand it\. .*`until 17:00` or `rest of day`/,
 		);
 		expect(t.bookings.all()).toEqual([]);
+	});
+
+	it("gives it until an end time as well as for a length", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1", until: "17:00" });
+		expect(await assign(t, { spot: "neighbour-1", for: "until 16:00" })).toBe(
+			"Gave **neighbour-1** to Bob, until 16:00.",
+		);
 	});
 
 	it("needs a person", async () => {

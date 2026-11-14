@@ -4,7 +4,7 @@ import { UserFacingError } from "../../core/errors.ts";
 import { escapeMarkdown, inlineCode } from "../../core/format.ts";
 import type { Logger } from "../../core/logger.ts";
 import { toInstant } from "../../core/recurrence.ts";
-import { timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
+import { howLongRefusal, timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
 import { UI_LIMITS } from "../../core/ui.ts";
 import { formatTimeOfDay, parseTimeOfDay, readWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
@@ -22,7 +22,12 @@ import {
 	type ParkingSpotStore,
 	resetClock,
 } from "../../services/parking-spots.ts";
-import { describeInstant, nextReset, parseDuration } from "../../services/parking-time.ts";
+import {
+	describeInstant,
+	nextReset,
+	PARKING_LENGTH_EXAMPLES,
+	readParkingLength,
+} from "../../services/parking-time.ts";
 import {
 	clipToReset,
 	fitEntries,
@@ -749,7 +754,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			spotOption,
 			{
 				name: "for",
-				description: "How long (default: until the spot closes)",
+				description: "How long, e.g. 2h or until 17:00 (default: until the spot closes)",
 				type: "string",
 			},
 			{
@@ -780,16 +785,17 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			}
 			let until = openTill;
 			if (typeof args.for === "string") {
-				const duration = parseDuration(args.for);
-				if (!duration) {
+				const read = readParkingLength(args.for, at, reset, zone);
+				if (!read.ok) {
 					throw new UserFacingError(
-						"I couldn't understand how long. Try something like `2h`, `2h30` or `rest of day`.",
+						howLongRefusal(read.problem, {
+							field: "How long",
+							zone,
+							examples: PARKING_LENGTH_EXAMPLES,
+						}),
 					);
 				}
-				until =
-					duration.kind === "rest-of-day"
-						? reset
-						: new Date(at.getTime() + duration.minutes * 60_000);
+				until = read.value.end;
 				if (until > openTill) {
 					throw new UserFacingError(
 						`**${target.name}** is only open until ${when(openTill)}. Leave **How long** empty to give it until then.`,
