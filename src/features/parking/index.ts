@@ -8,6 +8,7 @@ import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import type { Gate, GateResult } from "../../core/ports/gate.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
+import { previewSuggestions } from "../../core/time-suggest.ts";
 import type {
 	ActionContext,
 	ActionDefinition,
@@ -41,6 +42,7 @@ import {
 	nextReset,
 	type ParkingDuration,
 	parseDuration,
+	previewParkingDuration,
 } from "../../services/parking-time.ts";
 import { openUntil, type ParkingWindowStore } from "../../services/parking-windows.ts";
 
@@ -732,12 +734,15 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		name: "for",
 		description: "How long, e.g. 30m, 2h, 2h30 or rest of day (leave out to choose)",
 		type: "string",
+		// What each length means right now: "2h → until 12:30".
 		suggest: async ({ typed }) => {
-			const needle = typed.trim().toLowerCase();
-			return deps.spots
-				.settings()
-				.durations.filter((d) => d.includes(needle))
-				.map((d) => ({ name: d, value: d }));
+			const at = now();
+			const settings = deps.spots.settings();
+			return previewSuggestions(
+				typed,
+				(text) => previewParkingDuration(text, at, resetClock(settings), zone),
+				settings.durations,
+			);
 		},
 	};
 	const forArg: CommandOption = {
