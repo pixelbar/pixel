@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-11-16
+
 ### Changed
 
 - Poll reminders no longer say when the poll closes, just which poll and a link to it (#210).
@@ -412,7 +414,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/pixelbar/pixel/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/pixelbar/pixel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/pixelbar/pixel/compare/v0.25.2...v0.26.0
 [0.25.2]: https://github.com/pixelbar/pixel/compare/v0.25.1...v0.25.2
