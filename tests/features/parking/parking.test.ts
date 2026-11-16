@@ -232,7 +232,9 @@ describe("not parked", () => {
 			"Another length…",
 			"Refresh",
 		]);
-		expect(spotsOf(reply)).toContain('**"ours"** (Next to the \\*gate\\*): taken by Bob since 10:00');
+		expect(spotsOf(reply)).toContain(
+			'**"ours"** (Next to the \\*gate\\*): taken by Bob since 10:00',
+		);
 	});
 
 	it("lists free and taken spots in separate groups, free first", async () => {
@@ -288,7 +290,9 @@ describe("not parked", () => {
 	it("then the borrowed spot that fits most tightly", async () => {
 		const t = withSpots();
 		await t.book("30m", member(BOB, "Bob"));
-		expect(main(await t.book("1h"))).toContain('Park in **"neighbour-1"**. It\'s yours until 11:00.');
+		expect(main(await t.book("1h"))).toContain(
+			'Park in **"neighbour-1"**. It\'s yours until 11:00.',
+		);
 		expect(main(await t.book("4h", member("100000000000000006")))).toContain(
 			'Park in **"neighbour-2"**. It\'s yours until 14:00.',
 		);
@@ -649,7 +653,7 @@ describe("someone's in my spot", () => {
 		expect(main(offer)).toContain('and I\'ll close **"ours"** until 23:59.');
 		t.activity.record.mockResolvedValueOnce(false);
 		expect(main(t.replyOf(await t.click(offer, "Move to neighbour-1")))).toContain(
-			'I\'ve moved you here and closed **"ours"**, but I couldn\'t tell the admins, so please tell the board yourself.',
+			"I've moved you here and closed **\"ours\"**, but I couldn't tell the admins, so please tell the board yourself.",
 		);
 	});
 
@@ -662,7 +666,7 @@ describe("someone's in my spot", () => {
 		expect(labels(offer)).toEqual(["End my booking and report it", "Cancel"]);
 		const ended = t.replyOf(await t.click(offer, "End my booking and report it"));
 		expect(main(ended)).toContain(
-			'Sorry: someone else is in **"ours"** and no other spot is free right now, so please leave. I\'ve ended your booking.\nI\'ve reported it to the board.',
+			"Sorry: someone else is in **\"ours\"** and no other spot is free right now, so please leave. I've ended your booking.\nI've reported it to the board.",
 		);
 		expect(t.bookings.all()).toEqual([]);
 		expect(t.windows.entries(NOW).blocks).toMatchObject([{ spot: "ours", reason: "taken" }]);
@@ -778,7 +782,7 @@ describe("reminders and ending bookings", () => {
 			[
 				"ours",
 				"reminder",
-				'Your parking in **"ours"** ends at 11:00.\nThe spot is open until 23:59, so you can stay up to 12h59 longer: run `/park` and pick how long.\nIf you haven\'t left or extended by 11:05, I\'ll end it. Leaving? Run `/park` and press **Leave**.',
+				"Your parking in **\"ours\"** ends at 11:00.\nThe spot is open until 23:59, so you can stay up to 12h59 longer: run `/park` and pick how long.\nIf you haven't left or extended by 11:05, I'll end it. Leaving? Run `/park` and press **Leave**.",
 			],
 		]);
 		expect(t.bookings.all()[0]?.remindedAt).toEqual(utc("08:45"));
@@ -812,7 +816,7 @@ describe("reminders and ending bookings", () => {
 			[
 				"neighbour-1",
 				"reminder",
-				'Your parking in **"neighbour-1"** ends at 14:00.\nThe spot closes then, so it can\'t be extended.\nIf you haven\'t left or extended by then, I\'ll end it. Leaving: Run `/park` and press **Leave**.',
+				"Your parking in **\"neighbour-1\"** ends at 14:00.\nThe spot closes then, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving: Run `/park` and press **Leave**.",
 			],
 		]);
 		t.setNow(utc("21:44"));
@@ -824,7 +828,7 @@ describe("reminders and ending bookings", () => {
 		).toEqual([
 			"ours",
 			"reminder",
-			'Your parking in **"ours"** ends at 23:59.\nParking ends at 23:59 every day, so it can\'t be extended.\nIf you haven\'t left or extended by then, I\'ll end it. Leaving? Run `/park` and press **Leave**.',
+			"Your parking in **\"ours\"** ends at 23:59.\nParking ends at 23:59 every day, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving? Run `/park` and press **Leave**.",
 		]);
 		stop?.();
 	});
