@@ -24,14 +24,14 @@ const context = { now: NOW, zone: ZONE, settings: { graceMinutes: 5, resetAt: "2
 
 describe("parking DMs", () => {
 	it("says why a booking ended", () => {
-		expect(endedText(booking, "admin", context)).toBe("An admin ended your parking in **ours**.");
+		expect(endedText(booking, "admin", context)).toBe('An admin ended your parking in **"ours"**.');
 		expect(endedText(booking, "over", context)).toContain("your time was up at 11:00");
 		expect(endedText(booking, "reset", context)).toContain("parking ends at 23:59 every day");
 	});
 
 	it("tells someone an admin gave them a spot", () => {
 		expect(assignedText(booking, context)).toBe(
-			"An admin gave you **ours**, until 11:00. Run `/park` and press **Leave** when you go.",
+			'An admin gave you **"ours"**, until 11:00. Run `/park` and press **Leave** when you go.',
 		);
 	});
 
