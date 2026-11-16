@@ -24,6 +24,7 @@ import {
 	pickSpot,
 } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { formatSpotName } from "../../services/parking-format.ts";
 import {
 	type EndReason,
 	endedText,
@@ -43,7 +44,6 @@ import {
 	parseDuration,
 } from "../../services/parking-time.ts";
 import { openUntil, type ParkingWindowStore } from "../../services/parking-windows.ts";
-import { formatSpotName } from "../../services/parking-format.ts";
 
 /**
  * `/park`: a member with the `parking` capability gets a spot at the gate, for a

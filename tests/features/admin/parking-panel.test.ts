@@ -170,7 +170,7 @@ describe("/admin → Parking panel", () => {
 
 	it("lists every spot, with menus to manage one, or open or close several", async () => {
 		const reply = await withSpots().open();
-		expect(said(reply)).toContain("**"ours"** (permanent): Next to the gate");
+		expect(said(reply)).toContain('**"ours"** (permanent): Next to the gate');
 		expect(said(reply)).toContain("Reset: 23:59 every day");
 		expect(labels(reply)).toEqual([
 			"[Manage a spot…]",

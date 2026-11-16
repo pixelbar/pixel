@@ -100,7 +100,7 @@ describe("parking activity", () => {
 		expect(await activity.record({ kind: "left", spot: "ours", who: "Alice" }, NOW)).toBe(true);
 		expect(post).toHaveBeenCalledWith(CHANNEL, {
 			kind: "message",
-			text: "**Alice** left **ours**.",
+			text: '**Alice** left **"ours"**.',
 			mentions: false,
 		});
 		expect(count).toHaveBeenCalledWith("pixel.parking", { event: "left", spot: "ours" });

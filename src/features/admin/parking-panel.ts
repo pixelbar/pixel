@@ -189,7 +189,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		notice: string[] = [],
 	): Promise<Reply> {
 		const spot = deps.spots.get(name);
-		if (!spot) return overview(ctx, [...notice, `There's no spot called ${formatSpotName(name)} any more.`]);
+		if (!spot)
+			return overview(ctx, [...notice, `There's no spot called ${formatSpotName(name)} any more.`]);
 		const at = now();
 		const entries = deps.windows.entries(at);
 		const booking = deps.bookings.all().find((b) => b.spot === spot.name);
@@ -638,7 +639,9 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			const name = String(ctx.args.spot);
 			const booking = deps.bookings.all().find((b) => b.spot === name);
 			if (!booking)
-				return { reply: await spotPanel(ctx, name, [`Nobody is parked in ${formatSpotName(name)}.`]) };
+				return {
+					reply: await spotPanel(ctx, name, [`Nobody is parked in ${formatSpotName(name)}.`]),
+				};
 			return {
 				reply: confirm(
 					`Free ${name}?`,
