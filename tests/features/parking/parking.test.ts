@@ -816,7 +816,7 @@ describe("reminders and ending bookings", () => {
 			[
 				"neighbour-1",
 				"reminder",
-				"Your parking in **\"neighbour-1\"** ends at 14:00.\nThe spot closes then, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving: Run `/park` and press **Leave**.",
+				"Your parking in **\"neighbour-1\"** ends at 14:00.\nThe spot closes then, so it can't be extended.\nIf you haven't left or extended by then, I'll end it. Leaving? Run `/park` and press **Leave**.",
 			],
 		]);
 		t.setNow(utc("21:44"));
