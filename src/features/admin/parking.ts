@@ -9,6 +9,7 @@ import { formatTimeOfDay, parseTimeOfDay, parseWhen } from "../../core/when.ts";
 import type { AdminAction, ParkingActivity } from "../../services/parking-activity.ts";
 import { cutBookings } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { formatSpotName } from "../../services/parking-format.ts";
 import { assignedText, endedText, type ParkingNotices } from "../../services/parking-notices.ts";
 import {
 	MAX_DURATIONS,
@@ -156,7 +157,7 @@ export function resolveSpots(
 	return found.map((f) => f.spot as ParkingSpot);
 }
 
-const bold = (names: readonly string[]) => names.map((n) => `**${n}**`).join(", ");
+const bold = (names: readonly string[]) => names.map((n) => formatSpotName(n)).join(", ");
 
 /** One spot for `/admin` → Parking: what it is, and when it's open. */
 export function describeSpot(
@@ -168,7 +169,7 @@ export function describeSpot(
 	booking?: ParkingBooking,
 ): string {
 	const at = (d: Date) => describeInstant(d, now, zone);
-	const head = `**${spot.name}** (${spot.permanent ? "permanent" : "borrowed"})${
+	const head = `${formatSpotName(spot.name)} (${spot.permanent ? "permanent" : "borrowed"})${
 		spot.description ? `: ${escapeMarkdown(spot.description)}` : ""
 	}`;
 	const mine = (list: readonly ParkingEntry[]) =>
@@ -281,7 +282,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		const bookings = deps.bookings.all().filter((b) => affected.includes(b.spot));
 		const cut = cutBookings(bookings, spotsAfter, entriesAfter, at, resetAfter(at));
 		if (cut.length > 0 && args.evict !== true) {
-			const who = cut.map((b) => `**${b.spot}** until about ${describeInstant(b.until, at, zone)}`);
+			const who = cut.map((b) => `${formatSpotName(b.spot)} until about ${describeInstant(b.until, at, zone)}`);
 			throw new EvictNeeded(
 				`Someone is parked in ${who.join(", ")}. Going ahead ends ${cut.length === 1 ? "their booking" : "those bookings"}.`,
 			);
@@ -326,7 +327,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 					{ kind: "evicted", spot: b.spot, who: b.by.name, admin: principal.displayName },
 					now(),
 				);
-				return `Ended ${escapeMarkdown(b.by.name)}'s booking in **${b.spot}**.`;
+				return `Ended ${escapeMarkdown(b.by.name)}'s booking in ${formatSpotName(b.spot)}.`;
 			});
 	};
 
@@ -426,13 +427,13 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				"spot-added",
 				`added the spot **${spot.name}** (${spot.permanent ? "permanent" : "borrowed"}).`,
 			);
-			const reset = deps.spots.settings().resetAt;
-			return {
-				text: spot.permanent
-					? `Added **${spot.name}**, a permanent spot: it's open every day until ${reset}. **Close…** shuts it for a while.`
-					: `Added **${spot.name}**, a borrowed spot. It's closed until you open it with **Open…**.`,
-				private: true,
-			};
+		const reset = deps.spots.settings().resetAt;
+		return {
+			text: spot.permanent
+				? `Added ${formatSpotName(spot.name)}, a permanent spot: it's open every day until ${reset}. **Close…** shuts it for a while.`
+				: `Added ${formatSpotName(spot.name)}, a borrowed spot. It's closed until you open it with **Open…**.`,
+			private: true,
+		};
 		},
 	};
 
@@ -476,7 +477,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				...(permanent !== undefined ? { permanent } : {}),
 			});
 			if (!changed) throw new UserFacingError("That spot no longer exists.");
-			const lines = [`Changed **${target.name}**.`];
+			const lines = [`Changed ${formatSpotName(target.name)}.`];
 			if (changed.before.permanent !== changed.after.permanent) {
 				const dropped = deps.windows.reconcile(deps.spots.all(), at);
 				lines.push(
@@ -536,7 +537,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				"removed a parking spot",
 			);
 			record(principal, "spot-removed", `removed the spot **${removed.name}**.`);
-			const lines = [`Removed **${removed.name}**.`, ...evict(cut, principal, logger)];
+			const lines = [`Removed ${formatSpotName(removed.name)}.`, ...evict(cut, principal, logger)];
 			return { text: lines.join("\n"), private: true };
 		},
 	};
@@ -715,7 +716,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 		handler: async ({ args, principal, logger }) => {
 			const [target] = resolveSpots(deps.spots, String(args.spot ?? ""));
 			const [ended] = deps.bookings.end((b) => b.spot === target?.name);
-			if (!ended) return { text: `Nobody is parked in **${target?.name}**.`, private: true };
+			if (!ended) return { text: `Nobody is parked in ${formatSpotName(target?.name ?? "")}.`, private: true };
 			logger.info(
 				{
 					event: "parking.freed",
@@ -732,7 +733,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				now(),
 			);
 			return {
-				text: `Ended ${escapeMarkdown(ended.by.name)}'s booking: **${ended.spot}** is free again.`,
+				text: `Ended ${escapeMarkdown(ended.by.name)}'s booking: ${formatSpotName(ended.spot)} is free again.`,
 				private: true,
 			};
 		},
@@ -775,7 +776,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			};
 			const openTill = openUntil(target, entries, at, reset);
 			if (!openTill) {
-				throw new UserFacingError(`**${target.name}** is closed right now. Open it first.`);
+				throw new UserFacingError(`${formatSpotName(target.name)} is closed right now. Open it first.`);
 			}
 			let until = openTill;
 			if (typeof args.for === "string") {
@@ -791,7 +792,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 						: new Date(at.getTime() + duration.minutes * 60_000);
 				if (until > openTill) {
 					throw new UserFacingError(
-						`**${target.name}** is only open until ${when(openTill)}. Leave **How long** empty to give it until then.`,
+						`${formatSpotName(target.name)} is only open until ${when(openTill)}. Leave **How long** empty to give it until then.`,
 					);
 				}
 			}
@@ -802,7 +803,7 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 			// Pixel doesn't move whoever holds the spot: Someone's in my spot in `/park` gets them a new one.
 			if (holder && args.evict !== true) {
 				throw new EvictNeeded(
-					`${escapeMarkdown(holder.by.name)} is still booked into **${target.name}**, until about ${when(holder.until)}. They get a new spot with Someone's in my spot in \`/park\`, or going ahead ends their booking.`,
+					`${escapeMarkdown(holder.by.name)} is still booked into ${formatSpotName(target.name)}, until about ${when(holder.until)}. They get a new spot with Someone's in my spot in \`/park\`, or going ahead ends their booking.`,
 				);
 			}
 
@@ -859,11 +860,11 @@ export function parkingOperations(deps: ParkingAdminDeps) {
 				at,
 			);
 			const lines = [
-				`Gave **${booking.spot}** to ${escapeMarkdown(person.displayName)}, until ${when(booking.until)}.`,
+				`Gave ${formatSpotName(booking.spot)} to ${escapeMarkdown(person.displayName)}, until ${when(booking.until)}.`,
 			];
-			if (lifted.length > 0) lines.push(`**${target.name}** is no longer closed as taken.`);
+			if (lifted.length > 0) lines.push(`${formatSpotName(target.name)} is no longer closed as taken.`);
 			if (own && own.spot !== target.name) {
-				lines.push(`Their booking in **${own.spot}** has ended.`);
+				lines.push(`Their booking in ${formatSpotName(own.spot)} has ended.`);
 			}
 			if (evicted) {
 				logger.warn(

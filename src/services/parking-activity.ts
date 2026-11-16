@@ -2,6 +2,7 @@ import type { ChannelPosts } from "../core/channel-posts.ts";
 import { escapeMarkdown } from "../core/format.ts";
 import type { Logger } from "../core/logger.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
+import { formatSpotName } from "./parking-format.ts";
 import { describeInstant } from "./parking-time.ts";
 
 /**
@@ -59,30 +60,29 @@ export type ParkingActivityOptions = {
 export function activityText(event: ParkingActivityEvent, now: Date, zone: string): string {
 	const at = (d: Date) => describeInstant(d, now, zone);
 	const who = (name: Name) => `**${escapeMarkdown(name) || "Someone"}**`;
-	const spot = (name: string) => `**${name}**`;
 	switch (event.kind) {
 		case "booked":
-			return `${who(event.who)} parked in ${spot(event.spot)} until about ${at(event.until)}.`;
+			return `${who(event.who)} parked in ${formatSpotName(event.spot)} until about ${at(event.until)}.`;
 		case "none-free":
 			return `${who(event.who)} asked to park, but nothing was free for that long.`;
 		case "left":
-			return `${who(event.who)} left ${spot(event.spot)}.`;
+			return `${who(event.who)} left ${formatSpotName(event.spot)}.`;
 		case "extended":
-			return `${who(event.who)} extended ${spot(event.spot)} until about ${at(event.until)}.`;
+			return `${who(event.who)} extended ${formatSpotName(event.spot)} until about ${at(event.until)}.`;
 		case "ended":
 			return event.reason === "over"
-				? `Pixel ended ${who(event.who)}'s parking in ${spot(event.spot)}: their time was up.`
-				: `Pixel ended ${who(event.who)}'s parking in ${spot(event.spot)} at the daily reset.`;
+				? `Pixel ended ${who(event.who)}'s parking in ${formatSpotName(event.spot)}: their time was up.`
+				: `Pixel ended ${who(event.who)}'s parking in ${formatSpotName(event.spot)} at the daily reset.`;
 		case "moved":
-			return `⚠️ ${who(event.who)} reported ${spot(event.from)} taken by someone else. Pixel moved them to ${spot(event.to)} and closed ${spot(event.from)} until ${at(event.closedUntil)}.`;
+			return `⚠️ ${who(event.who)} reported ${formatSpotName(event.from)} taken by someone else. Pixel moved them to ${formatSpotName(event.to)} and closed ${formatSpotName(event.from)} until ${at(event.closedUntil)}.`;
 		case "taken":
-			return `⚠️ ${who(event.who)} reported ${spot(event.spot)} taken by someone else, and no other spot was free, so they were asked to leave. ${spot(event.spot)} is closed until ${at(event.closedUntil)}. Please look into it.`;
+			return `⚠️ ${who(event.who)} reported ${formatSpotName(event.spot)} taken by someone else, and no other spot was free, so they were asked to leave. ${formatSpotName(event.spot)} is closed until ${at(event.closedUntil)}. Please look into it.`;
 		case "freed":
-			return `${who(event.admin)} ended ${who(event.who)}'s booking in ${spot(event.spot)}.`;
+			return `${who(event.admin)} ended ${who(event.who)}'s booking in ${formatSpotName(event.spot)}.`;
 		case "evicted":
-			return `${who(event.admin)} changed ${spot(event.spot)}, which ended ${who(event.who)}'s booking there.`;
+			return `${who(event.admin)} changed ${formatSpotName(event.spot)}, which ended ${who(event.who)}'s booking there.`;
 		case "assigned":
-			return `${who(event.admin)} gave ${spot(event.spot)} to ${who(event.who)}, until about ${at(event.until)}.`;
+			return `${who(event.admin)} gave ${formatSpotName(event.spot)} to ${who(event.who)}, until about ${at(event.until)}.`;
 		case "admin":
 			return `${who(event.admin)} ${event.text}`;
 	}
