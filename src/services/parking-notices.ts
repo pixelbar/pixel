@@ -2,6 +2,7 @@ import { splitRef } from "../core/access.ts";
 import type { Logger } from "../core/logger.ts";
 import type { DirectMessenger } from "../core/ports/direct-message.ts";
 import type { ParkingBooking } from "./parking-bookings.ts";
+import { formatSpotName } from "./parking-format.ts";
 import type { ParkingSettings } from "./parking-spots.ts";
 import { describeInstant, formatParkingDuration } from "./parking-time.ts";
 
@@ -23,20 +24,19 @@ type Context = {
 
 /** The DM sent when Pixel (or an admin) ends someone's booking. */
 export function endedText(booking: ParkingBooking, reason: EndReason, context: Context): string {
-	const spot = `**${booking.spot}**`;
 	switch (reason) {
 		case "over":
-			return `I've ended your parking in ${spot}: your time was up at ${describeInstant(booking.until, context.now, context.zone)}.`;
+			return `I've ended your parking in ${formatSpotName(booking.spot)}: your time was up at ${describeInstant(booking.until, context.now, context.zone)}.`;
 		case "reset":
-			return `I've ended your parking in ${spot}: parking ends at ${context.settings.resetAt} every day.`;
+			return `I've ended your parking in ${formatSpotName(booking.spot)}: parking ends at ${context.settings.resetAt} every day.`;
 		case "admin":
-			return `An admin ended your parking in ${spot}.`;
+			return `An admin ended your parking in ${formatSpotName(booking.spot)}.`;
 	}
 }
 
 /** The DM sent when an admin gives someone a spot (they were found parked there). */
 export function assignedText(booking: ParkingBooking, context: Context): string {
-	return `An admin gave you **${booking.spot}**, until ${describeInstant(booking.until, context.now, context.zone)}. Run \`/park\` and press **Leave** when you go.`;
+	return `An admin gave you ${formatSpotName(booking.spot)}, until ${describeInstant(booking.until, context.now, context.zone)}. Run \`/park\` and press **Leave** when you go.`;
 }
 
 /**
@@ -50,7 +50,7 @@ export function reminderText(
 	context: Context,
 ): string {
 	const at = (d: Date) => describeInstant(d, context.now, context.zone);
-	const lines = [`Your parking in **${booking.spot}** ends at ${at(booking.until)}.`];
+	const lines = [`Your parking in ${formatSpotName(booking.spot)} ends at ${at(booking.until)}.`];
 	const spare = openUntil
 		? Math.floor((openUntil.getTime() - booking.until.getTime()) / 60_000)
 		: 0;

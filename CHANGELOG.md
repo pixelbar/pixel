@@ -13,6 +13,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - Poll reminders no longer say when the poll closes, just which poll and a link to it (#210).
 - No poll reminder is posted in the last 30 minutes before a poll closes, including one that's running late (#213).
+- Parking spot names in the bot's output are now shown with quotes, like **"neighbour-1"**, so they're clearly distinct from the surrounding text. Spot names can have spaces, capitals and punctuation, and quotes make them read unambiguously (#219).
 
 - Tests now live in a top-level `tests/` folder that mirrors `src/` and `scripts/`, so a change to a test is easy to tell from a change to the code it covers. No behaviour change.
 
