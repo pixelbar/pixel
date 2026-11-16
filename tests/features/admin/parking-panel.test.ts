@@ -288,10 +288,10 @@ describe("a spot's panel", () => {
 			["until", false],
 		]);
 		const opened = replyOf(await t.submit(form, { until: "17:00" }));
-		expect(said(opened)).toContain("**\\"neighbour-1\\"** open from now until 17:00.");
+		expect(said(opened)).toContain('**"neighbour-1"** open from now until 17:00.');
 		expect(labels(opened).slice(0, 2)).toEqual(["Open…", "Close for today"]);
 		const shut = replyOf(await t.click(opened, "Close for today"));
-		expect(said(shut)).toContain("**\\"neighbour-1\\"** closed for today.");
+		expect(said(shut)).toContain('**"neighbour-1"** closed for today.");
 	});
 
 	it("closes a permanent spot until a time on a form, and opens it again", async () => {
@@ -301,9 +301,9 @@ describe("a spot's panel", () => {
 		const form = formOf(await t.click(ours, "Close…"));
 		expect(form.fields).toEqual([expect.objectContaining({ name: "until", required: false })]);
 		const closed = replyOf(await t.submit(form, { until: "17:00" }));
-		expect(said(closed)).toContain("**\\"ours\\"** closed until 17:00.");
+		expect(said(closed)).toContain('**"ours"** closed until 17:00.");
 		expect(labels(closed).slice(0, 2)).toEqual(["Open again", "Close…"]);
-		expect(said(replyOf(await t.click(closed, "Open again")))).toContain("**\\"ours\\"** open again.");
+		expect(said(replyOf(await t.click(closed, "Open again")))).toContain('**"ours"** open again.");
 	});
 
 	it("sends a form's problem back to be fixed, and changes nothing", async () => {
@@ -340,7 +340,7 @@ describe("several spots at once", () => {
 		await t.act(PARKING_ACTIONS.close, { spots: "ours" });
 		const overview = await t.open();
 		expect(said(replyOf(await t.click(overview, "Open spots…", ["ours"])))).toContain(
-			"**\\"ours\\"** open again.",
+			'**"ours"** open again.",
 		);
 		const form = formOf(await t.click(overview, "Open spots…", ["neighbour-1"]));
 		expect(form.title).toBe("Open neighbour-1");
@@ -350,7 +350,7 @@ describe("several spots at once", () => {
 		);
 		const opened = replyOf(await t.submit(two, {}));
 		expect(opened.embeds?.[0]?.title).toBe("🅿️ Parking spots");
-		expect(said(opened)).toContain("**\\"neighbour-1\\"**, **\\"neighbour-2\\"** open from now until 23:59.");
+		expect(said(opened)).toContain('**"neighbour-1"**, **\\"neighbour-2\\"** open from now until 23:59.");
 	});
 
 	it("handles spots whose names have spaces", async () => {
@@ -375,7 +375,7 @@ describe("several spots at once", () => {
 		await t.act(PARKING_ACTIONS.open, { spots: "neighbour-1" });
 		const overview = await t.open();
 		expect(said(replyOf(await t.click(overview, "Close spots…", ["neighbour-1"])))).toContain(
-			"**\\"neighbour-1\\"** closed for today.",
+			'**"neighbour-1"** closed for today.",
 		);
 		expect(formOf(await t.click(overview, "Close spots…", ["ours", "neighbour-1"])).title).toBe(
 			"Close ours, neighbour-1",
@@ -553,7 +553,7 @@ describe("problems", () => {
 		).toContain("⚠️ **\\"neighbour-1\\"** is closed right now. Open it first.");
 		const form = formOf(await t.act(PARKING_ACTIONS.assignForm, { spot: "neighbour-1" }));
 		expect(problemOf(await t.submit(form, { user: BOB.id }, { user: BOB }))).toContain(
-			"**\\"neighbour-1\\"** is closed right now.",
+			'**"neighbour-1"** is closed right now.",
 		);
 	});
 

@@ -108,10 +108,10 @@ describe("/admin → Parking", () => {
 			await run("open", { spots: "neighbour-1", until: "17:00" });
 			await run("open", { spots: "neighbour-2", from: "tomorrow 8", until: "12:00" });
 			const text = await run("status");
-			expect(text).toContain("**\\"ours\\"** (permanent): Next to the \\*gate\\*\n  open until 23:59");
-			expect(text).toContain("**\\"neighbour-1\\"** (borrowed)\n  open until 17:00");
+			expect(text).toContain('**"ours"** (permanent): Next to the \\*gate\\*\n  open until 23:59");
+			expect(text).toContain('**"neighbour-1"** (borrowed)\n  open until 17:00");
 			expect(text).toContain(
-				"**\\"neighbour-2\\"** (borrowed)\n  closed · open Sun 25 Oct 2026, 08:00 to Sun 25 Oct 2026, 12:00",
+				'**"neighbour-2"** (borrowed)\n  closed · open Sun 25 Oct 2026, 08:00 to Sun 25 Oct 2026, 12:00",
 			);
 			expect(text).toContain("Reminder: 15m before someone's end");
 			expect(text).toContain("Durations offered: 30m, 1h, 2h, 4h, rest of day");
@@ -166,7 +166,7 @@ describe("/admin → Parking", () => {
 		it("opens a borrowed spot from now until the reset by default", async () => {
 			const { run, entries } = withSpots();
 			expect(await run("open", { spots: "neighbour-1" })).toBe(
-				"**\\"neighbour-1\\"** open from now until 23:59.",
+				'**"neighbour-1"** open from now until 23:59.",
 			);
 			expect(entries().windows.map(span)).toEqual([
 				["neighbour-1", NOW.toISOString(), RESET.toISOString()],
@@ -184,7 +184,7 @@ describe("/admin → Parking", () => {
 				from: "12:00",
 				until: "17:00",
 			});
-			expect(text).toBe("**\\"neighbour-1\\"**, **\\"neighbour-2\\"** open from 12:00 until 17:00.");
+			expect(text).toBe('**"neighbour-1"**, **\\"neighbour-2\\"** open from 12:00 until 17:00.");
 			expect(entries().windows.map(span)).toEqual([
 				["neighbour-1", utc("10:00").toISOString(), utc("15:00").toISOString()],
 				["neighbour-2", utc("10:00").toISOString(), utc("15:00").toISOString()],
@@ -214,7 +214,7 @@ describe("/admin → Parking", () => {
 		it("reads now and now+<duration> from the real now", async () => {
 			const { run, fails, entries } = withSpots();
 			expect(await run("open", { spots: "neighbour-1", from: "now", until: "now+2h30" })).toBe(
-				"**\\"neighbour-1\\"** open from 10:01 until 12:30.",
+				'**"neighbour-1"** open from 10:01 until 12:30.",
 			);
 			expect(entries().windows.map(span)).toEqual([
 				["neighbour-1", utc("08:01").toISOString(), utc("10:30").toISOString()],
@@ -245,11 +245,11 @@ describe("/admin → Parking", () => {
 
 		it("lifts a permanent spot's closure, and refuses times for it", async () => {
 			const { run, fails, entries } = withSpots();
-			expect(await run("open", { spots: "ours" })).toBe("**\\"ours\\"** wasn't closed.");
+			expect(await run("open", { spots: "ours" })).toBe('**"ours"** wasn't closed.");
 			await run("close", { spots: "ours" });
 			expect(entries().blocks).toHaveLength(1);
 			expect(await run("open", { spots: "ours neighbour-1" })).toBe(
-				"**\\"neighbour-1\\"** open from now until 23:59.\n**\\"ours\\"** open again.",
+				'**"neighbour-1"** open from now until 23:59.\n**\\"ours\\"** open again.",
 			);
 			expect(entries().blocks).toEqual([]);
 			await fails("open", { spots: "ours", until: "17:00" }).toThrow(
@@ -273,19 +273,19 @@ describe("/admin → Parking", () => {
 			await run("open", { spots: "neighbour-1" });
 			await run("open", { spots: "neighbour-1", from: "tomorrow 8" });
 			expect(await run("close", { spots: "neighbour-1 neighbour-2" })).toBe(
-				"**\\"neighbour-1\\"** closed for today.\n**\\"neighbour-2\\"** wasn't open today.",
+				'**"neighbour-1"** closed for today.\n**\\"neighbour-2\\"** wasn't open today.",
 			);
 			expect(entries().windows.map((w) => w.from)).toEqual([utc("07:00", 25)]);
 		});
 
 		it("closes a permanent spot until the reset by default, or until a time", async () => {
 			const { run, entries } = withSpots();
-			expect(await run("close", { spots: "ours" })).toBe("**\\"ours\\"** closed until 23:59.");
+			expect(await run("close", { spots: "ours" })).toBe('**"ours"** closed until 23:59.");
 			expect(entries().blocks.map(span)).toEqual([
 				["ours", NOW.toISOString(), RESET.toISOString()],
 			]);
 			expect(await run("close", { spots: "ours", until: "17:00" })).toBe(
-				"**\\"ours\\"** closed until 17:00.",
+				'**"ours"** closed until 17:00.",
 			);
 			expect(entries().blocks.map(span)).toEqual([
 				["ours", NOW.toISOString(), utc("15:00").toISOString()],
@@ -482,7 +482,7 @@ describe("/admin → Parking and bookings", () => {
 		const t = withSpots();
 		book(t, "ours", utc("10:00"));
 		expect(await t.run("status")).toContain(
-			"**\\"ours\\"** (permanent): Next to the \\*gate\\*\n  open until 23:59 · taken by Alice \\*A\\* until about 12:00",
+			'**"ours"** (permanent): Next to the \\*gate\\*\n  open until 23:59 · taken by Alice \\*A\\* until about 12:00",
 		);
 	});
 
@@ -530,7 +530,7 @@ describe("/admin → Parking and bookings", () => {
 		expect(t.bookings.all()).toHaveLength(1);
 
 		expect(await t.run("close", { spots: "neighbour-1", evict: true })).toBe(
-			"**\\"neighbour-1\\"** closed for today.\nEnded Alice \\*A\\*'s booking in **\\"neighbour-1\\"**.",
+			'**"neighbour-1"** closed for today.\nEnded Alice \\*A\\*'s booking in **\\"neighbour-1\\"**.",
 		);
 		expect(t.bookings.all()).toEqual([]);
 	});
@@ -637,10 +637,10 @@ describe("/admin → Parking activity", () => {
 			NOW,
 		);
 		expect(await t.run("status")).toContain(
-			"**\\"neighbour-1\\"** (borrowed)\n  closed until 23:59 (reported taken)",
+			'**"neighbour-1"** (borrowed)\n  closed until 23:59 (reported taken)",
 		);
 		expect(await t.run("open", { spots: "neighbour-1" })).toBe(
-			"**\\"neighbour-1\\"** open from now until 23:59.\n**\\"neighbour-1\\"** is no longer closed.",
+			'**"neighbour-1"** open from now until 23:59.\n**\\"neighbour-1\\"** is no longer closed.",
 		);
 		expect(t.entries().blocks).toEqual([]);
 	});
@@ -785,13 +785,13 @@ describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 	it("refuses a closed spot, a time past its close, and a duration it can't read", async () => {
 		const t = withSpots();
 		await expect(assign(t, { spot: "neighbour-1" })).rejects.toThrow(
-			"**\\"neighbour-1\\"** is closed right now. Open it first.",
+			'**"neighbour-1"** is closed right now. Open it first.",
 		);
 		await t.run("close", { spots: "ours", until: "17:00" });
 		await expect(assign(t, { spot: "ours" })).rejects.toThrow(/is closed right now/);
 		await t.run("open", { spots: "neighbour-1", until: "17:00" });
 		await expect(assign(t, { spot: "neighbour-1", for: "rest of day" })).rejects.toThrow(
-			"**\\"neighbour-1\\"** is only open until 17:00. Leave **How long** empty to give it until then.",
+			'**"neighbour-1"** is only open until 17:00. Leave **How long** empty to give it until then.",
 		);
 		await expect(assign(t, { spot: "neighbour-1", for: "ages" })).rejects.toThrow(
 			/couldn't understand how long/,
@@ -920,9 +920,9 @@ describe("helpers", () => {
 		});
 		expect(
 			describeSpot(ours, { windows: [], blocks: [block("07:00", "10:00")] }, NOW, RESET, ZONE),
-		).toBe("**\\"ours\\"** (permanent)\n  closed until 12:00");
+		).toBe('**"ours"** (permanent)\n  closed until 12:00");
 		expect(
 			describeSpot(ours, { windows: [], blocks: [block("12:00", "13:00")] }, NOW, RESET, ZONE),
-		).toBe("**\\"ours\\"** (permanent)\n  open until 14:00 · closed 14:00 to 15:00");
+		).toBe('**"ours"** (permanent)\n  open until 14:00 · closed 14:00 to 15:00");
 	});
 });
