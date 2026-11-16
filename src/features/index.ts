@@ -38,6 +38,7 @@ import { createInfoFeature } from "./info/index.ts";
 import { createOpenrFeature, type OpenrDoor, openrGate } from "./openr/index.ts";
 import { createParkingFeature } from "./parking/index.ts";
 import { createPingFeature } from "./ping/index.ts";
+import { createReleaseAnnouncementFeature } from "./release-announcement/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
@@ -45,6 +46,9 @@ import { createWikiFeature } from "./wiki/index.ts";
 
 export type FeatureDeps = {
 	version: string;
+	env: string;
+	commit: string | undefined;
+	branch: string | undefined;
 	runtime: "local" | "cloud";
 	startedAt: Date;
 	access: AccessStore;
@@ -133,6 +137,17 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			announcer: deps.announcer,
 			logger: deps.logger,
 			onSpaceClosed: closingTime.onSpaceClosed,
+		}),
+		createReleaseAnnouncementFeature({
+			announcer: deps.announcer,
+			build: {
+				version: deps.version,
+				env: deps.env,
+				commit: deps.commit,
+				branch: deps.branch,
+				runtime: deps.runtime,
+			},
+			logger: deps.logger,
 		}),
 		// Temporarily disabled: /spacestate isn't working. Re-enable once the API is fixed.
 		// createSpaceStateFeature({ api: deps.spaceState, reporter: deps.reporter }),

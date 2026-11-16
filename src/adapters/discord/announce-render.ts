@@ -1,6 +1,6 @@
 import type { APIEmbed } from "discord.js";
-import type { SpaceStatusAnnouncement } from "../../core/announcement.ts";
-import { formatDuration } from "../../core/format.ts";
+import type { ReleaseAnnouncement, SpaceStatusAnnouncement } from "../../core/announcement.ts";
+import { formatDuration, inlineCode } from "../../core/format.ts";
 import { accentColor } from "./render.ts";
 
 /**
@@ -140,5 +140,43 @@ export function singlePost(
 		color: accentColor("negative"),
 		...(at ? { timestamp: at.toISOString() } : {}),
 		footer: { text: SINGLE_FOOTER },
+	});
+}
+
+const EMBED_DESCRIPTION_LIMIT = 4096;
+const CHANGELOG_ENTRY_LIMIT = 3500;
+const REPO_URL = "https://github.com/pixelbar/pixel";
+
+/**
+ * Release announcement: new Pixel version with its changelog. If the notes are too
+ * long for a Discord embed, they're trimmed and a link to the full GitHub Release is shown.
+ */
+export function releasePost(announcement: ReleaseAnnouncement): AnnouncementPost {
+	const { version, notes, build, at } = announcement;
+	const releaseUrl = `${REPO_URL}/releases/tag/v${version}`;
+
+	let description = notes;
+	let trimmed = false;
+
+	if (notes.length > CHANGELOG_ENTRY_LIMIT) {
+		description = `${notes.slice(0, CHANGELOG_ENTRY_LIMIT).trim()}…\n\n**[Read the full changelog →](${releaseUrl})**`;
+		trimmed = true;
+	}
+
+	if (description.length > EMBED_DESCRIPTION_LIMIT) {
+		description = `${description.slice(0, EMBED_DESCRIPTION_LIMIT - 3)}…`;
+	}
+
+	return post({
+		title: `📣 Pixel ${version} is now live`,
+		description: trimmed ? description : `${description}\n\n[GitHub Release](${releaseUrl})`,
+		color: accentColor("positive"),
+		timestamp: at.toISOString(),
+		fields: [
+			{ name: "Version", value: inlineCode(version, 40), inline: true },
+			...(build.commit
+				? [{ name: "Commit", value: inlineCode(build.commit, 40), inline: true }]
+				: []),
+		],
 	});
 }

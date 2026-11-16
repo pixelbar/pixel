@@ -140,6 +140,7 @@ const envSchema = z
 		DISCORD_GUILD_ID: snowflake,
 		DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_BOT_CHANNEL_ID: optional(snowflake),
+		DISCORD_RELEASE_CHANNEL_ID: optional(snowflake),
 		// Unset, empty, "off" or "none" turns closing-time posts off.
 		DISCORD_CLOSING_TIME_CHANNEL_ID: z.preprocess((v) => {
 			if (typeof v === "string" && /^(off|none)$/i.test(v.trim())) return undefined;
@@ -248,6 +249,8 @@ export type Config = {
 	runtime: "local" | "cloud";
 	version: string;
 	/** The git commit and branch Pixel was built from, when given. */
+	commit: string | undefined;
+	branch: string | undefined;
 	gitSha: string | undefined;
 	gitBranch: string | undefined;
 	logLevel: "debug" | "info" | "warn" | "error";
@@ -300,6 +303,8 @@ export type Config = {
 			botChannelId: string | undefined;
 			/** Closing-time reminder. Undefined means off. */
 			closingTimeChannelId: string | undefined;
+			/** Where Pixel announces new releases with their changelogs. Undefined means off. */
+			releaseChannelId: string | undefined;
 			/** Every parking change, for admins to watch. Undefined means off. */
 			parkingChannelId: string | undefined;
 		};
@@ -372,6 +377,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 		env: e.PIXEL_ENV,
 		runtime: e.PIXEL_RUNTIME,
 		version: e.PIXEL_VERSION,
+		commit: e.PIXEL_GIT_SHA,
+		branch: e.PIXEL_GIT_BRANCH,
 		gitSha: e.PIXEL_GIT_SHA,
 		gitBranch: e.PIXEL_GIT_BRANCH,
 		logLevel: e.LOG_LEVEL,
@@ -407,6 +414,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			announce: {
 				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
+				releaseChannelId: e.DISCORD_RELEASE_CHANNEL_ID,
 				parkingChannelId: e.DISCORD_PARKING_CHANNEL_ID,
 			},
 			roles: { member: e.DISCORD_ROLE_MEMBER, friend: e.DISCORD_ROLE_FRIEND },

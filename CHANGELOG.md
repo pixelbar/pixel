@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- When a new Pixel version is released, the changelog for that version is posted in Discord once. The channel is set with `DISCORD_RELEASE_CHANNEL_ID`. Long changelogs are trimmed and link to the full GitHub Release notes. The last announced version is kept in `data/release-announced.yaml` so restarts and rolling deploys don't post it again (#222).
+
 ## [0.27.1] - 2026-11-16
 
 ### Changed

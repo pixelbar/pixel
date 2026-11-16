@@ -35,6 +35,7 @@ import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
 import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
+import { RELEASE_PUBLISHER_ID, createReleasePublisher } from "./release-publisher.ts";
 import { CONTROL_PREFIX, HeldControls, submittedFields, UI_FORM_PREFIX } from "./controls.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
@@ -68,6 +69,8 @@ export type DiscordAdapterDeps = {
 		botChannelId: string | undefined;
 		/** Closing-time reminder. Undefined means off. */
 		closingTimeChannelId: string | undefined;
+		/** Where Pixel announces new releases with their changelogs. Undefined means off. */
+		releaseChannelId: string | undefined;
 	};
 	/** Where the bot status remembers this run's post (`bot-status.state`). */
 	botStatusStateFile: string;
@@ -186,6 +189,12 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				channelId: deps.announce.closingTimeChannelId,
 				required: TIMELINE_PERMISSIONS,
 				create: (channel) => createClosingTimePublisher(channel),
+			},
+			{
+				id: RELEASE_PUBLISHER_ID,
+				channelId: deps.announce.releaseChannelId,
+				required: TIMELINE_PERMISSIONS,
+				create: (channel) => createReleasePublisher(channel, logger),
 			},
 		];
 

@@ -67,17 +67,33 @@ export type ClosingTimeAnnouncement = {
 	at: Date;
 };
 
+/** New Pixel version released, with its changelog entries. */
+export type ReleaseAnnouncement = {
+	kind: "release";
+	/** The version that was released (e.g. "0.27.1"). */
+	version: string;
+	build: BuildInfo;
+	/** Changelog entries for this version (Keep a Changelog format). */
+	notes: string;
+	/** When this was posted. */
+	at: Date;
+	/** Short plain text for platforms without rich formatting. */
+	text: string;
+};
+
 /** Every kind of announcement. Add new kinds here. */
 export type Announcement =
 	| SpaceStatusAnnouncement
 	| BotStatusAnnouncement
-	| ClosingTimeAnnouncement;
+	| ClosingTimeAnnouncement
+	| ReleaseAnnouncement;
 
 /** Kind names, for config (which kinds a publisher posts). */
 export const ANNOUNCEMENT_KINDS = [
 	"space.status",
 	"bot.status",
 	"closing.time",
+	"release",
 ] as const satisfies readonly Announcement["kind"][];
 export type AnnouncementKind = Announcement["kind"];
 
