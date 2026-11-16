@@ -65,6 +65,7 @@ describe("buildCore", () => {
 					botChannelId: undefined,
 					closingTimeChannelId: undefined,
 					parkingChannelId: undefined,
+					foodAlertChannelId: undefined,
 				},
 				roles: { member: undefined, friend: undefined },
 				roleSync: false,

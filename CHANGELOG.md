@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Added
+
+- **`/food`** opens an interactive panel for managing a rolling wishlist of snacks and food members would like the hackerspace to stock. Members with the `food-wishlist` capability can add items, remove their own requests, and report items out of stock. Each wishlist entry shows the item and who requested it. If someone requests an item that's already on the list, they're added to its requesters (matching is case and whitespace insensitive). Admins can remove any item and clear items from the out-of-stock list. Members can only remove their own request; if several people requested an item, removing takes only that member off the requesters, and the item leaves the list once every requester has removed theirs or an admin removes it. Out-of-stock items are shown in a separate section of the panel. New optional setting `DISCORD_FOOD_ALERT_CHANNEL_ID`: admins are notified in that channel when something is reported out of stock (unset means no alert). The wishlist is saved in `data/food-wishlist.yaml`. Run `just register dev` / `just register prod` after deploying.
+
 ## [0.27.1] - 2026-11-16
 
 ### Changed
