@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Principal } from "../../../src/core/access.ts";
+import { actorRef, type Principal } from "../../../src/core/access.ts";
 import type { Args } from "../../../src/core/command.ts";
 import { silentLogger } from "../../../src/core/logger.ts";
 import type { Reply } from "../../../src/core/reply.ts";
@@ -36,7 +36,8 @@ function setup(options: { alertChannelId?: string } = {}) {
 		availableCommands: [],
 	});
 
-	const run = async (args: Args, who: Principal) => food.handler(context(args, who)) as Promise<Reply>;
+	const run = async (args: Args, who: Principal) =>
+		food.handler(context(args, who)) as Promise<Reply>;
 
 	const act = (action: string, args: Args, who: Principal) => {
 		const actionHandler = feature.actions?.find((a) => a.name === action);
@@ -125,7 +126,7 @@ describe("food.add", () => {
 		expect(result.reply.embeds?.[0]?.description).toContain("Added **Club-Mate**");
 		expect(wishlist.wishlist()).toHaveLength(1);
 		expect(wishlist.find("Club-Mate")?.requesters).toEqual([
-			{ ref: "discord:100000000000000001", name: "Alice" },
+			{ ref: actorRef(alice), name: "Alice" },
 		]);
 	});
 
@@ -165,7 +166,7 @@ describe("food.add", () => {
 describe("food.remove", () => {
 	it("removes the user's request", async () => {
 		const { act, wishlist } = setup();
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000001", name: "Alice" });
+		wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
 		const result = await act("food.remove", { item: "Club-Mate" }, alice);
 
 		if (!("reply" in result)) throw new Error("Expected reply");
@@ -175,8 +176,8 @@ describe("food.remove", () => {
 
 	it("removes one requester but keeps the item", async () => {
 		const { act, wishlist } = setup();
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000001", name: "Alice" });
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000002", name: "Bob" });
+		wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+		wishlist.request("Club-Mate", { ref: actorRef(bob), name: "Bob" });
 		const result = await act("food.remove", { item: "Club-Mate" }, alice);
 
 		if (!("reply" in result)) throw new Error("Expected reply");
@@ -187,7 +188,7 @@ describe("food.remove", () => {
 
 	it("fails when the user hasn't requested the item", async () => {
 		const { act, wishlist } = setup();
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000002", name: "Bob" });
+		wishlist.request("Club-Mate", { ref: actorRef(bob), name: "Bob" });
 
 		await expect(act("food.remove", { item: "Club-Mate" }, alice)).rejects.toThrow(
 			"haven't requested",
@@ -205,8 +206,8 @@ describe("food.remove", () => {
 describe("food.remove-admin", () => {
 	it("admin removes any item", async () => {
 		const { act, wishlist } = setup();
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000001", name: "Alice" });
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000002", name: "Bob" });
+		wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+		wishlist.request("Club-Mate", { ref: actorRef(bob), name: "Bob" });
 		const result = await act("food.remove-admin", { item: "Club-Mate" }, admin);
 
 		if (!("reply" in result)) throw new Error("Expected reply");
@@ -216,7 +217,7 @@ describe("food.remove-admin", () => {
 
 	it("fails when non-admin tries to use it", async () => {
 		const { act, wishlist } = setup();
-		wishlist.request("Club-Mate", { ref: "discord:100000000000000002", name: "Bob" });
+		wishlist.request("Club-Mate", { ref: actorRef(bob), name: "Bob" });
 
 		await expect(act("food.remove-admin", { item: "Club-Mate" }, alice)).rejects.toThrow(
 			"Only admins",

@@ -1,7 +1,7 @@
 import { actorLogFields, actorRef, type Principal } from "../../core/access.ts";
 import type { CapabilityDefinition } from "../../core/capabilities.ts";
 import type { ChannelPosts } from "../../core/channel-posts.ts";
-import type { PlainCommand } from "../../core/command.ts";
+import type { CommandOption, PlainCommand } from "../../core/command.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown } from "../../core/format.ts";
@@ -26,10 +26,15 @@ const ACCESS = { minTier: "member" as const, capability: FOOD_CAPABILITY.name };
 
 const ACTIONS = {
 	home: "food.home",
+	addForm: "food.add-form",
 	add: "food.add",
+	removeForm: "food.remove-form",
 	remove: "food.remove",
+	removeAdminForm: "food.remove-admin-form",
 	removeAdmin: "food.remove-admin",
+	outOfStockForm: "food.out-of-stock-form",
 	outOfStock: "food.out-of-stock",
+	clearStockForm: "food.clear-stock-form",
 	clearStock: "food.clear-stock",
 } as const;
 
@@ -136,16 +141,16 @@ function createPanel(
 
 	const controls: ControlRow[] = [
 		[
-			button("Add item", ACTIONS.add, {}, "success"),
-			button("Remove my request", ACTIONS.remove),
-			button("Report out of stock", ACTIONS.outOfStock),
+			button("Add item", ACTIONS.addForm, {}, "success"),
+			button("Remove my request", ACTIONS.removeForm),
+			button("Report out of stock", ACTIONS.outOfStockForm),
 		],
 	];
 
 	if (isAdmin) {
 		controls.push([
-			button("Remove any item", ACTIONS.removeAdmin, {}, "danger"),
-			button("Clear from out of stock", ACTIONS.clearStock),
+			button("Remove any item", ACTIONS.removeAdminForm, {}, "danger"),
+			button("Clear from out of stock", ACTIONS.clearStockForm),
 		]);
 	}
 
@@ -157,6 +162,13 @@ function createPanel(
 		controls,
 	};
 }
+
+const itemArg: CommandOption = {
+	name: "item",
+	description: "Item name",
+	type: "string",
+	required: true,
+};
 
 const addForm: Form = {
 	title: "Add to wishlist",
@@ -287,15 +299,17 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 	const action = (
 		name: string,
+		options: readonly CommandOption[],
 		handler: (ctx: ActionContext) => Promise<ActionResult> | ActionResult,
 	): ActionDefinition => ({
 		name,
 		access: ACCESS,
+		options,
 		handler: async (ctx) => handler(ctx),
 	});
 
 	const actions: ActionDefinition[] = [
-		action(ACTIONS.home, (ctx) => ({
+		action(ACTIONS.home, [], (ctx) => ({
 			reply: createPanel(
 				[],
 				deps.wishlist.wishlist(),
@@ -304,9 +318,9 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			),
 		})),
 
-		action(ACTIONS.add, () => ({ form: addForm })),
+		action(ACTIONS.addForm, [], () => ({ form: addForm })),
 
-		action(ACTIONS.add, async (ctx) => {
+		action(ACTIONS.add, [itemArg], async (ctx) => {
 			const itemName = String(ctx.args.item || "").trim();
 			if (!itemName) {
 				return {
@@ -316,10 +330,19 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 			usable();
 			const by = { ref: actorRef(ctx.principal), name: ctx.principal.displayName };
-			const item = deps.wishlist.request(itemName, by);
+			const existingItem = deps.wishlist.find(itemName);
+			const alreadyRequested = existingItem?.requesters.some((r) => r.ref === by.ref) ?? false;
 
-			const wasNew = item.requesters.length === 1;
-			const hadRequester = item.requesters.some((r) => r.ref === by.ref);
+			if (alreadyRequested && existingItem) {
+				return {
+					reply: await onPanel(ctx.principal, () => [
+						`You've already requested **${escapeMarkdown(existingItem.name)}**.`,
+					]),
+				};
+			}
+
+			const item = deps.wishlist.request(itemName, by);
+			const wasNew = !existingItem;
 
 			ctx.logger.info(
 				{
@@ -330,18 +353,16 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 				wasNew ? "added an item to the food wishlist" : "joined a wishlist item request",
 			);
 
-			const message = hadRequester
-				? `You've already requested **${escapeMarkdown(item.name)}**.`
-				: wasNew
-					? `✅ Added **${escapeMarkdown(item.name)}** to the wishlist.`
-					: `✅ Added you to the request for **${escapeMarkdown(item.name)}**.`;
+			const message = wasNew
+				? `✅ Added **${escapeMarkdown(item.name)}** to the wishlist.`
+				: `✅ Added you to the request for **${escapeMarkdown(item.name)}**.`;
 
 			return { reply: await onPanel(ctx.principal, () => [message]) };
 		}),
 
-		action(ACTIONS.remove, () => ({ form: removeForm })),
+		action(ACTIONS.removeForm, [], () => ({ form: removeForm })),
 
-		action(ACTIONS.remove, async (ctx) => {
+		action(ACTIONS.remove, [itemArg], async (ctx) => {
 			const itemName = String(ctx.args.item || "").trim();
 			if (!itemName) {
 				return {
@@ -374,9 +395,9 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			return { reply: await onPanel(ctx.principal, () => [message]) };
 		}),
 
-		action(ACTIONS.removeAdmin, () => ({ form: removeAdminForm })),
+		action(ACTIONS.removeAdminForm, [], () => ({ form: removeAdminForm })),
 
-		action(ACTIONS.removeAdmin, async (ctx) => {
+		action(ACTIONS.removeAdmin, [itemArg], async (ctx) => {
 			if (!isAdmin(ctx.principal)) {
 				throw new UserFacingError("Only admins can remove items.");
 			}
@@ -411,9 +432,9 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			};
 		}),
 
-		action(ACTIONS.outOfStock, () => ({ form: outOfStockForm })),
+		action(ACTIONS.outOfStockForm, [], () => ({ form: outOfStockForm })),
 
-		action(ACTIONS.outOfStock, async (ctx) => {
+		action(ACTIONS.outOfStock, [itemArg], async (ctx) => {
 			const itemName = String(ctx.args.item || "").trim();
 			if (!itemName) {
 				return {
@@ -457,9 +478,9 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			return { reply: await onPanel(ctx.principal, () => [message]) };
 		}),
 
-		action(ACTIONS.clearStock, () => ({ form: clearStockForm })),
+		action(ACTIONS.clearStockForm, [], () => ({ form: clearStockForm })),
 
-		action(ACTIONS.clearStock, async (ctx) => {
+		action(ACTIONS.clearStock, [itemArg], async (ctx) => {
 			if (!isAdmin(ctx.principal)) {
 				throw new UserFacingError("Only admins can clear items from out of stock.");
 			}

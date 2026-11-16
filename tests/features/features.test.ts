@@ -194,6 +194,7 @@ describe("buildFeatures", () => {
 			"events",
 			"feedback",
 			"fishbot",
+			"food",
 			"ha",
 			"help",
 			"info",

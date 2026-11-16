@@ -8,6 +8,7 @@ import { CapabilityError } from "../src/core/capabilities.ts";
 import { MESSAGES } from "../src/core/dispatcher.ts";
 import { silentLogger } from "../src/core/logger.ts";
 import { nullErrorReporter } from "../src/core/ports/error-reporter.ts";
+import { FOOD_CAPABILITY } from "../src/features/food/index.ts";
 import { OPENR_CAPABILITY } from "../src/features/openr/index.ts";
 import { PARKING_CAPABILITY } from "../src/features/parking/index.ts";
 import { SCHEDULE_CAPABILITY } from "../src/features/schedules/index.ts";
@@ -357,6 +358,7 @@ describe("buildCore", () => {
 			SPACESTATE_CAPABILITY,
 			PARKING_CAPABILITY,
 			OPENR_CAPABILITY,
+			FOOD_CAPABILITY,
 		];
 		const person = { id: IDS.member, displayName: "Grace", handle: "grace", isBot: false };
 
@@ -377,6 +379,7 @@ describe("buildCore", () => {
 				"spacestate",
 				"parking",
 				"openr",
+				"food-wishlist",
 			]);
 			const listed = await runAdmin(core.dispatcher, "list", {});
 			const text = JSON.stringify(listed.reply);
