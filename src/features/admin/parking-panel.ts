@@ -17,6 +17,7 @@ import type {
 	ControlRow,
 	Form,
 } from "../../core/ui.ts";
+import { formatSpotName } from "../../services/parking-format.ts";
 import { normaliseSpotName, resetClock } from "../../services/parking-spots.ts";
 import { describeInstant, nextReset } from "../../services/parking-time.ts";
 import { openUntil } from "../../services/parking-windows.ts";
@@ -188,7 +189,8 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 		notice: string[] = [],
 	): Promise<Reply> {
 		const spot = deps.spots.get(name);
-		if (!spot) return overview(ctx, [...notice, `There's no spot called **${name}** any more.`]);
+		if (!spot)
+			return overview(ctx, [...notice, `There's no spot called ${formatSpotName(name)} any more.`]);
 		const at = now();
 		const entries = deps.windows.entries(at);
 		const booking = deps.bookings.all().find((b) => b.spot === spot.name);
@@ -558,7 +560,7 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			if (!spot)
 				return {
 					reply: await overview(ctx, [
-						`There's no spot called **${String(ctx.args.spot)}** any more.`,
+						`There's no spot called ${formatSpotName(String(ctx.args.spot))} any more.`,
 					]),
 				};
 			return {
@@ -637,7 +639,9 @@ export function createParkingAdmin(deps: ParkingAdminDeps): {
 			const name = String(ctx.args.spot);
 			const booking = deps.bookings.all().find((b) => b.spot === name);
 			if (!booking)
-				return { reply: await spotPanel(ctx, name, [`Nobody is parked in **${name}**.`]) };
+				return {
+					reply: await spotPanel(ctx, name, [`Nobody is parked in ${formatSpotName(name)}.`]),
+				};
 			return {
 				reply: confirm(
 					`Free ${name}?`,

@@ -17,7 +17,7 @@ const CHANNEL = "100000000000000050";
 const EVENTS: [ParkingActivityEvent, string, Record<string, string>][] = [
 	[
 		{ kind: "booked", spot: "ours", who: "Alice *A*", until: NOON },
-		"**Alice \\*A\\*** parked in **ours** until about 12:00.",
+		'**Alice \\*A\\*** parked in **"ours"** until about 12:00.',
 		{ event: "booked", spot: "ours" },
 	],
 	[
@@ -27,47 +27,47 @@ const EVENTS: [ParkingActivityEvent, string, Record<string, string>][] = [
 	],
 	[
 		{ kind: "left", spot: "ours", who: "Alice" },
-		"**Alice** left **ours**.",
+		'**Alice** left **"ours"**.',
 		{ event: "left", spot: "ours" },
 	],
 	[
 		{ kind: "extended", spot: "ours", who: "Alice", until: NOON },
-		"**Alice** extended **ours** until about 12:00.",
+		'**Alice** extended **"ours"** until about 12:00.',
 		{ event: "extended", spot: "ours" },
 	],
 	[
 		{ kind: "ended", spot: "ours", who: "Alice", reason: "over" },
-		"Pixel ended **Alice**'s parking in **ours**: their time was up.",
+		'Pixel ended **Alice**\'s parking in **"ours"**: their time was up.',
 		{ event: "ended", reason: "over", spot: "ours" },
 	],
 	[
 		{ kind: "ended", spot: "ours", who: "Alice", reason: "reset" },
-		"Pixel ended **Alice**'s parking in **ours** at the daily reset.",
+		'Pixel ended **Alice**\'s parking in **"ours"** at the daily reset.',
 		{ event: "ended", reason: "reset", spot: "ours" },
 	],
 	[
 		{ kind: "moved", from: "ours", to: "neighbour-1", who: "Alice", closedUntil: RESET },
-		"⚠️ **Alice** reported **ours** taken by someone else. Pixel moved them to **neighbour-1** and closed **ours** until 23:59.",
+		'⚠️ **Alice** reported **"ours"** taken by someone else. Pixel moved them to **"neighbour-1"** and closed **"ours"** until 23:59.',
 		{ event: "moved", spot: "ours", to: "neighbour-1" },
 	],
 	[
 		{ kind: "taken", spot: "ours", who: "Alice", closedUntil: RESET },
-		"⚠️ **Alice** reported **ours** taken by someone else, and no other spot was free, so they were asked to leave. **ours** is closed until 23:59. Please look into it.",
+		'⚠️ **Alice** reported **"ours"** taken by someone else, and no other spot was free, so they were asked to leave. **"ours"** is closed until 23:59. Please look into it.',
 		{ event: "taken", spot: "ours" },
 	],
 	[
 		{ kind: "freed", spot: "ours", who: "Alice", admin: "Admin" },
-		"**Admin** ended **Alice**'s booking in **ours**.",
+		'**Admin** ended **Alice**\'s booking in **"ours"**.',
 		{ event: "freed", spot: "ours" },
 	],
 	[
 		{ kind: "evicted", spot: "ours", who: "Alice", admin: "Admin" },
-		"**Admin** changed **ours**, which ended **Alice**'s booking there.",
+		'**Admin** changed **"ours"**, which ended **Alice**\'s booking there.',
 		{ event: "evicted", spot: "ours" },
 	],
 	[
 		{ kind: "assigned", spot: "ours", who: "Bob", admin: "Admin", until: NOON },
-		"**Admin** gave **ours** to **Bob**, until about 12:00.",
+		'**Admin** gave **"ours"** to **Bob**, until about 12:00.',
 		{ event: "assigned", spot: "ours" },
 	],
 	[
@@ -100,7 +100,7 @@ describe("parking activity", () => {
 		expect(await activity.record({ kind: "left", spot: "ours", who: "Alice" }, NOW)).toBe(true);
 		expect(post).toHaveBeenCalledWith(CHANNEL, {
 			kind: "message",
-			text: "**Alice** left **ours**.",
+			text: '**Alice** left **"ours"**.',
 			mentions: false,
 		});
 		expect(count).toHaveBeenCalledWith("pixel.parking", { event: "left", spot: "ours" });

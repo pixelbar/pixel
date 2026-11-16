@@ -24,6 +24,7 @@ import {
 	pickSpot,
 } from "../../services/parking-allocate.ts";
 import type { ParkingBooking, ParkingBookingStore } from "../../services/parking-bookings.ts";
+import { formatSpotName } from "../../services/parking-format.ts";
 import {
 	type EndReason,
 	endedText,
@@ -115,9 +116,9 @@ export function gateLine(result: GateResult): string {
 	return "⚠️ The gate didn't open. Press **Open the gate** to try once more.";
 }
 
-/** A spot as shown: its name in bold, and where it is. */
+/** A spot as shown: its name quoted and in bold, and where it is. */
 const where = (spot: Pick<ParkingSpot, "name" | "description"> | undefined, name: string) =>
-	`**${name}**${spot?.description ? ` (${escapeMarkdown(spot.description)})` : ""}`;
+	`${formatSpotName(name)}${spot?.description ? ` (${escapeMarkdown(spot.description)})` : ""}`;
 
 const minutes = (n: number): ParkingDuration => ({ kind: "minutes", minutes: n });
 
@@ -218,7 +219,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			void deps.activity.record({ kind: "none-free", who: principal.displayName }, start);
 			throw new UserFacingError(
 				longest
-					? `Nothing is free for that long, so the gate stays shut. **${longest.spot.name}** is free until ${at(longest.openUntil, start)}.`
+					? `Nothing is free for that long, so the gate stays shut. ${formatSpotName(longest.spot.name)} is free until ${at(longest.openUntil, start)}.`
 					: "Sorry, every spot is taken or closed right now, so the gate stays shut.",
 			);
 		}
@@ -289,8 +290,8 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 					: `it closes at ${at(limit, t)}`;
 			throw new UserFacingError(
 				spare >= 1
-					? `**${booking.spot}** can only be extended by ${formatParkingDuration(minutes(spare))}: ${why}.`
-					: `**${booking.spot}** can't be extended: ${why}.`,
+					? `${formatSpotName(booking.spot)} can only be extended by ${formatParkingDuration(minutes(spare))}: ${why}.`
+					: `${formatSpotName(booking.spot)} can't be extended: ${why}.`,
 			);
 		}
 		const { remindMinutes } = deps.spots.settings();
@@ -335,7 +336,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			{ kind: "left", spot: ended.spot, who: principal.displayName },
 			now(),
 		);
-		return `Thanks, **${ended.spot}** is free again.`;
+		return `Thanks, ${formatSpotName(ended.spot)} is free again.`;
 	}
 
 	/** The spot someone whose spot is taken would be moved to, if any. */
@@ -424,8 +425,8 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			);
 			return [
 				told
-					? `I've moved you here, closed **${booking.spot}** and told the admins.`
-					: `I've moved you here and closed **${booking.spot}**, but I couldn't tell the admins, so please tell the board yourself.`,
+					? `I've moved you here, closed ${formatSpotName(booking.spot)} and told the admins.`
+					: `I've moved you here and closed ${formatSpotName(booking.spot)}, but I couldn't tell the admins, so please tell the board yourself.`,
 			];
 		}
 		// Nothing else is free (or the one offered was taken meanwhile): they have to go.
@@ -440,7 +441,7 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 			t,
 		);
 		return [
-			`Sorry: someone else is in **${booking.spot}** and no other spot is free right now, so please leave. I've ended your booking.`,
+			`Sorry: someone else is in ${formatSpotName(booking.spot)} and no other spot is free right now, so please leave. I've ended your booking.`,
 			reported
 				? "I've reported it to the board."
 				: "I couldn't report it to the board, so please tell them yourself.",
@@ -694,11 +695,11 @@ export function createParkingFeature(deps: ParkingDeps): Feature {
 		const lines = candidate
 			? [
 					`Sorry about that. ${where(candidate.spot, candidate.spot.name)} is free for the rest of your time, until ${at(booking.until, t)}.`,
-					`Move there, and I'll close **${booking.spot}** until ${at(reset, t)}${admins}.`,
+					`Move there, and I'll close ${formatSpotName(booking.spot)} until ${at(reset, t)}${admins}.`,
 				]
 			: [
 					`Sorry about that. No other spot is free right now, so you'll have to leave.`,
-					`I'll end your booking, close **${booking.spot}** until ${at(reset, t)} and report it to the board.`,
+					`I'll end your booking, close ${formatSpotName(booking.spot)} until ${at(reset, t)} and report it to the board.`,
 				];
 		return panel(lines, t, [
 			[

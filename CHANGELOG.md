@@ -17,8 +17,14 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 ### Changed
 
 - **`next fri`** now means Friday of next week (weeks start on Monday), not the coming Friday. `fri` or `this fri` is the coming one (#200).
+
+## [0.27.1] - 2026-11-16
+
+### Changed
+
 - Poll reminders no longer say when the poll closes, just which poll and a link to it (#210).
 - No poll reminder is posted in the last 30 minutes before a poll closes, including one that's running late (#213).
+- Parking spot names in the bot's output are now shown with quotes, like **"neighbour-1"**, so they're clearly distinct from the surrounding text. Spot names can have spaces, capitals and punctuation, and quotes make them read unambiguously (#219).
 
 - Tests now live in a top-level `tests/` folder that mirrors `src/` and `scripts/`, so a change to a test is easy to tell from a change to the code it covers. No behaviour change.
 
@@ -417,7 +423,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/pixelbar/pixel/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/pixelbar/pixel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/pixelbar/pixel/compare/v0.25.2...v0.26.0
 [0.25.2]: https://github.com/pixelbar/pixel/compare/v0.25.1...v0.25.2
