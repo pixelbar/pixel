@@ -2,6 +2,9 @@ import { join } from "node:path";
 import type { SpaceAnnounceStyle } from "../../core/announcement.ts";
 import type {
 	AnnouncementRoute,
+	NotificationChannel,
+	NotificationKind,
+	NotificationSet,
 	ReleaseChannel,
 	ReleaseRemove,
 	ReleaseSet,
@@ -45,6 +48,8 @@ export type DiscordRoutesOptions = {
 		| "canAddRelease"
 		| "addRelease"
 		| "removeRelease"
+		| "getNotifications"
+		| "setNotification"
 	>;
 	announcer: Pick<Announcer, "register" | "unregister">;
 	logger: Logger;
@@ -53,6 +58,13 @@ export type DiscordRoutesOptions = {
 	postsDir: string;
 	/** Opens a channel and checks the bot can use it. */
 	openChannel: (channelId: string, required: readonly bigint[]) => Promise<OpenedChannel>;
+	/** Creates a bot status publisher for a channel. */
+	createBotStatusPublisher: (
+		channel: Extract<OpenedChannel, { ok: true }>["channel"],
+		channelId: string,
+	) => Publisher;
+	/** Creates a closing time publisher for a channel. */
+	createClosingTimePublisher: (channel: Extract<OpenedChannel, { ok: true }>["channel"]) => Publisher;
 };
 
 /**
@@ -69,13 +81,15 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 	readonly #problems = new Map<string, string>();
 	/** Why a saved release channel isn't posting, by channel. */
 	readonly #releaseProblems = new Map<string, string>();
+	/** Why a saved notification channel isn't posting, by kind. */
+	readonly #notificationProblems = new Map<NotificationKind, string>();
 
 	constructor(options: DiscordRoutesOptions) {
 		this.#options = options;
 		this.#logger = options.logger.child({ component: "announcement-routes" });
 	}
 
-	/** Starts every saved route and release channel. One bad channel never stops the others. */
+	/** Starts every saved route, release channel and notification channel. One bad channel never stops the others. */
 	async start(): Promise<void> {
 		for (const route of this.#options.store.list()) {
 			try {
@@ -104,6 +118,38 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 				);
 				this.#options.reportError(
 					new Error(`Release announcements to ${channelId} are off: ${problem}`),
+				);
+			}
+		}
+		// Start notification channel publishers
+		const notifications = this.#options.store.getNotifications();
+		if (notifications.bot) {
+			try {
+				await this.#activateBotStatus(notifications.bot);
+			} catch (error) {
+				const problem = error instanceof UserFacingError ? error.message : "it couldn't be set up";
+				this.#notificationProblems.set("bot", problem);
+				this.#logger.error(
+					{ event: "announcements.bot_status_off", channelId: notifications.bot, err: error },
+					"bot status announcements are off",
+				);
+				this.#options.reportError(
+					new Error(`Bot status announcements to ${notifications.bot} are off: ${problem}`),
+				);
+			}
+		}
+		if (notifications.closingTime) {
+			try {
+				await this.#activateClosingTime(notifications.closingTime);
+			} catch (error) {
+				const problem = error instanceof UserFacingError ? error.message : "it couldn't be set up";
+				this.#notificationProblems.set("closingTime", problem);
+				this.#logger.error(
+					{ event: "announcements.closing_time_off", channelId: notifications.closingTime, err: error },
+					"closing time announcements are off",
+				);
+				this.#options.reportError(
+					new Error(`Closing time announcements to ${notifications.closingTime} are off: ${problem}`),
 				);
 			}
 		}
@@ -192,8 +238,66 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 		return { removed: true, saved };
 	}
 
+	listNotifications(): readonly NotificationChannel[] {
+		const notifications = this.#options.store.getNotifications();
+		const kinds: NotificationKind[] = ["bot", "closingTime", "parking", "foodAlert"];
+		return kinds.map((kind): NotificationChannel => {
+			const channelId = notifications[kind];
+			const problem = this.#notificationProblems.get(kind);
+			return { kind, channelId, ...(problem ? { problem } : {}) };
+		});
+	}
+
+	async setNotification(
+		kind: NotificationKind,
+		channelId: string | undefined,
+	): Promise<NotificationSet> {
+		const current = this.#options.store.getNotifications()[kind];
+		// Validate and activate the channel if one is being set
+		if (channelId !== undefined) {
+			// Validate the channel first
+			if (kind === "bot") {
+				await this.#activateBotStatus(channelId);
+			} else if (kind === "closingTime") {
+				await this.#activateClosingTime(channelId);
+			} else {
+				// For parking and foodAlert, just validate permissions
+				const opened = await this.#options.openChannel(channelId, TIMELINE_PERMISSIONS);
+				if (!opened.ok) throw new UserFacingError(cantAnnounce(opened.problem));
+			}
+		} else {
+			// Clearing: unregister the publisher
+			if (kind === "bot") {
+				this.#options.announcer.unregister("discord:bot-status");
+			} else if (kind === "closingTime") {
+				this.#options.announcer.unregister("discord:closing-time");
+			}
+		}
+		this.#notificationProblems.delete(kind);
+		const { saved } = this.#options.store.setNotification(kind, channelId);
+		this.#logger.info(
+			{
+				event: "announcements.notification_set",
+				kind,
+				channelId,
+				previous: current,
+				saved,
+			},
+			"notification channel set",
+		);
+		return {
+			result: channelId === undefined ? "cleared" : current === channelId ? "unchanged" : "set",
+			...(current ? { previous: current } : {}),
+			saved,
+		};
+	}
+
 	hasProblems(): boolean {
-		return this.#problems.size > 0 || this.#releaseProblems.size > 0;
+		return (
+			this.#problems.size > 0 ||
+			this.#releaseProblems.size > 0 ||
+			this.#notificationProblems.size > 0
+		);
 	}
 
 	/** Tries every saved route that isn't posting again. Says so only when that changes. */
@@ -310,5 +414,19 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 			case "single":
 				return createSinglePublisher(channel, this.#options.logger, store(), id);
 		}
+	}
+
+	async #activateBotStatus(channelId: string): Promise<void> {
+		const opened = await this.#options.openChannel(channelId, LIVE_PERMISSIONS);
+		if (!opened.ok) throw new UserFacingError(cantAnnounce(opened.problem));
+		this.#options.announcer.unregister("discord:bot-status");
+		this.#options.announcer.register(this.#options.createBotStatusPublisher(opened.channel, channelId));
+	}
+
+	async #activateClosingTime(channelId: string): Promise<void> {
+		const opened = await this.#options.openChannel(channelId, TIMELINE_PERMISSIONS);
+		if (!opened.ok) throw new UserFacingError(cantAnnounce(opened.problem));
+		this.#options.announcer.unregister("discord:closing-time");
+		this.#options.announcer.register(this.#options.createClosingTimePublisher(opened.channel));
 	}
 }

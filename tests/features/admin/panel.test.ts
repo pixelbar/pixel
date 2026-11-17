@@ -425,6 +425,13 @@ describe("announcements", () => {
 			listRelease: () => [],
 			addRelease: async () => ({ result: "added", saved: true }),
 			removeRelease: async () => ({ removed: true, saved: true }),
+			listNotifications: () => [
+				{ kind: "bot", channelId: undefined },
+				{ kind: "closingTime", channelId: undefined },
+				{ kind: "parking", channelId: undefined },
+				{ kind: "foodAlert", channelId: undefined },
+			],
+			setNotification: async () => ({ result: "set", saved: true }),
 		} as never);
 		const announcements = await section(t, "announcements");
 		const form = formOf(await t.click(announcements, "Add open/closed…"));
@@ -446,6 +453,13 @@ describe("announcements", () => {
 			listRelease: () => [],
 			addRelease: async () => ({ result: "added", saved: true }),
 			removeRelease: async () => ({ removed: true, saved: true }),
+			listNotifications: () => [
+				{ kind: "bot", channelId: undefined },
+				{ kind: "closingTime", channelId: undefined },
+				{ kind: "parking", channelId: undefined },
+				{ kind: "foodAlert", channelId: undefined },
+			],
+			setNotification: async () => ({ result: "set", saved: true }),
 		} as never);
 		const listed = await section(t, "announcements");
 		const removed = replyOf(await t.click(listed, "Stop open/closed in…", [CHANNEL]));
@@ -461,6 +475,13 @@ describe("announcements", () => {
 			listRelease: () => [],
 			addRelease: async () => ({ result: "added", saved: true }),
 			removeRelease: async () => ({ removed: true, saved: true }),
+			listNotifications: () => [
+				{ kind: "bot", channelId: undefined },
+				{ kind: "closingTime", channelId: undefined },
+				{ kind: "parking", channelId: undefined },
+				{ kind: "foodAlert", channelId: undefined },
+			],
+			setNotification: async () => ({ result: "set", saved: true }),
 		} as never);
 		const announcements = await section(t, "announcements");
 		const form = formOf(await t.click(announcements, "Add a release channel…"));
@@ -476,6 +497,13 @@ describe("announcements", () => {
 			listRelease: () => [{ channelId: CHANNEL }],
 			addRelease: async () => ({ result: "added", saved: true }),
 			removeRelease: async () => ({ removed: true, saved: true }),
+			listNotifications: () => [
+				{ kind: "bot", channelId: undefined },
+				{ kind: "closingTime", channelId: undefined },
+				{ kind: "parking", channelId: undefined },
+				{ kind: "foodAlert", channelId: undefined },
+			],
+			setNotification: async () => ({ result: "set", saved: true }),
 		} as never);
 		const listed = await section(t, "announcements");
 		const removed = replyOf(await t.click(listed, "Stop release notes in…", [CHANNEL]));

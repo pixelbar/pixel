@@ -42,6 +42,23 @@ export type ReleaseSet = {
 
 export type ReleaseRemove = { removed: boolean; saved: boolean };
 
+export type NotificationKind = "bot" | "closingTime" | "parking" | "foodAlert";
+
+export type NotificationChannel = {
+	kind: NotificationKind;
+	channelId: string | undefined;
+	/** Why it isn't posting right now. Safe to show. */
+	problem?: string;
+};
+
+export type NotificationSet = {
+	/** `unchanged` when the channel was already set to this. */
+	result: "set" | "unchanged" | "cleared";
+	/** The previous channel ID, if any. */
+	previous?: string;
+	saved: boolean;
+};
+
 export type RouteManager = {
 	list(): readonly AnnouncementRoute[];
 	/**
@@ -59,6 +76,13 @@ export type RouteManager = {
 	addRelease(channelId: string): Promise<ReleaseSet>;
 	/** Stops posting releases in a channel. */
 	removeRelease(channelId: string): Promise<ReleaseRemove>;
+	/** Lists all notification channels (bot, closing time, parking, food alerts). */
+	listNotifications(): readonly NotificationChannel[];
+	/**
+	 * Sets a notification channel. Pass undefined to clear it. Throws a `UserFacingError`
+	 * when the channel can't be used.
+	 */
+	setNotification(kind: NotificationKind, channelId: string | undefined): Promise<NotificationSet>;
 };
 
 export class AnnouncementRoutesUnavailableError extends UserFacingError {
@@ -102,6 +126,14 @@ export class AnnouncementRoutes {
 
 	removeRelease(channelId: string): Promise<ReleaseRemove> {
 		return this.#require().removeRelease(channelId);
+	}
+
+	listNotifications(): readonly NotificationChannel[] {
+		return this.#require().listNotifications();
+	}
+
+	setNotification(kind: NotificationKind, channelId: string | undefined): Promise<NotificationSet> {
+		return this.#require().setNotification(kind, channelId);
 	}
 
 	#require(): RouteManager {

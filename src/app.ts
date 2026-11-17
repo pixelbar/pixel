@@ -160,6 +160,49 @@ export function buildCore(
 		file: join(config.dataDir, "announcement-routes.yaml"),
 		logger,
 	});
+
+	// Seed notification channels from env vars with deprecation warnings
+	const notifications = announcementRouteStore.getNotifications();
+	if (!notifications.bot && config.discord.announce.botChannelId) {
+		logger.warn(
+			{
+				event: "config.deprecated",
+				variable: "DISCORD_ANNOUNCE_BOT_CHANNEL_ID",
+			},
+			"DISCORD_ANNOUNCE_BOT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+		);
+		announcementRouteStore.setNotification("bot", config.discord.announce.botChannelId);
+	}
+	if (!notifications.closingTime && config.discord.announce.closingTimeChannelId) {
+		logger.warn(
+			{
+				event: "config.deprecated",
+				variable: "DISCORD_CLOSING_TIME_CHANNEL_ID",
+			},
+			"DISCORD_CLOSING_TIME_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+		);
+		announcementRouteStore.setNotification("closingTime", config.discord.announce.closingTimeChannelId);
+	}
+	if (!notifications.parking && config.discord.announce.parkingChannelId) {
+		logger.warn(
+			{
+				event: "config.deprecated",
+				variable: "DISCORD_PARKING_CHANNEL_ID",
+			},
+			"DISCORD_PARKING_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+		);
+		announcementRouteStore.setNotification("parking", config.discord.announce.parkingChannelId);
+	}
+	if (!notifications.foodAlert && config.discord.announce.foodAlertChannelId) {
+		logger.warn(
+			{
+				event: "config.deprecated",
+				variable: "DISCORD_FOOD_ALERT_CHANNEL_ID",
+			},
+			"DISCORD_FOOD_ALERT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+		);
+		announcementRouteStore.setNotification("foodAlert", config.discord.announce.foodAlertChannelId);
+	}
 	const calendar = new Calendar({ logger, reporter });
 	const channelPosts = new ChannelPosts();
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
@@ -252,7 +295,7 @@ export function buildCore(
 		openrDoors: config.openr?.doors ?? [],
 		openrGateDoor: config.openr?.gateDoor,
 		directMessages,
-		parkingChannelId: config.discord.announce.parkingChannelId,
+		parkingChannelId: () => announcementRouteStore.getNotifications().parking,
 		canSchedule,
 		infoTopics,
 		wiki,
@@ -264,7 +307,7 @@ export function buildCore(
 			message: closingTimeMessage(config.closingTimeFile, logger),
 		},
 		foodWishlist,
-		foodAlertChannelId: config.discord.announce.foodAlertChannelId,
+		foodAlertChannelId: () => announcementRouteStore.getNotifications().foodAlert,
 	});
 	for (const feature of features) registry.register(feature);
 
