@@ -21,7 +21,7 @@ function setup(home: HomeStatus = { kind: "unconfigured" }, spaceStatus = space(
 	const announced: Announcement[] = [];
 	const announce = vi.fn(async (a: Announcement) => {
 		announced.push(a);
-		return { failed: 0 };
+		return { failed: 0, ok: [] };
 	});
 	const status = createBotStatus({
 		announcer: { announce },
@@ -105,7 +105,7 @@ describe("bot status", () => {
 			announcer: {
 				announce: async (a) => {
 					announced.push(a);
-					return { failed: 0 };
+					return { failed: 0, ok: [] };
 				},
 			},
 			build: { ...build, commit: undefined },
