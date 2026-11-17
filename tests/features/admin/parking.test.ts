@@ -805,7 +805,7 @@ describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 		const t = withSpots();
 		await t.run("open", { spots: "neighbour-1", until: "17:00" });
 		expect(await assign(t, { spot: "neighbour-1", for: "until 16:00" })).toBe(
-			"Gave **neighbour-1** to Bob, until 16:00.",
+			'Gave **"neighbour-1"** to Bob, until 16:00.',
 		);
 	});
 
