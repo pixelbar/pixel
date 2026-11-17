@@ -14,6 +14,11 @@ export const HOW_LONG_EXAMPLES = ["45m", "2h30", "until 17:00", "till 5pm"];
 /** Examples for a time of day. */
 export const TIME_OF_DAY_EXAMPLES = ["17:00", "5pm", "1730", "noon", "midnight"];
 
+/** Examples as a form field's placeholder: "19:00 · fri 8pm · in 2 hours". */
+export function placeholderOf(list: readonly string[]): string {
+	return list.join(" · ");
+}
+
 /**
  * Where the time was typed: the field's name as people see it (bold in the
  * message), the time zone it's read in, and an optional last sentence such as

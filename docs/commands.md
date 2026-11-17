@@ -174,7 +174,7 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 	title="New message"
 	:fields="[
 		{ label: 'Channel', hint: 'Where to post it. You need to be able to post there yourself.', kind: 'picker', value: '#general' },
-		{ label: 'When', hint: 'In Europe/Amsterdam. A day, a time or both.', kind: 'text', value: 'wed 1900 · tomorrow 9am · 14 oct 19:00 · now+1h' },
+		{ label: 'When', hint: 'In Europe/Amsterdam. A day, a time or both.', kind: 'text', value: '19:00 · fri 8pm · 14th oct · tomorrow noon · in 2 hours' },
 		{ label: 'Repeat', kind: 'radio', choices: ['Once', 'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months'], picked: 'Weekly' },
 		{ label: 'Message', kind: 'paragraph', value: 'What to post. Markdown works. {{date}} and {{date+2}} fill in when it\'s posted.' },
 	]"
@@ -220,7 +220,7 @@ Anyone in the server can answer, once: pressing another answer switches, and pre
 
 Getting a parking spot at the gate. These need the `parking` capability. Every reply is private, and every booking ends at 23:59.
 
-<PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h, 2h30 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
+<PxCommand :level="4" sig="/park [for:]" tier="member" reply="private" autocomplete :caps="['parking']" :options="{ '[for:]': 'How long, such as 30m, 2h30, until 17:00 or rest of day. Books straight away. Leave it out to choose on buttons.' }">
 
 Opens your parking panel. Everything else is buttons. `/park for:` books straight away, for when you're at the gate and know how long. As you type, the suggestions show when each length would end (`2h → until 12:30`).
 
@@ -353,6 +353,6 @@ One spot's panel has:
 - **Edit…**: where it is (shown to people who park) and its kind.
 - **Remove…** (Pixel asks first): the spot and its opening times go. This can't be undone.
 - **Free the spot…**: ends the booking of someone who left without pressing **Leave**.
-- **Give it to someone…**: books it for the person who is parked there, for how long you say (such as `2h` or `rest of day`), or until the spot closes if you leave it empty. They get a DM, and a booking they had elsewhere ends. Pixel won't take a spot from someone still booked into it unless you go ahead when it asks.
+- **Give it to someone…**: books it for the person who is parked there, for how long you say (such as `2h`, `until 17:00` or `rest of day`), or until the spot closes if you leave it empty. They get a DM, and a booking they had elsewhere ends. Pixel won't take a spot from someone still booked into it unless you go ahead when it asks.
 
 How to use these day to day is in the [runbook](/maintainers/runbook).

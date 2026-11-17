@@ -6,6 +6,7 @@ import {
 	nextReset,
 	parseDuration,
 	previewParkingDuration,
+	readParkingLength,
 } from "../../src/services/parking-time.ts";
 
 const ZONE = "Europe/Amsterdam";
@@ -91,7 +92,55 @@ describe("previewParkingDuration", () => {
 		});
 	});
 
+	it("shows how long an end time is", () => {
+		expect(previewParkingDuration("until 23:00", late, RESET, ZONE)).toEqual({
+			ok: true,
+			label: "30m, until 23:00",
+		});
+	});
+
 	it("says what to try for what it can't read", () => {
-		expect(previewParkingDuration("ages", late, RESET, ZONE)).toMatchObject({ ok: false });
+		expect(previewParkingDuration("ages", late, RESET, ZONE)).toEqual({
+			ok: false,
+			why: "Not understood yet. Try 30m, 2h30, until 17:00",
+		});
+	});
+});
+
+describe("readParkingLength", () => {
+	// Saturday 24 Oct 2026, 10:00 in Amsterdam; the reset is 23:59.
+	const now = new Date("2026-10-24T08:00:00Z");
+	const reset = new Date("2026-10-24T21:59:00Z");
+	const read = (typed: string, base = now) => readParkingLength(typed, base, reset, ZONE, { now });
+
+	it("reads a duration, an end or rest of day", () => {
+		expect(read("2h30")).toEqual({
+			ok: true,
+			value: { end: new Date("2026-10-24T10:30:00Z"), by: "duration" },
+		});
+		expect(read("until 17:00")).toEqual({
+			ok: true,
+			value: { end: new Date("2026-10-24T15:00:00Z"), by: "end" },
+		});
+		expect(read("Rest  of the day")).toEqual({
+			ok: true,
+			value: { end: reset, by: "rest-of-day" },
+		});
+	});
+
+	it("counts from a later base, such as the end being extended", () => {
+		const base = new Date("2026-10-24T09:00:00Z");
+		expect(read("1h", base)).toMatchObject({ value: { end: new Date("2026-10-24T10:00:00Z") } });
+		expect(read("until now+30m", base)).toEqual({
+			ok: false,
+			problem: {
+				kind: "before-start",
+				at: { year: 2026, month: 10, day: 24, hour: 10, minute: 30 },
+			},
+		});
+	});
+
+	it("says why it can't use what was typed", () => {
+		expect(read("ages")).toEqual({ ok: false, problem: { kind: "unclear" } });
 	});
 });
