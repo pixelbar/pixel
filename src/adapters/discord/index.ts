@@ -46,7 +46,6 @@ import {
 } from "./handlers.ts";
 import { handleInteractionFailure } from "./interaction-errors.ts";
 import { createPresencePublisher } from "./presence.ts";
-import { createReleasePublisher, RELEASE_PUBLISHER_ID } from "./release-publisher.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 import {
 	CONTROL_EXPIRED_MESSAGE,
@@ -68,8 +67,6 @@ export type DiscordAdapterDeps = {
 		botChannelId: string | undefined;
 		/** Closing-time reminder. Undefined means off. */
 		closingTimeChannelId: string | undefined;
-		/** Where Pixel announces new releases with their changelogs. Undefined means off. */
-		releaseChannelId: string | undefined;
 	};
 	/** Where the bot status remembers this run's post (`bot-status.state`). */
 	botStatusStateFile: string;
@@ -188,12 +185,6 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 				channelId: deps.announce.closingTimeChannelId,
 				required: TIMELINE_PERMISSIONS,
 				create: (channel) => createClosingTimePublisher(channel),
-			},
-			{
-				id: RELEASE_PUBLISHER_ID,
-				channelId: deps.announce.releaseChannelId,
-				required: TIMELINE_PERMISSIONS,
-				create: (channel) => createReleasePublisher(channel, logger),
 			},
 		];
 

@@ -102,4 +102,40 @@ describe("AnnouncementRouteStore", () => {
 		expect(store.set({ style: "live", channelId: A })).toEqual({ saved: true });
 		expect(store.list()).toHaveLength(1);
 	});
+
+	it("keeps release channels across a restart, separately from open/closed", () => {
+		const store = open();
+		expect(store.addRelease(A)).toEqual({ saved: true });
+		store.set({ style: "live", channelId: B });
+		expect(open().listRelease()).toEqual([A]);
+		expect(open().list()).toEqual([{ style: "live", channelId: B }]);
+		expect(parse(readFileSync(file, "utf8")).releaseChannels[0]).toBe(A);
+	});
+
+	it("loads older files that only have routes as empty release channels", () => {
+		mkdirSync(join(dir, "data"), { recursive: true });
+		writeFileSync(file, `routes:\n  - style: live\n    channelId: "${A}"\n`);
+		const store = open();
+		expect(store.list()).toEqual([{ style: "live", channelId: A }]);
+		expect(store.listRelease()).toEqual([]);
+	});
+
+	it("adds a release channel once, and removes it", () => {
+		const store = open();
+		store.addRelease(A);
+		expect(store.addRelease(A)).toEqual({ saved: true });
+		expect(store.listRelease()).toEqual([A]);
+		expect(store.removeRelease(A)).toEqual({ saved: true });
+		store.removeRelease(B);
+		expect(open().listRelease()).toEqual([]);
+	});
+
+	it("limits how many release channels there can be, but always lets one stay", () => {
+		const store = open();
+		for (let i = 0; i < MAX_ROUTES; i++) {
+			store.addRelease(String(100000000000000000n + BigInt(i)));
+		}
+		expect(store.canAddRelease("999999999999999999")).toBe(false);
+		expect(store.canAddRelease(String(100000000000000000n))).toBe(true);
+	});
 });

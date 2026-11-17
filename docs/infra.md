@@ -166,7 +166,7 @@ Do not raise replica count. Two replicas (or a laptop `just dev` plus this app) 
 | `content/info/*.md` | git, `COPY` in the Dockerfile | image | next image |
 | `data/schedules.yaml` | created when someone uses `/schedule` | `/app/persist/data/` | Pixel; **not safe to delete** |
 | `data/attendance.yaml` | created when an attendance poll is posted | `/app/persist/data/` | Pixel; deleting it loses open polls' votes |
-| `data/announcement-routes.yaml` | `/admin` → Announcements → **Add a channel…** | `/app/persist/data/` | Pixel; missing → no open/closed announcements until an admin sets them |
+| `data/announcement-routes.yaml` | `/admin` → Announcements → **Add open/closed…** / **Add a release channel…** | `/app/persist/data/` | Pixel; missing → no open/closed or release announcements until an admin sets them |
 | `data/closing-time.md` | `/admin` → Closing time → **Change the message…**, or a hand edit | `/app/persist/data/` | Pixel; missing → built-in default |
 | `data/home-switches.state` | `/admin` → Doors; missing file → doors default **on**; unreadable → **off** | persist | Pixel |
 | Example YAML in git | `config/*.example.yaml` | **never** uploaded to a real bot | local laptop only |

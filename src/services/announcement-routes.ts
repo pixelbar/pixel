@@ -6,10 +6,11 @@ import { SPACE_ANNOUNCE_STYLES, type SpaceAnnounceStyle } from "../core/announce
 import type { Logger } from "../core/logger.ts";
 
 /**
- * Where the open/closed announcements go, as admins set it with `/admin
- * announcements`: a list of (style, channel) pairings, kept in a small file
- * (`data/announcement-routes.yaml`) so it survives a restart and a deploy. A channel
- * has at most one style.
+ * Where open/closed and release announcements go, as admins set it with `/admin`
+ * → Announcements: (style, channel) pairings for the space, and a list of channels
+ * for new Pixel releases, kept in `data/announcement-routes.yaml` so it survives a
+ * restart and a deploy. A channel has at most one open/closed style; the same
+ * channel may also get release posts.
  *
  * It only says what to post where; who may change it is decided by the dispatcher
  * (admins). If the file can't be read, announcements through it are simply off
@@ -28,15 +29,18 @@ const fileSchema = z.strictObject({
 	routes: z
 		.array(z.strictObject({ style: z.enum(SPACE_ANNOUNCE_STYLES), channelId: snowflake }))
 		.max(MAX_ROUTES),
+	// Older files have only `routes`; treat a missing list as empty.
+	releaseChannels: z.array(snowflake).max(MAX_ROUTES).optional().default([]),
 });
 
 const HEADER =
-	"# Where Pixel posts open/closed announcements (/admin → Announcements). Written by Pixel.\n";
+	"# Where Pixel posts open/closed and release announcements (/admin → Announcements). Written by Pixel.\n";
 
 export class AnnouncementRouteStore {
 	readonly #file: string | undefined;
 	readonly #logger: Logger;
 	#routes: StoredRoute[] = [];
+	#releaseChannels: string[] = [];
 
 	constructor(options: { file?: string; logger: Logger }) {
 		this.#file = options.file;
@@ -48,21 +52,49 @@ export class AnnouncementRouteStore {
 		return this.#routes;
 	}
 
-	/** Whether another channel fits (replacing a channel's style always does). */
+	listRelease(): readonly string[] {
+		return this.#releaseChannels;
+	}
+
+	/** Whether another open/closed channel fits (replacing a channel's style always does). */
 	canAdd(channelId: string): boolean {
 		return this.#routes.length < MAX_ROUTES || this.#routes.some((r) => r.channelId === channelId);
+	}
+
+	/** Whether another release channel fits (one already on the list always does). */
+	canAddRelease(channelId: string): boolean {
+		return this.#releaseChannels.length < MAX_ROUTES || this.#releaseChannels.includes(channelId);
 	}
 
 	/** Gives a channel a style (replacing any it had). `saved: false` when it can't be written. */
 	set(route: StoredRoute): RouteSave {
 		const next = this.#routes.filter((r) => r.channelId !== route.channelId);
 		next.push(route);
-		return this.#write(next);
+		return this.#write(next, this.#releaseChannels);
 	}
 
-	/** Takes a channel off the list. */
+	/** Takes an open/closed channel off the list. */
 	remove(channelId: string): RouteSave {
-		return this.#write(this.#routes.filter((r) => r.channelId !== channelId));
+		return this.#write(
+			this.#routes.filter((r) => r.channelId !== channelId),
+			this.#releaseChannels,
+		);
+	}
+
+	/** Adds a release channel (no-op if it was already there). */
+	addRelease(channelId: string): RouteSave {
+		if (this.#releaseChannels.includes(channelId)) {
+			return this.#write(this.#routes, this.#releaseChannels);
+		}
+		return this.#write(this.#routes, [...this.#releaseChannels, channelId]);
+	}
+
+	/** Takes a release channel off the list. */
+	removeRelease(channelId: string): RouteSave {
+		return this.#write(
+			this.#routes,
+			this.#releaseChannels.filter((id) => id !== channelId),
+		);
 	}
 
 	#load(): void {
@@ -81,6 +113,7 @@ export class AnnouncementRouteStore {
 				return;
 			}
 			this.#routes = result.data.routes;
+			this.#releaseChannels = result.data.releaseChannels;
 		} catch {
 			this.#unreadable("invalid");
 		}
@@ -93,15 +126,16 @@ export class AnnouncementRouteStore {
 		);
 	}
 
-	#write(next: StoredRoute[]): RouteSave {
+	#write(next: StoredRoute[], releaseChannels: string[]): RouteSave {
 		// Held in memory either way, so a failed save still works until a restart.
 		this.#routes = next;
+		this.#releaseChannels = releaseChannels;
 		if (!this.#file) return { saved: true };
 		try {
 			mkdirSync(dirname(this.#file), { recursive: true });
 			// Write to a temp file and rename, so a crash can't leave a half-written file.
 			const temp = `${this.#file}.tmp`;
-			writeFileSync(temp, HEADER + stringify({ routes: next }));
+			writeFileSync(temp, HEADER + stringify({ routes: next, releaseChannels }));
 			renameSync(temp, this.#file);
 			return { saved: true };
 		} catch (error) {

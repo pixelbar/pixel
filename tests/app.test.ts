@@ -67,7 +67,6 @@ describe("buildCore", () => {
 				announce: {
 					botChannelId: undefined,
 					closingTimeChannelId: undefined,
-					releaseChannelId: undefined,
 					parkingChannelId: undefined,
 					foodAlertChannelId: undefined,
 				},

@@ -10,6 +10,9 @@ const manager = (): RouteManager => ({
 	list: vi.fn(() => [{ style: "single" as const, channelId: "1" }]),
 	set: vi.fn(async () => ({ result: "added" as const, saved: true })),
 	remove: vi.fn(async () => ({ removed: true, saved: true })),
+	listRelease: vi.fn(() => [{ channelId: "2" }]),
+	addRelease: vi.fn(async () => ({ result: "added" as const, saved: true })),
+	removeRelease: vi.fn(async () => ({ removed: true, saved: true })),
 });
 
 describe("AnnouncementRoutes", () => {
@@ -20,6 +23,9 @@ describe("AnnouncementRoutes", () => {
 		expect(() => routes.list()).toThrow(AnnouncementRoutesUnavailableError);
 		expect(() => routes.set("live", "1")).toThrow(ROUTES_UNAVAILABLE);
 		expect(() => routes.remove("1")).toThrow(ROUTES_UNAVAILABLE);
+		expect(() => routes.listRelease()).toThrow(ROUTES_UNAVAILABLE);
+		expect(() => routes.addRelease("1")).toThrow(ROUTES_UNAVAILABLE);
+		expect(() => routes.removeRelease("1")).toThrow(ROUTES_UNAVAILABLE);
 	});
 
 	it("passes everything on once a manager is plugged in", async () => {
@@ -32,5 +38,10 @@ describe("AnnouncementRoutes", () => {
 		await expect(routes.remove("1")).resolves.toEqual({ removed: true, saved: true });
 		expect(plugged.set).toHaveBeenCalledWith("live", "1");
 		expect(plugged.remove).toHaveBeenCalledWith("1");
+		expect(routes.listRelease()).toHaveLength(1);
+		await expect(routes.addRelease("2")).resolves.toEqual({ result: "added", saved: true });
+		await expect(routes.removeRelease("2")).resolves.toEqual({ removed: true, saved: true });
+		expect(plugged.addRelease).toHaveBeenCalledWith("2");
+		expect(plugged.removeRelease).toHaveBeenCalledWith("2");
 	});
 });

@@ -18,6 +18,7 @@ import {
 	requiredPermissions,
 	routePublisherId,
 } from "../../../src/adapters/discord/announce-routes.ts";
+import { releasePublisherId } from "../../../src/adapters/discord/release-publisher.ts";
 import type { Publisher } from "../../../src/core/announcement.ts";
 import { UserFacingError } from "../../../src/core/errors.ts";
 import { silentLogger } from "../../../src/core/logger.ts";
@@ -188,6 +189,10 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAdd: () => false,
 					set: () => ({ saved: true }),
 					remove: () => ({ saved: true }),
+					listRelease: () => [],
+					canAddRelease: () => true,
+					addRelease: () => ({ saved: true }),
+					removeRelease: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("single", GENERAL)).rejects.toThrow(/too many/);
@@ -200,6 +205,10 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAdd: () => true,
 					set: () => ({ saved: false }),
 					remove: () => ({ saved: true }),
+					listRelease: () => [],
+					canAddRelease: () => true,
+					addRelease: () => ({ saved: true }),
+					removeRelease: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("live", GENERAL)).resolves.toMatchObject({ saved: false });
@@ -233,23 +242,78 @@ describe("DiscordAnnouncementRoutes", () => {
 		});
 	});
 
+	describe("addRelease / removeRelease", () => {
+		it("starts posting releases in a channel, and keeps it", async () => {
+			const { routes, store, registered, opened } = setup();
+			await expect(routes.addRelease(GENERAL)).resolves.toEqual({
+				result: "added",
+				saved: true,
+			});
+			expect([...registered.keys()]).toEqual([releasePublisherId(GENERAL)]);
+			expect(opened).toEqual([{ channelId: GENERAL, required: TIMELINE_PERMISSIONS }]);
+			expect(store.listRelease()).toEqual([GENERAL]);
+			await expect(routes.addRelease(GENERAL)).resolves.toEqual({
+				result: "unchanged",
+				saved: true,
+			});
+		});
+
+		it("stops posting releases and forgets the channel", async () => {
+			const { routes, store, registered } = setup();
+			await routes.addRelease(GENERAL);
+			await expect(routes.removeRelease(GENERAL)).resolves.toEqual({
+				removed: true,
+				saved: true,
+			});
+			expect(registered.size).toBe(0);
+			expect(store.listRelease()).toEqual([]);
+		});
+
+		it("refuses once there are too many release channels", async () => {
+			const { routes } = setup({
+				store: {
+					list: () => [],
+					canAdd: () => true,
+					set: () => ({ saved: true }),
+					remove: () => ({ saved: true }),
+					listRelease: () => [],
+					canAddRelease: () => false,
+					addRelease: () => ({ saved: true }),
+					removeRelease: () => ({ saved: true }),
+				},
+			});
+			await expect(routes.addRelease(GENERAL)).rejects.toThrow(/too many/);
+		});
+	});
+
 	describe("start", () => {
-		function saved(routes: { style: "live" | "timeline" | "single"; channelId: string }[]) {
+		function saved(
+			routes: { style: "live" | "timeline" | "single"; channelId: string }[],
+			release: string[] = [],
+		) {
 			const file = join(dir, "announcement-routes.yaml");
 			const writer = new AnnouncementRouteStore({ file, logger: silentLogger });
 			for (const route of routes) writer.set(route);
+			for (const channelId of release) writer.addRelease(channelId);
 			return file;
 		}
 
 		it("brings every saved route back after a restart", async () => {
-			saved([
-				{ style: "timeline", channelId: ANNOUNCEMENTS },
-				{ style: "single", channelId: GENERAL },
-			]);
+			saved(
+				[
+					{ style: "timeline", channelId: ANNOUNCEMENTS },
+					{ style: "single", channelId: GENERAL },
+				],
+				[GENERAL],
+			);
 			const { routes, registered } = setup();
 			await routes.start();
 			expect([...registered.keys()].sort()).toEqual(
-				[routePublisherId("single", GENERAL), routePublisherId("timeline", ANNOUNCEMENTS)].sort(),
+				[
+					releasePublisherId(GENERAL),
+					routePublisherId("single", GENERAL),
+					routePublisherId("timeline", ANNOUNCEMENTS),
+				].sort(),
 			);
 		});
 

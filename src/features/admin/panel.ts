@@ -72,6 +72,9 @@ export const ADMIN_ACTIONS = {
 	announceForm: "admin.announce-form",
 	announceSet: "admin.announce-set",
 	announceRemove: "admin.announce-remove",
+	releaseForm: "admin.release-form",
+	releaseSet: "admin.release-set",
+	releaseRemove: "admin.release-remove",
 	closingTimeForm: "admin.closing-time-form",
 	closingTimeSet: "admin.closing-time-set",
 	doorsAsk: "admin.doors-ask",
@@ -92,7 +95,11 @@ export const SECTIONS = [
 		description: "Who holds what, and what a level gets",
 	},
 	{ value: "roles", label: "Discord roles", description: "Syncing Pixel's levels to Discord" },
-	{ value: "announcements", label: "Announcements", description: "Where open/closed goes" },
+	{
+		value: "announcements",
+		label: "Announcements",
+		description: "Open/closed and release notes",
+	},
 	{ value: "closing-time", label: "Closing time", description: "The reminder posted at closing" },
 	{ value: "doors", label: "Doors", description: "Door control from Pixel, on or off" },
 	{ value: "openr", label: "OpenR", description: "Pixel's OpenR login and the doors" },
@@ -109,7 +116,10 @@ export type AdminOperations = {
 		"grant" | "grant-all" | "revoke" | "grant-level" | "revoke-level" | "list",
 		SubcommandDefinition
 	>;
-	announcements: Record<"set" | "remove" | "list", SubcommandDefinition>;
+	announcements: Record<
+		"set" | "remove" | "set-release" | "remove-release" | "list",
+		SubcommandDefinition
+	>;
 	closingTime: SubcommandDefinition;
 	doors: Record<"on" | "off", SubcommandDefinition>;
 	openr: Record<"status" | "login" | "code" | "logout", SubcommandDefinition>;
@@ -120,7 +130,7 @@ export type AdminPanelDeps = {
 	access: Pick<AccessStore, "view">;
 	capabilities: Pick<CapabilityRegistry, "all" | "has">;
 	roles: Pick<RoleMirror, "states">;
-	routes: Pick<AnnouncementRoutes, "list">;
+	routes: Pick<AnnouncementRoutes, "list" | "listRelease">;
 	closingTimeFile: string;
 	switches: Parameters<typeof describeDoors>[0];
 	/** Whether OpenR is configured here. */
@@ -361,24 +371,45 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 				);
 			case "announcements": {
 				const routes = deps.routes.list();
+				const release = deps.routes.listRelease();
 				const list = await run(ops.announcements.list, ctx, {});
 				return panel(
 					"Announcements",
 					[list.text ?? ""],
 					[
-						[button("Add a channel…", ADMIN_ACTIONS.announceForm, {}, "primary")],
+						[
+							button("Add open/closed…", ADMIN_ACTIONS.announceForm, {}, "primary"),
+							button("Add a release channel…", ADMIN_ACTIONS.releaseForm),
+						],
 						...(routes.length > 0
 							? [
 									[
 										{
 											kind: "select" as const,
-											placeholder: "Stop announcing in…",
+											placeholder: "Stop open/closed in…",
 											call: { action: ADMIN_ACTIONS.announceRemove },
 											arg: "channel-id",
 											options: routes.slice(0, 25).map((r) => ({
 												label: `Channel ${r.channelId}`,
 												value: r.channelId,
 												description: `${r.style}${r.problem ? ": not posting" : ""}`,
+											})),
+										},
+									],
+								]
+							: []),
+						...(release.length > 0
+							? [
+									[
+										{
+											kind: "select" as const,
+											placeholder: "Stop release notes in…",
+											call: { action: ADMIN_ACTIONS.releaseRemove },
+											arg: "channel-id",
+											options: release.slice(0, 25).map((r) => ({
+												label: `Channel ${r.channelId}`,
+												value: r.channelId,
+												description: r.problem ? "not posting" : "release",
 											})),
 										},
 									],
@@ -777,6 +808,52 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 				};
 				const said = await run(
 					ops.announcements.remove,
+					{ ...ctx, channels: { channel } },
+					{ channel: id },
+				);
+				return { reply: above(said, await section(ctx, "announcements")) };
+			},
+		),
+		action(ADMIN_ACTIONS.releaseForm, [], () => ({
+			form: {
+				title: "Announce Pixel releases",
+				submit: { action: ADMIN_ACTIONS.releaseSet },
+				fields: [
+					{
+						kind: "channel",
+						name: "channel",
+						label: "Where",
+						description:
+							"A channel you can post in yourself. Gets each new version's changelog once.",
+					},
+				],
+			},
+		})),
+		action(
+			ADMIN_ACTIONS.releaseSet,
+			[{ name: "channel", description: "Where", type: "channel", required: true }],
+			async (ctx) => {
+				const said = await run(ops.announcements["set-release"], ctx, ctx.args);
+				return { reply: above(said, await section(ctx, "announcements")) };
+			},
+		),
+		action(
+			ADMIN_ACTIONS.releaseRemove,
+			[text("channel-id", "Which channel", true)],
+			async (ctx) => {
+				const id = String(ctx.args["channel-id"]);
+				if (!deps.routes.listRelease().some((r) => r.channelId === id)) {
+					throw new UserFacingError(
+						"That channel isn't set up for release announcements any more.",
+					);
+				}
+				const channel = {
+					id,
+					name: id,
+					caller: { canPost: true, canMentionEveryone: false, canCreatePolls: false },
+				};
+				const said = await run(
+					ops.announcements["remove-release"],
 					{ ...ctx, channels: { channel } },
 					{ channel: id },
 				);
