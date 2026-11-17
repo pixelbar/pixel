@@ -127,10 +127,7 @@ export class AnnouncementRouteStore {
 	}
 
 	/** Sets a notification channel. Pass undefined to clear it. */
-	setNotification(
-		kind: keyof NotificationChannels,
-		channelId: string | undefined,
-	): RouteSave {
+	setNotification(kind: keyof NotificationChannels, channelId: string | undefined): RouteSave {
 		const next = { ...this.#notifications, [kind]: channelId };
 		// Remove undefined values to keep the file clean
 		if (channelId === undefined) delete next[kind];
