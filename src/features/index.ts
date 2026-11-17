@@ -94,8 +94,8 @@ export type FeatureDeps = {
 	openrGateDoor: string | undefined;
 	/** DMs for features (parking reminders), once the platform adapter is ready. */
 	directMessages: DirectMessages;
-	/** Where every parking change is posted for admins. Undefined: off (still counted in Sentry). */
-	parkingChannelId: string | undefined;
+	/** Where every parking change is posted for admins. Returns undefined when off (still counted in Sentry). */
+	parkingChannelId: () => string | undefined;
 	/** Whether someone (by platform ID) may still schedule posts, for posts they set up earlier. */
 	canSchedule: (ref: string) => Promise<boolean>;
 	infoTopics: readonly InfoTopic[];
@@ -108,8 +108,8 @@ export type FeatureDeps = {
 	closingTime: { enabled: boolean; file: string; message: () => string };
 	/** Food wishlist (`data/food-wishlist.yaml`). */
 	foodWishlist: FoodWishlistStore;
-	/** Optional channel for out-of-stock alerts to admins. */
-	foodAlertChannelId: string | undefined;
+	/** Optional channel for out-of-stock alerts to admins. Returns undefined when off. */
+	foodAlertChannelId: () => string | undefined;
 };
 
 /** Every feature Pixel runs. Add new features here. */
@@ -120,7 +120,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 	const parkingNotices = new ParkingNotices({ messages: deps.directMessages, logger: deps.logger });
 	const parkingActivity = new ParkingActivity({
 		posts: deps.channelPosts,
-		channelId: deps.parkingChannelId,
+		channelId: deps.parkingChannelId(),
 		reporter: deps.reporter,
 		logger: deps.logger,
 		timezone: deps.timezone,

@@ -165,6 +165,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 				remove: need(announcements, "remove"),
 				"set-release": need(announcements, "set-release"),
 				"remove-release": need(announcements, "remove-release"),
+				"set-notification": need(announcements, "set-notification"),
 				list: need(announcements, "list"),
 			},
 			closingTime: closingTime as SubcommandDefinition,
