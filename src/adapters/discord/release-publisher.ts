@@ -3,17 +3,24 @@ import type { Logger } from "../../core/logger.ts";
 import type { AnnouncementChannel } from "./announce-publishers.ts";
 import { releasePost } from "./announce-render.ts";
 
-export const RELEASE_PUBLISHER_ID = "discord:release";
+/** Id for a release channel publisher, such as `discord:release:123…`. */
+export const releasePublisherId = (channelId: string): string => `discord:release:${channelId}`;
 
 /**
  * Release announcements in a Discord channel: when a new Pixel version goes
  * live, post its changelog entries. Each version is a new post, never edited.
+ * `id` defaults to a single fixed publisher when only one channel is wired
+ * (tests); admin-set channels pass `discord:release:<channel id>`.
  */
-export function createReleasePublisher(channel: AnnouncementChannel, logger: Logger): Publisher {
-	const log = logger.child({ publisher: RELEASE_PUBLISHER_ID });
+export function createReleasePublisher(
+	channel: AnnouncementChannel,
+	logger: Logger,
+	id = "discord:release",
+): Publisher {
+	const log = logger.child({ publisher: id });
 
 	return {
-		id: RELEASE_PUBLISHER_ID,
+		id,
 		async publish(announcement) {
 			if (announcement.kind !== "release") return;
 			try {

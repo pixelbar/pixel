@@ -36,7 +36,10 @@ export type AdminDeps = {
 	home: Pick<Home, "status" | "check" | "getStates">;
 	homeDevices: Pick<HomeDeviceStore, "view" | "reload" | "configured">;
 	switches: Pick<KindSwitch, "set" | "isOn">;
-	announcementRoutes: Pick<AnnouncementRoutes, "list" | "set" | "remove">;
+	announcementRoutes: Pick<
+		AnnouncementRoutes,
+		"list" | "set" | "remove" | "listRelease" | "addRelease" | "removeRelease"
+	>;
 	reporter: ErrorReporter;
 	now?: () => Date;
 	/** Persist path for the closing-time body (`PIXEL_DATA_DIR` / Azure Files). */
@@ -160,6 +163,8 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 			announcements: {
 				set: need(announcements, "set"),
 				remove: need(announcements, "remove"),
+				"set-release": need(announcements, "set-release"),
+				"remove-release": need(announcements, "remove-release"),
 				list: need(announcements, "list"),
 			},
 			closingTime: closingTime as SubcommandDefinition,

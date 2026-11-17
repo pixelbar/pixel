@@ -2,6 +2,9 @@ import { join } from "node:path";
 import type { SpaceAnnounceStyle } from "../../core/announcement.ts";
 import type {
 	AnnouncementRoute,
+	ReleaseChannel,
+	ReleaseRemove,
+	ReleaseSet,
 	RouteManager,
 	RouteRemove,
 	RouteSet,
@@ -18,6 +21,7 @@ import {
 } from "./announce-publishers.ts";
 import type { Recheckable } from "./announce-recheck.ts";
 import { FileLivePostStore } from "./announce-state.ts";
+import { createReleasePublisher, releasePublisherId } from "./release-publisher.ts";
 
 /** The id a route's publisher registers under, such as `discord:single:123…`. */
 export const routePublisherId = (style: SpaceAnnounceStyle, channelId: string): string =>
@@ -31,7 +35,17 @@ export const requiredPermissions = (style: SpaceAnnounceStyle): readonly bigint[
 const cantAnnounce = (problem: string): string => `I can't announce in that channel: ${problem}.`;
 
 export type DiscordRoutesOptions = {
-	store: Pick<AnnouncementRouteStore, "list" | "canAdd" | "set" | "remove">;
+	store: Pick<
+		AnnouncementRouteStore,
+		| "list"
+		| "canAdd"
+		| "set"
+		| "remove"
+		| "listRelease"
+		| "canAddRelease"
+		| "addRelease"
+		| "removeRelease"
+	>;
 	announcer: Pick<Announcer, "register" | "unregister">;
 	logger: Logger;
 	reportError: (error: unknown) => void;
@@ -43,23 +57,25 @@ export type DiscordRoutesOptions = {
 
 /**
  * The Discord side of `/admin` → Announcements: turns the saved (style, channel)
- * pairings into publishers on the announcer, and starts and stops them as admins
- * change them. A route whose channel can't be used (deleted, missing permissions)
- * stays on the list with the reason, and `retry` tries it again, so fixing the
- * channel brings it back.
+ * pairings and release channels into publishers on the announcer, and starts and
+ * stops them as admins change them. A route whose channel can't be used (deleted,
+ * missing permissions) stays on the list with the reason, and `retry` tries it
+ * again, so fixing the channel brings it back.
  */
 export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 	readonly #options: DiscordRoutesOptions;
 	readonly #logger: Logger;
-	/** Why a saved route isn't posting, by channel. */
+	/** Why a saved open/closed route isn't posting, by channel. */
 	readonly #problems = new Map<string, string>();
+	/** Why a saved release channel isn't posting, by channel. */
+	readonly #releaseProblems = new Map<string, string>();
 
 	constructor(options: DiscordRoutesOptions) {
 		this.#options = options;
 		this.#logger = options.logger.child({ component: "announcement-routes" });
 	}
 
-	/** Starts every saved route. One bad channel never stops the others. */
+	/** Starts every saved route and release channel. One bad channel never stops the others. */
 	async start(): Promise<void> {
 		for (const route of this.#options.store.list()) {
 			try {
@@ -76,12 +92,34 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 				);
 			}
 		}
+		for (const channelId of this.#options.store.listRelease()) {
+			try {
+				await this.#activateRelease(channelId);
+			} catch (error) {
+				const problem = error instanceof UserFacingError ? error.message : "it couldn't be set up";
+				this.#releaseProblems.set(channelId, problem);
+				this.#logger.error(
+					{ event: "announcements.release_off", channelId, err: error },
+					"release announcements to a channel are off",
+				);
+				this.#options.reportError(
+					new Error(`Release announcements to ${channelId} are off: ${problem}`),
+				);
+			}
+		}
 	}
 
 	list(): readonly AnnouncementRoute[] {
 		return this.#options.store.list().map((r): AnnouncementRoute => {
 			const problem = this.#problems.get(r.channelId);
 			return { ...r, ...(problem ? { problem } : {}) };
+		});
+	}
+
+	listRelease(): readonly ReleaseChannel[] {
+		return this.#options.store.listRelease().map((channelId): ReleaseChannel => {
+			const problem = this.#releaseProblems.get(channelId);
+			return { channelId, ...(problem ? { problem } : {}) };
 		});
 	}
 
@@ -120,8 +158,42 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 		return { removed: true, previous: current.style, saved };
 	}
 
+	async addRelease(channelId: string): Promise<ReleaseSet> {
+		const current = this.#options.store.listRelease().includes(channelId);
+		if (!current && !this.#options.store.canAddRelease(channelId)) {
+			throw new UserFacingError("There are too many release channels already. Remove one first.");
+		}
+		await this.#activateRelease(channelId);
+		this.#releaseProblems.delete(channelId);
+		const { saved } = this.#options.store.addRelease(channelId);
+		this.#logger.info(
+			{
+				event: "announcements.release_set",
+				channelId,
+				result: current ? "unchanged" : "added",
+				saved,
+			},
+			"release channel set",
+		);
+		return { result: current ? "unchanged" : "added", saved };
+	}
+
+	async removeRelease(channelId: string): Promise<ReleaseRemove> {
+		if (!this.#options.store.listRelease().includes(channelId)) {
+			return { removed: false, saved: true };
+		}
+		this.#options.announcer.unregister(releasePublisherId(channelId));
+		this.#releaseProblems.delete(channelId);
+		const { saved } = this.#options.store.removeRelease(channelId);
+		this.#logger.info(
+			{ event: "announcements.release_removed", channelId, saved },
+			"release channel removed",
+		);
+		return { removed: true, saved };
+	}
+
 	hasProblems(): boolean {
-		return this.#problems.size > 0;
+		return this.#problems.size > 0 || this.#releaseProblems.size > 0;
 	}
 
 	/** Tries every saved route that isn't posting again. Says so only when that changes. */
@@ -156,6 +228,32 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 				new Error(`Announcements (${route.style}) to ${route.channelId} are off: ${problem}`),
 			);
 		}
+		for (const channelId of this.#options.store.listRelease()) {
+			const before = this.#releaseProblems.get(channelId);
+			if (!before) continue;
+			const opened = await this.#options.openChannel(channelId, TIMELINE_PERMISSIONS);
+			if (!this.#options.store.listRelease().includes(channelId)) continue;
+			if (this.#releaseProblems.get(channelId) !== before) continue;
+			if (opened.ok) {
+				this.#releaseProblems.delete(channelId);
+				this.#registerRelease(channelId, opened.channel);
+				this.#logger.info(
+					{ event: "announcements.release_on", channelId },
+					"release announcements to a channel are on again",
+				);
+				continue;
+			}
+			const problem = cantAnnounce(opened.problem);
+			if (problem === before) continue;
+			this.#releaseProblems.set(channelId, problem);
+			this.#logger.error(
+				{ event: "announcements.release_off", channelId },
+				"release announcements to a channel are off",
+			);
+			this.#options.reportError(
+				new Error(`Release announcements to ${channelId} are off: ${problem}`),
+			);
+		}
 	}
 
 	/** Opens the channel and registers its publisher, replacing the one it had (if any). */
@@ -169,6 +267,12 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 		this.#register(style, channelId, opened.channel, previous);
 	}
 
+	async #activateRelease(channelId: string): Promise<void> {
+		const opened = await this.#options.openChannel(channelId, TIMELINE_PERMISSIONS);
+		if (!opened.ok) throw new UserFacingError(cantAnnounce(opened.problem));
+		this.#registerRelease(channelId, opened.channel);
+	}
+
 	#register(
 		style: SpaceAnnounceStyle,
 		channelId: string,
@@ -179,6 +283,15 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 		if (previous) this.#options.announcer.unregister(routePublisherId(previous, channelId));
 		this.#options.announcer.unregister(id);
 		this.#options.announcer.register(this.#publisher(style, channelId, channel, id));
+	}
+
+	#registerRelease(
+		channelId: string,
+		channel: Extract<OpenedChannel, { ok: true }>["channel"],
+	): void {
+		const id = releasePublisherId(channelId);
+		this.#options.announcer.unregister(id);
+		this.#options.announcer.register(createReleasePublisher(channel, this.#options.logger, id));
 	}
 
 	#publisher(

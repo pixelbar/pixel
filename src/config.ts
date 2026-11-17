@@ -140,7 +140,6 @@ const envSchema = z
 		DISCORD_GUILD_ID: snowflake,
 		DISCORD_ANNOUNCEMENTS_CHANNEL_ID: optional(snowflake),
 		DISCORD_ANNOUNCE_BOT_CHANNEL_ID: optional(snowflake),
-		DISCORD_RELEASE_CHANNEL_ID: optional(snowflake),
 		// Unset, empty, "off" or "none" turns closing-time posts off.
 		DISCORD_CLOSING_TIME_CHANNEL_ID: z.preprocess((v) => {
 			if (typeof v === "string" && /^(off|none)$/i.test(v.trim())) return undefined;
@@ -308,8 +307,6 @@ export type Config = {
 			botChannelId: string | undefined;
 			/** Closing-time reminder. Undefined means off. */
 			closingTimeChannelId: string | undefined;
-			/** Where Pixel announces new releases with their changelogs. Undefined means off. */
-			releaseChannelId: string | undefined;
 			/** Every parking change, for admins to watch. Undefined means off. */
 			parkingChannelId: string | undefined;
 			/** Out-of-stock food alerts to admins. Undefined means off. */
@@ -421,7 +418,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 			announce: {
 				botChannelId: e.DISCORD_ANNOUNCE_BOT_CHANNEL_ID ?? e.DISCORD_ANNOUNCEMENTS_CHANNEL_ID,
 				closingTimeChannelId: e.DISCORD_CLOSING_TIME_CHANNEL_ID,
-				releaseChannelId: e.DISCORD_RELEASE_CHANNEL_ID,
 				parkingChannelId: e.DISCORD_PARKING_CHANNEL_ID,
 				foodAlertChannelId: e.DISCORD_FOOD_ALERT_CHANNEL_ID,
 			},

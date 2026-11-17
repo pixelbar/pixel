@@ -2,10 +2,11 @@ import type { SpaceAnnounceStyle } from "./announcement.ts";
 import { UserFacingError } from "./errors.ts";
 
 /**
- * Where open/closed announcements go: pairings of a style and a channel that admins
- * manage while Pixel runs (`/admin` → Announcements). Features hand changes to the
- * core and never touch a platform; the Discord adapter plugs in a `RouteManager`
- * once it's connected, the same way it plugs in the calendar and channel posts.
+ * Where open/closed and release announcements go: pairings of a style and a channel
+ * for the space, and channels for new Pixel releases, that admins manage while Pixel
+ * runs (`/admin` → Announcements). Features hand changes to the core and never touch
+ * a platform; the Discord adapter plugs in a `RouteManager` once it's connected, the
+ * same way it plugs in the calendar and channel posts.
  */
 
 export type AnnouncementRoute = {
@@ -13,6 +14,13 @@ export type AnnouncementRoute = {
 	/** Platform channel ID. */
 	channelId: string;
 	/** Why it isn't posting right now (the channel is gone, a permission is missing). Safe to show. */
+	problem?: string;
+};
+
+export type ReleaseChannel = {
+	/** Platform channel ID. */
+	channelId: string;
+	/** Why it isn't posting right now. Safe to show. */
 	problem?: string;
 };
 
@@ -26,6 +34,14 @@ export type RouteSet = {
 
 export type RouteRemove = { removed: boolean; previous?: SpaceAnnounceStyle; saved: boolean };
 
+export type ReleaseSet = {
+	/** `unchanged` when the channel was already on the list. */
+	result: "added" | "unchanged";
+	saved: boolean;
+};
+
+export type ReleaseRemove = { removed: boolean; saved: boolean };
+
 export type RouteManager = {
 	list(): readonly AnnouncementRoute[];
 	/**
@@ -33,8 +49,16 @@ export type RouteManager = {
 	 * channel can't be used, or the list is full).
 	 */
 	set(style: SpaceAnnounceStyle, channelId: string): Promise<RouteSet>;
-	/** Stops announcing to a channel. */
+	/** Stops announcing open/closed to a channel. */
 	remove(channelId: string): Promise<RouteRemove>;
+	listRelease(): readonly ReleaseChannel[];
+	/**
+	 * Posts new Pixel releases in a channel. Throws a `UserFacingError` when it can't
+	 * (the channel can't be used, or the list is full).
+	 */
+	addRelease(channelId: string): Promise<ReleaseSet>;
+	/** Stops posting releases in a channel. */
+	removeRelease(channelId: string): Promise<ReleaseRemove>;
 };
 
 export class AnnouncementRoutesUnavailableError extends UserFacingError {
@@ -66,6 +90,18 @@ export class AnnouncementRoutes {
 
 	remove(channelId: string): Promise<RouteRemove> {
 		return this.#require().remove(channelId);
+	}
+
+	listRelease(): readonly ReleaseChannel[] {
+		return this.#require().listRelease();
+	}
+
+	addRelease(channelId: string): Promise<ReleaseSet> {
+		return this.#require().addRelease(channelId);
+	}
+
+	removeRelease(channelId: string): Promise<ReleaseRemove> {
+		return this.#require().removeRelease(channelId);
 	}
 
 	#require(): RouteManager {

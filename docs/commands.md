@@ -313,13 +313,13 @@ Whether Pixel's levels are mirrored to Discord roles. **Sync everyone** sets the
 
 ### Announcements {#admin-announcements}
 
-The channels where Pixel announces that the space opened or closed, and whether each is posting. **Add a channel…** picks a channel you can post in and a style:
+The channels where Pixel announces that the space opened or closed, and where it posts a new version's changelog, and whether each is posting. **Add open/closed…** picks a channel you can post in and a style:
 
 - **Live**: one post per opening, edited when it closes.
 - **Timeline**: a new post for every open and close.
 - **Single**: only the latest; the old post is deleted.
 
-**Stop announcing in…** removes a channel. Changes take effect at once.
+**Add a release channel…** picks a channel for each new Pixel version's changelog (posted once per version). **Stop open/closed in…** and **Stop release notes in…** remove a channel. Changes take effect at once.
 
 ### Closing time {#admin-closing-time}
 

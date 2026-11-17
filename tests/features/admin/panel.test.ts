@@ -422,9 +422,12 @@ describe("announcements", () => {
 			list: () => [],
 			set: async () => ({ result: "added", saved: true }),
 			remove: async () => ({ removed: true, previous: "live", saved: true }),
+			listRelease: () => [],
+			addRelease: async () => ({ result: "added", saved: true }),
+			removeRelease: async () => ({ removed: true, saved: true }),
 		} as never);
 		const announcements = await section(t, "announcements");
-		const form = formOf(await t.click(announcements, "Add a channel…"));
+		const form = formOf(await t.click(announcements, "Add open/closed…"));
 		expect(form.fields.map((f) => [f.kind, f.name])).toEqual([
 			["channel", "channel"],
 			["radio", "style"],
@@ -440,10 +443,43 @@ describe("announcements", () => {
 			list: () => [{ style: "live", channelId: CHANNEL }],
 			set: async () => ({ result: "added", saved: true }),
 			remove: async () => ({ removed: true, previous: "live", saved: true }),
+			listRelease: () => [],
+			addRelease: async () => ({ result: "added", saved: true }),
+			removeRelease: async () => ({ removed: true, saved: true }),
 		} as never);
 		const listed = await section(t, "announcements");
-		const removed = replyOf(await t.click(listed, "Stop announcing in…", [CHANNEL]));
+		const removed = replyOf(await t.click(listed, "Stop open/closed in…", [CHANNEL]));
 		expect(removed.text).toContain("Stopped announcing in");
+	});
+
+	it("adds a release channel on a form, and stops posting there from a menu", async () => {
+		const t = setup();
+		t.routes.use({
+			list: () => [],
+			set: async () => ({ result: "added", saved: true }),
+			remove: async () => ({ removed: true, previous: "live", saved: true }),
+			listRelease: () => [],
+			addRelease: async () => ({ result: "added", saved: true }),
+			removeRelease: async () => ({ removed: true, saved: true }),
+		} as never);
+		const announcements = await section(t, "announcements");
+		const form = formOf(await t.click(announcements, "Add a release channel…"));
+		expect(form.fields.map((f) => [f.kind, f.name])).toEqual([["channel", "channel"]]);
+		const added = replyOf(
+			await t.submit(form, { channel: CHANNEL }, { channels: { channel: general } }),
+		);
+		expect(added.text).toContain("release notes will go to");
+		t.routes.use({
+			list: () => [],
+			set: async () => ({ result: "added", saved: true }),
+			remove: async () => ({ removed: true, previous: "live", saved: true }),
+			listRelease: () => [{ channelId: CHANNEL }],
+			addRelease: async () => ({ result: "added", saved: true }),
+			removeRelease: async () => ({ removed: true, saved: true }),
+		} as never);
+		const listed = await section(t, "announcements");
+		const removed = replyOf(await t.click(listed, "Stop release notes in…", [CHANNEL]));
+		expect(removed.text).toContain("Stopped posting release notes");
 	});
 });
 
