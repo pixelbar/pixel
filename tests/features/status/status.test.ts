@@ -11,8 +11,8 @@ function statusCommand(checkNow: () => Promise<SpaceReading>): PlainCommand {
 	const command = createStatusFeature({
 		spaceStatus: { checkNow, onChange: () => () => {}, pollIntervalMs: 30_000 },
 		announcer: {
-			announce: async () => ({ failed: 0 }),
-			reconcile: async () => ({ failed: 0 }),
+			announce: async () => ({ failed: 0, ok: [] }),
+			reconcile: async () => ({ failed: 0, ok: [] }),
 		},
 		logger: silentLogger,
 		now: () => NOW,

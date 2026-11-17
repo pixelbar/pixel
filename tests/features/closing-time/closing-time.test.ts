@@ -26,7 +26,7 @@ function setup(
 	const announce = vi.fn(async (a: Announcement) => {
 		if (overrides.announce) await overrides.announce();
 		announced.push(a);
-		return { failed: 0 };
+		return { failed: 0, ok: [] };
 	});
 	const feature = createClosingTimeFeature({
 		announcer: { announce },
