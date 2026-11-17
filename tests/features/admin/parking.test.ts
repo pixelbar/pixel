@@ -221,7 +221,7 @@ describe("/admin → Parking", () => {
 			]);
 			// From tomorrow, "now+2h" is still two hours from now: before it opens.
 			await fails("open", { spots: "neighbour-2", from: "tomorrow 8", until: "now+2h" }).toThrow(
-				/couldn't understand \*\*Until\*\*, or it's in the past/,
+				/\*\*Until\*\*: that's Sat 24 Oct 2026, 12:00, which isn't after it starts/,
 			);
 		});
 
@@ -236,10 +236,10 @@ describe("/admin → Parking", () => {
 		it("refuses a time it can't understand, or that's gone", async () => {
 			const { fails } = withSpots();
 			await fails("open", { spots: "neighbour-1", until: "later" }).toThrow(
-				/couldn't understand \*\*Until\*\*/,
+				/\*\*Until\*\*: `later` is too vague/,
 			);
 			await fails("open", { spots: "neighbour-1", from: "2026-10-23T08:00" }).toThrow(
-				/couldn't understand \*\*From\*\*/,
+				/\*\*From\*\*: that's Fri 23 Oct 2026, 08:00, which has already passed/,
 			);
 		});
 
@@ -446,7 +446,7 @@ describe("/admin → Parking", () => {
 			const { fails } = setup();
 			await fails("settings", { remind: 121 }).toThrow(/from 0 to 120/);
 			await fails("settings", { grace: 1.5 }).toThrow(/from 0 to 60/);
-			await fails("settings", { reset: "midnight" }).toThrow(/like `23:59`/);
+			await fails("settings", { reset: "teatime" }).toThrow(/\*\*Reset\*\*: .*`noon`/);
 			await fails("settings", { durations: "1h, soon" }).toThrow(/couldn't understand/);
 			await fails("settings", { durations: " , " }).toThrow(/couldn't understand/);
 			const many = Array.from({ length: 26 }, (_, i) => `${i + 1}m`).join(", ");
@@ -796,9 +796,17 @@ describe("/admin → Parking → a spot → **Give it to someone…**", () => {
 			'**"neighbour-1"** is only open until 17:00. Leave **How long** empty to give it until then.',
 		);
 		await expect(assign(t, { spot: "neighbour-1", for: "ages" })).rejects.toThrow(
-			/couldn't understand how long/,
+			/\*\*How long\*\*: I couldn't understand it\. .*`until 17:00` or `rest of day`/,
 		);
 		expect(t.bookings.all()).toEqual([]);
+	});
+
+	it("gives it until an end time as well as for a length", async () => {
+		const t = withSpots();
+		await t.run("open", { spots: "neighbour-1", until: "17:00" });
+		expect(await assign(t, { spot: "neighbour-1", for: "until 16:00" })).toBe(
+			'Gave **"neighbour-1"** to Bob, until 16:00.',
+		);
 	});
 
 	it("needs a person", async () => {

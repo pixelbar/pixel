@@ -205,14 +205,26 @@ describe("parking", () => {
 		for (const action of feature.actions ?? []) expect(action.access).toEqual(access);
 	});
 
-	it("suggests the durations from the settings", async () => {
+	it("suggests the durations from the settings, with when each would end", async () => {
 		const { park } = setup();
 		const option = park.options?.[0];
 		if (!option || !("suggest" in option) || !option.suggest) throw new Error("no suggest");
-		expect(await option.suggest({ typed: " H" } as SuggestContext)).toEqual([
-			{ name: "1h", value: "1h" },
-			{ name: "2h", value: "2h" },
-			{ name: "4h", value: "4h" },
+		const suggest = (typed: string) => option.suggest?.({ typed } as SuggestContext);
+		// It's 10:00 in Amsterdam.
+		expect(await suggest(" H")).toEqual([
+			{ name: "1h → until 11:00", value: "1h" },
+			{ name: "2h → until 12:00", value: "2h" },
+			{ name: "4h → until 14:00", value: "4h" },
+		]);
+		expect(await suggest("90 min")).toEqual([{ name: "90 min → until 11:30", value: "90 min" }]);
+		expect(await suggest("rest of day")).toEqual([
+			{ name: "rest of day → until 23:59", value: "rest of day" },
+		]);
+		expect(await suggest("ages")).toEqual([
+			{ name: "Not understood yet. Try 30m, 2h30, until 17:00", value: "ages" },
+		]);
+		expect(await suggest("until 17:00")).toEqual([
+			{ name: "until 17:00 → 7h, until 17:00", value: "until 17:00" },
 		]);
 	});
 });
@@ -287,6 +299,19 @@ describe("not parked", () => {
 		expect(t.bookings.all()).toHaveLength(1);
 	});
 
+	it("books until an end time, and refuses one past the reset", async () => {
+		const t = withSpots();
+		expect(main(await t.book("until 11:30"))).toContain("It's yours until 11:30.");
+		// 9:00 has gone today, so it's tomorrow's: after every booking ends.
+		const other = member(BOB, "Bob");
+		expect(main(await t.book("till 9am", other))).toContain(
+			"⚠️ Parking ends at 23:59 every day, so that's too long.",
+		);
+		expect(main(await t.book("until tomorrow morning", other))).toContain(
+			"⚠️ **How long**: `morning` is too vague, so give a time.",
+		);
+	});
+
 	it("then the borrowed spot that fits most tightly", async () => {
 		const t = withSpots();
 		await t.book("30m", member(BOB, "Bob"));
@@ -358,7 +383,7 @@ describe("not parked", () => {
 		const form: Form = result.form;
 		expect(form.fields).toEqual([expect.objectContaining({ name: "for", style: "short" })]);
 		expect(main(t.replyOf(await t.act(form.submit.action, { for: "a while" })))).toContain(
-			"⚠️ I couldn't understand how long.",
+			"⚠️ **How long**: I couldn't understand it. Type how long, or until when in Europe/Amsterdam",
 		);
 		expect(main(t.replyOf(await t.act(form.submit.action, { for: "45m" })))).toContain(
 			"It's yours until 10:45.",
@@ -560,6 +585,13 @@ describe("staying longer", () => {
 		expect(await extend(t, "rest of day")).toContain("can't be extended: parking ends at 23:59");
 	});
 
+	it("extends until an end time, and says so", async () => {
+		const t = withSpots();
+		await t.book("1h");
+		expect(await extend(t, "until 12:30")).toContain("✅ Extended until 12:30.");
+		expect(t.bookings.byPerson(`discord:${IDS.member}`)?.until).toEqual(utc("10:30"));
+	});
+
 	it("says by how much, for rest of day too", async () => {
 		const t = withSpots();
 		await t.book("30m", member(BOB, "Bob"));
@@ -579,7 +611,7 @@ describe("staying longer", () => {
 		const t = withSpots();
 		expect(await extend(t, "1h")).toContain("⚠️ You're not parked anywhere.");
 		await t.book("1h");
-		expect(await extend(t, "ages")).toContain("⚠️ I couldn't understand how long.");
+		expect(await extend(t, "ages")).toContain("⚠️ **How long**: I couldn't understand it.");
 	});
 
 	it("says so when the booking ended meanwhile", async () => {
