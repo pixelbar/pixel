@@ -371,57 +371,57 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 					],
 					[[button("Sync everyone", ADMIN_ACTIONS.syncAll, {}, "primary")], [toAdmin()]],
 				);
-		case "announcements": {
-			const routes = deps.routes.list();
-			const release = deps.routes.listRelease();
-			const list = await run(ops.announcements.list, ctx, {});
-			return panel(
-				"Announcements",
-				[list.text ?? ""],
-				[
+			case "announcements": {
+				const routes = deps.routes.list();
+				const release = deps.routes.listRelease();
+				const list = await run(ops.announcements.list, ctx, {});
+				return panel(
+					"Announcements",
+					[list.text ?? ""],
 					[
-						button("Add open/closed…", ADMIN_ACTIONS.announceForm, {}, "primary"),
-						button("Add a release channel…", ADMIN_ACTIONS.releaseForm),
+						[
+							button("Add open/closed…", ADMIN_ACTIONS.announceForm, {}, "primary"),
+							button("Add a release channel…", ADMIN_ACTIONS.releaseForm),
+						],
+						[button("Set notification channel…", ADMIN_ACTIONS.notificationForm)],
+						...(routes.length > 0
+							? [
+									[
+										{
+											kind: "select" as const,
+											placeholder: "Stop open/closed in…",
+											call: { action: ADMIN_ACTIONS.announceRemove },
+											arg: "channel-id",
+											options: routes.slice(0, 25).map((r) => ({
+												label: `Channel ${r.channelId}`,
+												value: r.channelId,
+												description: `${r.style}${r.problem ? ": not posting" : ""}`,
+											})),
+										},
+									],
+								]
+							: []),
+						...(release.length > 0
+							? [
+									[
+										{
+											kind: "select" as const,
+											placeholder: "Stop release notes in…",
+											call: { action: ADMIN_ACTIONS.releaseRemove },
+											arg: "channel-id",
+											options: release.slice(0, 25).map((r) => ({
+												label: `Channel ${r.channelId}`,
+												value: r.channelId,
+												description: r.problem ? "not posting" : "release",
+											})),
+										},
+									],
+								]
+							: []),
+						[toAdmin()],
 					],
-					[button("Set notification channel…", ADMIN_ACTIONS.notificationForm)],
-					...(routes.length > 0
-						? [
-								[
-									{
-										kind: "select" as const,
-										placeholder: "Stop open/closed in…",
-										call: { action: ADMIN_ACTIONS.announceRemove },
-										arg: "channel-id",
-										options: routes.slice(0, 25).map((r) => ({
-											label: `Channel ${r.channelId}`,
-											value: r.channelId,
-											description: `${r.style}${r.problem ? ": not posting" : ""}`,
-										})),
-									},
-								],
-							]
-						: []),
-					...(release.length > 0
-						? [
-								[
-									{
-										kind: "select" as const,
-										placeholder: "Stop release notes in…",
-										call: { action: ADMIN_ACTIONS.releaseRemove },
-										arg: "channel-id",
-										options: release.slice(0, 25).map((r) => ({
-											label: `Channel ${r.channelId}`,
-											value: r.channelId,
-											description: r.problem ? "not posting" : "release",
-										})),
-									},
-								],
-							]
-						: []),
-					[toAdmin()],
-				],
-			);
-		}
+				);
+			}
 			case "closing-time": {
 				const saved = savedClosingTimeMessage(deps.closingTimeFile);
 				return panel(
