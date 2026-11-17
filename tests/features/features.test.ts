@@ -25,6 +25,7 @@ import { PRIVACY_NOTICE_URL } from "../../src/features/links.ts";
 import { createPingFeature } from "../../src/features/ping/index.ts";
 import { createWhoamiFeature } from "../../src/features/whoami/index.ts";
 import { AttendanceStore } from "../../src/services/attendance.ts";
+import { FoodWishlistStore } from "../../src/services/food-wishlist.ts";
 import { HomeDeviceStore } from "../../src/services/home-devices.ts";
 import { KindSwitch } from "../../src/services/kind-switch.ts";
 import { ScheduleStore } from "../../src/services/schedules.ts";
@@ -104,6 +105,8 @@ const deps = () => ({
 		file: "data/closing-time.md",
 		message: () => "The space is closing.",
 	},
+	foodWishlist: new FoodWishlistStore({ logger: silentLogger }),
+	foodAlertChannelId: undefined,
 });
 
 function onlyCommand(feature: Feature) {
@@ -195,6 +198,7 @@ describe("buildFeatures", () => {
 			"events",
 			"feedback",
 			"fishbot",
+			"food",
 			"ha",
 			"help",
 			"info",

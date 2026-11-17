@@ -16,6 +16,7 @@ import type { FeedbackSink } from "../core/ports/feedback.ts";
 import { type Gate, notConnectedGate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { AttendanceStore } from "../services/attendance.ts";
+import type { FoodWishlistStore } from "../services/food-wishlist.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
 import type { KindSwitch } from "../services/kind-switch.ts";
@@ -33,6 +34,7 @@ import { createClosingTimeFeature } from "./closing-time/index.ts";
 import { createEventsFeature } from "./events/index.ts";
 import { createFeedbackFeature } from "./feedback/index.ts";
 import { createFishbotFeature } from "./fishbot/index.ts";
+import { createFoodFeature } from "./food/index.ts";
 import { createHelpFeature } from "./help/index.ts";
 import { createHomeFeature } from "./home/index.ts";
 import { createInfoFeature } from "./info/index.ts";
@@ -104,6 +106,10 @@ export type FeatureDeps = {
 	logger: Logger;
 	/** Closing-time posts: destination on/off, the persist file, and the message body. */
 	closingTime: { enabled: boolean; file: string; message: () => string };
+	/** Food wishlist (`data/food-wishlist.yaml`). */
+	foodWishlist: FoodWishlistStore;
+	/** Optional channel for out-of-stock alerts to admins. */
+	foodAlertChannelId: string | undefined;
 };
 
 /** Every feature Pixel runs. Add new features here. */
@@ -181,6 +187,12 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			timezone: deps.timezone,
 			logger: deps.logger,
 			reporter: deps.reporter,
+		}),
+		createFoodFeature({
+			wishlist: deps.foodWishlist,
+			poster: deps.channelPosts,
+			alertChannelId: deps.foodAlertChannelId,
+			logger: deps.logger,
 		}),
 		createHomeFeature({
 			home: deps.home,
