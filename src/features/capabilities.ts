@@ -1,6 +1,7 @@
 import type { CapabilityDefinition } from "../core/capabilities.ts";
 import { homeCapabilities } from "../core/home-access.ts";
 import { HOME_KINDS } from "../core/home-kinds/index.ts";
+import { FOOD_CAPABILITY } from "./food/index.ts";
 import { OPENR_CAPABILITY } from "./openr/index.ts";
 import { PARKING_CAPABILITY } from "./parking/index.ts";
 import { SCHEDULE_CAPABILITY } from "./schedules/index.ts";
@@ -23,4 +24,5 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
 	SPACESTATE_CAPABILITY,
 	PARKING_CAPABILITY,
 	OPENR_CAPABILITY,
+	FOOD_CAPABILITY,
 ];

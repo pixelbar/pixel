@@ -34,6 +34,7 @@ import { ConfigTierSource, StoreCapabilitySource } from "./services/access-confi
 import { FileAccessStore } from "./services/access-store.ts";
 import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { AttendanceStore } from "./services/attendance.ts";
+import { FoodWishlistStore } from "./services/food-wishlist.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
 import { KindSwitch } from "./services/kind-switch.ts";
@@ -185,6 +186,12 @@ export function buildCore(
 	}
 	// Opening times for spots removed or changed by hand no longer apply.
 	if (!parkingSpots.problem) parkingWindows.reconcile(parkingSpots.all(), new Date());
+	// Invalid food wishlist file doesn't stop Pixel: nothing is changed until it's fixed.
+	const foodWishlist = new FoodWishlistStore({
+		file: join(config.dataDir, "food-wishlist.yaml"),
+		logger,
+	});
+	if (foodWishlist.problem) reporter.captureBackground(new Error(foodWishlist.problem), "food");
 	const identity = new IdentityService(
 		[new ConfigTierSource(access)],
 		[new StoreCapabilitySource(access)],
@@ -252,6 +259,8 @@ export function buildCore(
 			file: config.closingTimeFile,
 			message: closingTimeMessage(config.closingTimeFile, logger),
 		},
+		foodWishlist,
+		foodAlertChannelId: config.discord.announce.foodAlertChannelId,
 	});
 	for (const feature of features) registry.register(feature);
 
