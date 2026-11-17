@@ -63,12 +63,12 @@ describe("buildCore", () => {
 				appId: "100000000000000010",
 				guildId: "100000000000000020",
 				announcementsChannelId: undefined,
-			announce: {
-				botChannelId: undefined,
-				closingTimeChannelId: undefined,
-				releaseChannelId: undefined,
-				parkingChannelId: undefined,
-			},
+				announce: {
+					botChannelId: undefined,
+					closingTimeChannelId: undefined,
+					releaseChannelId: undefined,
+					parkingChannelId: undefined,
+				},
 				roles: { member: undefined, friend: undefined },
 				roleSync: false,
 			},

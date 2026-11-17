@@ -7,7 +7,6 @@ import {
 	MessageFlags,
 } from "discord.js";
 import type { PlatformActor } from "../../core/access.ts";
-import type { Publisher } from "../../core/announcement.ts";
 import type { AnnouncementRoutes } from "../../core/announcement-routes.ts";
 import type { Announcer } from "../../core/announcer.ts";
 import type { Calendar } from "../../core/calendar.ts";
@@ -35,7 +34,6 @@ import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
 import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
-import { RELEASE_PUBLISHER_ID, createReleasePublisher } from "./release-publisher.ts";
 import { CONTROL_PREFIX, HeldControls, submittedFields, UI_FORM_PREFIX } from "./controls.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { PendingForms } from "./forms.ts";
@@ -48,6 +46,7 @@ import {
 } from "./handlers.ts";
 import { handleInteractionFailure } from "./interaction-errors.ts";
 import { createPresencePublisher } from "./presence.ts";
+import { createReleasePublisher, RELEASE_PUBLISHER_ID } from "./release-publisher.ts";
 import { DiscordRoleMirror, type RoleMapping } from "./role-mirror.ts";
 import {
 	CONTROL_EXPIRED_MESSAGE,
