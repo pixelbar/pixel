@@ -25,7 +25,7 @@ export type TimeField = { field: string; zone: string; hint?: string };
 export function whenRefusal(problem: WhenProblem, where: TimeField): string {
 	return refusal(
 		where,
-		reason(problem),
+		reasonFor(problem),
 		`Type a day, a time or both in ${where.zone}, for example ${examples(WHEN_EXAMPLES)}.`,
 	);
 }
@@ -37,7 +37,7 @@ export function howLongRefusal(
 ): string {
 	return refusal(
 		where,
-		reason(problem),
+		reasonFor(problem),
 		`Type how long, or until when in ${where.zone}, for example ${examples(where.examples ?? HOW_LONG_EXAMPLES)}.`,
 	);
 }
@@ -46,7 +46,7 @@ export function howLongRefusal(
 export function timeOfDayRefusal(where: TimeField): string {
 	return refusal(
 		where,
-		reason({ kind: "unclear" }),
+		reasonFor({ kind: "unclear" }),
 		`Type a time of day in ${where.zone}, for example ${examples(TIME_OF_DAY_EXAMPLES)}.`,
 	);
 }
@@ -62,7 +62,8 @@ function refusal(where: TimeField, why: string, how: string): string {
 	return [`**${where.field}**: ${why}`, how, where.hint].filter(Boolean).join(" ");
 }
 
-function reason(problem: WhenProblem): string {
+/** Why a time can't be used, as the middle of a sentence: "that's …, which has already passed." */
+export function reasonFor(problem: WhenProblem): string {
 	switch (problem.kind) {
 		case "empty":
 			return "it's empty.";

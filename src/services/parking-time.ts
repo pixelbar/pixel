@@ -1,5 +1,6 @@
 import { formatMinutes, parseDurationMinutes } from "../core/duration.ts";
 import { toInstant, toLocal } from "../core/recurrence.ts";
+import { type Preview, whyNot } from "../core/time-suggest.ts";
 import { addDays, describeWhen, formatTimeOfDay, type TimeOfDay } from "../core/when.ts";
 
 /**
@@ -49,6 +50,26 @@ export function parseDuration(typed: string): ParkingDuration | undefined {
 	const minutes = parseDurationMinutes(typed);
 	if (minutes === undefined || minutes > MAX_DURATION_MINUTES) return undefined;
 	return { kind: "minutes", minutes };
+}
+
+/**
+ * What a typed length means if booked at `now`, for autocomplete: "until 12:30",
+ * or why it can't be used. A spot that closes sooner shortens it; the reply says so.
+ */
+export function previewParkingDuration(
+	typed: string,
+	now: Date,
+	reset: Clock,
+	zone: string,
+): Preview {
+	const duration = parseDuration(typed);
+	if (!duration)
+		return { ok: false, why: whyNot({ kind: "unclear" }, ["30m", "2h30", "rest of day"]) };
+	const end =
+		duration.kind === "rest-of-day"
+			? nextReset(now, reset, zone)
+			: new Date(now.getTime() + duration.minutes * 60_000);
+	return { ok: true, label: `until ${describeInstant(end, now, zone)}` };
 }
 
 /** The usual way to write a duration: "30m", "1h", "2h30", "rest of day". */

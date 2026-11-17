@@ -5,6 +5,7 @@ import {
 	MAX_DURATION_MINUTES,
 	nextReset,
 	parseDuration,
+	previewParkingDuration,
 } from "../../src/services/parking-time.ts";
 
 const ZONE = "Europe/Amsterdam";
@@ -68,5 +69,29 @@ describe("parseDuration", () => {
 	it("writes durations the usual way", () => {
 		expect(formatParkingDuration({ kind: "minutes", minutes: 125 })).toBe("2h05");
 		expect(formatParkingDuration({ kind: "rest-of-day" })).toBe("rest of day");
+	});
+});
+
+describe("previewParkingDuration", () => {
+	// Saturday 24 Oct 2026, 22:30 in Amsterdam.
+	const late = new Date("2026-10-24T20:30:00Z");
+
+	it("says when a booking made now would end", () => {
+		expect(previewParkingDuration("1h", late, RESET, ZONE)).toEqual({
+			ok: true,
+			label: "until 23:30",
+		});
+		expect(previewParkingDuration("rest of day", late, RESET, ZONE)).toEqual({
+			ok: true,
+			label: "until 23:59",
+		});
+		expect(previewParkingDuration("2h", late, RESET, ZONE)).toEqual({
+			ok: true,
+			label: "until Sun 25 Oct 2026, 00:30",
+		});
+	});
+
+	it("says what to try for what it can't read", () => {
+		expect(previewParkingDuration("ages", late, RESET, ZONE)).toMatchObject({ ok: false });
 	});
 });
