@@ -1,11 +1,13 @@
 import { normalizeItemName, type WishlistItem } from "../../services/food-wishlist.ts";
 
 /**
- * Soften a name for similarity: strip punctuation to spaces, then the same
- * normalize as exact matching. So "Club-Mate" and "Club Mate" compare equal.
+ * Soften a name for similarity: turn common separators into spaces, then the
+ * same normalize as exact matching. So "Club-Mate" and "Club Mate" compare
+ * equal. Letters (including non-ASCII), digits and other symbols are kept, so
+ * "Bärchen" ≠ "Bürchen" and "C++" ≠ "C#".
  */
 export function softenItemName(name: string): string {
-	return normalizeItemName(name.replace(/[^a-zA-Z0-9\s]+/g, " "));
+	return normalizeItemName(name.replace(/[-_./·]+/g, " "));
 }
 
 /** Levenshtein distance for short strings (snack names). */

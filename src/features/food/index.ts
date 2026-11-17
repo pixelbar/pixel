@@ -35,8 +35,12 @@ const ACCESS = { minTier: "member" as const, capability: FOOD_CAPABILITY.name };
 /** Items on one page of a select (Discord shows at most 25). */
 export const PAGE_SIZE = UI_LIMITS.options;
 
-/** Discord select values are at most 100 characters. */
-const MAX_SELECT_VALUE = 100;
+/**
+ * Discord select values are at most 100 characters. Item names are capped to
+ * that so every entry can appear in a remove/restock/+1 menu (the value is the
+ * normalized id).
+ */
+const MAX_ITEM_NAME = 100;
 
 const ACTIONS = {
 	home: "food.home",
@@ -132,15 +136,13 @@ function sortByName<T extends { name: string }>(items: readonly T[]): T[] {
 	return [...items].sort((a, b) => a.name.localeCompare(b.name, "en"));
 }
 
-/** Options Discord can put in a select: value ≤ 100 characters. */
+/** Options Discord can put in a select: value ≤ {@link MAX_ITEM_NAME}. */
 function selectableWishlist(items: readonly WishlistItem[]): WishlistItem[] {
-	return sortByName(items).filter((item) => item.id.length <= MAX_SELECT_VALUE);
+	return sortByName(items).filter((item) => item.id.length <= MAX_ITEM_NAME);
 }
 
 function selectableOutOfStock(items: readonly OutOfStockItem[]): OutOfStockItem[] {
-	return sortByName(items).filter(
-		(item) => normalizeItemName(item.name).length <= MAX_SELECT_VALUE,
-	);
+	return sortByName(items).filter((item) => normalizeItemName(item.name).length <= MAX_ITEM_NAME);
 }
 
 function wishlistOption(item: WishlistItem, description?: string): ChoiceOption {
@@ -194,7 +196,7 @@ const addForm: Form = {
 			label: "Item name",
 			description: "What would you like the hackerspace to stock?",
 			style: "short",
-			maxLength: 200,
+			maxLength: MAX_ITEM_NAME,
 			placeholder: "e.g. Club-Mate, stroopwafels",
 			required: true,
 		},
@@ -211,7 +213,7 @@ const outOfStockForm: Form = {
 			label: "Item name",
 			description: "What has run out? Type a name if it isn't on the wishlist.",
 			style: "short",
-			maxLength: 200,
+			maxLength: MAX_ITEM_NAME,
 			required: true,
 		},
 	],
@@ -368,6 +370,11 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		const trimmed = itemName.trim();
 		if (!trimmed) {
 			return { reply: createPanel(["⚠️ Please provide an item name."], principal) };
+		}
+		if (trimmed.length > MAX_ITEM_NAME) {
+			return {
+				reply: createPanel([`⚠️ Item names can be at most ${MAX_ITEM_NAME} characters.`], principal),
+			};
 		}
 
 		const by = { ref: actorRef(principal), name: principal.displayName };
@@ -863,6 +870,13 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			// Select values are normalized ids; prefer the wishlist display name when known.
 			const fromWishlist = deps.wishlist.find(itemName);
 			const reportName = fromWishlist?.name ?? itemName;
+			if (!fromWishlist && reportName.length > MAX_ITEM_NAME) {
+				return {
+					reply: await onPanel(ctx.principal, () => [
+						`⚠️ Item names can be at most ${MAX_ITEM_NAME} characters.`,
+					]),
+				};
+			}
 			const item = deps.wishlist.reportOutOfStock(reportName, by, now());
 
 			const wasNew =

@@ -14,9 +14,16 @@ const item = (name: string, id = name.toLowerCase()): WishlistItem => ({
 });
 
 describe("softenItemName", () => {
-	it("strips punctuation to spaces and normalizes", () => {
+	it("turns separators into spaces and normalizes", () => {
 		expect(softenItemName("Club-Mate")).toBe("club mate");
-		expect(softenItemName("  Club   Mate!  ")).toBe("club mate");
+		expect(softenItemName("Club_Mate")).toBe("club mate");
+		expect(softenItemName("  Club   Mate  ")).toBe("club mate");
+	});
+
+	it("keeps letters, digits and distinguishing symbols", () => {
+		expect(softenItemName("Bärchen")).toBe("bärchen");
+		expect(softenItemName("C++")).toBe("c++");
+		expect(softenItemName("C#")).toBe("c#");
 	});
 });
 
@@ -43,6 +50,11 @@ describe("findSoftMatch", () => {
 
 	it("returns undefined when nothing soft-matches", () => {
 		expect(findSoftMatch("Mate", [item("Club-Mate", "club-mate")])).toBeUndefined();
+	});
+
+	it("does not merge items that differ only by non-separator characters", () => {
+		expect(findSoftMatch("Bärchen", [item("Bürchen", "bürchen")])).toBeUndefined();
+		expect(findSoftMatch("C++", [item("C#", "c#")])).toBeUndefined();
 	});
 });
 
