@@ -7,6 +7,12 @@ export type AnnouncerDeps = {
 	reporter: ErrorReporter;
 };
 
+/** How an announce or reconcile finished. Failures never reject the promise. */
+export type AnnounceResult = {
+	/** How many publishers threw. Zero when there were no publishers. */
+	failed: number;
+};
+
 /**
  * Sends announcements to every registered publisher. Features hand it an
  * announcement and never talk to a platform themselves.
@@ -51,11 +57,16 @@ export class Announcer {
 		return [...this.#publishers.keys()];
 	}
 
-	announce(announcement: Announcement): Promise<void> {
+	/**
+	 * Sends to every publisher. Never throws: failures are counted, logged and
+	 * reported. Callers that must know whether anything got through (e.g. release
+	 * notes, which are remembered as posted) use `failed`.
+	 */
+	announce(announcement: Announcement): Promise<AnnounceResult> {
 		return this.#run("publish", (publisher) => publisher.publish(announcement), announcement.kind);
 	}
 
-	reconcile(snapshot: SpaceSnapshot): Promise<void> {
+	reconcile(snapshot: SpaceSnapshot): Promise<AnnounceResult> {
 		return this.#run("reconcile", (publisher) => publisher.reconcile?.(snapshot), "space.status");
 	}
 
@@ -63,8 +74,9 @@ export class Announcer {
 		action: "publish" | "reconcile",
 		call: (publisher: Publisher) => Promise<void> | undefined,
 		kind: string,
-	): Promise<void> {
-		const next = this.#queue.then(async () => {
+	): Promise<AnnounceResult> {
+		const next = this.#queue.then(async (): Promise<AnnounceResult> => {
+			let failed = 0;
 			await Promise.all(
 				[...this.#publishers.values()].map(async (publisher) => {
 					try {
@@ -74,6 +86,7 @@ export class Announcer {
 							action === "publish" ? "announced" : "reconciled",
 						);
 					} catch (error) {
+						failed += 1;
 						this.#logger.error(
 							{ event: `announcer.${action}_failed`, publisher: publisher.id, kind, err: error },
 							`publisher failed to ${action}`,
@@ -82,9 +95,10 @@ export class Announcer {
 					}
 				}),
 			);
+			return { failed };
 		});
 		// Keep the queue alive whatever happens, so one bad call can't wedge later ones.
-		this.#queue = next.catch(() => {});
+		this.#queue = next.then(() => {}).catch(() => {});
 		return next;
 	}
 }

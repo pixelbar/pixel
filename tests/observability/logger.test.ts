@@ -204,7 +204,7 @@ describe("createLogger writing a file", () => {
 			.child({ component: "home" })
 			.warn(
 				{ event: "x" },
-				`careful ${"eyJ" + "h".repeat(20)}.${"p".repeat(20)}.${"s".repeat(20)}`,
+				`careful ${`eyJ${"h".repeat(20)}`}.${"p".repeat(20)}.${"s".repeat(20)}`,
 			);
 		const written = await lines(logDir, 2);
 		expect(written[0]).toMatchObject({

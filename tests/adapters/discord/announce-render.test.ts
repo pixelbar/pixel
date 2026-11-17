@@ -6,12 +6,16 @@ import {
 	liveClosedPost,
 	liveOpenPost,
 	liveStandaloneClosedPost,
+	releasePost,
 	SINGLE_FOOTER,
 	singlePost,
 	timelinePost,
 } from "../../../src/adapters/discord/announce-render.ts";
 import { accentColor } from "../../../src/adapters/discord/render.ts";
-import type { SpaceStatusAnnouncement } from "../../../src/core/announcement.ts";
+import type {
+	ReleaseAnnouncement,
+	SpaceStatusAnnouncement,
+} from "../../../src/core/announcement.ts";
 
 const at = new Date("2026-10-03T17:30:00Z");
 const openedAt = new Date("2026-10-03T14:10:00Z"); // 3h 20m earlier
@@ -175,5 +179,64 @@ describe("single style", () => {
 
 	it("never mentions anyone", () => {
 		expect(singlePost("open", at, null).allowedMentions).toEqual({ parse: [] });
+	});
+});
+
+describe("release announcement", () => {
+	const releaseAt = new Date("2026-11-16T12:00:00Z");
+	const announcement = (overrides: Partial<ReleaseAnnouncement>): ReleaseAnnouncement => ({
+		kind: "release",
+		version: "0.28.0",
+		build: {
+			version: "0.28.0",
+			commit: "abc1234",
+			branch: "main",
+			env: "prod",
+			runtime: "cloud",
+		},
+		notes: "### Added\n\n- New feature A\n- New feature B\n\n### Changed\n\n- Changed behavior C",
+		at: releaseAt,
+		text: "📣 Pixel 0.28.0 is now live",
+		...overrides,
+	});
+
+	it("posts the version with its changelog entries and a link to GitHub Release", () => {
+		const { embeds, allowedMentions } = releasePost(announcement({}));
+		expect(allowedMentions).toEqual({ parse: [] });
+		expect(embeds[0]).toMatchObject({
+			title: "📣 Pixel 0.28.0 is now live",
+			description:
+				"### Added\n\n- New feature A\n- New feature B\n\n### Changed\n\n- Changed behavior C\n\n[GitHub Release](https://github.com/pixelbar/pixel/releases/tag/v0.28.0)",
+			color: accentColor("positive"),
+			timestamp: releaseAt.toISOString(),
+			fields: [
+				{ name: "Version", value: expect.stringContaining("0.28.0"), inline: true },
+				{ name: "Commit", value: expect.stringContaining("abc1234"), inline: true },
+			],
+		});
+	});
+
+	it("omits the commit field when it's not known", () => {
+		const { embeds } = releasePost(
+			announcement({ build: { ...announcement({}).build, commit: undefined } }),
+		);
+		expect(embeds[0]?.fields).toEqual([
+			{ name: "Version", value: expect.stringContaining("0.28.0"), inline: true },
+		]);
+	});
+
+	it("trims very long changelogs and links to the full release notes", () => {
+		const longNotes = `### Added\n\n${"- Feature X\n".repeat(500)}`;
+		const { embeds } = releasePost(announcement({ notes: longNotes }));
+		const description = embeds[0]?.description;
+		expect(description).toBeDefined();
+		expect(description?.length).toBeLessThan(4096);
+		expect(description).toContain("…");
+		expect(description).toContain("Read the full changelog");
+		expect(description).toContain("https://github.com/pixelbar/pixel/releases/tag/v0.28.0");
+	});
+
+	it("never mentions anyone", () => {
+		expect(releasePost(announcement({})).allowedMentions).toEqual({ parse: [] });
 	});
 });

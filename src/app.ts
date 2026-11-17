@@ -222,6 +222,10 @@ export function buildCore(
 	const registry = new CommandRegistry({ capabilities });
 	const features = buildFeatures({
 		version: config.version,
+		env: config.env,
+		commit: config.commit,
+		branch: config.branch,
+		dataDir: config.dataDir,
 		runtime: config.runtime,
 		startedAt: options.startedAt ?? new Date(),
 		access,

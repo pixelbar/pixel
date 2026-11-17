@@ -62,6 +62,10 @@ const spaceStatus: SpaceStatus = {
 
 const deps = () => ({
 	version: "1.0.0",
+	env: "local" as const,
+	commit: undefined,
+	branch: undefined,
+	dataDir: "data",
 	runtime: "local" as const,
 	startedAt: new Date(),
 	access,

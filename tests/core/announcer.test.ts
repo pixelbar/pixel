@@ -41,8 +41,10 @@ describe("Announcer", () => {
 
 	it("does nothing, without failing, when there are no publishers", async () => {
 		const { announcer } = setup();
-		await expect(announcer.announce(announcement)).resolves.toBeUndefined();
-		await expect(announcer.reconcile({ state: "open", since: null })).resolves.toBeUndefined();
+		await expect(announcer.announce(announcement)).resolves.toEqual({ failed: 0 });
+		await expect(announcer.reconcile({ state: "open", since: null })).resolves.toEqual({
+			failed: 0,
+		});
 	});
 
 	it("lists its publishers and refuses duplicate ids", () => {
@@ -69,7 +71,7 @@ describe("Announcer", () => {
 		announcer.register(broken);
 		announcer.register(healthy);
 
-		await expect(announcer.announce(announcement)).resolves.toBeUndefined();
+		await expect(announcer.announce(announcement)).resolves.toEqual({ failed: 1 });
 
 		expect(healthy.publish).toHaveBeenCalledOnce();
 		expect(reporter.captureBackground).toHaveBeenCalledWith(boom, "announcer:broken");

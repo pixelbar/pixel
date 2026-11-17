@@ -39,6 +39,8 @@ describe("buildCore", () => {
 			env: "local",
 			runtime: "local",
 			version: "test",
+			commit: undefined,
+			branch: undefined,
 			gitSha: undefined,
 			gitBranch: undefined,
 			logLevel: "info",
@@ -65,6 +67,7 @@ describe("buildCore", () => {
 				announce: {
 					botChannelId: undefined,
 					closingTimeChannelId: undefined,
+					releaseChannelId: undefined,
 					parkingChannelId: undefined,
 					foodAlertChannelId: undefined,
 				},
