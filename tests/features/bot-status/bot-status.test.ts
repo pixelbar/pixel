@@ -21,6 +21,7 @@ function setup(home: HomeStatus = { kind: "unconfigured" }, spaceStatus = space(
 	const announced: Announcement[] = [];
 	const announce = vi.fn(async (a: Announcement) => {
 		announced.push(a);
+		return { failed: 0 };
 	});
 	const status = createBotStatus({
 		announcer: { announce },
@@ -101,7 +102,12 @@ describe("bot status", () => {
 	it("leaves the commit out of the text when it isn't known", async () => {
 		const announced: Announcement[] = [];
 		await createBotStatus({
-			announcer: { announce: async (a) => void announced.push(a) },
+			announcer: {
+				announce: async (a) => {
+					announced.push(a);
+					return { failed: 0 };
+				},
+			},
 			build: { ...build, commit: undefined },
 			startedAt: started,
 			home: { status: () => ({ kind: "unconfigured" }) },

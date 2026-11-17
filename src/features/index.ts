@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { AnnouncementRoutes } from "../core/announcement-routes.ts";
 import type { Announcer } from "../core/announcer.ts";
 import type { Calendar } from "../core/calendar.ts";
@@ -49,6 +50,8 @@ export type FeatureDeps = {
 	env: string;
 	commit: string | undefined;
 	branch: string | undefined;
+	/** Where runtime state lives (`PIXEL_DATA_DIR`). */
+	dataDir: string;
 	runtime: "local" | "cloud";
 	startedAt: Date;
 	access: AccessStore;
@@ -147,6 +150,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 				branch: deps.branch,
 				runtime: deps.runtime,
 			},
+			stateFile: join(deps.dataDir, "release-announced.yaml"),
 			logger: deps.logger,
 		}),
 		// Temporarily disabled: /spacestate isn't working. Re-enable once the API is fixed.

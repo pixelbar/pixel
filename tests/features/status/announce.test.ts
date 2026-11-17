@@ -36,8 +36,8 @@ function setup(
 		},
 	};
 	const announcer = {
-		announce: vi.fn(async (_announcement: Announcement) => {}),
-		reconcile: vi.fn(async (_snapshot: SpaceSnapshot) => {}),
+		announce: vi.fn(async (_announcement: Announcement) => ({ failed: 0 })),
+		reconcile: vi.fn(async (_snapshot: SpaceSnapshot) => ({ failed: 0 })),
 	};
 	const stop = startSpaceAnnouncements({
 		spaceStatus,

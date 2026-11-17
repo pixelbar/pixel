@@ -10,7 +10,10 @@ const NOW = new Date("2026-10-03T20:00:00Z");
 function statusCommand(checkNow: () => Promise<SpaceReading>): PlainCommand {
 	const command = createStatusFeature({
 		spaceStatus: { checkNow, onChange: () => () => {}, pollIntervalMs: 30_000 },
-		announcer: { announce: async () => {}, reconcile: async () => {} },
+		announcer: {
+			announce: async () => ({ failed: 0 }),
+			reconcile: async () => ({ failed: 0 }),
+		},
 		logger: silentLogger,
 		now: () => NOW,
 	}).commands?.[0];

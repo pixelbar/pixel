@@ -1,17 +1,21 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import type { BuildInfo, ReleaseAnnouncement } from "../../core/announcement.ts";
-import type { Announcer } from "../../core/announcer.ts";
+import type { AnnounceResult, Announcer } from "../../core/announcer.ts";
 import type { Feature } from "../../core/feature.ts";
 import type { Logger } from "../../core/logger.ts";
 
 export type ReleaseAnnouncementDeps = {
-	announcer: Pick<Announcer, "announce">;
+	announcer: Pick<Announcer, "announce" | "publisherIds">;
 	build: BuildInfo;
 	logger: Logger;
+	/**
+	 * Where the last-announced version is kept (`PIXEL_DATA_DIR/release-announced.yaml`).
+	 * Must be on the persist volume in cloud, or every deploy would announce again.
+	 */
+	stateFile: string;
 	changelogFile?: string;
-	stateFile?: string;
 	now?: () => Date;
 };
 
@@ -21,8 +25,12 @@ type LastAnnounced = {
 };
 
 const CHANGELOG_FILE = "CHANGELOG.md";
-const STATE_FILE = "release-announced.yaml";
 const VERSION_HEADING = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}\s*$/;
+
+/** Whether a publisher id is one that posts release notes. */
+export function isReleasePublisher(id: string): boolean {
+	return id === "discord:release" || id.startsWith("discord:release:");
+}
 
 /**
  * Extracts the changelog notes for a specific version from the full changelog.
@@ -54,13 +62,15 @@ function extractVersionNotes(changelog: string, version: string): string | undef
 /**
  * Announces a new Pixel release with its changelog entries. Posts once per
  * version on startup, so restarts and rolling deploys don't announce again.
- * The last announced version is kept in `data/release-announced.yaml`.
+ * The last announced version is kept in `PIXEL_DATA_DIR/release-announced.yaml`.
+ * It is only written after a publish that had at least one release publisher and
+ * no publisher failures, so a missing channel or a Discord error can retry later.
  */
 export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps): Feature {
 	const log = deps.logger.child({ component: "release-announcement" });
 	const now = deps.now ?? (() => new Date());
 	const changelogFile = deps.changelogFile ?? CHANGELOG_FILE;
-	const stateFile = deps.stateFile ?? join(deps.build.env === "prod" ? "data" : "data", STATE_FILE);
+	const stateFile = deps.stateFile;
 
 	async function announceIfNew(): Promise<void> {
 		const currentVersion = deps.build.version;
@@ -73,6 +83,15 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 		const lastAnnounced = readLastAnnounced();
 		if (lastAnnounced?.version === currentVersion) {
 			log.debug({ event: "release.skipped", version: currentVersion }, "version already announced");
+			return;
+		}
+
+		const releasePublishers = deps.announcer.publisherIds.filter(isReleasePublisher);
+		if (releasePublishers.length === 0) {
+			log.debug(
+				{ event: "release.skipped", version: currentVersion, reason: "no release publisher" },
+				"no release channel configured",
+			);
 			return;
 		}
 
@@ -105,16 +124,27 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 			text: `📣 Pixel ${currentVersion} is now live`,
 		};
 
+		let result: AnnounceResult;
 		try {
-			await deps.announcer.announce(announcement);
-			writeLastAnnounced({ version: currentVersion, at: now().toISOString() });
-			log.info({ event: "release.announced", version: currentVersion }, "announced new release");
+			result = await deps.announcer.announce(announcement);
 		} catch (error) {
+			// Announce is documented never to reject; still don't remember a throw.
 			log.error(
 				{ event: "release.failed", version: currentVersion, err: error },
 				"couldn't announce",
 			);
+			return;
 		}
+		if (result.failed > 0) {
+			log.error(
+				{ event: "release.failed", version: currentVersion, failed: result.failed },
+				"a release publisher failed; will try again on the next start",
+			);
+			return;
+		}
+
+		writeLastAnnounced({ version: currentVersion, at: now().toISOString() });
+		log.info({ event: "release.announced", version: currentVersion }, "announced new release");
 	}
 
 	function readLastAnnounced(): LastAnnounced | undefined {

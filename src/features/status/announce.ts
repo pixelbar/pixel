@@ -13,8 +13,8 @@ const MAX_CONFIRM_RETRIES = 10;
 export type SpaceAnnouncementsDeps = {
 	spaceStatus: Pick<SpaceStatus, "checkNow" | "onChange" | "pollIntervalMs">;
 	announcer: {
-		announce(announcement: Announcement): Promise<void>;
-		reconcile(snapshot: SpaceSnapshot): Promise<void>;
+		announce(announcement: Announcement): Promise<{ failed: number }>;
+		reconcile(snapshot: SpaceSnapshot): Promise<{ failed: number }>;
 	};
 	logger: Logger;
 	/** Same send path as `/closing-time`. Called after a confirmed close. Must not throw. */

@@ -3,8 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Announcement, BuildInfo } from "../../../src/core/announcement.ts";
+import type { AnnounceResult } from "../../../src/core/announcer.ts";
 import { silentLogger } from "../../../src/core/logger.ts";
-import { createReleaseAnnouncementFeature } from "../../../src/features/release-announcement/index.ts";
+import {
+	createReleaseAnnouncementFeature,
+	isReleasePublisher,
+} from "../../../src/features/release-announcement/index.ts";
 
 const CHANGELOG = `# Changelog
 
@@ -38,6 +42,15 @@ const build: BuildInfo = {
 
 const now = new Date("2026-11-16T12:00:00Z");
 
+describe("isReleasePublisher", () => {
+	it("matches the fixed and per-channel release publisher ids", () => {
+		expect(isReleasePublisher("discord:release")).toBe(true);
+		expect(isReleasePublisher("discord:release:111111111111111111")).toBe(true);
+		expect(isReleasePublisher("discord:bot-status")).toBe(false);
+		expect(isReleasePublisher("discord:live:111111111111111111")).toBe(false);
+	});
+});
+
 describe("release announcement", () => {
 	let tempDir: string;
 	let changelogFile: string;
@@ -54,13 +67,26 @@ describe("release announcement", () => {
 		rmSync(tempDir, { recursive: true, force: true });
 	});
 
-	function setup(overrides: Partial<BuildInfo> = {}) {
+	function setup(
+		overrides: Partial<BuildInfo> = {},
+		announcerOverrides: {
+			announce?: (a: Announcement) => Promise<AnnounceResult>;
+			publisherIds?: string[];
+		} = {},
+	) {
 		const announced: Announcement[] = [];
-		const announce = vi.fn(async (a: Announcement) => {
-			announced.push(a);
-		});
+		const announce = vi.fn(
+			announcerOverrides.announce ??
+				(async (a: Announcement) => {
+					announced.push(a);
+					return { failed: 0 };
+				}),
+		);
 		const feature = createReleaseAnnouncementFeature({
-			announcer: { announce },
+			announcer: {
+				announce,
+				publisherIds: announcerOverrides.publisherIds ?? ["discord:release"],
+			},
 			build: { ...build, ...overrides },
 			logger: silentLogger,
 			changelogFile,
@@ -108,6 +134,31 @@ describe("release announcement", () => {
 		stop?.();
 
 		expect(announced).toEqual([]);
+	});
+
+	it("skips when no release publisher is registered", async () => {
+		const { feature, announced, announce } = setup({}, { publisherIds: ["discord:bot-status"] });
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		stop?.();
+
+		expect(announce).not.toHaveBeenCalled();
+		expect(announced).toEqual([]);
+		expect(() => readFileSync(stateFile, "utf8")).toThrow();
+	});
+
+	it("doesn't remember the version when a publisher failed", async () => {
+		const { feature, announce } = setup(
+			{},
+			{
+				announce: async () => ({ failed: 1 }),
+			},
+		);
+		const stop = feature.start?.();
+		await vi.waitFor(() => expect(announce).toHaveBeenCalledOnce(), { timeout: 1000 });
+		stop?.();
+
+		expect(() => readFileSync(stateFile, "utf8")).toThrow();
 	});
 
 	it("skips dev versions", async () => {

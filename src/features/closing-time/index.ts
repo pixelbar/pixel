@@ -16,7 +16,7 @@ export const DEFAULT_CLOSING_TIME_MESSAGE =
 export const MAX_CLOSING_TIME_MESSAGE = 4000;
 
 export type ClosingTimeDeps = {
-	announcer: { announce(announcement: Announcement): Promise<void> };
+	announcer: { announce(announcement: Announcement): Promise<{ failed: number }> };
 	/** False when no destination channel is configured (off / none / unset). */
 	enabled: boolean;
 	/** Read fresh each send so an operator can edit the file without a restart. */

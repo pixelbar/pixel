@@ -218,6 +218,7 @@ export function buildCore(
 		env: config.env,
 		commit: config.commit,
 		branch: config.branch,
+		dataDir: config.dataDir,
 		runtime: config.runtime,
 		startedAt: options.startedAt ?? new Date(),
 		access,

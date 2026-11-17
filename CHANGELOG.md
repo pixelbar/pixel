@@ -15,7 +15,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 - `/park for:` now previews what you type: `2h → until 12:30`, or what to try when it can't read it, plus the offered lengths that contain what you typed. It's the only slash option that takes a time; elsewhere times are typed on forms, which Discord can't autocomplete (#200).
 - `/park for:`, **Another length…**, staying longer and **Give it to someone…** in `/admin` → Parking also take an end time: `until 17:00`, `till 5pm` or just `17:00`, as well as `2h30` and `rest of day` (#200).
 - When Pixel can't use a time, it now names the field, says why when it can (it has passed, there's no 31 Feb, `morning` is too vague) and shows examples that work, the same way everywhere.
-- When a new Pixel version is released, the changelog for that version is posted in Discord once. The channel is set with `DISCORD_RELEASE_CHANNEL_ID`. Long changelogs are trimmed and link to the full GitHub Release notes. The last announced version is kept in `data/release-announced.yaml` so restarts and rolling deploys don't post it again (#222).
+- When a new Pixel version is released, the changelog for that version is posted in Discord once. The channel is set with `DISCORD_RELEASE_CHANNEL_ID`. Long changelogs are trimmed and link to the full GitHub Release notes. The last announced version is kept in `PIXEL_DATA_DIR/release-announced.yaml` so restarts and rolling deploys don't post it again; it is only written after a successful post, so a missing channel or a Discord error can retry on the next start (#222).
 
 ### Changed
 
