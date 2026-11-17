@@ -20,6 +20,7 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Changed
 
+- **`/food`** no longer asks you to retype an item name to remove it, clear it from out of stock, or (when it's already on the wishlist) report it out of stock: those actions use a drop-down of the relevant items. The home panel also has a **+1 an existing item…** menu so you can join a request without typing. Adding a name that only differs by separators (such as `Club Mate` vs `Club-Mate`) joins the existing entry; a close but not identical name opens a prompt to **+1** / **-1** the similar item or **Add as new**. Item names are limited to 100 characters so every entry fits in those menus.
 - Forms that take a time (`/schedule` When, Reminders and Results; `/park` and `/admin` → Parking) show the same kind of examples as their placeholders, for example `19:00 · fri 8pm · 14th oct · tomorrow noon · in 2 hours` (#200).
 - **`next fri`** now means Friday of next week (weeks start on Monday), not the coming Friday. `fri` or `this fri` is the coming one (#200).
 
