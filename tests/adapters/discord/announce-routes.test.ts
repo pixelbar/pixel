@@ -84,6 +84,18 @@ describe("DiscordAnnouncementRoutes", () => {
 				channels.set(channelId, made);
 				return { ok: true, channel: made.channel };
 			},
+			createBotStatusPublisher: (channel) => ({
+				id: "discord:bot-status",
+				publish: async () => {
+					await channel.send({ embeds: [], allowedMentions: { parse: [] } });
+				},
+			}),
+			createClosingTimePublisher: (channel) => ({
+				id: "discord:closing-time",
+				publish: async () => {
+					await channel.send({ embeds: [], allowedMentions: { parse: [] } });
+				},
+			}),
 			...options,
 		});
 		return { routes, store, registered, channels, opened, problems, reportError };

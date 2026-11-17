@@ -91,7 +91,7 @@ describe("parking activity", () => {
 		const count = vi.fn();
 		const activity = new ParkingActivity({
 			posts: { post },
-			channelId: CHANNEL,
+			channelId: () => CHANNEL,
 			reporter: { count },
 			logger: silentLogger,
 			timezone: ZONE,
@@ -111,7 +111,7 @@ describe("parking activity", () => {
 		const count = vi.fn();
 		const off = new ParkingActivity({
 			posts: { post },
-			channelId: undefined,
+			channelId: () => undefined,
 			reporter: { count },
 			logger: silentLogger,
 			timezone: ZONE,
@@ -122,7 +122,7 @@ describe("parking activity", () => {
 		expect(count).toHaveBeenCalledTimes(1);
 		const noMetrics = new ParkingActivity({
 			posts: { post },
-			channelId: CHANNEL,
+			channelId: () => CHANNEL,
 			reporter: {},
 			logger: silentLogger,
 			timezone: ZONE,
@@ -136,7 +136,7 @@ describe("parking activity", () => {
 		Object.assign(log, { child: () => log });
 		const activity = new ParkingActivity({
 			posts: { post: vi.fn(async () => Promise.reject(new Error("Missing Access"))) },
-			channelId: CHANNEL,
+			channelId: () => CHANNEL,
 			reporter: {},
 			logger: log,
 			timezone: ZONE,

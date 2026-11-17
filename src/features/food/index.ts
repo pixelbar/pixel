@@ -64,8 +64,8 @@ const ACTIONS = {
 export type FoodDeps = {
 	wishlist: FoodWishlistStore;
 	poster?: Pick<ChannelPosts, "post">;
-	/** Optional channel ID for out-of-stock alerts to admins. */
-	alertChannelId?: string;
+	/** Optional channel ID for out-of-stock alerts to admins. Read fresh each alert. */
+	alertChannelId?: () => string | undefined;
 	logger: Logger;
 	now?: () => Date;
 };
@@ -892,8 +892,9 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 					"reported an item out of stock",
 				);
 
-				if (deps.poster && deps.alertChannelId) {
-					await deps.poster.post(deps.alertChannelId, {
+				const alertChannelId = deps.alertChannelId?.();
+				if (deps.poster && alertChannelId) {
+					await deps.poster.post(alertChannelId, {
 						kind: "message",
 						text: `**${escapeMarkdown(item.name)}** has been reported out of stock by ${escapeMarkdown(by.name)}.`,
 						mentions: false,
@@ -903,7 +904,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 			const message = wasNew
 				? `✅ Reported **${escapeMarkdown(item.name)}** as out of stock.${
-						deps.alertChannelId ? " Admins have been notified." : ""
+						alertChannelId ? " Admins have been notified." : ""
 					}`
 				: `**${escapeMarkdown(item.name)}** has already been reported out of stock.`;
 

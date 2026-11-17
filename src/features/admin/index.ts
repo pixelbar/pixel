@@ -39,7 +39,14 @@ export type AdminDeps = {
 	switches: Pick<KindSwitch, "set" | "isOn">;
 	announcementRoutes: Pick<
 		AnnouncementRoutes,
-		"list" | "set" | "remove" | "listRelease" | "addRelease" | "removeRelease"
+		| "list"
+		| "set"
+		| "remove"
+		| "listRelease"
+		| "addRelease"
+		| "removeRelease"
+		| "listNotifications"
+		| "setNotification"
 	>;
 	reporter: ErrorReporter;
 	now?: () => Date;
@@ -169,6 +176,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 				remove: need(announcements, "remove"),
 				"set-release": need(announcements, "set-release"),
 				"remove-release": need(announcements, "remove-release"),
+				"set-notification": need(announcements, "set-notification"),
 				list: need(announcements, "list"),
 			},
 			closingTime: closingTime as SubcommandDefinition,

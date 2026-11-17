@@ -13,6 +13,13 @@ const manager = (): RouteManager => ({
 	listRelease: vi.fn(() => [{ channelId: "2" }]),
 	addRelease: vi.fn(async () => ({ result: "added" as const, saved: true })),
 	removeRelease: vi.fn(async () => ({ removed: true, saved: true })),
+	listNotifications: vi.fn(() => [
+		{ kind: "bot" as const, channelId: undefined },
+		{ kind: "closingTime" as const, channelId: undefined },
+		{ kind: "parking" as const, channelId: undefined },
+		{ kind: "foodAlert" as const, channelId: undefined },
+	]),
+	setNotification: vi.fn(async () => ({ result: "set" as const, saved: true })),
 });
 
 describe("AnnouncementRoutes", () => {

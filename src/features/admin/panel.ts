@@ -76,6 +76,8 @@ export const ADMIN_ACTIONS = {
 	releaseForm: "admin.release-form",
 	releaseSet: "admin.release-set",
 	releaseRemove: "admin.release-remove",
+	notificationForm: "admin.notification-form",
+	notificationSet: "admin.notification-set",
 	closingTimeForm: "admin.closing-time-form",
 	closingTimeSet: "admin.closing-time-set",
 	doorsAsk: "admin.doors-ask",
@@ -122,7 +124,7 @@ export type AdminOperations = {
 		SubcommandDefinition
 	>;
 	announcements: Record<
-		"set" | "remove" | "set-release" | "remove-release" | "list",
+		"set" | "remove" | "set-release" | "remove-release" | "set-notification" | "list",
 		SubcommandDefinition
 	>;
 	closingTime: SubcommandDefinition;
@@ -136,7 +138,7 @@ export type AdminPanelDeps = {
 	access: Pick<AccessStore, "view">;
 	capabilities: Pick<CapabilityRegistry, "all" | "has">;
 	roles: Pick<RoleMirror, "states">;
-	routes: Pick<AnnouncementRoutes, "list" | "listRelease">;
+	routes: Pick<AnnouncementRoutes, "list" | "listRelease" | "listNotifications">;
 	closingTimeFile: string;
 	switches: Parameters<typeof describeDoors>[0];
 	/** Whether OpenR is configured here. */
@@ -381,56 +383,57 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 					],
 					[[button("Sync everyone", ADMIN_ACTIONS.syncAll, {}, "primary")], [toAdmin()]],
 				);
-			case "announcements": {
-				const routes = deps.routes.list();
-				const release = deps.routes.listRelease();
-				const list = await run(ops.announcements.list, ctx, {});
-				return panel(
-					"Announcements",
-					[list.text ?? ""],
+		case "announcements": {
+			const routes = deps.routes.list();
+			const release = deps.routes.listRelease();
+			const list = await run(ops.announcements.list, ctx, {});
+			return panel(
+				"Announcements",
+				[list.text ?? ""],
+				[
 					[
-						[
-							button("Add open/closed…", ADMIN_ACTIONS.announceForm, {}, "primary"),
-							button("Add a release channel…", ADMIN_ACTIONS.releaseForm),
-						],
-						...(routes.length > 0
-							? [
-									[
-										{
-											kind: "select" as const,
-											placeholder: "Stop open/closed in…",
-											call: { action: ADMIN_ACTIONS.announceRemove },
-											arg: "channel-id",
-											options: routes.slice(0, 25).map((r) => ({
-												label: `Channel ${r.channelId}`,
-												value: r.channelId,
-												description: `${r.style}${r.problem ? ": not posting" : ""}`,
-											})),
-										},
-									],
-								]
-							: []),
-						...(release.length > 0
-							? [
-									[
-										{
-											kind: "select" as const,
-											placeholder: "Stop release notes in…",
-											call: { action: ADMIN_ACTIONS.releaseRemove },
-											arg: "channel-id",
-											options: release.slice(0, 25).map((r) => ({
-												label: `Channel ${r.channelId}`,
-												value: r.channelId,
-												description: r.problem ? "not posting" : "release",
-											})),
-										},
-									],
-								]
-							: []),
-						[toAdmin()],
+						button("Add open/closed…", ADMIN_ACTIONS.announceForm, {}, "primary"),
+						button("Add a release channel…", ADMIN_ACTIONS.releaseForm),
 					],
-				);
-			}
+					[button("Set notification channel…", ADMIN_ACTIONS.notificationForm)],
+					...(routes.length > 0
+						? [
+								[
+									{
+										kind: "select" as const,
+										placeholder: "Stop open/closed in…",
+										call: { action: ADMIN_ACTIONS.announceRemove },
+										arg: "channel-id",
+										options: routes.slice(0, 25).map((r) => ({
+											label: `Channel ${r.channelId}`,
+											value: r.channelId,
+											description: `${r.style}${r.problem ? ": not posting" : ""}`,
+										})),
+									},
+								],
+							]
+						: []),
+					...(release.length > 0
+						? [
+								[
+									{
+										kind: "select" as const,
+										placeholder: "Stop release notes in…",
+										call: { action: ADMIN_ACTIONS.releaseRemove },
+										arg: "channel-id",
+										options: release.slice(0, 25).map((r) => ({
+											label: `Channel ${r.channelId}`,
+											value: r.channelId,
+											description: r.problem ? "not posting" : "release",
+										})),
+									},
+								],
+							]
+						: []),
+					[toAdmin()],
+				],
+			);
+		}
 			case "closing-time": {
 				const saved = savedClosingTimeMessage(deps.closingTimeFile);
 				return panel(
@@ -898,6 +901,61 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 					{ ...ctx, channels: { channel } },
 					{ channel: id },
 				);
+				return { reply: above(said, await section(ctx, "announcements")) };
+			},
+		),
+
+		// Notification channels
+		action(ADMIN_ACTIONS.notificationForm, [], () => ({
+			form: {
+				title: "Set notification channel",
+				submit: { action: ADMIN_ACTIONS.notificationSet },
+				fields: [
+					{
+						kind: "radio",
+						name: "type",
+						label: "Notification type",
+						options: [
+							{
+								label: "Bot status",
+								value: "bot",
+								description: "When Pixel comes online or goes offline",
+								selected: true,
+							},
+							{
+								label: "Closing time",
+								value: "closingTime",
+								description: "Closing time reminders (also set via /closing-time)",
+							},
+							{
+								label: "Parking activity",
+								value: "parking",
+								description: "Every parking change (admin-only channel)",
+							},
+							{
+								label: "Food out-of-stock alerts",
+								value: "foodAlert",
+								description: "Food wishlist out-of-stock alerts (admin-only channel)",
+							},
+						],
+					},
+					{
+						kind: "channel",
+						name: "channel",
+						label: "Channel",
+						description: "Leave empty to turn off this notification",
+					},
+				],
+			},
+		})),
+		action(
+			ADMIN_ACTIONS.notificationSet,
+			[
+				choice("type", "Type", ["bot", "closingTime", "parking", "foodAlert"]),
+				{ name: "channel", description: "Channel", type: "channel" },
+			],
+			async (ctx) => {
+				const said = await run(ops.announcements["set-notification"], ctx, ctx.args);
 				return { reply: above(said, await section(ctx, "announcements")) };
 			},
 		),

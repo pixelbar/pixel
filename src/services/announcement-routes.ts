@@ -21,6 +21,17 @@ export const MAX_ROUTES = 25;
 
 export type StoredRoute = { style: SpaceAnnounceStyle; channelId: string };
 
+export type NotificationChannels = {
+	/** Bot online/offline status. */
+	bot?: string;
+	/** Closing time reminders. */
+	closingTime?: string;
+	/** Parking activity (admin-only). */
+	parking?: string;
+	/** Food out-of-stock alerts (admin-only). */
+	foodAlert?: string;
+};
+
 export type RouteSave = { saved: boolean };
 
 // IDs are strings: as YAML numbers they'd silently lose precision.
@@ -31,6 +42,16 @@ const fileSchema = z.strictObject({
 		.max(MAX_ROUTES),
 	// Older files have only `routes`; treat a missing list as empty.
 	releaseChannels: z.array(snowflake).max(MAX_ROUTES).optional().default([]),
+	// Notification channels (bot status, closing time, parking, food alerts). All optional.
+	notifications: z
+		.strictObject({
+			bot: snowflake.optional(),
+			closingTime: snowflake.optional(),
+			parking: snowflake.optional(),
+			foodAlert: snowflake.optional(),
+		})
+		.optional()
+		.default({}),
 });
 
 const HEADER =
@@ -41,6 +62,7 @@ export class AnnouncementRouteStore {
 	readonly #logger: Logger;
 	#routes: StoredRoute[] = [];
 	#releaseChannels: string[] = [];
+	#notifications: NotificationChannels = {};
 
 	constructor(options: { file?: string; logger: Logger }) {
 		this.#file = options.file;
@@ -54,6 +76,11 @@ export class AnnouncementRouteStore {
 
 	listRelease(): readonly string[] {
 		return this.#releaseChannels;
+	}
+
+	/** Get notification channels (bot, closing time, parking, food alerts). */
+	getNotifications(): Readonly<NotificationChannels> {
+		return { ...this.#notifications };
 	}
 
 	/** Whether another open/closed channel fits (replacing a channel's style always does). */
@@ -70,7 +97,7 @@ export class AnnouncementRouteStore {
 	set(route: StoredRoute): RouteSave {
 		const next = this.#routes.filter((r) => r.channelId !== route.channelId);
 		next.push(route);
-		return this.#write(next, this.#releaseChannels);
+		return this.#write(next, this.#releaseChannels, this.#notifications);
 	}
 
 	/** Takes an open/closed channel off the list. */
@@ -78,15 +105,16 @@ export class AnnouncementRouteStore {
 		return this.#write(
 			this.#routes.filter((r) => r.channelId !== channelId),
 			this.#releaseChannels,
+			this.#notifications,
 		);
 	}
 
 	/** Adds a release channel (no-op if it was already there). */
 	addRelease(channelId: string): RouteSave {
 		if (this.#releaseChannels.includes(channelId)) {
-			return this.#write(this.#routes, this.#releaseChannels);
+			return this.#write(this.#routes, this.#releaseChannels, this.#notifications);
 		}
-		return this.#write(this.#routes, [...this.#releaseChannels, channelId]);
+		return this.#write(this.#routes, [...this.#releaseChannels, channelId], this.#notifications);
 	}
 
 	/** Takes a release channel off the list. */
@@ -94,7 +122,19 @@ export class AnnouncementRouteStore {
 		return this.#write(
 			this.#routes,
 			this.#releaseChannels.filter((id) => id !== channelId),
+			this.#notifications,
 		);
+	}
+
+	/** Sets a notification channel. Pass undefined to clear it. */
+	setNotification(
+		kind: keyof NotificationChannels,
+		channelId: string | undefined,
+	): RouteSave {
+		const next = { ...this.#notifications, [kind]: channelId };
+		// Remove undefined values to keep the file clean
+		if (channelId === undefined) delete next[kind];
+		return this.#write(this.#routes, this.#releaseChannels, next);
 	}
 
 	#load(): void {
@@ -114,6 +154,7 @@ export class AnnouncementRouteStore {
 			}
 			this.#routes = result.data.routes;
 			this.#releaseChannels = result.data.releaseChannels;
+			this.#notifications = result.data.notifications;
 		} catch {
 			this.#unreadable("invalid");
 		}
@@ -126,16 +167,30 @@ export class AnnouncementRouteStore {
 		);
 	}
 
-	#write(next: StoredRoute[], releaseChannels: string[]): RouteSave {
+	#write(
+		next: StoredRoute[],
+		releaseChannels: string[],
+		notifications: NotificationChannels,
+	): RouteSave {
 		// Held in memory either way, so a failed save still works until a restart.
 		this.#routes = next;
 		this.#releaseChannels = releaseChannels;
+		this.#notifications = notifications;
 		if (!this.#file) return { saved: true };
 		try {
 			mkdirSync(dirname(this.#file), { recursive: true });
 			// Write to a temp file and rename, so a crash can't leave a half-written file.
 			const temp = `${this.#file}.tmp`;
-			writeFileSync(temp, HEADER + stringify({ routes: next, releaseChannels }));
+			// Remove empty notifications object to keep the file clean
+			const data: {
+				routes: StoredRoute[];
+				releaseChannels: string[];
+				notifications?: NotificationChannels;
+			} = { routes: next, releaseChannels };
+			if (Object.keys(notifications).length > 0) {
+				data.notifications = notifications;
+			}
+			writeFileSync(temp, HEADER + stringify(data));
 			renameSync(temp, this.#file);
 			return { saved: true };
 		} catch (error) {

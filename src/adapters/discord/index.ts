@@ -16,24 +16,16 @@ import type { DirectMessages } from "../../core/direct-messages.ts";
 import type { Dispatcher } from "../../core/dispatcher.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { RoleMirror } from "../../core/role-mirror.ts";
-import {
-	LIVE_PERMISSIONS,
-	openAnnouncementChannel,
-	TIMELINE_PERMISSIONS,
-} from "./announce-channel.ts";
-import {
-	AnnouncementRecheck,
-	type ConfiguredChannel,
-	ConfiguredChannels,
-} from "./announce-recheck.ts";
+import { openAnnouncementChannel } from "./announce-channel.ts";
+import { AnnouncementRecheck } from "./announce-recheck.ts";
 import { DiscordAnnouncementRoutes, type DiscordRoutesOptions } from "./announce-routes.ts";
 import { FileLivePostStore } from "./announce-state.ts";
 import type { DiscordOption } from "./args.ts";
 import { ATTEND_PREFIX, createAttendanceHandler } from "./attendance-buttons.ts";
-import { BOT_STATUS_PUBLISHER_ID, createBotStatusPublisher } from "./bot-status.ts";
+import { createBotStatusPublisher } from "./bot-status.ts";
 import { createDiscordCalendarSource } from "./calendar-source.ts";
 import { createDiscordPoster } from "./channel-poster.ts";
-import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
+import { createClosingTimePublisher } from "./closing-time.ts";
 import { CONTROL_PREFIX, HeldControls, submittedFields, UI_FORM_PREFIX } from "./controls.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
 import { createDoorbellHandler, DOORBELL_PREFIX } from "./doorbell-buttons.ts";
@@ -59,16 +51,6 @@ export type DiscordAdapterDeps = {
 	guildId: string;
 	dispatcher: Dispatcher;
 	logger: Logger;
-	/**
-	 * Discord channels for the other announcements. Each is optional; unset means off.
-	 * Open/closed announcements aren't here: admins set those with `/admin` → Announcements.
-	 */
-	announce: {
-		/** Where Pixel says it's online or offline. */
-		botChannelId: string | undefined;
-		/** Closing-time reminder. Undefined means off. */
-		closingTimeChannelId: string | undefined;
-	};
 	/** Where the bot status remembers this run's post (`bot-status.state`). */
 	botStatusStateFile: string;
 	/** Where each admin-set live or single channel remembers its current post. */
@@ -169,33 +151,10 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 
 	/** Opens the configured announcement channels and registers a publisher for each usable one. */
 	async function registerPublishers(ready: Client<true>): Promise<void> {
-		const wanted: (Omit<ConfiguredChannel, "channelId"> & { channelId: string | undefined })[] = [
-			{
-				id: BOT_STATUS_PUBLISHER_ID,
-				channelId: deps.announce.botChannelId,
-				// Reading history lets it find the post to update when Pixel goes offline.
-				required: LIVE_PERMISSIONS,
-				create: (channel, channelId) =>
-					createBotStatusPublisher(
-						channel,
-						logger,
-						new FileLivePostStore(
-							deps.botStatusStateFile,
-							channelId,
-							"# Pixel's record of its online status post. Safe to delete or edit.\n",
-						),
-					),
-			},
-			{
-				id: CLOSING_TIME_PUBLISHER_ID,
-				channelId: deps.announce.closingTimeChannelId,
-				required: TIMELINE_PERMISSIONS,
-				create: (channel) => createClosingTimePublisher(channel),
-			},
-		];
+		// Notification channels (bot status, closing time) are now configured via /admin → Announcements
+		// and registered through the routes manager below.
 
-		// Open/closed announcements: the channels admins set with /admin → Announcements. Plugged in
-		// first, so `/admin` → Announcements works even if a channel below can't be opened.
+		// Open/closed announcements and notification channels: all set with /admin → Announcements.
 		const routes = new DiscordAnnouncementRoutes({
 			store: deps.announcementRouteStore,
 			announcer: deps.announcer,
@@ -204,24 +163,24 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 			postsDir: deps.announcementPostsDir,
 			openChannel: (channelId, required) =>
 				openAnnouncementChannel(ready, { channelId, guildId, required }),
+			// Factories for notification channel publishers
+			createBotStatusPublisher: (channel, channelId) =>
+				createBotStatusPublisher(
+					channel,
+					logger,
+					new FileLivePostStore(
+						deps.botStatusStateFile,
+						channelId,
+						"# Pixel's record of its online status post. Safe to delete or edit.\n",
+					),
+				),
+			createClosingTimePublisher: (channel) => createClosingTimePublisher(channel),
 		});
 		deps.announcementRoutes.use(routes);
 		await routes.start();
-
-		const configured = new ConfiguredChannels({
-			channels: wanted.flatMap(({ channelId, ...rest }) =>
-				channelId ? [{ ...rest, channelId }] : [],
-			),
-			openChannel: (channelId, required) =>
-				openAnnouncementChannel(ready, { channelId, guildId, required }),
-			announcer: deps.announcer,
-			logger,
-			reportError,
-		});
-		await configured.start();
 		// A channel that couldn't be opened is tried again, so fixing its permissions needs no restart.
 		recheck = new AnnouncementRecheck({
-			targets: [configured, routes],
+			targets: [routes],
 			settleMs: RECHECK_SETTLE_MS,
 			everyMs: RECHECK_EVERY_MS,
 			logger,
