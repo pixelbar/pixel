@@ -232,8 +232,9 @@ describe("/admin → Announcements", () => {
 		it("says how to start when nothing is set", async () => {
 			const { sub } = setup();
 			const reply = await sub("list").handler(context({ principal: admin() }));
-			expect(reply.text).toContain("`/admin` → Announcements");
-			expect(reply.text).toContain("No channels get open/closed or release announcements");
+			expect(reply.text).toContain("**Open/closed announcements:** not set");
+			expect(reply.text).toContain("**Release notes:** not set");
+			expect(reply.text).toContain("**Notification channels:**");
 		});
 
 		it("lists every channel with its style, marks problems, and explains the styles", async () => {
