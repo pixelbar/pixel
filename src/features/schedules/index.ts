@@ -29,6 +29,7 @@ import {
 	weekdayOf,
 } from "../../core/recurrence.ts";
 import type { Embed, Reply } from "../../core/reply.ts";
+import { timeOfDayRefusal, whenRefusal } from "../../core/time-help.ts";
 import type {
 	ActionContext,
 	ActionDefinition,
@@ -43,7 +44,8 @@ import {
 	formatTimeOfDay,
 	parseDays,
 	parseTimeOfDay,
-	parseWhen,
+	readWhen,
+	type WhenProblem,
 } from "../../core/when.ts";
 import { AttendanceStore } from "../../services/attendance.ts";
 import {
@@ -126,8 +128,8 @@ export const ACTIONS = {
 } as const;
 
 export const SCHEDULE_MESSAGES = {
-	badTime: (zone: string) =>
-		`I couldn't understand that time, or it's in the past. Type a time in ${zone}, for example \`wed 1900\`, \`14 oct 19:00\` or \`tomorrow 9am\`.`,
+	badTime: (problem: WhenProblem, zone: string) =>
+		whenRefusal(problem, { field: "When", zone, hint: "Change it in Edit details." }),
 	nothingLeft:
 		"That would leave it with nothing to post: a one-off needs a time that's still to come. Change **When** in Edit details.",
 	noChannel: "Pick a channel in Edit details.",
@@ -144,12 +146,16 @@ export const SCHEDULE_MESSAGES = {
 	notYours: "Only the person who made a schedule can change it.",
 	cantResume: "Its time has passed while it was paused, so it can't be resumed. Delete it instead.",
 	badReminderTime: (zone: string) =>
-		`I couldn't understand the reminder time. Type a time of day in ${zone}, for example \`18:00\` or \`6pm\`, in Reminders.`,
+		timeOfDayRefusal({ field: "Remind every day at", zone, hint: "Change it in Reminders." }),
 	noReminderChannel: "Pick a channel to remind people in, in Reminders.",
 	cantRemind:
 		"You can only send reminders to channels where you can post yourself. Pick another one in Reminders.",
 	badResultsTime: (zone: string) =>
-		`I couldn't understand the time for the totals so far. Type a time of day in ${zone}, for example \`17:00\` or \`5pm\`, in Results, or leave it empty.`,
+		timeOfDayRefusal({
+			field: "Totals so far at",
+			zone,
+			hint: "Change it in Results, or leave it empty.",
+		}),
 	cantPostResults:
 		"You can only post results in channels where you can post yourself. Pick another one in Results.",
 } as const;
@@ -235,10 +241,14 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		schedule: Schedule | undefined,
 	): { start: LocalDateTime; recurrence: Recurrence; retimed: boolean } {
 		const whenChanged = !schedule || draft.when.trim() !== (draft.whenAsShown ?? "").trim();
-		const start = whenChanged
-			? parseWhen(draft.when, now(), zone)
-			: (parseLocal(schedule.start) as LocalDateTime);
-		if (!start) throw new UserFacingError(SCHEDULE_MESSAGES.badTime(zone));
+		let start: LocalDateTime;
+		if (whenChanged) {
+			const read = readWhen(draft.when, now(), zone);
+			if (!read.ok) throw new UserFacingError(SCHEDULE_MESSAGES.badTime(read.problem, zone));
+			start = read.at;
+		} else {
+			start = parseLocal(schedule.start) as LocalDateTime;
+		}
 		const recurrence = recurrenceFor(draft.repeat, start, draft.days);
 		if (!schedule) return { start, recurrence, retimed: true };
 		const retimed =

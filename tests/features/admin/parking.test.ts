@@ -221,7 +221,7 @@ describe("/admin → Parking", () => {
 			]);
 			// From tomorrow, "now+2h" is still two hours from now: before it opens.
 			await fails("open", { spots: "neighbour-2", from: "tomorrow 8", until: "now+2h" }).toThrow(
-				/couldn't understand \*\*Until\*\*, or it's in the past/,
+				/\*\*Until\*\*: that's Sat 24 Oct 2026, 12:00, which isn't after it starts/,
 			);
 		});
 
@@ -236,10 +236,10 @@ describe("/admin → Parking", () => {
 		it("refuses a time it can't understand, or that's gone", async () => {
 			const { fails } = withSpots();
 			await fails("open", { spots: "neighbour-1", until: "later" }).toThrow(
-				/couldn't understand \*\*Until\*\*/,
+				/\*\*Until\*\*: `later` is too vague/,
 			);
 			await fails("open", { spots: "neighbour-1", from: "2026-10-23T08:00" }).toThrow(
-				/couldn't understand \*\*From\*\*/,
+				/\*\*From\*\*: that's Fri 23 Oct 2026, 08:00, which has already passed/,
 			);
 		});
 
@@ -446,7 +446,7 @@ describe("/admin → Parking", () => {
 			const { fails } = setup();
 			await fails("settings", { remind: 121 }).toThrow(/from 0 to 120/);
 			await fails("settings", { grace: 1.5 }).toThrow(/from 0 to 60/);
-			await fails("settings", { reset: "midnight" }).toThrow(/like `23:59`/);
+			await fails("settings", { reset: "teatime" }).toThrow(/\*\*Reset\*\*: .*`noon`/);
 			await fails("settings", { durations: "1h, soon" }).toThrow(/couldn't understand/);
 			await fails("settings", { durations: " , " }).toThrow(/couldn't understand/);
 			const many = Array.from({ length: 26 }, (_, i) => `${i + 1}m`).join(", ");
