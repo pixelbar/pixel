@@ -92,7 +92,7 @@ const deps = () => ({
 	openrDoors: [],
 	openrGateDoor: undefined,
 	directMessages: new DirectMessages(),
-	parkingChannelId: undefined,
+	parkingChannelId: () => undefined,
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
@@ -106,7 +106,7 @@ const deps = () => ({
 		message: () => "The space is closing.",
 	},
 	foodWishlist: new FoodWishlistStore({ logger: silentLogger }),
-	foodAlertChannelId: undefined,
+	foodAlertChannelId: () => undefined,
 });
 
 function onlyCommand(feature: Feature) {
