@@ -724,6 +724,57 @@ describe("OpenR settings", () => {
 	});
 });
 
+describe("pixel-phone settings", () => {
+	const QUEUE = "https://pixelphonedevst.queue.core.windows.net/phone-events";
+	const CLIENT = "00000000-0000-4000-8000-000000000001";
+
+	const errorOf = (env: Record<string, string>): string => {
+		try {
+			loadConfig({ ...VALID, ...env });
+		} catch (error) {
+			expect(error).toBeInstanceOf(ConfigError);
+			return (error as Error).message;
+		}
+		throw new Error("expected a ConfigError");
+	};
+
+	it("is off when the queue isn't set", () => {
+		expect(loadConfig(VALID).pixelPhone).toBeUndefined();
+		expect(loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: "" }).pixelPhone).toBeUndefined();
+	});
+
+	it("reads the queue, with the managed identity when there is one", () => {
+		expect(loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: QUEUE }).pixelPhone).toEqual({
+			queueUrl: QUEUE,
+			clientId: undefined,
+		});
+		expect(
+			loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: QUEUE, AZURE_CLIENT_ID: CLIENT }).pixelPhone,
+		).toEqual({ queueUrl: QUEUE, clientId: CLIENT });
+	});
+
+	it.each([
+		["plain http", "http://pixelphonedevst.queue.core.windows.net/phone-events"],
+		["another host", "https://example.com/phone-events"],
+		["a blob address", "https://pixelphonedevst.blob.core.windows.net/phone-events"],
+		["no queue", "https://pixelphonedevst.queue.core.windows.net/"],
+		["a path below the queue", `${QUEUE}/messages`],
+		["a SAS", `${QUEUE}?sv=2024-01-01&sig=abc`],
+		["a fragment", `${QUEUE}#x`],
+		["capitals in the queue", "https://pixelphonedevst.queue.core.windows.net/Phone-Events"],
+	])("refuses %s as the queue, without echoing it", (_label, url) => {
+		const message = errorOf({ PIXEL_PHONE_QUEUE_URL: url });
+		expect(message).toMatch(/PIXEL_PHONE_QUEUE_URL/);
+		expect(message).not.toContain(url);
+	});
+
+	it("refuses a client ID that isn't one", () => {
+		expect(errorOf({ PIXEL_PHONE_QUEUE_URL: QUEUE, AZURE_CLIENT_ID: "pixel-dev" })).toMatch(
+			/AZURE_CLIENT_ID: must be a client ID/,
+		);
+	});
+});
+
 describe("loadOpenrAccount", () => {
 	const EMAIL = "pixel@example.invalid";
 	const PASSWORD = "not-a-real-password";

@@ -270,6 +270,17 @@ The building's doors, and the parking gate, are run by [OpenR](https://openr.nl)
 - **Finding the IDs:** `just openr-doors dev|prod` (`scripts/openr-doors.ts`) logs in with that env's account, lists `GET /buildings`, each building's `GET /buildings/<id>/doors` and the account's own `GET /me/doors` (keeping only IDs, names and buildings, and cleaning names before printing), suggests the settings and logs out. A list the account may not see (401, 403, 404) is noted and the rest carries on. Pixel itself never lists anything.
 - **Tests** mock `fetch` at the client boundary and stand in for the client in the connection's tests, never a live OpenR.
 
+## pixel-phone (the doorbell)
+
+[pixel-phone](https://github.com/pixelbar/pixel-phone) answers the Pixelbar doorbell. OpenR's intercom calls a phone number; pixel-phone rings the siren in the space and picks up only once someone accepts, with the button in the space or from Discord. Pixel has no ingress ([ADR 0004](adr/0004-azure-container-apps.md)), so pixel-phone can't call it: it writes each call's events to a Storage queue it owns (`phone-events`), and Pixel reads them.
+
+- **Contract:** version 1 of pixel-phone's [`docs/events.md`](https://github.com/pixelbar/pixel-phone/blob/main/docs/events.md): `ringing` (with `acceptBy`), `accepted` (`via`, optional `by`), `missed`, `busy` and `ended`, each with a `callId` and `occurredAt`. One JSON object per message. Messages aren't ordered and expire after 5 minutes. `adapters/pixel-phone/events.ts` checks each against the contract (zod), ignores fields it doesn't know, and drops the caller's and the called number.
+- **Reading:** `adapters/pixel-phone/reader.ts` polls about once a second, up to 32 messages at a time, hiding each for 30 seconds while it's handled. Each valid event goes to the core's `DoorbellEvents` (`core/doorbell.ts`), which features subscribe to, and its message is deleted once every listener has finished (a listener that throws is reported, not retried). Malformed messages, versions Pixel doesn't know, and messages received more than 5 times are deleted with a warning (`pixel_phone.message_dropped`), never handed on. Every call to the queue has a 5-second limit and no retries.
+- **Outages:** a queue that can't be read is logged on every poll (`pixel_phone.queue_failed`) but reported to Sentry once per outage; polling backs off to once a minute and returns to once a second when it answers again (`pixel_phone.queue_recovered`). It isn't part of `/healthz`, and never stops or restarts Pixel.
+- **Signing in:** on Azure, as Pixel's user-assigned managed identity (`AZURE_CLIENT_ID`, set by Terraform with the queue). pixel-phone's Terraform gives that identity **Storage Queue Data Message Processor** on that one queue (`pixel_principal_id` there). On a laptop, as the Azure CLI's login. `@azure/storage-queue` and `@azure/identity` are imported only in `adapters/pixel-phone/`.
+- **Config:** `PIXEL_PHONE_QUEUE_URL`. Unset means nothing polls and the rest of Pixel is as before. Dev reads pixel-phone's dev queue and prod its prod one, never crossed.
+- **Logs:** `pixel_phone.event` (type, call ID, and how long after it happened Pixel got it). Never the phone numbers or a message's contents.
+
 ## Services and ports
 
 | Service / port   | Purpose                              | Implementation                                                    |
@@ -505,6 +516,8 @@ Environment variables are validated by `config.ts` (zod). Nothing else reads `pr
 | `OPENR_DOORS`                 |        | Optional, with the building. The doors `/openr open` offers, as `Name=ID` pairs separated by commas (`Entrance=103, Living room=203`), at most 25, no name or ID twice, never the gate. Set this, `OPENR_GATE_DOOR` or both |
 | `OPENR_GATE_DOOR`             |        | Optional, with the building. The OpenR ID of the parking gate, which only `/park` opens |
 | `OPENR_URL`                   |        | Default `https://dashboard.openr.nl/api/v4`; https only |
+| `PIXEL_PHONE_QUEUE_URL`       |        | Optional. pixel-phone's `phone-events` queue in the same environment (`https://<account>.queue.core.windows.net/phone-events`, no SAS), which Pixel reads doorbell calls from. Unset means off |
+| `AZURE_CLIENT_ID`             |        | Optional. The client ID of Pixel's managed identity, which reads that queue. Terraform sets it with the queue. Unset (a laptop) uses the Azure CLI's login |
 | `PIXEL_HOME_ASSISTANT_DIR`    |        | Default `config/home-assistant`. Holds `devices.yaml`, the allow-list of devices. Required when Home Assistant is set up |
 | `SENTRY_DSN`                  | yes    | Optional. Operator-only (not in `config.ts`): `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` for `just sentry-release` / CD |
 | `SENTRY_TRACES_SAMPLE_RATE`   |        | Default `1`. How many traces Sentry keeps (`0`–`1`). Needs `SENTRY_DSN`. Errors are always kept. |

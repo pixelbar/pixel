@@ -48,6 +48,10 @@ discord_guild_id = "100000000000000002"
 # openr_doors       = "Entrance=2, Living room=3"
 # openr_gate_door   = "4"
 
+# The doorbell: pixel-phone's dev queue, which Pixel reads call events from.
+# pixel-phone's dev stack must list Pixel's identity (pixel_principal_id there).
+# pixel_phone_queue_url = "https://pixelphonedevst.queue.core.windows.net/phone-events"
+
 # Lets the Deploy dev workflow read discord-token (only) and register slash
 # commands (ADR 0018). az identity show -g pixel-bootstrap -n pixel-github-dev --query principalId -o tsv
 # github_register_principal_id = "00000000-0000-0000-0000-000000000000"

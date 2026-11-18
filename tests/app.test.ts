@@ -59,6 +59,7 @@ describe("buildCore", () => {
 			wikiApiUrl: "https://wiki.example/w/api.php",
 			spaceStateApi: undefined,
 			openr: undefined,
+			pixelPhone: undefined,
 			discord: {
 				token: "x",
 				appId: "100000000000000010",

@@ -101,6 +101,7 @@ flowchart LR
     SPACE["SpaceAPI spaceapi.pixelbar.nl"]
     SENTRY["Sentry org/project"]
     OPENR["OpenR dashboard.openr.nl<br/>doors + parking gate"]
+    PHONE["pixel-phone's phone-events queue<br/>its own storage account, same env"]
     TS["Pixelbar tailnet<br/>sidecar stub off"]
   end
 
@@ -109,6 +110,7 @@ flowchart LR
   APP --> SPACE
   APP --> SENTRY
   APP -->|HTTPS, when configured| OPENR
+  APP -->|reads + deletes as UAMI, when configured| PHONE
   TS -.->|not wired| APP
 ```
 
@@ -177,7 +179,7 @@ How to seed the share and vault: [dev README](../infra/envs/dev/README.md).
 
 Hard constraints in the module (not variables): `min_replicas = 1`, `max_replicas = 1`. `just deploy dev` and the Deploy dev workflow re-assert that, and `just deploy prod` refuses (prod ships from the Release workflow). The Release prod job re-asserts the same on `pixel-prod`.
 
-Ingress is off. Discord, SpaceAPI, OpenR (when configured), Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
+Ingress is off. Discord, SpaceAPI, OpenR (when configured), pixel-phone's queue (when configured), Sentry, GHCR, Key Vault, and today’s Nabu Casa path all use ordinary Azure egress. Nothing in Discord connects *to* Azure.
 
 ## What is not in Azure
 
@@ -190,6 +192,7 @@ Ingress is off. Discord, SpaceAPI, OpenR (when configured), Sentry, GHCR, Key Va
 | Discord | Discord. Tiers are YAML + immutable user IDs |
 | Home Assistant | Space / Nabu Casa until the Tailscale sidecar exists |
 | Sentry org | Sentry SaaS; the app only needs the DSN |
+| The doorbell's queue | pixel-phone's own storage account and Terraform. Pixel only reads it, as its managed identity, which pixel-phone grants (`pixel_principal_id` there) |
 | Postgres | Deliberately absent ([architecture](architecture.md#deployment)) |
 | Prod bot | `pixel-prod` + `pixel-prod-kv` (own Discord application; never the Pixel Dev token) |
 

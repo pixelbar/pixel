@@ -218,6 +218,17 @@ variable "openr_gate_door" {
   }
 }
 
+variable "pixel_phone_queue_url" {
+  type        = string
+  default     = null
+  description = "Optional. PIXEL_PHONE_QUEUE_URL: pixel-phone's phone-events queue in the same environment, which Pixel reads doorbell calls from with its managed identity. Not a secret. pixel-phone's Terraform grants the identity (pixel_principal_id there); set it to that env's queue, never the other env's."
+
+  validation {
+    condition     = var.pixel_phone_queue_url == null || can(regex("^https://[a-z0-9]{3,24}\\.queue\\.core\\.windows\\.net/[a-z0-9-]{3,63}$", var.pixel_phone_queue_url))
+    error_message = "pixel_phone_queue_url must be https://<account>.queue.core.windows.net/<queue> or unset."
+  }
+}
+
 variable "sentry_enabled" {
   type        = bool
   default     = false

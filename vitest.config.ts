@@ -41,6 +41,13 @@ export default defineConfig({
 					functions: 98,
 					branches: 90,
 				},
+				// Decides what reaches the doorbell feature: every path is tested.
+				"src/adapters/pixel-phone/**": {
+					lines: 98,
+					statements: 98,
+					functions: 98,
+					branches: 90,
+				},
 				"src/observability/{scrub,sentry-reporter,health}.ts": {
 					lines: 98,
 					statements: 98,

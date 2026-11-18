@@ -57,6 +57,25 @@ const openrId = z
 	.regex(/^\d{1,10}$/, { error: "must be an OpenR ID (digits)" });
 
 /**
+ * An Azure Storage queue's address: `https://<account>.queue.core.windows.net/<queue>`, with
+ * no query string (a SAS would be a secret; Pixel signs in with its managed identity instead).
+ */
+const queueUrl = z.url({ protocol: /^https$/ }).refine(
+	(raw) => {
+		const url = new URL(raw);
+		return (
+			/^[a-z0-9]{3,24}\.queue\.core\.windows\.net$/.test(url.hostname) &&
+			/^\/[a-z0-9](?:[a-z0-9]|-(?!-)){1,61}[a-z0-9]$/.test(url.pathname) &&
+			url.search === "" &&
+			url.hash === "" &&
+			url.username === "" &&
+			url.password === ""
+		);
+	},
+	{ error: "must be a queue's address, like https://<account>.queue.core.windows.net/<queue>" },
+);
+
+/**
  * The doors `/openr open` offers, as `Name=ID` pairs separated by commas, like
  * `Entrance=103, Living room=203`. Names are what people pick in Discord; IDs are
  * OpenR's. Neither may repeat. Errors never echo the value.
@@ -182,6 +201,13 @@ const envSchema = z
 		OPENR_PASSWORD: optional(z.string().min(1)),
 		OPENR_DOORS: optional(openrDoors),
 		OPENR_GATE_DOOR: optional(openrId),
+
+		// pixel-phone, the doorbell. Unset means Pixel doesn't read its call events. The queue is
+		// pixel-phone's `phone-events` in the same environment: never dev's from prod or back.
+		PIXEL_PHONE_QUEUE_URL: optional(queueUrl),
+		// The client ID of Pixel's user-assigned managed identity, which reads the queue. Unset on a
+		// laptop, where the Azure CLI's login is used instead.
+		AZURE_CLIENT_ID: optional(z.uuid({ error: "must be a client ID (a UUID)" })),
 		// Unset → space.status. off / none / empty list turns toots off even with credentials.
 		MASTODON_ANNOUNCE_KINDS: z.preprocess((v) => {
 			if (typeof v !== "string") return v;
@@ -358,6 +384,12 @@ export type Config = {
 		  }
 		| undefined;
 	/**
+	 * pixel-phone's call events: the Storage queue Pixel reads them from, and the managed
+	 * identity it reads with (undefined on a laptop: the Azure CLI's login). Undefined means
+	 * Pixel doesn't read them.
+	 */
+	pixelPhone: { queueUrl: string; clientId: string | undefined } | undefined;
+	/**
 	 * Operator-authored closing-time body. Default `{dataDir}/closing-time.md`.
 	 * Missing or empty file → the built-in default. Not a secret.
 	 */
@@ -450,6 +482,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 						doors: e.OPENR_DOORS ?? [],
 						gateDoor: e.OPENR_GATE_DOOR,
 					}
+				: undefined,
+		pixelPhone:
+			e.PIXEL_PHONE_QUEUE_URL !== undefined
+				? { queueUrl: e.PIXEL_PHONE_QUEUE_URL, clientId: e.AZURE_CLIENT_ID }
 				: undefined,
 		closingTimeFile: e.PIXEL_CLOSING_TIME_FILE ?? `${e.PIXEL_DATA_DIR}/closing-time.md`,
 	};

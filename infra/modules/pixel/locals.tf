@@ -79,6 +79,11 @@ locals {
     var.openr_building_id != null ? { OPENR_BUILDING_ID = var.openr_building_id } : {},
     var.openr_doors != null ? { OPENR_DOORS = var.openr_doors } : {},
     var.openr_gate_door != null ? { OPENR_GATE_DOOR = var.openr_gate_door } : {},
+    # The identity's client ID lets Pixel sign in as it to read pixel-phone's queue.
+    var.pixel_phone_queue_url != null ? {
+      PIXEL_PHONE_QUEUE_URL = var.pixel_phone_queue_url
+      AZURE_CLIENT_ID       = azurerm_user_assigned_identity.app.client_id
+    } : {},
   )
 
   # Environment variable => Key Vault secret name, for what the Pixel container reads from its

@@ -4,6 +4,7 @@ import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
 import { createOpenr } from "./adapters/openr/index.ts";
+import { createPixelPhoneReader } from "./adapters/pixel-phone/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { type Stop, startFeatures } from "./core/feature.ts";
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
 		roles,
 		capabilityNotify,
 		directMessages,
+		doorbell,
 		home,
 		homeDevices,
 		features,
@@ -79,6 +81,14 @@ async function main(): Promise<void> {
 	// so the announcement publishers exist before the first change is announced.
 	let stopFeatures: Stop = () => {};
 	let stopRoleSync: Stop = () => {};
+	let stopDoorbell: Stop = () => {};
+	// pixel-phone's call events. Read once the features that post them have started.
+	const pixelPhone = createPixelPhoneReader({
+		config: config.pixelPhone,
+		events: doorbell,
+		logger,
+		reporter,
+	});
 	// Reads the mapped roles back into members.yaml. Only with DISCORD_ROLE_SYNC=on.
 	const roleSync = config.discord.roleSync
 		? new RoleSync({ access, roles, logger, reporter, everyMs: ROLE_SYNC_EVERY_MS })
@@ -105,6 +115,7 @@ async function main(): Promise<void> {
 		reportError: (error, actor) => reporter.captureBackground(error, "discord", actor),
 		onReady: () => {
 			stopFeatures = startFeatures(features);
+			if (pixelPhone) stopDoorbell = pixelPhone.start();
 			if (roleSync) stopRoleSync = roleSync.start();
 			heartbeat?.beat();
 			// Say Pixel is online once Home Assistant has had a moment to connect, so the
@@ -173,6 +184,7 @@ async function main(): Promise<void> {
 		logger.info({ event: "shutdown", signal }, "shutting down");
 		// Say goodbye while still connected, but never let it hold up the shutdown.
 		await Promise.race([botStatus.down("restarting or shutting down"), delay(5000)]);
+		stopDoorbell();
 		stopFeatures();
 		stopRoleSync();
 		heartbeat?.stop();

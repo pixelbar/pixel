@@ -11,6 +11,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ### Added
 
+- Pixel can read the doorbell's calls from pixel-phone (pixel-phone#19, #211). With `PIXEL_PHONE_QUEUE_URL` set (Terraform: `pixel_phone_queue_url`, which also sets `AZURE_CLIENT_ID`), Pixel polls pixel-phone's `phone-events` Storage queue about once a second with its managed identity and hands each call event to the core; posting them in Discord comes next. Malformed messages are dropped with a warning, and a queue outage is logged and reported to Sentry once without affecting the rest of Pixel. Unset means nothing changes. Adds the `@azure/storage-queue` and `@azure/identity` dependencies.
+
 - Times are easier to type wherever Pixel asks for one (`/schedule`, `/admin` → Parking) (#200). New: `in 30 minutes` / `in 2 hours` / `in 3 days`; ordinals such as `14th oct`, `oct 1st` and `the 3rd`; `noon` and `midnight` (the end of that day); `tonight`, `this evening`, `fri evening` (19:00), and `tonight 8` (20:00). A time of day, such as a poll's reminder or the parking reset, also takes `noon` and `midnight`. Words for a stretch of time (`morning`, `next week`) are still refused, not guessed.
 - `/park for:` now previews what you type: `2h → until 12:30`, or what to try when it can't read it, plus the offered lengths that contain what you typed. It's the only slash option that takes a time; elsewhere times are typed on forms, which Discord can't autocomplete (#200).
 - `/park for:`, **Another length…**, staying longer and **Give it to someone…** in `/admin` → Parking also take an end time: `until 17:00`, `till 5pm` or just `17:00`, as well as `2h30` and `rest of day` (#200).

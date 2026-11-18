@@ -21,6 +21,7 @@ Before you change anything on **prod**, read "Rules of thumb" below.
 - [Moderation](#moderation)
 - [Home Assistant](#home-assistant) (setup and threat model: [`home-assistant.md`](home-assistant.md))
 - [OpenR doors and the gate](#openr-doors-and-the-gate)
+- [The doorbell (pixel-phone)](#the-doorbell-pixel-phone)
 - [Terraform bootstrap](#terraform-bootstrap)
 - [Azure Container App (`dev`)](#azure-container-app-dev)
 - [Closing-time](#closing-time)
@@ -377,6 +378,25 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 3. **If that Discord account looks taken over:** ban or time it out, `/admin` → People → **Change level…** to guest, and revoke `openr` and `parking`.
 4. **If the OpenR account or the session file may have leaked:** change the account's password in OpenR, then put the new one in `OPENR_PASSWORD` ([Secrets](#secrets)), restart and log in again.
 5. Tell the board what you stopped and which ID you found.
+
+## The doorbell (pixel-phone)
+
+[pixel-phone](https://github.com/pixelbar/pixel-phone) answers the Pixelbar doorbell and writes each call's events to a Storage queue. Pixel reads them about once a second. How it works: [`architecture.md`](architecture.md), "pixel-phone". pixel-phone's own runbook covers its side.
+
+**Turn it on** (dev first; prod the same way with prod's names, never dev's queue):
+
+1. Give pixel-phone Pixel's identity. `az identity show -g pixel-dev -n pixel-dev-app --query principalId -o tsv` prints its principal ID; it goes in `pixel_principal_id` in pixel-phone's `infra/envs/dev/terraform.example.tfvars`, and pixel-phone applies it. That gives Pixel **Storage Queue Data Message Processor** on pixel-phone's queue, and nothing else.
+2. Set `pixel_phone_queue_url` in Pixel's dev `terraform.tfvars` to pixel-phone's dev queue (`https://pixelphonedevst.queue.core.windows.net/phone-events`) and apply. Terraform also sets `AZURE_CLIENT_ID`, so Pixel signs in as its identity. Locally, set `PIXEL_PHONE_QUEUE_URL` in `.env`, `az login`, and make sure your own account has the same role on that queue.
+3. Check: the logs say `pixel_phone.reading` at startup. Ring the doorbell (or run pixel-phone's call simulator), and `pixel_phone.event` should follow within about two seconds, with its `lagMs`.
+
+| I see… | It means |
+| --- | --- |
+| `pixel_phone.unconfigured` at startup | `PIXEL_PHONE_QUEUE_URL` isn't set. Nothing is read |
+| `pixel_phone.queue_failed` repeating, and one Sentry error from `pixel-phone` | Pixel can't read the queue. A `403` / `AuthorizationPermissionMismatch` means the role is missing (step 1) or `AZURE_CLIENT_ID` is wrong; a timeout means Azure Storage isn't answering. Pixel polls less often (down to once a minute) and carries on; `pixel_phone.queue_recovered` says when it's back |
+| `pixel_phone.message_dropped` | A message wasn't pixel-phone's contract v1 (`why`: `json`, `version` or `invalid`), or kept coming back. It's deleted. A run of `version` means pixel-phone moved to a newer contract and Pixel needs updating |
+
+- **Turning it off:** unset `pixel_phone_queue_url` and apply (locally, `PIXEL_PHONE_QUEUE_URL`). Calls still ring the siren in the space; they just don't reach Pixel. Messages expire on the queue after 5 minutes.
+- Phone numbers and message contents are never logged.
 
 ## Space state
 
