@@ -4,6 +4,7 @@ import { createDiscordAdapter } from "./adapters/discord/index.ts";
 import { HomeAssistantBackend } from "./adapters/home-assistant/backend.ts";
 import { startMastodonPublisher } from "./adapters/mastodon/index.ts";
 import { createOpenr } from "./adapters/openr/index.ts";
+import { createAcceptClient } from "./adapters/pixel-phone/accept.ts";
 import { createPixelPhoneReader } from "./adapters/pixel-phone/index.ts";
 import { buildCore } from "./app.ts";
 import { loadConfig } from "./config.ts";
@@ -59,6 +60,14 @@ async function main(): Promise<void> {
 	} = buildCore(config, logger, reporter, {
 		feedback: createSentryFeedback(),
 		...(openr ? { doorSystem: openr } : {}),
+		...(config.pixelPhone
+			? {
+					doorbellAccept: createAcceptClient({
+						url: config.pixelPhone.url,
+						apiKey: config.pixelPhone.apiKey,
+					}),
+				}
+			: {}),
 	});
 
 	logger.info(

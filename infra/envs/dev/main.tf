@@ -27,6 +27,7 @@ module "pixel" {
   openr_doors                           = var.openr_doors
   openr_gate_door                       = var.openr_gate_door
   pixel_phone_queue_url                 = var.pixel_phone_queue_url
+  pixel_phone_url                       = var.pixel_phone_url
   sentry_enabled                        = var.sentry_enabled
   tailscale_enabled                     = var.tailscale_enabled
   tailscale_image                       = var.tailscale_image

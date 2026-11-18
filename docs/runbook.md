@@ -381,22 +381,30 @@ Pixel opens the building's doors (`/openr open door:`) and the parking gate (`/p
 
 ## The doorbell (pixel-phone)
 
-[pixel-phone](https://github.com/pixelbar/pixel-phone) answers the Pixelbar doorbell and writes each call's events to a Storage queue. Pixel reads them about once a second. How it works: [`architecture.md`](architecture.md), "pixel-phone". pixel-phone's own runbook covers its side.
+[pixel-phone](https://github.com/pixelbar/pixel-phone) answers the Pixelbar doorbell. When someone rings, Pixel posts "Someone's at the door" in a channel admins pick, with an **Answer** button for friends and members holding `doorbell`. Answering asks pixel-phone to pick up; the button in the space does the same, and the first wins. How it works: [`architecture.md`](architecture.md), "pixel-phone", and [ADR 0026](adr/0026-doorbell-button.md). pixel-phone's own runbook covers its side.
 
-**Turn it on** (dev first; prod the same way with prod's names, never dev's queue):
+**Turn it on** (dev first; prod the same way with prod's names, never dev's queue, address or key):
 
-1. Give pixel-phone Pixel's identity. `az identity show -g pixel-dev -n pixel-dev-app --query principalId -o tsv` prints its principal ID; it goes in `pixel_principal_id` in pixel-phone's `infra/envs/dev/terraform.example.tfvars`, and pixel-phone applies it. That gives Pixel **Storage Queue Data Message Processor** on pixel-phone's queue, and nothing else.
-2. Set `pixel_phone_queue_url` in Pixel's dev `terraform.tfvars` to pixel-phone's dev queue (`https://pixelphonedevst.queue.core.windows.net/phone-events`) and apply. Terraform also sets `AZURE_CLIENT_ID`, so Pixel signs in as its identity. Locally, set `PIXEL_PHONE_QUEUE_URL` in `.env`, `az login`, and make sure your own account has the same role on that queue.
-3. Check: the logs say `pixel_phone.reading` at startup. Ring the doorbell (or run pixel-phone's call simulator), and `pixel_phone.event` should follow within about two seconds, with its `lagMs`.
+1. **Let Pixel read the queue.** `az identity show -g pixel-dev -n pixel-dev-app --query principalId -o tsv` prints Pixel's identity's principal ID; it goes in `pixel_principal_id` in pixel-phone's `infra/envs/dev/terraform.example.tfvars`, and pixel-phone applies it. That gives Pixel **Storage Queue Data Message Processor** on pixel-phone's queue, and nothing else.
+2. **Give Pixel a key.** In pixel-phone, `just api-key pixel` makes one; add it as `{ id: pixel, key: … }` to pixel-phone's `API_KEYS_YAML` (keeping the `home-assistant` line), push and restart pixel-phone. Put the same key in Pixel's `.env.dev` as `PIXEL_PHONE_API_KEY` and `just secrets-push dev` (Key Vault `pixel-phone-api-key`).
+3. **Point Pixel at pixel-phone.** In Pixel's dev `terraform.tfvars`, set `pixel_phone_queue_url` (`https://pixelphonedevst.queue.core.windows.net/phone-events`) and `pixel_phone_url` (pixel-phone dev's address), and apply. Terraform also sets `AZURE_CLIENT_ID`, so Pixel signs in as its identity. Do step 2 first: the app can't start without the secret once these are set. Locally, set `PIXEL_PHONE_QUEUE_URL`, `PIXEL_PHONE_URL` and `PIXEL_PHONE_API_KEY` in `.env`, `az login`, and make sure your own account has the queue role.
+4. **Pick the channel:** `/admin` → Doorbell → **Set the channel…**. Everyone who can see it sees when someone's at the door and who answered.
+5. **Say who may answer:** `/admin` → Capabilities → **What friends get** → grant `doorbell` (that reaches members too). Revoke it from one person with `/admin` → People. Being an admin is not enough.
+6. **Check:** the logs say `pixel_phone.reading` at startup. Run pixel-phone's call simulator (or ring the dev number): within about two seconds `pixel_phone.event` and `doorbell.posted` appear and the post shows up with **Answer**. Press it: "You're on it!", and the post says you answered.
 
 | I see… | It means |
 | --- | --- |
-| `pixel_phone.unconfigured` at startup | `PIXEL_PHONE_QUEUE_URL` isn't set. Nothing is read |
+| `pixel_phone.unconfigured` at startup | The three settings aren't set. Nothing is read and `/admin` has no Doorbell section |
 | `pixel_phone.queue_failed` repeating, and one Sentry error from `pixel-phone` | Pixel can't read the queue. A `403` / `AuthorizationPermissionMismatch` means the role is missing (step 1) or `AZURE_CLIENT_ID` is wrong; a timeout means Azure Storage isn't answering. Pixel polls less often (down to once a minute) and carries on; `pixel_phone.queue_recovered` says when it's back |
 | `pixel_phone.message_dropped` | A message wasn't pixel-phone's contract v1 (`why`: `json`, `version` or `invalid`), or kept coming back. It's deleted. A run of `version` means pixel-phone moved to a newer contract and Pixel needs updating |
+| `doorbell.not_posted` with `why: no channel` | It rang, but no channel is set (step 4) |
+| `doorbell.post_failed` | Pixel couldn't post or edit in the channel: usually its permissions there. `/admin` → Doorbell → **Change the channel…** checks them |
+| **Answer** says "Couldn't reach the doorbell", and `doorbell.answer_failed` with `why: status` | `401`: the key in `PIXEL_PHONE_API_KEY` doesn't match pixel-phone's `pixel` entry (step 2). `503`: pixel-phone's accept API is off. `429`: more than 10 answers a minute. `why: timeout` or `network`: pixel-phone didn't answer. The call rings out to the intercom's next number |
+| **Answer** says "You don't have access" | That person lacks `doorbell`, or is a guest (step 5) |
 
-- **Turning it off:** unset `pixel_phone_queue_url` and apply (locally, `PIXEL_PHONE_QUEUE_URL`). Calls still ring the siren in the space; they just don't reach Pixel. Messages expire on the queue after 5 minutes.
-- Phone numbers and message contents are never logged.
+- **Turning it off:** `/admin` → Doorbell → **Stop posting** stops the posts and leaves everything else. To disconnect completely, unset `pixel_phone_queue_url` and `pixel_phone_url` and apply (locally, the three settings). Calls still ring the siren in the space either way; messages expire on the queue after 5 minutes.
+- **The post isn't updated after a restart** for a call that rang before it: which post is whose is kept in memory. The button on it still works.
+- Phone numbers and message contents are never logged. Who answered is logged as `doorbell.answered`, with their Discord ID and names.
 
 ## Space state
 
@@ -430,6 +438,7 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 | `MASTODON_ACCESS_TOKEN` | Instance Development app (`write:statuses`); Key Vault `mastodon-access-token` when hosted | It may have leaked, the app is rotated, or you move instance |
 | `SPACESTATE_USER`, `SPACESTATE_TOKEN` | Whoever runs the space state API; Key Vault `spacestate-user` and `spacestate-token` when hosted | They may have leaked, or the API's credentials change |
 | `OPENR_EMAIL`, `OPENR_PASSWORD` | Pixel's own OpenR account; Key Vault `openr-email` and `openr-password` when hosted | The password may have leaked, someone who read the account's mail leaves, or the account changes |
+| `PIXEL_PHONE_API_KEY` | `just api-key pixel` in pixel-phone (its `pixel` entry in `API_KEYS_YAML`); Key Vault `pixel-phone-api-key` | It may have leaked, or someone with access leaves |
 | `SENTRY_DSN` | Sentry project settings; Key Vault `sentry-dsn` | It's being abused, or you move projects |
 | Tailscale auth key | Tailscale admin; Key Vault `tailscale-auth-key` | It may have leaked, or you rotate tagged keys |
 | `admins.yaml` | Hand-edited; Key Vault `admins-yaml` (not a token) | When admins change |
@@ -466,6 +475,8 @@ Every secret lives in the secret store for its environment (a local `.env` for d
 1. In the OpenR dashboard, as Pixel's account, change the password. That ends Pixel's session (Sentry says so at the next refresh).
 2. Put the new one in the secret store as `OPENR_PASSWORD`, and restart Pixel.
 3. `/admin` → OpenR → **Log in**, then `/admin` → OpenR → **Enter the code…** with the emailed code. `/admin` → OpenR should say logged in.
+
+**Rotate the doorbell's key:** in pixel-phone, `just api-key pixel` and replace the `pixel` line in its `API_KEYS_YAML` (see pixel-phone's runbook), push and restart pixel-phone; then put the same key in `PIXEL_PHONE_API_KEY`, `just secrets-push <env>` and `just restart <env>`. Between the two restarts **Answer** says it couldn't reach the doorbell (pixel-phone answers 401); the button in the space keeps working.
 
 **Rotate the Sentry DSN:** Sentry project → Settings → Client Keys: create a new key, disable the old one, update `SENTRY_DSN`, restart. Check that a test event arrives.
 

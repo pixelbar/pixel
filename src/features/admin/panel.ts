@@ -27,13 +27,14 @@ import type {
 	FormInput,
 } from "../../core/ui.ts";
 import { MAX_CLOSING_TIME_MESSAGE, savedClosingTimeMessage } from "../closing-time/index.ts";
+import { type DoorbellAdminDeps, describeDoorbell } from "./doorbell.ts";
 import { describeDoors } from "./doors.ts";
 import { describeStates } from "./roles.ts";
 
 /**
  * `/admin`: one command that opens a private panel (see docs/discord-components.md).
  * The home panel is Pixel's status, with a menu of sections: people, capabilities,
- * Discord roles, announcements, closing time, doors, OpenR and parking. Each section
+ * Discord roles, announcements, closing time, doors, the doorbell, OpenR and parking. Each section
  * shows what's set and has buttons, menus and forms to change it.
  *
  * Every change is an action with the admin floor, through the dispatcher, and runs
@@ -79,6 +80,9 @@ export const ADMIN_ACTIONS = {
 	closingTimeSet: "admin.closing-time-set",
 	doorsAsk: "admin.doors-ask",
 	doors: "admin.doors",
+	doorbellForm: "admin.doorbell-form",
+	doorbellSet: "admin.doorbell-set",
+	doorbellClear: "admin.doorbell-clear",
 	openrLogin: "admin.openr-login",
 	openrCodeForm: "admin.openr-code-form",
 	openrCode: "admin.openr-code",
@@ -102,6 +106,7 @@ export const SECTIONS = [
 	},
 	{ value: "closing-time", label: "Closing time", description: "The reminder posted at closing" },
 	{ value: "doors", label: "Doors", description: "Door control from Pixel, on or off" },
+	{ value: "doorbell", label: "Doorbell", description: "Where the doorbell is posted" },
 	{ value: "openr", label: "OpenR", description: "Pixel's OpenR login and the doors" },
 ] as const;
 type Section = (typeof SECTIONS)[number]["value"];
@@ -122,6 +127,7 @@ export type AdminOperations = {
 	>;
 	closingTime: SubcommandDefinition;
 	doors: Record<"on" | "off", SubcommandDefinition>;
+	doorbell: Record<"set" | "clear", SubcommandDefinition>;
 	openr: Record<"status" | "login" | "code" | "logout", SubcommandDefinition>;
 };
 
@@ -135,6 +141,8 @@ export type AdminPanelDeps = {
 	switches: Parameters<typeof describeDoors>[0];
 	/** Whether OpenR is configured here. */
 	openr: boolean;
+	/** The doorbell's channel, and whether pixel-phone is configured here. */
+	doorbell: DoorbellAdminDeps;
 	/** The parking panel's overview (its own actions handle the rest). */
 	parking: SubcommandDefinition;
 };
@@ -313,7 +321,11 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 						placeholder: "Go to…",
 						call: { action: ADMIN_ACTIONS.section },
 						arg: "section",
-						options: SECTIONS.filter((s) => s.value !== "openr" || deps.openr).map((s) => ({
+						options: SECTIONS.filter(
+							(s) =>
+								(s.value !== "openr" || deps.openr) &&
+								(s.value !== "doorbell" || deps.doorbell.configured),
+						).map((s) => ({
 							label: s.label,
 							value: s.value,
 							description: s.description,
@@ -447,6 +459,35 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 								? button("Switch door control off…", ADMIN_ACTIONS.doorsAsk, {}, "danger")
 								: button("Switch door control on", ADMIN_ACTIONS.doors, { on: true }, "primary"),
 						],
+						[toAdmin()],
+					],
+				);
+			}
+			case "doorbell": {
+				const set = deps.doorbell.settings.channelId !== undefined;
+				return panel(
+					"Doorbell",
+					[
+						describeDoorbell(deps.doorbell),
+						"",
+						"When someone rings, Pixel posts it there with an **Answer** button. Friends and members holding `doorbell` can answer; the first answer wins, from Discord or the button in the space.",
+					],
+					[
+						...(deps.doorbell.configured
+							? [
+									[
+										button(
+											set ? "Change the channel…" : "Set the channel…",
+											ADMIN_ACTIONS.doorbellForm,
+											{},
+											"primary",
+										),
+										...(set
+											? [button("Stop posting", ADMIN_ACTIONS.doorbellClear, {}, "danger")]
+											: []),
+									],
+								]
+							: []),
 						[toAdmin()],
 					],
 				);
@@ -911,6 +952,37 @@ export function createAdminPanel(deps: AdminPanelDeps): {
 				return { reply: above(said, await section(ctx, "doors")) };
 			},
 		),
+
+		// Doorbell
+		action(ADMIN_ACTIONS.doorbellForm, [], () => ({
+			form: {
+				title: "Post the doorbell",
+				submit: { action: ADMIN_ACTIONS.doorbellSet },
+				fields: [
+					{
+						kind: "channel",
+						name: "channel",
+						label: "Where",
+						description:
+							"A channel you can post in yourself. Everyone who can see it sees who's at the door.",
+						...(deps.doorbell.settings.channelId
+							? { value: deps.doorbell.settings.channelId }
+							: {}),
+					},
+				],
+			},
+		})),
+		action(
+			ADMIN_ACTIONS.doorbellSet,
+			[{ name: "channel", description: "Where", type: "channel", required: true }],
+			async (ctx) => {
+				const said = await run(ops.doorbell.set, ctx, ctx.args);
+				return { reply: above(said, await section(ctx, "doorbell")) };
+			},
+		),
+		action(ADMIN_ACTIONS.doorbellClear, [], async (ctx) => ({
+			reply: above(await run(ops.doorbell.clear, ctx, {}), await section(ctx, "doorbell")),
+		})),
 
 		// OpenR
 		action(ADMIN_ACTIONS.openrLogin, [], async (ctx) => ({

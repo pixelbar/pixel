@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AnnouncementRoutes } from "../../../src/core/announcement-routes.ts";
 import { CapabilityRegistry } from "../../../src/core/capabilities.ts";
+import type { ChannelPosts } from "../../../src/core/channel-posts.ts";
 import type { ResolvedChannel, ResolvedUser } from "../../../src/core/command.ts";
 import { type ActionOutcome, Dispatcher, MESSAGES } from "../../../src/core/dispatcher.ts";
 import { Home } from "../../../src/core/home.ts";
@@ -20,6 +21,7 @@ import { createAdminFeature } from "../../../src/features/admin/index.ts";
 import { ADMIN_ACTIONS } from "../../../src/features/admin/panel.ts";
 import { ConfigTierSource } from "../../../src/services/access-config.ts";
 import { FileAccessStore } from "../../../src/services/access-store.ts";
+import { DoorbellSettings } from "../../../src/services/doorbell-settings.ts";
 import { HomeDeviceStore } from "../../../src/services/home-devices.ts";
 import { KindSwitch } from "../../../src/services/kind-switch.ts";
 import { actor, IDS } from "../../../src/testing/fixtures.ts";
@@ -75,7 +77,12 @@ function fakeOpenr() {
 	};
 }
 
-function setup(options: { openr?: ReturnType<typeof fakeOpenr> } = {}) {
+function setup(
+	options: {
+		openr?: ReturnType<typeof fakeOpenr>;
+		doorbell?: { check?: ChannelPosts["check"] };
+	} = {},
+) {
 	const store = FileAccessStore.open({
 		paths: { adminsFile: join(dir, "admins.yaml"), membersFile },
 		logger: silentLogger,
@@ -84,6 +91,10 @@ function setup(options: { openr?: ReturnType<typeof fakeOpenr> } = {}) {
 	const switches = new KindSwitch({ logger: silentLogger, switchable: ["door"] });
 	const routes = new AnnouncementRoutes();
 	const closingTimeFile = join(dir, "closing-time.md");
+	const doorbellSettings = new DoorbellSettings({ logger: silentLogger });
+	const doorbellCheck = vi.fn(
+		options.doorbell?.check ?? (async () => ({ ok: true as const, name: "doorbell" })),
+	);
 	const registry = new CommandRegistry({ capabilities: CAPABILITIES });
 	registry.register(
 		createAdminFeature({
@@ -100,6 +111,11 @@ function setup(options: { openr?: ReturnType<typeof fakeOpenr> } = {}) {
 			closingTimeFile,
 			parking: inMemoryParking(),
 			openr: { system: options.openr, doors: [], gateDoor: undefined },
+			doorbell: {
+				settings: doorbellSettings,
+				posts: { check: doorbellCheck },
+				configured: options.doorbell !== undefined,
+			},
 			now: () => NOW,
 		}),
 	);
@@ -156,7 +172,20 @@ function setup(options: { openr?: ReturnType<typeof fakeOpenr> } = {}) {
 	/** Looks someone up, as the People form does. */
 	const person = (user: ResolvedUser) =>
 		act(ADMIN_ACTIONS.person, { user: user.id }, { users: { user } });
-	return { store, switches, routes, closingTimeFile, registry, open, act, click, submit, person };
+	return {
+		store,
+		switches,
+		routes,
+		closingTimeFile,
+		doorbellSettings,
+		doorbellCheck,
+		registry,
+		open,
+		act,
+		click,
+		submit,
+		person,
+	};
 }
 
 function fits(reply: Reply) {
@@ -219,6 +248,10 @@ describe("/admin", () => {
 		const withOpenr = await setup({ openr: fakeOpenr() }).open();
 		const full = controlsOf(withOpenr)[0];
 		expect(full?.kind === "select" && full.options.map((o) => o.value)).toContain("openr");
+		const withDoorbell = controlsOf(await setup({ doorbell: {} }).open())[0];
+		expect(withDoorbell?.kind === "select" && withDoorbell.options.map((o) => o.value)).toContain(
+			"doorbell",
+		);
 	});
 
 	it("has only admin-only actions, every one of them reachable by name", async () => {
@@ -480,6 +513,76 @@ describe("announcements", () => {
 		const listed = await section(t, "announcements");
 		const removed = replyOf(await t.click(listed, "Stop release notes in…", [CHANNEL]));
 		expect(removed.text).toContain("Stopped posting release notes");
+	});
+});
+
+describe("the doorbell", () => {
+	const general: ResolvedChannel = {
+		id: CHANNEL,
+		name: "general",
+		caller: { canPost: true, canMentionEveryone: false, canCreatePolls: false },
+	};
+
+	it("sets the channel on a form, checks Pixel can post there, and stops posting", async () => {
+		const t = setup({ doorbell: {} });
+		const empty = await section(t, "doorbell");
+		expect(said(empty)).toContain("No channel is set, so the doorbell isn't posted.");
+		expect(labels(empty)).toEqual(["Set the channel…", "← Admin"]);
+		const form = formOf(await t.click(empty, "Set the channel…"));
+		expect(form.fields.map((f) => [f.kind, f.name])).toEqual([["channel", "channel"]]);
+		const set = replyOf(
+			await t.submit(form, { channel: CHANNEL }, { channels: { channel: general } }),
+		);
+		expect(set.text).toContain(`The doorbell will be posted in <#${CHANNEL}>`);
+		expect(set.text).toContain("`doorbell`");
+		expect(t.doorbellSettings.channelId).toBe(CHANNEL);
+		expect(t.doorbellCheck).toHaveBeenCalledWith(
+			CHANNEL,
+			expect.objectContaining({ kind: "message" }),
+		);
+		expect(said(set)).toContain(`The doorbell is posted in <#${CHANNEL}>.`);
+		expect(labels(set)).toEqual(["Change the channel…", "Stop posting", "← Admin"]);
+		// The form opens on the channel that's set.
+		expect(formOf(await t.click(set, "Change the channel…")).fields[0]).toMatchObject({
+			value: CHANNEL,
+		});
+		const again = replyOf(
+			await t.submit(form, { channel: CHANNEL }, { channels: { channel: general } }),
+		);
+		expect(again.text).toContain("already posted");
+		const cleared = replyOf(await t.click(set, "Stop posting"));
+		expect(cleared.text).toContain("isn't posted any more");
+		expect(t.doorbellSettings.channelId).toBeUndefined();
+		const twice = await t.act(ADMIN_ACTIONS.doorbellClear);
+		expect(replyOf(twice).text).toContain("wasn't being posted");
+	});
+
+	it("refuses a channel the admin can't post in, or Pixel can't", async () => {
+		const t = setup({
+			doorbell: {
+				check: async () => ({
+					ok: false,
+					problem: "I'm missing these permissions there: SendMessages",
+				}),
+			},
+		});
+		const form = formOf(await t.click(await section(t, "doorbell"), "Set the channel…"));
+		const muted = { ...general, caller: { ...general.caller, canPost: false } };
+		const refused = await t.submit(form, { channel: CHANNEL }, { channels: { channel: muted } });
+		expect(refused.kind).toBe("refused");
+		expect("reply" in refused && refused.reply.text).toContain("where you can post yourself");
+		const pixel = await t.submit(form, { channel: CHANNEL }, { channels: { channel: general } });
+		expect("reply" in pixel && pixel.reply.text).toBe(
+			"I can't post the doorbell there: I'm missing these permissions there: SendMessages.",
+		);
+		expect(t.doorbellSettings.channelId).toBeUndefined();
+	});
+
+	it("says when the doorbell isn't connected, with nothing to press", async () => {
+		const t = setup();
+		const panel = await section(t, "doorbell");
+		expect(said(panel)).toContain("The doorbell isn't connected here");
+		expect(labels(panel)).toEqual(["← Admin"]);
 	});
 });
 

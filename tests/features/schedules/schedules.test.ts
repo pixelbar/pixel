@@ -125,6 +125,11 @@ function setup(options: { check?: ChannelCheck } = {}) {
 		editAttendance: vi.fn(async (_id: string, _message: string, message: AttendanceMessage) => {
 			attendanceEdits.push(message);
 		}),
+		postDoorbell: vi.fn(async () => ({
+			url: "https://discord.com/channels/1/2/9",
+			messageId: "9",
+		})),
+		editDoorbell: vi.fn(async () => {}),
 	};
 	posts.use(poster);
 	const info = vi.fn();
@@ -1712,6 +1717,8 @@ describe("the background runner", () => {
 			post,
 			postAttendance: post,
 			editAttendance: async () => {},
+			postDoorbell: post,
+			editDoorbell: async () => {},
 		});
 		add(store, { start: "2026-10-14T19:01" });
 		const feature = createSchedulesFeature({

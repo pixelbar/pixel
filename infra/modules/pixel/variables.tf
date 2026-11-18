@@ -229,6 +229,22 @@ variable "pixel_phone_queue_url" {
   }
 }
 
+variable "pixel_phone_url" {
+  type        = string
+  default     = null
+  description = "Optional, with pixel_phone_queue_url. PIXEL_PHONE_URL: pixel-phone's address in the same environment (https, no path), whose accept API Pixel calls when someone answers the doorbell. Not a secret. The key is Key Vault secret pixel-phone-api-key."
+
+  validation {
+    condition     = var.pixel_phone_url == null || can(regex("^https://[a-z0-9.-]+(:[0-9]+)?/?$", var.pixel_phone_url))
+    error_message = "pixel_phone_url must be https://<host> or unset."
+  }
+
+  validation {
+    condition     = (var.pixel_phone_url == null) == (var.pixel_phone_queue_url == null)
+    error_message = "Set pixel_phone_url and pixel_phone_queue_url together, or neither."
+  }
+}
+
 variable "sentry_enabled" {
   type        = bool
   default     = false

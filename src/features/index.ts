@@ -5,17 +5,20 @@ import type { Calendar } from "../core/calendar.ts";
 import type { CapabilityRegistry } from "../core/capabilities.ts";
 import type { ChannelPosts } from "../core/channel-posts.ts";
 import type { DirectMessages } from "../core/direct-messages.ts";
+import type { DoorbellEvents } from "../core/doorbell.ts";
 import type { Feature } from "../core/feature.ts";
 import type { Home } from "../core/home.ts";
 import { createInterpolator } from "../core/interpolate.ts";
 import type { Logger } from "../core/logger.ts";
 import type { AccessStore } from "../core/ports/access-store.ts";
 import type { DoorSystem } from "../core/ports/door-system.ts";
+import type { DoorbellAccept } from "../core/ports/doorbell-accept.ts";
 import type { ErrorReporter } from "../core/ports/error-reporter.ts";
 import type { FeedbackSink } from "../core/ports/feedback.ts";
 import { type Gate, notConnectedGate } from "../core/ports/gate.ts";
 import type { RoleMirror } from "../core/role-mirror.ts";
 import type { AttendanceStore } from "../services/attendance.ts";
+import type { DoorbellSettings } from "../services/doorbell-settings.ts";
 import type { FoodWishlistStore } from "../services/food-wishlist.ts";
 import type { HomeDeviceStore } from "../services/home-devices.ts";
 import type { InfoTopic } from "../services/info-content.ts";
@@ -31,6 +34,7 @@ import type { SpaceStatus } from "../services/space-status.ts";
 import type { Wiki } from "../services/wiki.ts";
 import { createAdminFeature } from "./admin/index.ts";
 import { createClosingTimeFeature } from "./closing-time/index.ts";
+import { createDoorbellFeature } from "./doorbell/index.ts";
 import { createEventsFeature } from "./events/index.ts";
 import { createFeedbackFeature } from "./feedback/index.ts";
 import { createFishbotFeature } from "./fishbot/index.ts";
@@ -110,6 +114,13 @@ export type FeatureDeps = {
 	foodWishlist: FoodWishlistStore;
 	/** Optional channel for out-of-stock alerts to admins. */
 	foodAlertChannelId: string | undefined;
+	/** The doorbell: pixel-phone's call events, where they're posted, and how to answer. */
+	doorbell: {
+		events: DoorbellEvents;
+		settings: DoorbellSettings;
+		/** Undefined when pixel-phone isn't configured. */
+		accept: DoorbellAccept | undefined;
+	};
 };
 
 /** Every feature Pixel runs. Add new features here. */
@@ -200,6 +211,14 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 			reporter: deps.reporter,
 			switches: deps.switches,
 		}),
+		createDoorbellFeature({
+			events: deps.doorbell.events,
+			posts: deps.channelPosts,
+			settings: deps.doorbell.settings,
+			accept: deps.doorbell.accept,
+			logger: deps.logger,
+			reporter: deps.reporter,
+		}),
 		createOpenrFeature({
 			doors: deps.doorSystem,
 			list: deps.openrDoors,
@@ -231,6 +250,11 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 				system: deps.doorSystem,
 				doors: deps.openrDoors,
 				gateDoor: deps.openrGateDoor,
+			},
+			doorbell: {
+				settings: deps.doorbell.settings,
+				posts: deps.channelPosts,
+				configured: deps.doorbell.accept !== undefined,
 			},
 		}),
 	];

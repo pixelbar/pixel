@@ -33,6 +33,7 @@ A capability is a named permission for one person, for things that shouldn't rea
 | `ha-switches` | Switch switches in Home Assistant, with the buttons in `/ha`. |
 | `ha-doors` | Lock and unlock doors, with the buttons in `/ha`. Members only. |
 | `ha-admin` | Act on any Home Assistant device, whatever its kind. |
+| `doorbell` | Answer the doorbell from Discord, with the **Answer** button on its post. Friends and members. Admins usually grant it to a whole level. |
 
 - **Nothing gives you a capability by itself.** Not your tier, not a Discord role, and not being an admin. An admin grants it to a person, and Pixel sends that person a direct message when it changes.
 - **Guests never pass.** If someone goes back to guest, their capabilities stop working straight away.

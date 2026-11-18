@@ -6,6 +6,7 @@ import { CapabilityRegistry } from "../../src/core/capabilities.ts";
 import { ChannelPosts } from "../../src/core/channel-posts.ts";
 import type { SubcommandDefinition } from "../../src/core/command.ts";
 import { DirectMessages } from "../../src/core/direct-messages.ts";
+import { DoorbellEvents } from "../../src/core/doorbell.ts";
 import { UserFacingError } from "../../src/core/errors.ts";
 import type { Feature } from "../../src/core/feature.ts";
 import { formatDuration } from "../../src/core/format.ts";
@@ -25,6 +26,7 @@ import { PRIVACY_NOTICE_URL } from "../../src/features/links.ts";
 import { createPingFeature } from "../../src/features/ping/index.ts";
 import { createWhoamiFeature } from "../../src/features/whoami/index.ts";
 import { AttendanceStore } from "../../src/services/attendance.ts";
+import { DoorbellSettings } from "../../src/services/doorbell-settings.ts";
 import { FoodWishlistStore } from "../../src/services/food-wishlist.ts";
 import { HomeDeviceStore } from "../../src/services/home-devices.ts";
 import { KindSwitch } from "../../src/services/kind-switch.ts";
@@ -107,6 +109,11 @@ const deps = () => ({
 	},
 	foodWishlist: new FoodWishlistStore({ logger: silentLogger }),
 	foodAlertChannelId: undefined,
+	doorbell: {
+		events: new DoorbellEvents({ logger: silentLogger, reporter: nullErrorReporter }),
+		settings: new DoorbellSettings({ logger: silentLogger }),
+		accept: undefined,
+	},
 });
 
 function onlyCommand(feature: Feature) {
@@ -305,6 +312,11 @@ function adminFeature(
 		closingTimeFile: "data/closing-time.md",
 		parking: inMemoryParking(),
 		openr: { system: undefined, doors: [], gateDoor: undefined },
+		doorbell: {
+			settings: new DoorbellSettings({ logger: silentLogger }),
+			posts: new ChannelPosts(),
+			configured: false,
+		},
 	});
 }
 

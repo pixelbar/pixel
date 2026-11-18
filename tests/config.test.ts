@@ -727,6 +727,12 @@ describe("OpenR settings", () => {
 describe("pixel-phone settings", () => {
 	const QUEUE = "https://pixelphonedevst.queue.core.windows.net/phone-events";
 	const CLIENT = "00000000-0000-4000-8000-000000000001";
+	const KEY = "test-key-not-real-0123456789abcdef";
+	const ALL = {
+		PIXEL_PHONE_QUEUE_URL: QUEUE,
+		PIXEL_PHONE_URL: "https://phone.example",
+		PIXEL_PHONE_API_KEY: KEY,
+	};
 
 	const errorOf = (env: Record<string, string>): string => {
 		try {
@@ -738,19 +744,43 @@ describe("pixel-phone settings", () => {
 		throw new Error("expected a ConfigError");
 	};
 
-	it("is off when the queue isn't set", () => {
+	it("is off when none is set", () => {
 		expect(loadConfig(VALID).pixelPhone).toBeUndefined();
-		expect(loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: "" }).pixelPhone).toBeUndefined();
+		expect(
+			loadConfig({
+				...VALID,
+				PIXEL_PHONE_QUEUE_URL: "",
+				PIXEL_PHONE_URL: "",
+				PIXEL_PHONE_API_KEY: "",
+			}).pixelPhone,
+		).toBeUndefined();
 	});
 
-	it("reads the queue, with the managed identity when there is one", () => {
-		expect(loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: QUEUE }).pixelPhone).toEqual({
+	it("reads the queue, the accept API, and the managed identity when there is one", () => {
+		expect(loadConfig({ ...VALID, ...ALL }).pixelPhone).toEqual({
 			queueUrl: QUEUE,
 			clientId: undefined,
+			url: "https://phone.example",
+			apiKey: KEY,
 		});
 		expect(
-			loadConfig({ ...VALID, PIXEL_PHONE_QUEUE_URL: QUEUE, AZURE_CLIENT_ID: CLIENT }).pixelPhone,
-		).toEqual({ queueUrl: QUEUE, clientId: CLIENT });
+			loadConfig({
+				...VALID,
+				...ALL,
+				PIXEL_PHONE_URL: "https://phone.example/",
+				AZURE_CLIENT_ID: CLIENT,
+			}).pixelPhone,
+		).toMatchObject({ clientId: CLIENT, url: "https://phone.example" });
+	});
+
+	it.each([
+		["only the queue", { PIXEL_PHONE_QUEUE_URL: QUEUE }],
+		["no key", { PIXEL_PHONE_QUEUE_URL: QUEUE, PIXEL_PHONE_URL: "https://phone.example" }],
+		["no queue", { PIXEL_PHONE_URL: "https://phone.example", PIXEL_PHONE_API_KEY: KEY }],
+	])("refuses %s: all three or none", (_label, env) => {
+		expect(errorOf(env)).toMatch(
+			/PIXEL_PHONE_QUEUE_URL, PIXEL_PHONE_URL and PIXEL_PHONE_API_KEY together/,
+		);
 	});
 
 	it.each([
@@ -763,13 +793,28 @@ describe("pixel-phone settings", () => {
 		["a fragment", `${QUEUE}#x`],
 		["capitals in the queue", "https://pixelphonedevst.queue.core.windows.net/Phone-Events"],
 	])("refuses %s as the queue, without echoing it", (_label, url) => {
-		const message = errorOf({ PIXEL_PHONE_QUEUE_URL: url });
+		const message = errorOf({ ...ALL, PIXEL_PHONE_QUEUE_URL: url });
 		expect(message).toMatch(/PIXEL_PHONE_QUEUE_URL/);
 		expect(message).not.toContain(url);
 	});
 
+	it.each([
+		["plain http", "http://phone.example"],
+		["a path", "https://phone.example/api"],
+		["a query", "https://phone.example/?x=1"],
+		["credentials", "https://user:pass@phone.example"],
+	])("refuses %s as pixel-phone's address", (_label, url) => {
+		expect(errorOf({ ...ALL, PIXEL_PHONE_URL: url })).toMatch(/PIXEL_PHONE_URL/);
+	});
+
+	it("refuses a short key, without echoing it", () => {
+		const message = errorOf({ ...ALL, PIXEL_PHONE_API_KEY: "short-key" });
+		expect(message).toMatch(/PIXEL_PHONE_API_KEY/);
+		expect(message).not.toContain("short-key");
+	});
+
 	it("refuses a client ID that isn't one", () => {
-		expect(errorOf({ PIXEL_PHONE_QUEUE_URL: QUEUE, AZURE_CLIENT_ID: "pixel-dev" })).toMatch(
+		expect(errorOf({ ...ALL, AZURE_CLIENT_ID: "pixel-dev" })).toMatch(
 			/AZURE_CLIENT_ID: must be a client ID/,
 		);
 	});
