@@ -22,6 +22,11 @@ export type ReleaseAnnouncementDeps = {
 type LastAnnounced = {
 	version: string;
 	at: string;
+	/**
+	 * Publisher ids that have already received this version. Missing means a
+	 * legacy whole-version mark (treat every current release publisher as done).
+	 */
+	publishers?: string[];
 };
 
 const CHANGELOG_FILE = "CHANGELOG.md";
@@ -61,10 +66,11 @@ function extractVersionNotes(changelog: string, version: string): string | undef
 
 /**
  * Announces a new Pixel release with its changelog entries. Posts once per
- * version on startup, so restarts and rolling deploys don't announce again.
- * The last announced version is kept in `PIXEL_DATA_DIR/release-announced.yaml`.
- * It is only written after a publish that had at least one release publisher and
- * no publisher failures, so a missing channel or a Discord error can retry later.
+ * version per release channel on startup, so restarts and rolling deploys don't
+ * announce again. Progress is kept in `PIXEL_DATA_DIR/release-announced.yaml`
+ * (version + publisher ids that already got it), so a channel that failed or
+ * wasn't open yet can catch up on the next start without re-posting to ones
+ * that already succeeded.
  */
 export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps): Feature {
 	const log = deps.logger.child({ component: "release-announcement" });
@@ -80,17 +86,26 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 			return;
 		}
 
-		const lastAnnounced = readLastAnnounced();
-		if (lastAnnounced?.version === currentVersion) {
-			log.debug({ event: "release.skipped", version: currentVersion }, "version already announced");
-			return;
-		}
-
 		const releasePublishers = deps.announcer.publisherIds.filter(isReleasePublisher);
 		if (releasePublishers.length === 0) {
 			log.debug(
 				{ event: "release.skipped", version: currentVersion, reason: "no release publisher" },
 				"no release channel configured",
+			);
+			return;
+		}
+
+		const lastAnnounced = readLastAnnounced();
+		const alreadyDone = donePublishers(lastAnnounced, currentVersion);
+		if (alreadyDone === "all") {
+			log.debug({ event: "release.skipped", version: currentVersion }, "version already announced");
+			return;
+		}
+		const pending = releasePublishers.filter((id) => !alreadyDone.has(id));
+		if (pending.length === 0) {
+			log.debug(
+				{ event: "release.skipped", version: currentVersion },
+				"every release channel already has this version",
 			);
 			return;
 		}
@@ -126,7 +141,7 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 
 		let result: AnnounceResult;
 		try {
-			result = await deps.announcer.announce(announcement);
+			result = await deps.announcer.announce(announcement, { only: pending });
 		} catch (error) {
 			// Announce is documented never to reject; still don't remember a throw.
 			log.error(
@@ -135,16 +150,44 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 			);
 			return;
 		}
-		if (result.failed > 0) {
+
+		const newlyDone = pending.filter((id) => result.ok.includes(id));
+		if (newlyDone.length === 0) {
 			log.error(
 				{ event: "release.failed", version: currentVersion, failed: result.failed },
-				"a release publisher failed; will try again on the next start",
+				"no release publisher succeeded; will try again on the next start",
 			);
 			return;
 		}
 
-		writeLastAnnounced({ version: currentVersion, at: now().toISOString() });
-		log.info({ event: "release.announced", version: currentVersion }, "announced new release");
+		const publishers = [...alreadyDone, ...newlyDone];
+		writeLastAnnounced({ version: currentVersion, at: now().toISOString(), publishers });
+		if (result.failed > 0) {
+			log.warn(
+				{
+					event: "release.partial",
+					version: currentVersion,
+					ok: newlyDone,
+					failed: result.failed,
+				},
+				"posted to some release channels; will retry the rest on the next start",
+			);
+			return;
+		}
+		log.info(
+			{ event: "release.announced", version: currentVersion, publishers },
+			"announced new release",
+		);
+	}
+
+	/**
+	 * Publishers already recorded for this version. `"all"` means a legacy
+	 * whole-version mark (no per-publisher list).
+	 */
+	function donePublishers(last: LastAnnounced | undefined, version: string): Set<string> | "all" {
+		if (!last || last.version !== version) return new Set();
+		if (last.publishers === undefined) return "all";
+		return new Set(last.publishers);
 	}
 
 	function readLastAnnounced(): LastAnnounced | undefined {
@@ -159,7 +202,12 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 				typeof parsed.version === "string" &&
 				typeof parsed.at === "string"
 			) {
-				return { version: parsed.version, at: parsed.at };
+				const publishers = publishersField(parsed);
+				return {
+					version: parsed.version,
+					at: parsed.at,
+					...(publishers ? { publishers } : {}),
+				};
 			}
 			return undefined;
 		} catch (error) {
@@ -196,4 +244,12 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 			return () => {};
 		},
 	};
+}
+
+/** Optional `publishers:` list from the state file; undefined when absent or invalid. */
+function publishersField(parsed: object): string[] | undefined {
+	if (!("publishers" in parsed) || parsed.publishers === undefined) return undefined;
+	if (!Array.isArray(parsed.publishers)) return undefined;
+	if (!parsed.publishers.every((id): id is string => typeof id === "string")) return undefined;
+	return parsed.publishers;
 }

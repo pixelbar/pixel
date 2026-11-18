@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Announcement, BuildInfo } from "../../../src/core/announcement.ts";
-import type { AnnounceResult } from "../../../src/core/announcer.ts";
+import type { AnnounceOptions, AnnounceResult } from "../../../src/core/announcer.ts";
 import { silentLogger } from "../../../src/core/logger.ts";
 import {
 	createReleaseAnnouncementFeature,
@@ -70,16 +70,17 @@ describe("release announcement", () => {
 	function setup(
 		overrides: Partial<BuildInfo> = {},
 		announcerOverrides: {
-			announce?: (a: Announcement) => Promise<AnnounceResult>;
+			announce?: (a: Announcement, options?: AnnounceOptions) => Promise<AnnounceResult>;
 			publisherIds?: string[];
 		} = {},
 	) {
 		const announced: Announcement[] = [];
 		const announce = vi.fn(
 			announcerOverrides.announce ??
-				(async (a: Announcement) => {
+				(async (a: Announcement, options?: AnnounceOptions) => {
 					announced.push(a);
-					return { failed: 0 };
+					const ok = options?.only ? [...options.only] : ["discord:release"];
+					return { failed: 0, ok };
 				}),
 		);
 		const feature = createReleaseAnnouncementFeature({
@@ -97,11 +98,14 @@ describe("release announcement", () => {
 	}
 
 	it("announces a new version with its changelog entries", async () => {
-		const { feature, announced } = setup();
+		const { feature, announced, announce } = setup();
 		const stop = feature.start?.();
 		await vi.waitFor(() => expect(announced).toHaveLength(1), { timeout: 1000 });
 		stop?.();
 
+		expect(announce).toHaveBeenCalledWith(expect.objectContaining({ kind: "release" }), {
+			only: ["discord:release"],
+		});
 		expect(announced).toEqual([
 			{
 				kind: "release",
@@ -115,7 +119,7 @@ describe("release announcement", () => {
 		]);
 	});
 
-	it("records the announced version so it isn't posted again", async () => {
+	it("records the announced version and publisher so it isn't posted again", async () => {
 		const { feature } = setup();
 		const stop = feature.start?.();
 		await vi.waitFor(() => readFileSync(stateFile, "utf8").includes("0.28.0"), { timeout: 1000 });
@@ -124,9 +128,10 @@ describe("release announcement", () => {
 		const content = readFileSync(stateFile, "utf8");
 		expect(content).toContain("version: 0.28.0");
 		expect(content).toContain("at: 2026-11-16T12:00:00.000Z");
+		expect(content).toContain("discord:release");
 	});
 
-	it("doesn't announce the same version twice", async () => {
+	it("doesn't announce the same version twice (legacy whole-version mark)", async () => {
 		writeFileSync(stateFile, "version: 0.28.0\nat: 2026-11-16T11:00:00.000Z\n");
 		const { feature, announced } = setup();
 		const stop = feature.start?.();
@@ -134,6 +139,63 @@ describe("release announcement", () => {
 		stop?.();
 
 		expect(announced).toEqual([]);
+	});
+
+	it("doesn't announce again when every current release publisher is recorded", async () => {
+		writeFileSync(
+			stateFile,
+			"version: 0.28.0\nat: 2026-11-16T11:00:00.000Z\npublishers:\n  - discord:release:111\n  - discord:release:222\n",
+		);
+		const { feature, announced } = setup(
+			{},
+			{ publisherIds: ["discord:release:111", "discord:release:222"] },
+		);
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		stop?.();
+
+		expect(announced).toEqual([]);
+	});
+
+	it("only retries channels that haven't received this version yet", async () => {
+		writeFileSync(
+			stateFile,
+			"version: 0.28.0\nat: 2026-11-16T11:00:00.000Z\npublishers:\n  - discord:release:111\n",
+		);
+		const { feature, announce } = setup(
+			{},
+			{ publisherIds: ["discord:release:111", "discord:release:222"] },
+		);
+		const stop = feature.start?.();
+		await vi.waitFor(() => expect(announce).toHaveBeenCalledOnce(), { timeout: 1000 });
+		stop?.();
+
+		expect(announce).toHaveBeenCalledWith(expect.objectContaining({ kind: "release" }), {
+			only: ["discord:release:222"],
+		});
+		const content = readFileSync(stateFile, "utf8");
+		expect(content).toContain("discord:release:111");
+		expect(content).toContain("discord:release:222");
+	});
+
+	it("remembers successful channels when another fails", async () => {
+		const { feature, announce } = setup(
+			{},
+			{
+				publisherIds: ["discord:release:111", "discord:release:222"],
+				announce: async (_a, options) => ({
+					failed: 1,
+					ok: (options?.only ?? []).filter((id) => id === "discord:release:111"),
+				}),
+			},
+		);
+		const stop = feature.start?.();
+		await vi.waitFor(() => expect(announce).toHaveBeenCalledOnce(), { timeout: 1000 });
+		stop?.();
+
+		const content = readFileSync(stateFile, "utf8");
+		expect(content).toContain("discord:release:111");
+		expect(content).not.toContain("discord:release:222");
 	});
 
 	it("skips when no release publisher is registered", async () => {
@@ -147,11 +209,11 @@ describe("release announcement", () => {
 		expect(() => readFileSync(stateFile, "utf8")).toThrow();
 	});
 
-	it("doesn't remember the version when a publisher failed", async () => {
+	it("doesn't remember the version when every publisher failed", async () => {
 		const { feature, announce } = setup(
 			{},
 			{
-				announce: async () => ({ failed: 1 }),
+				announce: async () => ({ failed: 1, ok: [] }),
 			},
 		);
 		const stop = feature.start?.();
