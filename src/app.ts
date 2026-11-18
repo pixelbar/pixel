@@ -14,6 +14,7 @@ import { CapabilityNotifier } from "./core/capability-notify.ts";
 import { ChannelPosts } from "./core/channel-posts.ts";
 import { DirectMessages } from "./core/direct-messages.ts";
 import { Dispatcher } from "./core/dispatcher.ts";
+import { DoorbellEvents } from "./core/doorbell.ts";
 import type { Feature } from "./core/feature.ts";
 import { Home } from "./core/home.ts";
 import { HOME_KINDS } from "./core/home-kinds/index.ts";
@@ -75,6 +76,8 @@ export type Core = {
 	announcementRouteStore: AnnouncementRouteStore;
 	/** A platform adapter plugs its events in here once it's ready. */
 	calendar: Calendar;
+	/** pixel-phone's call events: its adapter emits them, features subscribe. */
+	doorbell: DoorbellEvents;
 	/** Not started here — the bot calls `startFeatures()` once the adapters are ready. */
 	features: readonly Feature[];
 };
@@ -162,6 +165,7 @@ export function buildCore(
 	});
 	const calendar = new Calendar({ logger, reporter });
 	const channelPosts = new ChannelPosts();
+	const doorbell = new DoorbellEvents({ logger, reporter });
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
 	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
 	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
@@ -293,6 +297,7 @@ export function buildCore(
 		announcementRouteStore,
 		calendar,
 		channelPosts,
+		doorbell,
 		features,
 	};
 }

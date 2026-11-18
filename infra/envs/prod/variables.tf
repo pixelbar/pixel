@@ -149,6 +149,12 @@ variable "openr_gate_door" {
   description = "Optional. The OpenR ID of the parking gate, which only /park opens."
 }
 
+variable "pixel_phone_queue_url" {
+  type        = string
+  default     = null
+  description = "Optional. pixel-phone's phone-events queue in this environment (doorbell calls). Off when unset."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false
