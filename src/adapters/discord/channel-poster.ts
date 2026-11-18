@@ -6,8 +6,10 @@ import type {
 	ChannelPoster,
 	PostOptions,
 } from "../../core/channel-posts.ts";
+import type { DoorbellMessage } from "../../core/doorbell.ts";
 import { missingPermissions } from "./announce-channel.ts";
 import { attendanceComponents } from "./attendance-buttons.ts";
+import { doorbellComponents } from "./doorbell-buttons.ts";
 
 /**
  * Scheduled posts on Discord: a plain message, a native Discord poll, which
@@ -74,6 +76,16 @@ export function toAttendanceMessage(message: AttendanceMessage) {
 	};
 }
 
+/** A doorbell post: its text, and the Answer button while the call can be answered. */
+export function toDoorbellMessage(message: DoorbellMessage) {
+	return {
+		content: message.text,
+		// Always set, so settling it removes the button.
+		components: doorbellComponents(message),
+		allowedMentions: { parse: [] },
+	};
+}
+
 /** What an attendance poll's message needs (only the kind matters). */
 const ATTENDANCE_CHECK: ChannelPost = {
 	kind: "attendance",
@@ -126,6 +138,18 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 			const opened = await open(channelId, ATTENDANCE_CHECK);
 			if (!opened.ok) throw new Error(`Can't update an attendance poll: ${opened.problem}`);
 			await opened.channel.messages.edit(messageId, toAttendanceMessage(message));
+		},
+		// A doorbell post needs what an attendance poll does: to see the channel and post there.
+		async postDoorbell(channelId, message) {
+			const opened = await open(channelId, ATTENDANCE_CHECK);
+			if (!opened.ok) throw new Error(`Can't post the doorbell: ${opened.problem}`);
+			const sent = await opened.channel.send(toDoorbellMessage(message));
+			return { url: sent.url, messageId: sent.id };
+		},
+		async editDoorbell(channelId, messageId, message) {
+			const opened = await open(channelId, ATTENDANCE_CHECK);
+			if (!opened.ok) throw new Error(`Can't update the doorbell: ${opened.problem}`);
+			await opened.channel.messages.edit(messageId, toDoorbellMessage(message));
 		},
 	};
 }

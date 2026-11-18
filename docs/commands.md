@@ -265,6 +265,13 @@ Opens one of the building's doors. Pixel asks once: if it doesn't open, try agai
 
 </PxCommand>
 
+### The doorbell
+
+When someone rings the Pixelbar doorbell, Pixel posts "🔔 Someone's at the door!" in the doorbell channel with an **Answer** button, for about 15 seconds. There's no command: it's the button. Answering needs a friend or member membership and the `doorbell` capability.
+
+- **Answer** tells the doorbell someone's coming (it picks up and plays a message to the visitor), so press it only if you're going to the door. Pixel answers you privately: "You're on it!", "Already answered by …" (someone else, or the button in the space, was first), or "Too late" when it has stopped ringing.
+- The post then says who answered (your display name), or that nobody did, and the button goes.
+
 ### Space state
 
 Sets whether Pixelbar shows as open or closed. This needs the `spacestate` capability.
@@ -281,7 +288,7 @@ For Pixel's operators. Every reply is private, and every change is recorded. How
 
 <PxCommand sig="/admin" tier="admin" reply="private">
 
-Opens the admin panel: Pixel's health, with sections for people and their access levels, capabilities, Discord roles, announcements, the closing-time reminder, doors, OpenR and parking.
+Opens the admin panel: Pixel's health, with sections for people and their access levels, capabilities, Discord roles, announcements, the closing-time reminder, doors, the doorbell, OpenR and parking.
 
 </PxCommand>
 
@@ -328,6 +335,15 @@ The reminder Pixel posts when the space closes, and by `/closing-time`. **Change
 ### Doors {#admin-doors}
 
 Door control from Pixel, on or off. **Switch door control off…** (Pixel asks first) stops every door action from Pixel at once, for everyone: Home Assistant's doors, OpenR's doors and the parking gate. **Switch door control on** brings it back. It stays as set across restarts. It doesn't lock a physical door.
+
+### Doorbell {#admin-doorbell}
+
+Only shown where the doorbell is connected. Where Pixel posts the doorbell.
+
+- **Set the channel…** / **Change the channel…**: pick a channel you can post in yourself, and that Pixel can post in. Everyone who can see it sees when someone's at the door, and who answered.
+- **Stop posting**: the doorbell isn't posted any more. The button in the space still works.
+
+Who may answer is the `doorbell` capability: grant it to friends (which reaches members too) with **Capabilities** → **What friends get**.
 
 ### OpenR {#admin-openr}
 

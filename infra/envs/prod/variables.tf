@@ -155,6 +155,12 @@ variable "pixel_phone_queue_url" {
   description = "Optional. pixel-phone's phone-events queue in this environment (doorbell calls). Off when unset."
 }
 
+variable "pixel_phone_url" {
+  type        = string
+  default     = null
+  description = "Optional, with pixel_phone_queue_url. pixel-phone's address in this environment, whose accept API Pixel calls. Needs Key Vault secret pixel-phone-api-key."
+}
+
 variable "write_secrets" {
   type        = bool
   default     = false

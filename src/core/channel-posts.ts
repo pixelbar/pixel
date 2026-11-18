@@ -1,3 +1,4 @@
+import type { DoorbellMessage } from "./doorbell.ts";
 import { UserFacingError } from "./errors.ts";
 
 /**
@@ -95,6 +96,10 @@ export type ChannelPoster = {
 	postAttendance(channelId: string, message: AttendanceMessage): Promise<PostedMessage>;
 	/** Replaces an attendance poll's message, to show new totals or that it has closed. */
 	editAttendance(channelId: string, messageId: string, message: AttendanceMessage): Promise<void>;
+	/** Posts the doorbell, with its Answer button. */
+	postDoorbell(channelId: string, message: DoorbellMessage): Promise<PostedMessage>;
+	/** Replaces a doorbell post, to show who answered (and take the button away). */
+	editDoorbell(channelId: string, messageId: string, message: DoorbellMessage): Promise<void>;
 };
 
 export class ChannelPostsUnavailableError extends UserFacingError {
@@ -129,6 +134,14 @@ export class ChannelPosts {
 
 	editAttendance(channelId: string, messageId: string, message: AttendanceMessage): Promise<void> {
 		return this.#require().editAttendance(channelId, messageId, message);
+	}
+
+	postDoorbell(channelId: string, message: DoorbellMessage): Promise<PostedMessage> {
+		return this.#require().postDoorbell(channelId, message);
+	}
+
+	editDoorbell(channelId: string, messageId: string, message: DoorbellMessage): Promise<void> {
+		return this.#require().editDoorbell(channelId, messageId, message);
 	}
 
 	#require(): ChannelPoster {

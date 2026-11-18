@@ -22,6 +22,7 @@ import { IdentityService } from "./core/identity.ts";
 import type { Logger } from "./core/logger.ts";
 import type { AccessStore } from "./core/ports/access-store.ts";
 import type { DoorSystem } from "./core/ports/door-system.ts";
+import type { DoorbellAccept } from "./core/ports/doorbell-accept.ts";
 import type { ErrorReporter } from "./core/ports/error-reporter.ts";
 import { type FeedbackSink, nullFeedbackSink } from "./core/ports/feedback.ts";
 import { RateLimiter } from "./core/rate-limit.ts";
@@ -35,6 +36,7 @@ import { ConfigTierSource, StoreCapabilitySource } from "./services/access-confi
 import { FileAccessStore } from "./services/access-store.ts";
 import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
 import { AttendanceStore } from "./services/attendance.ts";
+import { DoorbellSettings } from "./services/doorbell-settings.ts";
 import { FoodWishlistStore } from "./services/food-wishlist.ts";
 import { HomeDeviceStore } from "./services/home-devices.ts";
 import { infoVariables, loadInfoTopics } from "./services/info-content.ts";
@@ -95,6 +97,11 @@ export type BuildCoreOptions = {
 	 * isn't set up and `/park` says to open the gate the usual way.
 	 */
 	doorSystem?: DoorSystem;
+	/**
+	 * pixel-phone's accept API, when the doorbell is configured. Without one, the doorbell
+	 * isn't offered in `/admin` and Answer says it isn't connected.
+	 */
+	doorbellAccept?: DoorbellAccept;
 };
 
 /**
@@ -166,6 +173,14 @@ export function buildCore(
 	const calendar = new Calendar({ logger, reporter });
 	const channelPosts = new ChannelPosts();
 	const doorbell = new DoorbellEvents({ logger, reporter });
+	// An unreadable doorbell file doesn't stop Pixel: the doorbell isn't posted until an admin sets a channel.
+	const doorbellSettings = new DoorbellSettings({
+		file: join(config.dataDir, "doorbell.yaml"),
+		logger,
+	});
+	if (doorbellSettings.problem) {
+		reporter.captureBackground(new Error(doorbellSettings.problem), "doorbell");
+	}
 	// An invalid schedules file doesn't stop Pixel: nothing is posted or changed until it's fixed.
 	const schedules = new ScheduleStore({ file: join(config.dataDir, "schedules.yaml"), logger });
 	if (schedules.problem) reporter.captureBackground(new Error(schedules.problem), "schedules");
@@ -269,6 +284,7 @@ export function buildCore(
 		},
 		foodWishlist,
 		foodAlertChannelId: config.discord.announce.foodAlertChannelId,
+		doorbell: { events: doorbell, settings: doorbellSettings, accept: options.doorbellAccept },
 	});
 	for (const feature of features) registry.register(feature);
 

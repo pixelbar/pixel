@@ -84,3 +84,19 @@ export class DoorbellEvents {
 		);
 	}
 }
+
+/** The action every Answer button runs, for whoever clicked it. */
+export const DOORBELL_ANSWER_ACTION = "doorbell.answer";
+
+/**
+ * A doorbell post as it's shown: text the feature wrote, and an Answer button while the
+ * call can still be accepted. The adapter draws the button so it carries only `callId`,
+ * and every click runs `DOORBELL_ANSWER_ACTION` through the dispatcher.
+ */
+export type DoorbellMessage = {
+	callId: string;
+	/** Markdown. Mentions never ping. */
+	text: string;
+	/** Whether it has the Answer button. */
+	answerable: boolean;
+};

@@ -16,6 +16,7 @@ import type { KindSwitch } from "../../services/kind-switch.ts";
 import { createAnnouncementsSubgroup } from "./announcements.ts";
 import { createCapabilitySubgroup } from "./capabilities.ts";
 import { createClosingTimeSubgroup } from "./closing-time.ts";
+import { createDoorbellSubgroup, type DoorbellAdminDeps } from "./doorbell.ts";
 import { createDoorsSubgroup, describeDoors } from "./doors.ts";
 import { describeHome, homeLines, reloadDevices } from "./home.ts";
 import { createLevelSubgroup } from "./members.ts";
@@ -48,6 +49,8 @@ export type AdminDeps = {
 	parking: Omit<ParkingAdminDeps, "now">;
 	/** Pixel's OpenR login (`/admin` → OpenR). */
 	openr: Omit<OpenrAdminDeps, "now" | "reporter">;
+	/** Where the doorbell is posted (`/admin` → Doorbell). */
+	doorbell: DoorbellAdminDeps;
 };
 
 function describeCounts(counts: AccessStore["view"]["counts"]): string {
@@ -70,6 +73,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 	const doors = subcommands(
 		createDoorsSubgroup({ switches: deps.switches, reporter: deps.reporter }),
 	);
+	const doorbell = subcommands(createDoorbellSubgroup(deps.doorbell));
 	const openr = subcommands(createOpenrSubgroup({ ...deps.openr, reporter: deps.reporter, now }));
 	const [sync] = createRoleSubcommands(deps.access, deps.roles);
 	const [closingTime] = createClosingTimeSubgroup({ closingTimeFile: deps.closingTimeFile })
@@ -169,6 +173,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 			},
 			closingTime: closingTime as SubcommandDefinition,
 			doors: { on: need(doors, "on"), off: need(doors, "off") },
+			doorbell: { set: need(doorbell, "set"), clear: need(doorbell, "clear") },
 			openr: {
 				status: need(openr, "status"),
 				login: need(openr, "login"),
@@ -183,6 +188,7 @@ export function createAdminFeature(deps: AdminDeps): Feature {
 		closingTimeFile: deps.closingTimeFile,
 		switches: deps.switches,
 		openr: deps.openr.system !== undefined,
+		doorbell: deps.doorbell,
 		parking: parking.subcommand,
 	});
 	return {

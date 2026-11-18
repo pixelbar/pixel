@@ -35,9 +35,11 @@ discord_guild_id = "100000000000000002"
 # openr_doors       = "Entrance=2, Living room=3"
 # openr_gate_door   = "4"
 
-# The doorbell: pixel-phone's prod queue, never dev's. pixel-phone's prod stack must
-# list Pixel's prod identity (pixel_principal_id there).
+# The doorbell: pixel-phone's prod queue and address, never dev's. Also needs Key Vault
+# secret pixel-phone-api-key. pixel-phone's prod stack must list Pixel's prod identity
+# (pixel_principal_id there).
 # pixel_phone_queue_url = "https://<pixel-phone prod storage>.queue.core.windows.net/phone-events"
+# pixel_phone_url       = "https://phone.pixelbar.nl"
 
 # Lets the Release workflow read discord-token (only) and register slash
 # commands (ADR 0014). az identity show -g pixel-bootstrap -n pixel-github-prod --query principalId -o tsv

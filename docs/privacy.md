@@ -15,6 +15,7 @@ Pixel stores as little as it can. It has no database. It identifies people only 
 | Discord user ID, membership tier, optional note, and any named capabilities | Access control: so Pixel knows which commands you may use |
 | Creator ID and display name, channel, and the text of a scheduled message or poll | To post it later, if you used `/schedule` |
 | Your Discord ID, display name and answer, when you press a button on an attendance poll ("who's coming") | To count the answers and show who's coming. Your name and answer are shown publicly on the poll and in its results posts, like a Discord poll's voters. Press your answer again to take it back |
+| Your Discord ID and display name, when you press **Answer** on a doorbell post | Your display name is shown on the post, so others know someone's going to the door. Your Discord ID goes to pixel-phone, the doorbell service, which records who answered each call. Pixel doesn't keep the caller's phone number |
 | Discord ID, display name, handle, and what you did (command name and outcome, not the words you typed) | Moderation and debugging |
 | Errors, with the same identity fields when they happened during a command | Debugging |
 | A `/feedback` message, with your Discord name, handle and ID | So maintainers can follow up. This is the only place Pixel keeps words you typed |

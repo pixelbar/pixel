@@ -456,6 +456,8 @@ describe("ChannelPosts", () => {
 			post: vi.fn(async () => ({ url: "https://example.test/m/1", messageId: "1" })),
 			postAttendance: vi.fn(async () => ({ url: "https://example.test/m/2", messageId: "2" })),
 			editAttendance: vi.fn(async () => {}),
+			postDoorbell: vi.fn(async () => ({ url: "https://example.test/m/3", messageId: "3" })),
+			editDoorbell: vi.fn(async () => {}),
 		};
 		posts.use(poster);
 		expect(posts.ready).toBe(true);

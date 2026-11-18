@@ -28,6 +28,7 @@ locals {
     spacestate         = var.spacestate_api_url != null
     spacestate-headers = var.spacestate_api_url != null && var.spacestate_additional_headers_enabled
     openr              = var.openr_building_id != null
+    doorbell           = var.pixel_phone_queue_url != null
     sentry             = var.sentry_enabled
     tailscale          = var.tailscale_enabled
     container-registry = var.container_registry_server != null
@@ -82,6 +83,7 @@ locals {
     # The identity's client ID lets Pixel sign in as it to read pixel-phone's queue.
     var.pixel_phone_queue_url != null ? {
       PIXEL_PHONE_QUEUE_URL = var.pixel_phone_queue_url
+      PIXEL_PHONE_URL       = var.pixel_phone_url
       AZURE_CLIENT_ID       = azurerm_user_assigned_identity.app.client_id
     } : {},
   )

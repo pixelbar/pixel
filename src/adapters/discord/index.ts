@@ -36,6 +36,7 @@ import { createDiscordPoster } from "./channel-poster.ts";
 import { CLOSING_TIME_PUBLISHER_ID, createClosingTimePublisher } from "./closing-time.ts";
 import { CONTROL_PREFIX, HeldControls, submittedFields, UI_FORM_PREFIX } from "./controls.ts";
 import { DiscordDirectMessenger } from "./direct-message.ts";
+import { createDoorbellHandler, DOORBELL_PREFIX } from "./doorbell-buttons.ts";
 import { PendingForms } from "./forms.ts";
 import {
 	createAutocompleteHandler,
@@ -144,6 +145,11 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		controls,
 	});
 	const handleAttendance = createAttendanceHandler({
+		guildId,
+		dispatcher,
+		deferAfterMs: DEFER_AFTER_MS,
+	});
+	const handleDoorbell = createDoorbellHandler({
 		guildId,
 		dispatcher,
 		deferAfterMs: DEFER_AFTER_MS,
@@ -293,6 +299,27 @@ export function createDiscordAdapter(deps: DiscordAdapterDeps): DiscordAdapter {
 		if (interaction.isButton() && interaction.customId.startsWith(ATTEND_PREFIX)) {
 			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
 			handleAttendance(
+				{
+					guildId: interaction.guildId,
+					customId: interaction.customId,
+					user: interaction.user,
+					reply: (payload) => interaction.reply(payload),
+					deferReply: () => interaction.deferReply({ flags: MessageFlags.Ephemeral }),
+					editReply: (payload) => interaction.editReply(payload),
+				},
+				displayName,
+			).catch((error: unknown) => {
+				handleInteractionFailure(
+					error,
+					{ logger, reportError },
+					{ actor: discordActor(interaction.user, displayName) },
+				);
+			});
+			return;
+		}
+		if (interaction.isButton() && interaction.customId.startsWith(DOORBELL_PREFIX)) {
+			const displayName = interaction.inCachedGuild() ? interaction.member.displayName : undefined;
+			handleDoorbell(
 				{
 					guildId: interaction.guildId,
 					customId: interaction.customId,

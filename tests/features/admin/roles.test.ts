@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor } from "../../../src/core/access.ts";
 import { AnnouncementRoutes } from "../../../src/core/announcement-routes.ts";
 import { CapabilityRegistry } from "../../../src/core/capabilities.ts";
+import { ChannelPosts } from "../../../src/core/channel-posts.ts";
 import type { ResolvedUser } from "../../../src/core/command.ts";
 import { Dispatcher, MESSAGES } from "../../../src/core/dispatcher.ts";
 import { Home, type HomeBackend, type HomeStatus } from "../../../src/core/home.ts";
@@ -24,6 +25,7 @@ import {
 import { createAdminFeature } from "../../../src/features/admin/index.ts";
 import { ConfigTierSource } from "../../../src/services/access-config.ts";
 import { FileAccessStore, nodeFileOps } from "../../../src/services/access-store.ts";
+import { DoorbellSettings } from "../../../src/services/doorbell-settings.ts";
 import { HomeDeviceStore } from "../../../src/services/home-devices.ts";
 import { KindSwitch } from "../../../src/services/kind-switch.ts";
 import { type AdminOp, runAdmin } from "../../../src/testing/admin.ts";
@@ -115,6 +117,11 @@ function setup(backend?: Fake, homeBackend?: HomeBackend, runtime: "local" | "cl
 			closingTimeFile: "data/closing-time.md",
 			parking: inMemoryParking(),
 			openr: { system: undefined, doors: [], gateDoor: undefined },
+			doorbell: {
+				settings: new DoorbellSettings({ logger: silentLogger }),
+				posts: new ChannelPosts(),
+				configured: false,
+			},
 		}),
 	);
 	const dispatcher = new Dispatcher({

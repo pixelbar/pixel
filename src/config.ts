@@ -75,6 +75,21 @@ const queueUrl = z.url({ protocol: /^https$/ }).refine(
 	{ error: "must be a queue's address, like https://<account>.queue.core.windows.net/<queue>" },
 );
 
+/** pixel-phone's address: https, just the origin (the API's paths are fixed). */
+const pixelPhoneUrl = z.url({ protocol: /^https$/ }).refine(
+	(raw) => {
+		const url = new URL(raw);
+		return (
+			(url.pathname === "/" || url.pathname === "") &&
+			url.search === "" &&
+			url.hash === "" &&
+			url.username === "" &&
+			url.password === ""
+		);
+	},
+	{ error: "must be pixel-phone's address, like https://phone.example (no path)" },
+);
+
 /**
  * The doors `/openr open` offers, as `Name=ID` pairs separated by commas, like
  * `Entrance=103, Living room=203`. Names are what people pick in Discord; IDs are
@@ -202,9 +217,12 @@ const envSchema = z
 		OPENR_DOORS: optional(openrDoors),
 		OPENR_GATE_DOOR: optional(openrId),
 
-		// pixel-phone, the doorbell. Unset means Pixel doesn't read its call events. The queue is
-		// pixel-phone's `phone-events` in the same environment: never dev's from prod or back.
+		// pixel-phone, the doorbell. All three or none: unset means the doorbell is off. The queue
+		// is pixel-phone's `phone-events` and the URL its address, both in the same environment:
+		// never dev's from prod or back. The API key is a secret.
 		PIXEL_PHONE_QUEUE_URL: optional(queueUrl),
+		PIXEL_PHONE_URL: optional(pixelPhoneUrl),
+		PIXEL_PHONE_API_KEY: optional(z.string().trim().min(32).max(200)),
 		// The client ID of Pixel's user-assigned managed identity, which reads the queue. Unset on a
 		// laptop, where the Azure CLI's login is used instead.
 		AZURE_CLIENT_ID: optional(z.uuid({ error: "must be a client ID (a UUID)" })),
@@ -260,6 +278,17 @@ const envSchema = z
 		{
 			path: ["OPENR_DOORS"],
 			error: "must not include the parking gate: only /park opens OPENR_GATE_DOOR",
+		},
+	)
+	.refine(
+		(e) => {
+			const set = [e.PIXEL_PHONE_QUEUE_URL, e.PIXEL_PHONE_URL, e.PIXEL_PHONE_API_KEY];
+			return set.every((v) => v === undefined) || set.every((v) => v !== undefined);
+		},
+		{
+			path: ["PIXEL_PHONE_QUEUE_URL"],
+			error:
+				"set PIXEL_PHONE_QUEUE_URL, PIXEL_PHONE_URL and PIXEL_PHONE_API_KEY together, or none of them",
 		},
 	)
 	.refine(
@@ -384,11 +413,13 @@ export type Config = {
 		  }
 		| undefined;
 	/**
-	 * pixel-phone's call events: the Storage queue Pixel reads them from, and the managed
-	 * identity it reads with (undefined on a laptop: the Azure CLI's login). Undefined means
-	 * Pixel doesn't read them.
+	 * pixel-phone, the doorbell: the Storage queue Pixel reads call events from, the managed
+	 * identity it reads with (undefined on a laptop: the Azure CLI's login), and the address
+	 * and API key (a secret) of its accept API. Undefined means the doorbell is off.
 	 */
-	pixelPhone: { queueUrl: string; clientId: string | undefined } | undefined;
+	pixelPhone:
+		| { queueUrl: string; clientId: string | undefined; url: string; apiKey: string }
+		| undefined;
 	/**
 	 * Operator-authored closing-time body. Default `{dataDir}/closing-time.md`.
 	 * Missing or empty file → the built-in default. Not a secret.
@@ -484,8 +515,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 					}
 				: undefined,
 		pixelPhone:
-			e.PIXEL_PHONE_QUEUE_URL !== undefined
-				? { queueUrl: e.PIXEL_PHONE_QUEUE_URL, clientId: e.AZURE_CLIENT_ID }
+			e.PIXEL_PHONE_QUEUE_URL !== undefined &&
+			e.PIXEL_PHONE_URL !== undefined &&
+			e.PIXEL_PHONE_API_KEY !== undefined
+				? {
+						queueUrl: e.PIXEL_PHONE_QUEUE_URL,
+						clientId: e.AZURE_CLIENT_ID,
+						url: new URL(e.PIXEL_PHONE_URL).origin,
+						apiKey: e.PIXEL_PHONE_API_KEY,
+					}
 				: undefined,
 		closingTimeFile: e.PIXEL_CLOSING_TIME_FILE ?? `${e.PIXEL_DATA_DIR}/closing-time.md`,
 	};
