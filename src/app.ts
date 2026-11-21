@@ -171,50 +171,56 @@ export function buildCore(
 		logger,
 	});
 
-	// Seed notification channels from env vars with deprecation warnings
-	const notifications = announcementRouteStore.getNotifications();
-	if (!notifications.bot && config.discord.announce.botChannelId) {
-		logger.warn(
-			{
-				event: "config.deprecated",
-				variable: "DISCORD_ANNOUNCE_BOT_CHANNEL_ID",
-			},
-			"DISCORD_ANNOUNCE_BOT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
-		);
-		announcementRouteStore.setNotification("bot", config.discord.announce.botChannelId);
-	}
-	if (!notifications.closingTime && config.discord.announce.closingTimeChannelId) {
-		logger.warn(
-			{
-				event: "config.deprecated",
-				variable: "DISCORD_CLOSING_TIME_CHANNEL_ID",
-			},
-			"DISCORD_CLOSING_TIME_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
-		);
-		announcementRouteStore.setNotification(
-			"closingTime",
-			config.discord.announce.closingTimeChannelId,
-		);
-	}
-	if (!notifications.parking && config.discord.announce.parkingChannelId) {
-		logger.warn(
-			{
-				event: "config.deprecated",
-				variable: "DISCORD_PARKING_CHANNEL_ID",
-			},
-			"DISCORD_PARKING_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
-		);
-		announcementRouteStore.setNotification("parking", config.discord.announce.parkingChannelId);
-	}
-	if (!notifications.foodAlert && config.discord.announce.foodAlertChannelId) {
-		logger.warn(
-			{
-				event: "config.deprecated",
-				variable: "DISCORD_FOOD_ALERT_CHANNEL_ID",
-			},
-			"DISCORD_FOOD_ALERT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
-		);
-		announcementRouteStore.setNotification("foodAlert", config.discord.announce.foodAlertChannelId);
+	// Seed notification channels from env vars with deprecation warnings. Skip when the
+	// routes file exists but is unreadable: a write would wipe its contents.
+	if (announcementRouteStore.usable) {
+		const notifications = announcementRouteStore.getNotifications();
+		if (!notifications.bot && config.discord.announce.botChannelId) {
+			logger.warn(
+				{
+					event: "config.deprecated",
+					variable: "DISCORD_ANNOUNCE_BOT_CHANNEL_ID",
+				},
+				"DISCORD_ANNOUNCE_BOT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+			);
+			announcementRouteStore.setNotification("bot", config.discord.announce.botChannelId);
+		}
+		if (!notifications.closingTime && config.discord.announce.closingTimeChannelId) {
+			logger.warn(
+				{
+					event: "config.deprecated",
+					variable: "DISCORD_CLOSING_TIME_CHANNEL_ID",
+				},
+				"DISCORD_CLOSING_TIME_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+			);
+			announcementRouteStore.setNotification(
+				"closingTime",
+				config.discord.announce.closingTimeChannelId,
+			);
+		}
+		if (!notifications.parking && config.discord.announce.parkingChannelId) {
+			logger.warn(
+				{
+					event: "config.deprecated",
+					variable: "DISCORD_PARKING_CHANNEL_ID",
+				},
+				"DISCORD_PARKING_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+			);
+			announcementRouteStore.setNotification("parking", config.discord.announce.parkingChannelId);
+		}
+		if (!notifications.foodAlert && config.discord.announce.foodAlertChannelId) {
+			logger.warn(
+				{
+					event: "config.deprecated",
+					variable: "DISCORD_FOOD_ALERT_CHANNEL_ID",
+				},
+				"DISCORD_FOOD_ALERT_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
+			);
+			announcementRouteStore.setNotification(
+				"foodAlert",
+				config.discord.announce.foodAlertChannelId,
+			);
+		}
 	}
 	const calendar = new Calendar({ logger, reporter });
 	const channelPosts = new ChannelPosts();

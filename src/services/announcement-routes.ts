@@ -63,6 +63,8 @@ export class AnnouncementRouteStore {
 	#routes: StoredRoute[] = [];
 	#releaseChannels: string[] = [];
 	#notifications: NotificationChannels = {};
+	/** True when the file existed but couldn't be read or parsed. Writes would wipe it. */
+	#corrupt = false;
 
 	constructor(options: { file?: string; logger: Logger }) {
 		this.#file = options.file;
@@ -81,6 +83,14 @@ export class AnnouncementRouteStore {
 	/** Get notification channels (bot, closing time, parking, food alerts). */
 	getNotifications(): Readonly<NotificationChannels> {
 		return { ...this.#notifications };
+	}
+
+	/**
+	 * False when the routes file existed but was unreadable or invalid. Env-var seeding
+	 * must not rewrite it in that state (it would wipe the on-disk contents).
+	 */
+	get usable(): boolean {
+		return !this.#corrupt;
 	}
 
 	/** Whether another open/closed channel fits (replacing a channel's style always does). */
@@ -158,6 +168,7 @@ export class AnnouncementRouteStore {
 	}
 
 	#unreadable(why: string): void {
+		this.#corrupt = true;
 		this.#logger.error(
 			{ event: "announcements.routes_unreadable", why },
 			"couldn't read the announcement routes file, so announcements through it are off until an admin sets them again",
