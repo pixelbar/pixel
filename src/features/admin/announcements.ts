@@ -260,7 +260,7 @@ export function createAnnouncementsSubgroup(deps: {
 			const channel = channels.channel;
 			// If no channel provided, clear the setting
 			if (!channel) {
-				const { result, previous, saved } = await deps.routes.setNotification(type, undefined);
+				const { previous, saved } = await deps.routes.setNotification(type, undefined);
 				logger.info(
 					{
 						event: "announcements.notification_cleared",
@@ -274,7 +274,9 @@ export function createAnnouncementsSubgroup(deps: {
 				const lines = [`Cleared the **${name}** channel.`];
 				if (previous) lines.push(`It was ${channelLink(previous)}.`);
 				if (!saved) {
-					lines.push("⚠️ I couldn't save this, so it only holds until Pixel restarts. See the logs.");
+					lines.push(
+						"⚠️ I couldn't save this, so it only holds until Pixel restarts. See the logs.",
+					);
 				}
 				return { text: lines.join("\n"), private: true };
 			}
@@ -284,7 +286,7 @@ export function createAnnouncementsSubgroup(deps: {
 					"You can only set notifications in channels where you can post yourself.",
 				);
 			}
-			const { result, previous, saved } = await deps.routes.setNotification(type, channel.id);
+			const { result, saved } = await deps.routes.setNotification(type, channel.id);
 			logger.info(
 				{
 					event: "announcements.notification_set",
@@ -329,7 +331,11 @@ export function createAnnouncementsSubgroup(deps: {
 			} else {
 				lines.push("**Release notes:** not set", "");
 			}
-			lines.push("**Notification channels:**", ...notifications.map(describeNotificationChannel), "");
+			lines.push(
+				"**Notification channels:**",
+				...notifications.map(describeNotificationChannel),
+				"",
+			);
 			lines.push("**Styles:**");
 			lines.push(...SPACE_ANNOUNCE_STYLES.map((s) => `• **${s}**: ${STYLE_HELP[s]}`));
 			lines.push(

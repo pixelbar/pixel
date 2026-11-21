@@ -191,7 +191,10 @@ export function buildCore(
 			},
 			"DISCORD_CLOSING_TIME_CHANNEL_ID is deprecated: use /admin → Announcements → Set notification channel instead",
 		);
-		announcementRouteStore.setNotification("closingTime", config.discord.announce.closingTimeChannelId);
+		announcementRouteStore.setNotification(
+			"closingTime",
+			config.discord.announce.closingTimeChannelId,
+		);
 	}
 	if (!notifications.parking && config.discord.announce.parkingChannelId) {
 		logger.warn(

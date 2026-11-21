@@ -205,6 +205,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => true,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("single", GENERAL)).rejects.toThrow(/too many/);
@@ -221,6 +223,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => true,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("live", GENERAL)).resolves.toMatchObject({ saved: false });
@@ -292,6 +296,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => false,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.addRelease(GENERAL)).rejects.toThrow(/too many/);

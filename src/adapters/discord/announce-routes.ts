@@ -66,7 +66,9 @@ export type DiscordRoutesOptions = {
 		channelId: string,
 	) => Publisher;
 	/** Creates a closing time publisher for a channel. */
-	createClosingTimePublisher: (channel: Extract<OpenedChannel, { ok: true }>["channel"]) => Publisher;
+	createClosingTimePublisher: (
+		channel: Extract<OpenedChannel, { ok: true }>["channel"],
+	) => Publisher;
 };
 
 /**
@@ -147,11 +149,17 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 				const problem = error instanceof UserFacingError ? error.message : "it couldn't be set up";
 				this.#notificationProblems.set("closingTime", problem);
 				this.#logger.error(
-					{ event: "announcements.closing_time_off", channelId: notifications.closingTime, err: error },
+					{
+						event: "announcements.closing_time_off",
+						channelId: notifications.closingTime,
+						err: error,
+					},
 					"closing time announcements are off",
 				);
 				this.#options.reportError(
-					new Error(`Closing time announcements to ${notifications.closingTime} are off: ${problem}`),
+					new Error(
+						`Closing time announcements to ${notifications.closingTime} are off: ${problem}`,
+					),
 				);
 			}
 		}
@@ -422,7 +430,9 @@ export class DiscordAnnouncementRoutes implements RouteManager, Recheckable {
 		const opened = await this.#options.openChannel(channelId, LIVE_PERMISSIONS);
 		if (!opened.ok) throw new UserFacingError(cantAnnounce(opened.problem));
 		this.#options.announcer.unregister(BOT_STATUS_PUBLISHER_ID);
-		this.#options.announcer.register(this.#options.createBotStatusPublisher(opened.channel, channelId));
+		this.#options.announcer.register(
+			this.#options.createBotStatusPublisher(opened.channel, channelId),
+		);
 	}
 
 	async #activateClosingTime(channelId: string): Promise<void> {

@@ -882,6 +882,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			const wasNew =
 				item.reportedBy.ref === by.ref && item.reportedAt.getTime() === now().getTime();
 
+			const alertChannelId = deps.alertChannelId?.();
 			if (wasNew) {
 				ctx.logger.info(
 					{
@@ -892,7 +893,6 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 					"reported an item out of stock",
 				);
 
-				const alertChannelId = deps.alertChannelId?.();
 				if (deps.poster && alertChannelId) {
 					await deps.poster.post(alertChannelId, {
 						kind: "message",
