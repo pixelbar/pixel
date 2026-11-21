@@ -41,9 +41,10 @@ describe("Announcer", () => {
 
 	it("does nothing, without failing, when there are no publishers", async () => {
 		const { announcer } = setup();
-		await expect(announcer.announce(announcement)).resolves.toEqual({ failed: 0 });
+		await expect(announcer.announce(announcement)).resolves.toEqual({ failed: 0, ok: [] });
 		await expect(announcer.reconcile({ state: "open", since: null })).resolves.toEqual({
 			failed: 0,
+			ok: [],
 		});
 	});
 
@@ -71,11 +72,31 @@ describe("Announcer", () => {
 		announcer.register(broken);
 		announcer.register(healthy);
 
-		await expect(announcer.announce(announcement)).resolves.toEqual({ failed: 1 });
+		await expect(announcer.announce(announcement)).resolves.toEqual({
+			failed: 1,
+			ok: ["healthy"],
+		});
 
 		expect(healthy.publish).toHaveBeenCalledOnce();
 		expect(reporter.captureBackground).toHaveBeenCalledWith(boom, "announcer:broken");
 		expect(reporter.captureBackground).toHaveBeenCalledOnce();
+	});
+
+	it("can announce to only some publishers", async () => {
+		const { announcer } = setup();
+		const a = publisher("a");
+		const b = publisher("b");
+		const c = publisher("c");
+		announcer.register(a);
+		announcer.register(b);
+		announcer.register(c);
+
+		await expect(
+			announcer.announce(announcement, { only: ["a", "c", "missing"] }),
+		).resolves.toEqual({ failed: 0, ok: ["a", "c"] });
+		expect(a.publish).toHaveBeenCalledOnce();
+		expect(b.publish).not.toHaveBeenCalled();
+		expect(c.publish).toHaveBeenCalledOnce();
 	});
 
 	it("keeps working after a failed call", async () => {
