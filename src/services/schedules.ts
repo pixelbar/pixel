@@ -93,6 +93,7 @@ export type PostedPoll = {
 
 const ID = /^[a-z0-9]{6}$/;
 const snowflake = z.string().regex(/^\d{17,20}$/);
+export const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const postSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
@@ -107,24 +108,34 @@ const postSchema = z.discriminatedUnion("kind", [
 		durationHours: z.number().int().min(1).max(768),
 		multiple: z.boolean(),
 	}),
-	z.strictObject({
-		kind: z.literal("attendance"),
-		question: z.string().min(1).max(MAX_POLL_QUESTION),
-		answers: z
-			.array(
-				z.strictObject({
-					label: z.string().min(1).max(MAX_ATTENDANCE_LABEL),
-					counts: z.boolean(),
-					colour: z.enum(ATTENDANCE_COLOURS).optional(),
+	z
+		.strictObject({
+			kind: z.literal("attendance"),
+			question: z.string().min(1).max(MAX_POLL_QUESTION),
+			answers: z
+				.array(
+					z.strictObject({
+						label: z.string().min(1).max(MAX_ATTENDANCE_LABEL),
+						counts: z.boolean(),
+						colour: z.enum(ATTENDANCE_COLOURS).optional(),
+					}),
+				)
+				.min(1)
+				.max(MAX_ATTENDANCE_ANSWERS)
+				.refine((answers) => answers.some((a) => a.counts), {
+					error: "at least one answer must count as coming",
 				}),
-			)
-			.min(1)
-			.max(MAX_ATTENDANCE_ANSWERS)
-			.refine((answers) => answers.some((a) => a.counts), {
-				error: "at least one answer must count as coming",
-			}),
-		durationHours: z.number().int().min(1).max(768),
-	}),
+			durationHours: z.number().int().min(1).max(768).optional(),
+			closeAt: z
+				.strictObject({
+					weekday: z.enum(WEEKDAYS),
+					time: z.string().regex(CLOCK),
+				})
+				.optional(),
+		})
+		.refine((p) => (p.durationHours === undefined) !== (p.closeAt === undefined), {
+			error: "must have either durationHours or closeAt, not both or neither",
+		}),
 ]);
 
 const recurrenceSchema = z.discriminatedUnion("kind", [
@@ -139,8 +150,6 @@ const recurrenceSchema = z.discriminatedUnion("kind", [
 		everyMonths: z.union([z.literal(1), z.literal(2)]),
 	}),
 ]);
-
-export const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const reminderSchema = z.strictObject({
 	channelId: snowflake,

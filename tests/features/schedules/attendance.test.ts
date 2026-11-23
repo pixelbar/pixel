@@ -14,6 +14,7 @@ import {
 	ATTEND_ACCESS,
 	ATTEND_MESSAGES,
 	attendanceMessage,
+	calculateClosingTime,
 	coming,
 	createAttendancePolls,
 	listNames,
@@ -192,6 +193,50 @@ describe("statusInstant", () => {
 		expect(
 			statusInstant("soon", posted, new Date("2026-11-06T22:00:00.000Z"), AMS),
 		).toBeUndefined();
+	});
+});
+
+describe("calculateClosingTime", () => {
+	it("adds the duration to the posted time for duration mode", () => {
+		const post: Extract<ChannelPost, { kind: "attendance" }> = {
+			kind: "attendance",
+			question: "Test?",
+			answers: [{ label: "Yes", counts: true }],
+			durationHours: 24,
+		};
+		expect(calculateClosingTime(NOW, post, AMS)).toEqual(new Date("2026-11-07T08:00:00.000Z"));
+	});
+
+	it("calculates the next occurrence of the weekday and time for day-time mode", () => {
+		const post: Extract<ChannelPost, { kind: "attendance" }> = {
+			kind: "attendance",
+			question: "Test?",
+			answers: [{ label: "Yes", counts: true }],
+			closeAt: { weekday: "wed", time: "23:59" },
+		};
+		expect(calculateClosingTime(NOW, post, AMS)).toEqual(new Date("2026-11-11T22:59:00.000Z"));
+	});
+
+	it("picks the same day if the time hasn't passed yet", () => {
+		const friday = new Date("2026-11-06T10:00:00.000Z");
+		const post: Extract<ChannelPost, { kind: "attendance" }> = {
+			kind: "attendance",
+			question: "Test?",
+			answers: [{ label: "Yes", counts: true }],
+			closeAt: { weekday: "fri", time: "23:59" },
+		};
+		expect(calculateClosingTime(friday, post, AMS)).toEqual(new Date("2026-11-06T22:59:00.000Z"));
+	});
+
+	it("picks the next week if the time has passed on the specified day", () => {
+		const friday = new Date("2026-11-06T23:00:00.000Z");
+		const post: Extract<ChannelPost, { kind: "attendance" }> = {
+			kind: "attendance",
+			question: "Test?",
+			answers: [{ label: "Yes", counts: true }],
+			closeAt: { weekday: "fri", time: "23:59" },
+		};
+		expect(calculateClosingTime(friday, post, AMS)).toEqual(new Date("2026-11-13T22:59:00.000Z"));
 	});
 });
 

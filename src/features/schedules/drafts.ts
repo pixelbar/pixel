@@ -32,7 +32,14 @@ export type Draft = {
 	question: string;
 	/** As typed: one per line. */
 	answers: string;
+	/** For polls: how the closing time is set. */
+	closeMode: "duration" | "day-time";
+	/** For duration mode: how long it stays open. */
 	durationHours: number;
+	/** For day-time mode: which weekday it closes. */
+	closeWeekday?: Weekday;
+	/** For day-time mode: what time it closes (HH:MM). */
+	closeTime?: string;
 	multiple: boolean;
 	/** For an attendance poll: which answers count as coming, by position. Unset means the first. */
 	counting?: readonly number[];
