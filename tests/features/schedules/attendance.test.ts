@@ -204,9 +204,7 @@ describe("calculateClosingTime", () => {
 			answers: [{ label: "Yes", counts: true }],
 			durationHours: 24,
 		};
-		expect(calculateClosingTime(NOW, post, AMS)).toEqual(
-			new Date("2026-11-07T08:00:00.000Z"),
-		);
+		expect(calculateClosingTime(NOW, post, AMS)).toEqual(new Date("2026-11-07T08:00:00.000Z"));
 	});
 
 	it("calculates the next occurrence of the weekday and time for day-time mode", () => {
@@ -216,9 +214,7 @@ describe("calculateClosingTime", () => {
 			answers: [{ label: "Yes", counts: true }],
 			closeAt: { weekday: "wed", time: "23:59" },
 		};
-		expect(calculateClosingTime(NOW, post, AMS)).toEqual(
-			new Date("2026-11-11T22:59:00.000Z"),
-		);
+		expect(calculateClosingTime(NOW, post, AMS)).toEqual(new Date("2026-11-11T22:59:00.000Z"));
 	});
 
 	it("picks the same day if the time hasn't passed yet", () => {
@@ -229,9 +225,7 @@ describe("calculateClosingTime", () => {
 			answers: [{ label: "Yes", counts: true }],
 			closeAt: { weekday: "fri", time: "23:59" },
 		};
-		expect(calculateClosingTime(friday, post, AMS)).toEqual(
-			new Date("2026-11-06T22:59:00.000Z"),
-		);
+		expect(calculateClosingTime(friday, post, AMS)).toEqual(new Date("2026-11-06T22:59:00.000Z"));
 	});
 
 	it("picks the next week if the time has passed on the specified day", () => {
@@ -242,9 +236,7 @@ describe("calculateClosingTime", () => {
 			answers: [{ label: "Yes", counts: true }],
 			closeAt: { weekday: "fri", time: "23:59" },
 		};
-		expect(calculateClosingTime(friday, post, AMS)).toEqual(
-			new Date("2026-11-13T22:59:00.000Z"),
-		);
+		expect(calculateClosingTime(friday, post, AMS)).toEqual(new Date("2026-11-13T22:59:00.000Z"));
 	});
 });
 

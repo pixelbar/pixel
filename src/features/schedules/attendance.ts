@@ -10,10 +10,9 @@ import { escapeMarkdown } from "../../core/format.ts";
 import type { Interpolate, TokenValues } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
-import { toInstant, toLocal } from "../../core/recurrence.ts";
+import { nextOccurrence, toInstant, toLocal } from "../../core/recurrence.ts";
 import type { ActionDefinition } from "../../core/ui.ts";
 import { describeWhen, parseTimeOfDay } from "../../core/when.ts";
-import { nextOccurrence } from "../../core/recurrence.ts";
 import { type AttendancePoll, type AttendanceStore, POLL_ID } from "../../services/attendance.ts";
 import { MAX_MESSAGE_LENGTH, type PostedPoll, type Schedule } from "../../services/schedules.ts";
 

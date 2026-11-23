@@ -1285,19 +1285,16 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				question: schedule.post.kind === "message" ? "" : schedule.post.question,
 				answers: answersText(schedule.post),
 				closeMode:
-					schedule.post.kind === "attendance" && schedule.post.closeAt
-						? "day-time"
-						: "duration",
+					schedule.post.kind === "attendance" && schedule.post.closeAt ? "day-time" : "duration",
 				durationHours:
 					schedule.post.kind === "message"
 						? 24
 						: schedule.post.kind === "poll"
 							? schedule.post.durationHours
-							: schedule.post.durationHours ?? 24,
+							: (schedule.post.durationHours ?? 24),
 				closeWeekday:
 					schedule.post.kind === "attendance" ? schedule.post.closeAt?.weekday : undefined,
-				closeTime:
-					schedule.post.kind === "attendance" ? schedule.post.closeAt?.time : undefined,
+				closeTime: schedule.post.kind === "attendance" ? schedule.post.closeAt?.time : undefined,
 				multiple: schedule.post.kind === "poll" && schedule.post.multiple,
 				...(schedule.post.kind === "attendance"
 					? {
@@ -1794,7 +1791,11 @@ function filledPost(
 function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embed {
 	if (post.kind === "attendance") {
 		const closingField = post.closeAt
-			? { name: "Closes", value: `${WEEKDAY_NAMES[post.closeAt.weekday]} ${post.closeAt.time}`, inline: true }
+			? {
+					name: "Closes",
+					value: `${WEEKDAY_NAMES[post.closeAt.weekday]} ${post.closeAt.time}`,
+					inline: true,
+				}
 			: { name: "Open for", value: durationLabel(post.durationHours ?? 24), inline: true };
 		return {
 			title: `🙋 ${escapeMarkdown(post.question)}`,
@@ -1807,10 +1808,7 @@ function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embe
 					return `• ${escapeMarkdown(a.label)}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`;
 				})
 				.join("\n"),
-			fields: [
-				closingField,
-				{ name: "Answers", value: "One each, by button", inline: true },
-			],
+			fields: [closingField, { name: "Answers", value: "One each, by button", inline: true }],
 			accent: "brand",
 		};
 	}
