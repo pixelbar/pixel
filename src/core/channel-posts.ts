@@ -1,5 +1,6 @@
 import type { DoorbellMessage } from "./doorbell.ts";
 import { UserFacingError } from "./errors.ts";
+import type { Weekday } from "./recurrence.ts";
 
 /**
  * Posting to a channel someone picked, for scheduled posts. Features hand the core a
@@ -32,8 +33,10 @@ export type ChannelPost =
 			kind: "attendance";
 			question: string;
 			answers: readonly AttendanceAnswer[];
-			/** How long it stays open. */
-			durationHours: number;
+			/** How long it stays open (duration from post time). */
+			durationHours?: number;
+			/** When it closes (fixed weekday and time, next occurrence after post). */
+			closeAt?: { weekday: Weekday; time: string };
 	  };
 
 /** One answer of an attendance poll. */

@@ -114,6 +114,10 @@ export const ACTIONS = {
 	draft: "schedule.draft",
 	days: "schedule.days",
 	duration: "schedule.duration",
+	closeMode: "schedule.close-mode",
+	closeWeekday: "schedule.close-weekday",
+	closeTime: "schedule.close-time",
+	closeTimed: "schedule.close-timed",
 	toggle: "schedule.toggle",
 	reminders: "schedule.reminders",
 	reminded: "schedule.reminded",
@@ -163,6 +167,14 @@ export const SCHEDULE_MESSAGES = {
 		}),
 	cantPostResults:
 		"You can only post results in channels where you can post yourself. Pick another one in Results.",
+	badClosingTime: (zone: string) =>
+		timeOfDayRefusal({
+			field: "Closing time",
+			zone,
+			hint: "Change it in Closing, or switch to duration mode.",
+		}),
+	closingBeforePost:
+		"The poll would close before it's posted. Pick a later day or time, or switch to duration mode.",
 } as const;
 
 export type SchedulesDeps = {
@@ -274,6 +286,21 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const question = draft.question.trim();
 		if (question === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyQuestion);
 		if (draft.kind === "attendance") {
+			if (draft.closeMode === "day-time") {
+				if (!draft.closeWeekday) {
+					throw new UserFacingError("Pick which day the poll closes.");
+				}
+				const time = parseTimeOfDay(draft.closeTime ?? "");
+				if (!time) {
+					throw new UserFacingError(SCHEDULE_MESSAGES.badClosingTime(zone));
+				}
+				return {
+					kind: "attendance",
+					question,
+					answers: attendanceAnswers(draft, parseAttendanceAnswers(draft.answers)),
+					closeAt: { weekday: draft.closeWeekday, time: formatTimeOfDay(time) },
+				};
+			}
 			return {
 				kind: "attendance",
 				question,
@@ -684,7 +711,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				},
 			]);
 		}
-		if (draft.kind !== "message") {
+		if (draft.kind === "poll") {
 			rows.push([
 				{
 					kind: "select",
@@ -698,6 +725,37 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					})),
 				},
 			]);
+		}
+		if (draft.kind === "attendance") {
+			if (draft.closeMode === "duration") {
+				rows.push([
+					{
+						kind: "select",
+						placeholder: "How long can people vote?",
+						call: call(ACTIONS.duration, { draft: draft.id }),
+						arg: "duration",
+						options: DURATIONS.map((d) => ({
+							label: `Open for ${d}`,
+							value: d,
+							...(pollHours(d) === draft.durationHours ? { selected: true } : {}),
+						})),
+					},
+				]);
+			} else {
+				rows.push([
+					{
+						kind: "select",
+						placeholder: "Which day does it close?",
+						call: call(ACTIONS.closeWeekday, { draft: draft.id }),
+						arg: "weekday",
+						options: WEEKDAYS.map((day) => ({
+							label: `Closes on ${WEEKDAY_NAMES[day]}`,
+							value: day,
+							...(draft.closeWeekday === day ? { selected: true } : {}),
+						})),
+					},
+				]);
+			}
 		}
 		const answers = draft.kind === "attendance" ? tryAttendanceAnswers(draft.answers) : undefined;
 		if (answers) {
@@ -719,6 +777,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			]);
 		}
 		if (draft.kind !== "message") {
+			const closingButton =
+				draft.kind === "attendance"
+					? button(
+							draft.closeMode === "duration"
+								? "Closing: duration mode"
+								: draft.closeWeekday && draft.closeTime
+									? `Closing: ${WEEKDAY_NAMES[draft.closeWeekday]} ${draft.closeTime}`
+									: "Closing: day & time (not set)",
+							ACTIONS.closeTime,
+							{ draft: draft.id },
+						)
+					: undefined;
 			rows.push([
 				...(draft.kind === "poll"
 					? [
@@ -728,6 +798,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							}),
 						]
 					: []),
+				...(closingButton ? [closingButton] : []),
 				button(
 					draft.reminder
 						? `Reminders: daily at ${reminderClock(draft.reminder.at)}`
@@ -998,6 +1069,43 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		};
 	}
 
+	function closeTimeForm(draft: Draft): Form {
+		return {
+			title: "Closing",
+			submit: call(ACTIONS.closeTimed, { draft: draft.id }),
+			fields: [
+				{
+					kind: "radio",
+					name: "mode",
+					label: "Closes",
+					options: [
+						{
+							label: "Duration from post time (1 hour, 1 day, 1 week…)",
+							value: "duration",
+							...(draft.closeMode === "duration" ? { selected: true } : {}),
+						},
+						{
+							label: "Fixed weekday and time (e.g. Wednesday 23:59)",
+							value: "day-time",
+							...(draft.closeMode === "day-time" ? { selected: true } : {}),
+						},
+					],
+				},
+				{
+					kind: "text",
+					name: "time",
+					label: "Closing time",
+					description: `A time of day in ${zone}. Only for day & time mode.`,
+					style: "short",
+					maxLength: 20,
+					placeholder: placeholderOf(["23:59", "11:59pm"]),
+					required: false,
+					...(draft.closeTime ? { value: draft.closeTime } : {}),
+				},
+			],
+		};
+	}
+
 	/** Back to the home list, saying why, when a draft has gone. */
 	const draftGone = (ctx: ActionContext): ActionResult => ({
 		reply: home(ctx.principal, 0, `⚠️ ${SCHEDULE_MESSAGES.draftGone}`),
@@ -1151,6 +1259,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					mentions: false,
 					question: "",
 					answers: "",
+					closeMode: "duration",
 					durationHours: 24,
 					multiple: false,
 				});
@@ -1175,7 +1284,20 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				mentions: schedule.post.kind === "message" && schedule.post.mentions,
 				question: schedule.post.kind === "message" ? "" : schedule.post.question,
 				answers: answersText(schedule.post),
-				durationHours: schedule.post.kind === "message" ? 24 : schedule.post.durationHours,
+				closeMode:
+					schedule.post.kind === "attendance" && schedule.post.closeAt
+						? "day-time"
+						: "duration",
+				durationHours:
+					schedule.post.kind === "message"
+						? 24
+						: schedule.post.kind === "poll"
+							? schedule.post.durationHours
+							: schedule.post.durationHours ?? 24,
+				closeWeekday:
+					schedule.post.kind === "attendance" ? schedule.post.closeAt?.weekday : undefined,
+				closeTime:
+					schedule.post.kind === "attendance" ? schedule.post.closeAt?.time : undefined,
 				multiple: schedule.post.kind === "poll" && schedule.post.multiple,
 				...(schedule.post.kind === "attendance"
 					? {
@@ -1266,6 +1388,48 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			async (ctx, draft) => {
 				const durationHours = pollHours(String(ctx.args.duration)) as number;
 				return { reply: await draftPanel(drafts.update(draft, { durationHours })) };
+			},
+		),
+		onDraft(
+			ACTIONS.closeWeekday,
+			[
+				{
+					name: "weekday",
+					description: "Which day",
+					type: "string",
+					required: true,
+					choices: WEEKDAYS,
+				},
+			],
+			async (ctx, draft) => {
+				const weekday = String(ctx.args.weekday) as Weekday;
+				if (!WEEKDAYS.includes(weekday)) throw new UserFacingError("Pick a day.");
+				return {
+					reply: await draftPanel(drafts.update(draft, { closeWeekday: weekday })),
+				};
+			},
+		),
+		onDraft(ACTIONS.closeTime, [], (_, draft) => {
+			if (draft.kind !== "attendance") {
+				throw new UserFacingError("Day & time closing is only for attendance polls.");
+			}
+			return { form: closeTimeForm(draft) };
+		}),
+		onDraft(
+			ACTIONS.closeTimed,
+			[
+				{ name: "mode", description: "Mode", type: "string", required: true },
+				{ name: "time", description: "Time", type: "string" },
+			],
+			async (ctx, draft) => {
+				if (draft.kind !== "attendance") {
+					throw new UserFacingError("Day & time closing is only for attendance polls.");
+				}
+				const mode = String(ctx.args.mode) === "day-time" ? "day-time" : "duration";
+				const closeTime = mode === "day-time" ? String(ctx.args.time ?? "").trim() : undefined;
+				return {
+					reply: await draftPanel(drafts.update(draft, { closeMode: mode, closeTime })),
+				};
 			},
 		),
 		onDraft(
@@ -1481,6 +1645,14 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 /** The settings part of a draft, as a post, for describing it. */
 function postSettings(draft: Draft): ChannelPost {
 	if (draft.kind === "attendance") {
+		if (draft.closeMode === "day-time" && draft.closeWeekday && draft.closeTime) {
+			return {
+				kind: "attendance",
+				question: draft.question,
+				answers: attendanceAnswers(draft, tryAttendanceAnswers(draft.answers) ?? []),
+				closeAt: { weekday: draft.closeWeekday, time: draft.closeTime },
+			};
+		}
 		return {
 			kind: "attendance",
 			question: draft.question,
@@ -1501,8 +1673,11 @@ function postSettings(draft: Draft): ChannelPost {
 
 function describeWhat(post: ChannelPost): string {
 	if (post.kind === "attendance") {
-		const counted = post.answers.filter((a) => a.counts).map((a) => `“${escapeMarkdown(a.label)}”`);
-		return `An attendance poll open for ${durationLabel(post.durationHours)}${counted.length > 0 ? `, counting ${counted.join(" and ")} as coming` : ""}`;
+		const counted = post.answers.filter((a) => a.counts).map((a) => `"${escapeMarkdown(a.label)}"`);
+		const closing = post.closeAt
+			? `closing ${WEEKDAY_NAMES[post.closeAt.weekday]} ${post.closeAt.time}`
+			: `open for ${durationLabel(post.durationHours ?? 24)}`;
+		return `An attendance poll ${closing}${counted.length > 0 ? `, counting ${counted.join(" and ")} as coming` : ""}`;
 	}
 	return post.kind === "message"
 		? `A message, pings ${post.mentions ? "on" : "off"}`
@@ -1618,6 +1793,9 @@ function filledPost(
 
 function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embed {
 	if (post.kind === "attendance") {
+		const closingField = post.closeAt
+			? { name: "Closes", value: `${WEEKDAY_NAMES[post.closeAt.weekday]} ${post.closeAt.time}`, inline: true }
+			: { name: "Open for", value: durationLabel(post.durationHours ?? 24), inline: true };
 		return {
 			title: `🙋 ${escapeMarkdown(post.question)}`,
 			description: post.answers
@@ -1630,7 +1808,7 @@ function pollPreviewEmbed(post: Exclude<ChannelPost, { kind: "message" }>): Embe
 				})
 				.join("\n"),
 			fields: [
-				{ name: "Open for", value: durationLabel(post.durationHours), inline: true },
+				closingField,
 				{ name: "Answers", value: "One each, by button", inline: true },
 			],
 			accent: "brand",
