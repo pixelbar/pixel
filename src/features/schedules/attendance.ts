@@ -10,7 +10,7 @@ import { escapeMarkdown } from "../../core/format.ts";
 import type { Interpolate, TokenValues } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
-import { toInstant, toLocal } from "../../core/recurrence.ts";
+import { nextOccurrence, toInstant, toLocal } from "../../core/recurrence.ts";
 import type { ActionDefinition } from "../../core/ui.ts";
 import { describeWhen, parseTimeOfDay } from "../../core/when.ts";
 import { type AttendancePoll, type AttendanceStore, POLL_ID } from "../../services/attendance.ts";
@@ -143,6 +143,30 @@ export function attendanceMessage(
 			: {}),
 		open,
 	};
+}
+
+/**
+ * Calculate when a poll closes: either post time + duration, or the next occurrence
+ * of the fixed weekday and time.
+ */
+export function calculateClosingTime(
+	postedAt: Date,
+	post: Extract<ChannelPost, { kind: "attendance" }>,
+	timezone: string,
+): Date {
+	if (post.durationHours !== undefined) {
+		return new Date(postedAt.getTime() + post.durationHours * 3_600_000);
+	}
+	if (!post.closeAt) throw new Error("attendance poll must have durationHours or closeAt");
+	const { weekday, time } = post.closeAt;
+	const parsed = parseTimeOfDay(time);
+	if (!parsed) throw new Error(`invalid time: ${time}`);
+	const postedLocal = toLocal(postedAt, timezone);
+	const start = { ...postedLocal, hour: parsed.hour, minute: parsed.minute };
+	const recurrence = { kind: "weekly" as const, everyWeeks: 1 as const, days: [weekday] };
+	const next = nextOccurrence(start, recurrence, timezone, postedAt);
+	if (!next) throw new Error(`no next occurrence for ${weekday} ${time}`);
+	return next;
 }
 
 /**
@@ -283,8 +307,7 @@ export function createAttendancePolls(deps: AttendanceDeps) {
 		if (deps.store.problem)
 			throw new Error(`attendance polls are unavailable: ${deps.store.problem}`);
 		const sentAt = now();
-		// Counted from when it's sent, like a platform poll.
-		const closesAt = new Date(sentAt.getTime() + filled.durationHours * 3_600_000);
+		const closesAt = calculateClosingTime(sentAt, filled, deps.timezone);
 		const { results } = schedule;
 		const statusAt =
 			results?.statusAt === undefined
