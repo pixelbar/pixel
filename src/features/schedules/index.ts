@@ -114,7 +114,6 @@ export const ACTIONS = {
 	draft: "schedule.draft",
 	days: "schedule.days",
 	duration: "schedule.duration",
-	closeMode: "schedule.close-mode",
 	closeWeekday: "schedule.close-weekday",
 	closeTime: "schedule.close-time",
 	closeTimed: "schedule.close-timed",
@@ -1670,7 +1669,7 @@ function postSettings(draft: Draft): ChannelPost {
 
 function describeWhat(post: ChannelPost): string {
 	if (post.kind === "attendance") {
-		const counted = post.answers.filter((a) => a.counts).map((a) => `"${escapeMarkdown(a.label)}"`);
+		const counted = post.answers.filter((a) => a.counts).map((a) => `“${escapeMarkdown(a.label)}”`);
 		const closing = post.closeAt
 			? `closing ${WEEKDAY_NAMES[post.closeAt.weekday]} ${post.closeAt.time}`
 			: `open for ${durationLabel(post.durationHours ?? 24)}`;
