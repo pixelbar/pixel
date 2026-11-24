@@ -24,7 +24,7 @@ function setup(options: { alertChannelId?: string } = {}) {
 	const feature = createFoodFeature({
 		wishlist,
 		poster,
-		alertChannelId: options.alertChannelId,
+		alertChannelId: options.alertChannelId ? () => options.alertChannelId : undefined,
 		logger: silentLogger,
 		now: () => NOW,
 	});

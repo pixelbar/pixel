@@ -49,8 +49,8 @@ export type AdminAction =
 
 export type ParkingActivityOptions = {
 	posts: Pick<ChannelPosts, "post">;
-	/** The parking channel. Undefined: nothing is posted, but it's still counted. */
-	channelId: string | undefined;
+	/** The parking channel. Undefined: nothing is posted, but it's still counted. Read fresh each post. */
+	channelId: () => string | undefined;
 	reporter: Pick<ErrorReporter, "count">;
 	logger: Logger;
 	timezone: string;
@@ -115,7 +115,7 @@ export class ParkingActivity {
 
 	/** Whether there's a parking channel to post to. */
 	get posting(): boolean {
-		return this.#options.channelId !== undefined;
+		return this.#options.channelId() !== undefined;
 	}
 
 	/**
@@ -124,7 +124,7 @@ export class ParkingActivity {
 	 */
 	async record(event: ParkingActivityEvent, now: Date): Promise<boolean> {
 		this.#options.reporter.count?.("pixel.parking", activityAttributes(event));
-		const channelId = this.#options.channelId;
+		const channelId = this.#options.channelId();
 		if (!channelId) return false;
 		try {
 			await this.#options.posts.post(channelId, {

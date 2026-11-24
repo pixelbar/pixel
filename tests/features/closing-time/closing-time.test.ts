@@ -30,7 +30,7 @@ function setup(
 	});
 	const feature = createClosingTimeFeature({
 		announcer: { announce },
-		enabled: overrides.enabled ?? true,
+		enabled: () => overrides.enabled ?? true,
 		message: () => overrides.message ?? DEFAULT_CLOSING_TIME_MESSAGE,
 		interpolator: createInterpolator({ timezone: "Europe/Amsterdam", now: () => AT }),
 		logger: silentLogger,

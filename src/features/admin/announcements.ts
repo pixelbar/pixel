@@ -3,6 +3,8 @@ import { SPACE_ANNOUNCE_STYLES, type SpaceAnnounceStyle } from "../../core/annou
 import type {
 	AnnouncementRoute,
 	AnnouncementRoutes,
+	NotificationChannel,
+	NotificationKind,
 	ReleaseChannel,
 } from "../../core/announcement-routes.ts";
 import type { SubcommandDefinition, SubgroupDefinition } from "../../core/command.ts";
@@ -45,10 +47,32 @@ export function describeReleaseChannel(channel: ReleaseChannel): string {
 	return `${channelLink(channel.channelId)}: **release**${problem}`;
 }
 
+const NOTIFICATION_NAMES: Record<NotificationKind, string> = {
+	bot: "bot status",
+	closingTime: "closing time",
+	parking: "parking activity",
+	foodAlert: "food out-of-stock alerts",
+};
+
+/** One line for a notification channel on `/admin` → Announcements. */
+export function describeNotificationChannel(channel: NotificationChannel): string {
+	const name = NOTIFICATION_NAMES[channel.kind];
+	if (!channel.channelId) return `**${name}**: not set`;
+	const problem = channel.problem ? ` ⚠️ not posting: ${channel.problem}` : "";
+	return `**${name}**: ${channelLink(channel.channelId)}${problem}`;
+}
+
 export function createAnnouncementsSubgroup(deps: {
 	routes: Pick<
 		AnnouncementRoutes,
-		"list" | "set" | "remove" | "listRelease" | "addRelease" | "removeRelease"
+		| "list"
+		| "set"
+		| "remove"
+		| "listRelease"
+		| "addRelease"
+		| "removeRelease"
+		| "listNotifications"
+		| "setNotification"
 	>;
 }): SubgroupDefinition {
 	const channelOption = {
@@ -216,34 +240,106 @@ export function createAnnouncementsSubgroup(deps: {
 		},
 	};
 
+	const setNotification: SubcommandDefinition = {
+		name: "set-notification",
+		description: "Set a notification channel (bot, closing time, parking, food alerts)",
+		access: { minTier: "admin" },
+		private: true,
+		options: [
+			{
+				name: "type",
+				description: "Which notification to configure",
+				type: "string",
+				choices: ["bot", "closingTime", "parking", "foodAlert"] as NotificationKind[],
+				required: true,
+			},
+			{ ...channelOption, description: "The channel to post to", required: false },
+		],
+		handler: async ({ args, channels, principal, logger }) => {
+			const type = args.type as NotificationKind;
+			const channel = channels.channel;
+			// If no channel provided, clear the setting
+			if (!channel) {
+				const { previous, saved } = await deps.routes.setNotification(type, undefined);
+				logger.info(
+					{
+						event: "announcements.notification_cleared",
+						type,
+						previous,
+						...actorLogFields(principal),
+					},
+					"cleared a notification channel",
+				);
+				const name = NOTIFICATION_NAMES[type];
+				const lines = [`Cleared the **${name}** channel.`];
+				if (previous) lines.push(`It was ${channelLink(previous)}.`);
+				if (!saved) {
+					lines.push(
+						"⚠️ I couldn't save this, so it only holds until Pixel restarts. See the logs.",
+					);
+				}
+				return { text: lines.join("\n"), private: true };
+			}
+			// Setting a channel
+			if (!channel.caller.canPost) {
+				throw new UserFacingError(
+					"You can only set notifications in channels where you can post yourself.",
+				);
+			}
+			const { result, saved } = await deps.routes.setNotification(type, channel.id);
+			logger.info(
+				{
+					event: "announcements.notification_set",
+					type,
+					channelId: channel.id,
+					result,
+					...actorLogFields(principal),
+				},
+				"set a notification channel",
+			);
+			const link = channelLink(channel.id);
+			const name = NOTIFICATION_NAMES[type];
+			const lines = [
+				result === "unchanged"
+					? `${link} is already set for **${name}**.`
+					: `**${name}** will go to ${link}.`,
+			];
+			if (!saved) {
+				lines.push("⚠️ I couldn't save this, so it only holds until Pixel restarts. See the logs.");
+			}
+			return { text: lines.join("\n"), private: true };
+		},
+	};
+
 	const list: SubcommandDefinition = {
 		name: "list",
-		description: "Where open/closed and release announcements go",
+		description: "Where open/closed, release and notification announcements go",
 		access: { minTier: "admin" },
 		private: true,
 		handler: async () => {
 			const routes = deps.routes.list();
 			const release = deps.routes.listRelease();
-			if (routes.length === 0 && release.length === 0) {
-				return {
-					text: "No channels get open/closed or release announcements. Set one with `/admin` → Announcements.",
-					private: true,
-				};
-			}
+			const notifications = deps.routes.listNotifications();
 			const lines: string[] = [];
 			if (routes.length > 0) {
-				lines.push("Open/closed announcements go to:", ...routes.map(describeRoute), "");
+				lines.push("**Open/closed announcements:**", ...routes.map(describeRoute), "");
 			} else {
-				lines.push("No channels get open/closed announcements.", "");
+				lines.push("**Open/closed announcements:** not set", "");
 			}
 			if (release.length > 0) {
-				lines.push("Release notes go to:", ...release.map(describeReleaseChannel), "");
+				lines.push("**Release notes:**", ...release.map(describeReleaseChannel), "");
 			} else {
-				lines.push("No channels get release notes.", "");
+				lines.push("**Release notes:** not set", "");
 			}
-			lines.push(...SPACE_ANNOUNCE_STYLES.map((s) => `**${s}**: ${STYLE_HELP[s]}`));
 			lines.push(
-				"**release**: when a new Pixel version goes live, that version's changelog (once per version)",
+				"**Notification channels:**",
+				...notifications.map(describeNotificationChannel),
+				"",
+			);
+			lines.push("**Styles:**");
+			lines.push(...SPACE_ANNOUNCE_STYLES.map((s) => `• **${s}**: ${STYLE_HELP[s]}`));
+			lines.push(
+				"• **release**: when a new Pixel version goes live, that version's changelog (once per version)",
 			);
 			return { text: lines.join("\n"), private: true };
 		},
@@ -251,8 +347,8 @@ export function createAnnouncementsSubgroup(deps: {
 
 	return {
 		name: "announcements",
-		description: "Where open/closed and release announcements go (admins only)",
+		description: "Where open/closed, release and notification announcements go (admins only)",
 		access: { minTier: "admin" },
-		subcommands: [set, remove, setRelease, removeRelease, list],
+		subcommands: [set, remove, setRelease, removeRelease, setNotification, list],
 	};
 }

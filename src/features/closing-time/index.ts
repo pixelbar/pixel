@@ -17,8 +17,8 @@ export const MAX_CLOSING_TIME_MESSAGE = 4000;
 
 export type ClosingTimeDeps = {
 	announcer: { announce(announcement: Announcement): Promise<{ failed: number }> };
-	/** False when no destination channel is configured (off / none / unset). */
-	enabled: boolean;
+	/** False when no destination channel is configured (off / none / unset). Read fresh each send. */
+	enabled: () => boolean;
 	/** Read fresh each send so an operator can edit the file without a restart. */
 	message: () => string;
 	/** Fills `{{tokens}}` at post time. */
@@ -49,7 +49,7 @@ export function createClosingTimeFeature(deps: ClosingTimeDeps): ClosingTimeFeat
 	const log = deps.logger.child({ component: "closing-time" });
 
 	const post = async (source: "command" | "auto"): Promise<"sent" | "disabled"> => {
-		if (!deps.enabled) {
+		if (!deps.enabled()) {
 			log.info({ event: "closing_time.disabled", source }, "closing-time posts are off");
 			return "disabled";
 		}

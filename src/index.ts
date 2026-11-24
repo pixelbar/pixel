@@ -109,7 +109,6 @@ async function main(): Promise<void> {
 		guildId: config.discord.guildId,
 		dispatcher,
 		logger,
-		announce: config.discord.announce,
 		botStatusStateFile: join(config.dataDir, "bot-status.state"),
 		announcementPostsDir: join(config.dataDir, "announcement-posts"),
 		announcementRouteStore,

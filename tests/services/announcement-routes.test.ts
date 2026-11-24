@@ -74,7 +74,9 @@ describe("AnnouncementRouteStore", () => {
 			"other: 1",
 		]) {
 			writeFileSync(file, bad);
-			expect(new AnnouncementRouteStore({ file, logger }).list()).toEqual([]);
+			const store = new AnnouncementRouteStore({ file, logger });
+			expect(store.list()).toEqual([]);
+			expect(store.usable).toBe(false);
 		}
 		expect(logger.error).toHaveBeenCalledTimes(4);
 	});
@@ -82,8 +84,17 @@ describe("AnnouncementRouteStore", () => {
 	it("says so when the file can't be read at all", () => {
 		mkdirSync(file, { recursive: true }); // a directory where the file should be
 		const logger = { ...silentLogger, error: vi.fn(), child: () => logger };
-		expect(new AnnouncementRouteStore({ file, logger }).list()).toEqual([]);
+		const store = new AnnouncementRouteStore({ file, logger });
+		expect(store.list()).toEqual([]);
+		expect(store.usable).toBe(false);
 		expect(logger.error).toHaveBeenCalledOnce();
+	});
+
+	it("is usable when the file is missing or valid", () => {
+		expect(open().usable).toBe(true);
+		mkdirSync(join(dir, "data"), { recursive: true });
+		writeFileSync(file, `routes:\n  - style: live\n    channelId: "${A}"\n`);
+		expect(open().usable).toBe(true);
 	});
 
 	it("keeps a change in memory when it can't be saved, and reports that", () => {

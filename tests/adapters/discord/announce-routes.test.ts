@@ -84,6 +84,18 @@ describe("DiscordAnnouncementRoutes", () => {
 				channels.set(channelId, made);
 				return { ok: true, channel: made.channel };
 			},
+			createBotStatusPublisher: (channel) => ({
+				id: "discord:bot-status",
+				publish: async () => {
+					await channel.send({ embeds: [], allowedMentions: { parse: [] } });
+				},
+			}),
+			createClosingTimePublisher: (channel) => ({
+				id: "discord:closing-time",
+				publish: async () => {
+					await channel.send({ embeds: [], allowedMentions: { parse: [] } });
+				},
+			}),
 			...options,
 		});
 		return { routes, store, registered, channels, opened, problems, reportError };
@@ -193,6 +205,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => true,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("single", GENERAL)).rejects.toThrow(/too many/);
@@ -209,6 +223,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => true,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.set("live", GENERAL)).resolves.toMatchObject({ saved: false });
@@ -280,6 +296,8 @@ describe("DiscordAnnouncementRoutes", () => {
 					canAddRelease: () => false,
 					addRelease: () => ({ saved: true }),
 					removeRelease: () => ({ saved: true }),
+					getNotifications: () => ({}),
+					setNotification: () => ({ saved: true }),
 				},
 			});
 			await expect(routes.addRelease(GENERAL)).rejects.toThrow(/too many/);

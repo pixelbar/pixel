@@ -26,6 +26,13 @@ function setup(
 		listRelease: vi.fn(() => release),
 		addRelease: vi.fn(async () => ({ result: "added" as const, saved: true })),
 		removeRelease: vi.fn(async () => ({ removed: true, saved: true })),
+		listNotifications: vi.fn(() => [
+			{ kind: "bot" as const, channelId: undefined },
+			{ kind: "closingTime" as const, channelId: undefined },
+			{ kind: "parking" as const, channelId: undefined },
+			{ kind: "foodAlert" as const, channelId: undefined },
+		]),
+		setNotification: vi.fn(async () => ({ result: "set" as const, saved: true })),
 	};
 	const group = createAnnouncementsSubgroup({ routes: fake });
 	const sub = (name: string) => {
@@ -48,6 +55,7 @@ describe("/admin → Announcements", () => {
 			["remove", "admin", true],
 			["set-release", "admin", true],
 			["remove-release", "admin", true],
+			["set-notification", "admin", true],
 			["list", "admin", true],
 		]);
 	});
@@ -224,8 +232,9 @@ describe("/admin → Announcements", () => {
 		it("says how to start when nothing is set", async () => {
 			const { sub } = setup();
 			const reply = await sub("list").handler(context({ principal: admin() }));
-			expect(reply.text).toContain("`/admin` → Announcements");
-			expect(reply.text).toContain("No channels get open/closed or release announcements");
+			expect(reply.text).toContain("**Open/closed announcements:** not set");
+			expect(reply.text).toContain("**Release notes:** not set");
+			expect(reply.text).toContain("**Notification channels:**");
 		});
 
 		it("lists every channel with its style, marks problems, and explains the styles", async () => {

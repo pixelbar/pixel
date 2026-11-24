@@ -94,7 +94,7 @@ const deps = () => ({
 	openrDoors: [],
 	openrGateDoor: undefined,
 	directMessages: new DirectMessages(),
-	parkingChannelId: undefined,
+	parkingChannelId: () => undefined,
 	canSchedule: async () => false,
 	infoTopics: [
 		{ id: "membership", title: "Becoming a member", summary: "How to join", body: "Email us." },
@@ -103,12 +103,12 @@ const deps = () => ({
 	timezone: "Europe/Amsterdam",
 	logger: silentLogger,
 	closingTime: {
-		enabled: false,
+		enabled: () => false,
 		file: "data/closing-time.md",
 		message: () => "The space is closing.",
 	},
 	foodWishlist: new FoodWishlistStore({ logger: silentLogger }),
-	foodAlertChannelId: undefined,
+	foodAlertChannelId: () => undefined,
 	doorbell: {
 		events: new DoorbellEvents({ logger: silentLogger, reporter: nullErrorReporter }),
 		settings: new DoorbellSettings({ logger: silentLogger }),
