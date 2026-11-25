@@ -119,6 +119,9 @@ describe("/food", () => {
 			"Report out of stock",
 			"Remove any item",
 			"Clear from out of stock",
+			"Manage comments",
+			"Empty wishlist",
+			"Empty out-of-stock",
 			"Refresh",
 		]);
 	});

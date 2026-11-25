@@ -59,6 +59,17 @@ const ACTIONS = {
 	outOfStock: "food.out-of-stock",
 	clearStockPick: "food.clear-stock-pick",
 	clearStock: "food.clear-stock",
+	emptyWishlistConfirm: "food.empty-wishlist-confirm",
+	emptyWishlist: "food.empty-wishlist",
+	emptyOutOfStockConfirm: "food.empty-out-of-stock-confirm",
+	emptyOutOfStock: "food.empty-out-of-stock",
+	commentsPick: "food.comments-pick",
+	commentsView: "food.comments-view",
+	commentsAddForm: "food.comments-add-form",
+	commentsAdd: "food.comments-add",
+	commentsEditForm: "food.comments-edit-form",
+	commentsEdit: "food.comments-edit",
+	commentsRemove: "food.comments-remove",
 } as const;
 
 export type FoodDeps = {
@@ -84,14 +95,45 @@ const button = (
 	...(disabled ? { disabled: true } : {}),
 });
 
-function formatWishlistItems(items: readonly WishlistItem[]): string {
+/** Format relative time for comments (e.g. "2 hours ago", "just now"). */
+function formatRelativeTime(date: Date, now: Date): string {
+	const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+	if (seconds < 60) return "just now";
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+	const days = Math.floor(hours / 24);
+	if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+	const months = Math.floor(days / 30);
+	if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+	const years = Math.floor(days / 365);
+	return `${years} year${years === 1 ? "" : "s"} ago`;
+}
+
+function formatWishlistItems(
+	items: readonly WishlistItem[],
+	showComments: boolean,
+	now?: Date,
+): string {
 	if (items.length === 0) return "No items on the wishlist yet.";
 
 	const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, "en"));
-	const lines = sorted.map((item) => {
+	const lines: string[] = [];
+
+	for (const item of sorted) {
 		const requesters = item.requesters.map((r) => escapeMarkdown(r.name)).join(", ");
-		return `• **${escapeMarkdown(item.name)}** (requested by ${requesters})`;
-	});
+		lines.push(`• **${escapeMarkdown(item.name)}** (requested by ${requesters})`);
+
+		if (showComments && item.comments && item.comments.length > 0) {
+			for (const comment of item.comments) {
+				const when = now ? formatRelativeTime(comment.addedAt, now) : "recently";
+				lines.push(
+					`  💬 "${escapeMarkdown(comment.text)}" — ${escapeMarkdown(comment.author.name)}, ${when}`,
+				);
+			}
+		}
+	}
 
 	const maxLength = 4000;
 	const joined = lines.join("\n");
@@ -264,7 +306,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			},
 			{
 				title: "Wishlist",
-				description: formatWishlistItems(wishlist),
+				description: formatWishlistItems(wishlist, admin, now()),
 				accent: "neutral",
 			},
 		];
@@ -309,6 +351,11 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			controls.push([
 				button("Remove any item", ACTIONS.removeAdminPick, {}, "danger"),
 				button("Clear from out of stock", ACTIONS.clearStockPick),
+			]);
+			controls.push([
+				button("Manage comments", ACTIONS.commentsPick),
+				button("Empty wishlist", ACTIONS.emptyWishlistConfirm, {}, "danger"),
+				button("Empty out-of-stock", ACTIONS.emptyOutOfStockConfirm, {}, "danger"),
 			]);
 		}
 
@@ -725,6 +772,213 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		};
 	}
 
+	function emptyWishlistConfirmPanel(principal: Principal): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can empty the wishlist.");
+		}
+
+		const count = deps.wishlist.wishlist().length;
+		if (count === 0) {
+			return createPanel(["The wishlist is already empty."], principal);
+		}
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Empty wishlist",
+					description: `This will remove all ${count} item${count === 1 ? "" : "s"} from the wishlist. **This cannot be undone.**`,
+					accent: "negative",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Yes, empty the wishlist", ACTIONS.emptyWishlist, {}, "danger"),
+					button("Cancel", ACTIONS.home),
+				],
+			],
+		};
+	}
+
+	function emptyOutOfStockConfirmPanel(principal: Principal): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can empty the out-of-stock list.");
+		}
+
+		const count = deps.wishlist.outOfStock().length;
+		if (count === 0) {
+			return createPanel(["The out-of-stock list is already empty."], principal);
+		}
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Empty out-of-stock list",
+					description: `This will remove all ${count} item${count === 1 ? "" : "s"} from the out-of-stock list. **This cannot be undone.**`,
+					accent: "negative",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Yes, empty out-of-stock", ACTIONS.emptyOutOfStock, {}, "danger"),
+					button("Cancel", ACTIONS.home),
+				],
+			],
+		};
+	}
+
+	function commentsPickPanel(principal: Principal, page = 0, notice?: string): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can manage comments.");
+		}
+
+		const all = selectableWishlist(deps.wishlist.wishlist());
+		if (all.length === 0) {
+			return createPanel([notice ?? "The wishlist is empty."], principal);
+		}
+
+		const { shown, current, pages } = pageSlice(all, page);
+		const controls: ControlRow[] = [
+			[
+				{
+					kind: "select",
+					placeholder: "Choose an item…",
+					call: { action: ACTIONS.commentsView },
+					arg: "item",
+					options: shown.map((item) => {
+						const commentCount = item.comments?.length ?? 0;
+						return wishlistOption(
+							item,
+							commentCount > 0
+								? `${commentCount} comment${commentCount === 1 ? "" : "s"}`
+								: "No comments",
+						);
+					}),
+				},
+			],
+		];
+		if (pages > 1) controls.push(pagingRow(ACTIONS.commentsPick, current, pages));
+		controls.push([button("Back", ACTIONS.home)]);
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Manage comments",
+					description: [
+						...(notice ? [notice, ""] : []),
+						"Pick an item to view or manage its comments.",
+						...(pages > 1 ? [`Page ${current + 1} of ${pages}.`] : []),
+					].join("\n"),
+					accent: "brand",
+				},
+			],
+			private: true,
+			controls,
+		};
+	}
+
+	function commentsViewPanel(principal: Principal, itemName: string, notice?: string): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can manage comments.");
+		}
+
+		usable();
+		const item = deps.wishlist.find(itemName);
+		if (!item) {
+			throw new UserFacingError("That item is no longer on the wishlist.");
+		}
+
+		const comments = item.comments ?? [];
+		const lines: string[] = [];
+		if (comments.length === 0) {
+			lines.push("No comments yet.");
+		} else {
+			comments.forEach((c, i) => {
+				const when = formatRelativeTime(c.addedAt, now());
+				lines.push(`${i + 1}. "${escapeMarkdown(c.text)}"`);
+				lines.push(`   — ${escapeMarkdown(c.author.name)}, ${when}`);
+			});
+		}
+
+		const controls: ControlRow[] = [
+			[button("Add comment", ACTIONS.commentsAddForm, { item: itemName })],
+		];
+
+		if (comments.length > 0) {
+			controls.push([
+				{
+					kind: "select",
+					placeholder: "Edit a comment…",
+					call: { action: ACTIONS.commentsEditForm, args: { item: itemName } },
+					arg: "index",
+					options: comments.map((c, i) => ({
+						label: `${i + 1}. ${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}`,
+						value: String(i),
+					})),
+				},
+			]);
+			controls.push([
+				{
+					kind: "select",
+					placeholder: "Remove a comment…",
+					call: { action: ACTIONS.commentsRemove, args: { item: itemName } },
+					arg: "index",
+					options: comments.map((c, i) => ({
+						label: `${i + 1}. ${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}`,
+						value: String(i),
+					})),
+				},
+			]);
+		}
+
+		controls.push([button("Back to items", ACTIONS.commentsPick)]);
+
+		return {
+			embeds: [
+				{
+					title: `🛒 Comments on ${item.name}`,
+					description: [...(notice ? [notice, ""] : []), ...lines].join("\n"),
+					accent: "brand",
+				},
+			],
+			private: true,
+			controls,
+		};
+	}
+
+	const commentsAddForm: Form = {
+		title: "Add comment",
+		submit: { action: ACTIONS.commentsAdd },
+		fields: [
+			{
+				kind: "text",
+				name: "text",
+				label: "Comment",
+				description: "At most 250 characters",
+				style: "paragraph",
+				maxLength: 250,
+				required: true,
+			},
+		],
+	};
+
+	const commentsEditForm: Form = {
+		title: "Edit comment",
+		submit: { action: ACTIONS.commentsEdit },
+		fields: [
+			{
+				kind: "text",
+				name: "text",
+				label: "New text",
+				description: "At most 250 characters",
+				style: "paragraph",
+				maxLength: 250,
+				required: true,
+			},
+		],
+	};
+
 	const food: PlainCommand = {
 		name: "food",
 		description: "Manage the hackerspace's food wishlist",
@@ -954,6 +1208,259 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 				]),
 			};
 		}),
+
+		action(ACTIONS.emptyWishlistConfirm, [], (ctx) => ({
+			reply: emptyWishlistConfirmPanel(ctx.principal),
+		})),
+
+		action(ACTIONS.emptyWishlist, [], async (ctx) => {
+			if (!isAdmin(ctx.principal)) {
+				throw new UserFacingError("Only admins can empty the wishlist.");
+			}
+
+			usable();
+			const count = deps.wishlist.wishlist().length;
+			const emptied = deps.wishlist.emptyWishlist();
+
+			if (!emptied) {
+				return { reply: await onPanel(ctx.principal, () => ["The wishlist was already empty."]) };
+			}
+
+			ctx.logger.info(
+				{
+					event: "food.wishlist_emptied",
+					count,
+					...actorLogFields(ctx.principal),
+				},
+				"emptied the wishlist (admin)",
+			);
+
+			return {
+				reply: await onPanel(ctx.principal, () => [
+					`✅ Emptied the wishlist (removed ${count} item${count === 1 ? "" : "s"}).`,
+				]),
+			};
+		}),
+
+		action(ACTIONS.emptyOutOfStockConfirm, [], (ctx) => ({
+			reply: emptyOutOfStockConfirmPanel(ctx.principal),
+		})),
+
+		action(ACTIONS.emptyOutOfStock, [], async (ctx) => {
+			if (!isAdmin(ctx.principal)) {
+				throw new UserFacingError("Only admins can empty the out-of-stock list.");
+			}
+
+			usable();
+			const count = deps.wishlist.outOfStock().length;
+			const emptied = deps.wishlist.emptyOutOfStock();
+
+			if (!emptied) {
+				return {
+					reply: await onPanel(ctx.principal, () => ["The out-of-stock list was already empty."]),
+				};
+			}
+
+			ctx.logger.info(
+				{
+					event: "food.out_of_stock_emptied",
+					count,
+					...actorLogFields(ctx.principal),
+				},
+				"emptied the out-of-stock list (admin)",
+			);
+
+			return {
+				reply: await onPanel(ctx.principal, () => [
+					`✅ Emptied the out-of-stock list (removed ${count} item${count === 1 ? "" : "s"}).`,
+				]),
+			};
+		}),
+
+		action(ACTIONS.commentsPick, [pageArg], (ctx) => ({
+			reply: commentsPickPanel(ctx.principal, Number(ctx.args.page ?? 0)),
+		})),
+
+		action(ACTIONS.commentsView, [itemArg], (ctx) => {
+			const itemName = String(ctx.args.item || "").trim();
+			if (!itemName) {
+				return { reply: commentsPickPanel(ctx.principal, 0, "⚠️ Please choose an item.") };
+			}
+			return { reply: commentsViewPanel(ctx.principal, itemName) };
+		}),
+
+		action(ACTIONS.commentsAddForm, [itemArg], (ctx) => {
+			const itemName = String(ctx.args.item || "").trim();
+			if (!itemName) {
+				throw new UserFacingError("Please choose an item.");
+			}
+			return { form: { ...commentsAddForm, prefill: { item: itemName } } };
+		}),
+
+		action(
+			ACTIONS.commentsAdd,
+			[itemArg, { name: "text", description: "Comment text", type: "string", required: true }],
+			async (ctx) => {
+				if (!isAdmin(ctx.principal)) {
+					throw new UserFacingError("Only admins can add comments.");
+				}
+
+				const itemName = String(ctx.args.item || "").trim();
+				const text = String(ctx.args.text || "").trim();
+
+				if (!itemName) {
+					throw new UserFacingError("Please choose an item.");
+				}
+				if (!text) {
+					throw new UserFacingError("Please provide comment text.");
+				}
+
+				usable();
+				const by = { ref: actorRef(ctx.principal), name: ctx.principal.displayName };
+
+				try {
+					deps.wishlist.addComment(itemName, text, by, now());
+				} catch (error) {
+					throw new UserFacingError(
+						error instanceof Error ? error.message : "Couldn't add the comment.",
+					);
+				}
+
+				ctx.logger.info(
+					{
+						event: "food.comment_added",
+						item: itemName,
+						...actorLogFields(ctx.principal),
+					},
+					"added a comment to a wishlist item (admin)",
+				);
+
+				return {
+					reply: commentsViewPanel(ctx.principal, itemName, "✅ Comment added."),
+				};
+			},
+		),
+
+		action(
+			ACTIONS.commentsEditForm,
+			[itemArg, { name: "index", description: "Comment index", type: "string", required: true }],
+			(ctx) => {
+				const itemName = String(ctx.args.item || "").trim();
+				const index = Number.parseInt(String(ctx.args.index || ""), 10);
+
+				if (!itemName || Number.isNaN(index)) {
+					throw new UserFacingError("Invalid selection.");
+				}
+
+				usable();
+				const item = deps.wishlist.find(itemName);
+				if (!item || !item.comments || index < 0 || index >= item.comments.length) {
+					throw new UserFacingError("That comment no longer exists.");
+				}
+
+				const comment = item.comments[index];
+				if (!comment) {
+					throw new UserFacingError("That comment no longer exists.");
+				}
+
+				return {
+					form: {
+						...commentsEditForm,
+						prefill: {
+							text: comment.text,
+						},
+					},
+				};
+			},
+		),
+
+		action(
+			ACTIONS.commentsEdit,
+			[
+				itemArg,
+				{ name: "index", description: "Comment index", type: "string", required: true },
+				{ name: "text", description: "New text", type: "string", required: true },
+			],
+			async (ctx) => {
+				if (!isAdmin(ctx.principal)) {
+					throw new UserFacingError("Only admins can edit comments.");
+				}
+
+				const itemName = String(ctx.args.item || "").trim();
+				const index = Number.parseInt(String(ctx.args.index || ""), 10);
+				const text = String(ctx.args.text || "").trim();
+
+				if (!itemName || Number.isNaN(index)) {
+					throw new UserFacingError("Invalid selection.");
+				}
+				if (!text) {
+					throw new UserFacingError("Please provide comment text.");
+				}
+
+				usable();
+
+				try {
+					const edited = deps.wishlist.editComment(itemName, index, text);
+					if (!edited) {
+						throw new UserFacingError("That comment no longer exists.");
+					}
+				} catch (error) {
+					throw new UserFacingError(
+						error instanceof Error ? error.message : "Couldn't edit the comment.",
+					);
+				}
+
+				ctx.logger.info(
+					{
+						event: "food.comment_edited",
+						item: itemName,
+						...actorLogFields(ctx.principal),
+					},
+					"edited a comment on a wishlist item (admin)",
+				);
+
+				return {
+					reply: commentsViewPanel(ctx.principal, itemName, "✅ Comment edited."),
+				};
+			},
+		),
+
+		action(
+			ACTIONS.commentsRemove,
+			[itemArg, { name: "index", description: "Comment index", type: "string", required: true }],
+			async (ctx) => {
+				if (!isAdmin(ctx.principal)) {
+					throw new UserFacingError("Only admins can remove comments.");
+				}
+
+				const itemName = String(ctx.args.item || "").trim();
+				const index = Number.parseInt(String(ctx.args.index || ""), 10);
+
+				if (!itemName || Number.isNaN(index)) {
+					throw new UserFacingError("Invalid selection.");
+				}
+
+				usable();
+				const removed = deps.wishlist.removeComment(itemName, index);
+
+				if (!removed) {
+					throw new UserFacingError("That comment no longer exists.");
+				}
+
+				ctx.logger.info(
+					{
+						event: "food.comment_removed",
+						item: itemName,
+						...actorLogFields(ctx.principal),
+					},
+					"removed a comment from a wishlist item (admin)",
+				);
+
+				return {
+					reply: commentsViewPanel(ctx.principal, itemName, "✅ Comment removed."),
+				};
+			},
+		),
 	];
 
 	return {

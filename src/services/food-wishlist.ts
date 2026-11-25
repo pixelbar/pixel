@@ -10,6 +10,15 @@ import type { Logger } from "../core/logger.ts";
  * name and who requested it. Safe to delete if you want to start fresh.
  */
 
+export type Comment = {
+	/** The comment text (at most 250 characters). */
+	readonly text: string;
+	/** Who wrote this comment. */
+	readonly author: { ref: string; name: string };
+	/** When it was added. */
+	readonly addedAt: Date;
+};
+
 export type WishlistItem = {
 	/** Normalized lowercase item name for matching. */
 	readonly id: string;
@@ -17,6 +26,8 @@ export type WishlistItem = {
 	readonly name: string;
 	/** People who requested this item, by their platform ref ("discord:<id>") and display name. */
 	readonly requesters: readonly { ref: string; name: string }[];
+	/** Admin comments on this item (optional). */
+	readonly comments?: readonly Comment[];
 };
 
 export type OutOfStockItem = {
@@ -33,10 +44,17 @@ const requesterSchema = z.strictObject({
 	name: z.string().max(100),
 });
 
+const commentSchema = z.strictObject({
+	text: z.string().min(1).max(250),
+	author: requesterSchema,
+	addedAt: z.iso.datetime(),
+});
+
 const wishlistItemSchema = z.strictObject({
 	id: z.string().min(1).max(200),
 	name: z.string().min(1).max(200),
 	requesters: z.array(requesterSchema).min(1).max(100),
+	comments: z.array(commentSchema).max(50).optional(),
 });
 
 const outOfStockSchema = z.strictObject({
@@ -210,6 +228,128 @@ export class FoodWishlistStore {
 		return true;
 	}
 
+	/**
+	 * Empty the entire wishlist (admin action).
+	 */
+	emptyWishlist(): boolean {
+		this.#writable();
+		if (this.#wishlist.length === 0) return false;
+		this.#save([], this.#outOfStock);
+		return true;
+	}
+
+	/**
+	 * Empty the entire out-of-stock list (admin action).
+	 */
+	emptyOutOfStock(): boolean {
+		this.#writable();
+		if (this.#outOfStock.length === 0) return false;
+		this.#save(this.#wishlist, []);
+		return true;
+	}
+
+	/**
+	 * Add a comment to a wishlist item (admin action).
+	 */
+	addComment(
+		itemName: string,
+		text: string,
+		by: { ref: string; name: string },
+		now: Date,
+	): Comment {
+		this.#writable();
+		const trimmed = text.trim();
+		if (!trimmed) throw new Error("comment text cannot be empty");
+		if (trimmed.length > 250) throw new Error("comment text cannot exceed 250 characters");
+
+		const existing = this.find(itemName);
+		if (!existing) throw new Error(`item ${itemName} is not on the wishlist`);
+
+		const comment: Comment = {
+			text: trimmed,
+			author: by,
+			addedAt: now,
+		};
+
+		const updated: WishlistItem = {
+			...existing,
+			comments: [...(existing.comments ?? []), comment],
+		};
+
+		this.#save(
+			this.#wishlist.map((item) => (item.id === existing.id ? updated : item)),
+			this.#outOfStock,
+		);
+
+		return comment;
+	}
+
+	/**
+	 * Edit a comment on a wishlist item (admin action).
+	 */
+	editComment(itemName: string, commentIndex: number, newText: string): boolean {
+		this.#writable();
+		const trimmed = newText.trim();
+		if (!trimmed) throw new Error("comment text cannot be empty");
+		if (trimmed.length > 250) throw new Error("comment text cannot exceed 250 characters");
+
+		const existing = this.find(itemName);
+		if (
+			!existing ||
+			!existing.comments ||
+			commentIndex < 0 ||
+			commentIndex >= existing.comments.length
+		) {
+			return false;
+		}
+
+		const updatedComments = [...existing.comments];
+		const comment = updatedComments[commentIndex];
+		if (!comment) return false;
+
+		updatedComments[commentIndex] = {
+			...comment,
+			text: trimmed,
+		};
+
+		const updated: WishlistItem = {
+			...existing,
+			comments: updatedComments,
+		};
+
+		this.#save(
+			this.#wishlist.map((item) => (item.id === existing.id ? updated : item)),
+			this.#outOfStock,
+		);
+
+		return true;
+	}
+
+	/**
+	 * Remove a comment from a wishlist item (admin action).
+	 */
+	removeComment(itemName: string, commentIndex: number): boolean {
+		this.#writable();
+		const existing = this.find(itemName);
+		if (!existing?.comments || commentIndex < 0 || commentIndex >= existing.comments.length) {
+			return false;
+		}
+
+		const updatedComments = existing.comments.filter((_, i) => i !== commentIndex);
+
+		const updated: WishlistItem = {
+			...existing,
+			comments: updatedComments.length > 0 ? updatedComments : undefined,
+		};
+
+		this.#save(
+			this.#wishlist.map((item) => (item.id === existing.id ? updated : item)),
+			this.#outOfStock,
+		);
+
+		return true;
+	}
+
 	#writable(): void {
 		if (this.problem) {
 			throw new Error(
@@ -242,7 +382,13 @@ export class FoodWishlistStore {
 				.join("; ");
 			return this.#broken(`${this.#file} is invalid: ${where}`);
 		}
-		this.#wishlist = result.data.wishlist ?? [];
+		this.#wishlist = (result.data.wishlist ?? []).map((item) => ({
+			...item,
+			comments: item.comments?.map((c) => ({
+				...c,
+				addedAt: new Date(c.addedAt),
+			})),
+		}));
 		this.#outOfStock = (result.data.outOfStock ?? []).map((item) => ({
 			...item,
 			reportedAt: new Date(item.reportedAt),
@@ -264,7 +410,21 @@ export class FoodWishlistStore {
 				mkdirSync(dirname(this.#file), { recursive: true });
 				const temp = `${this.#file}.tmp`;
 				const data = {
-					...(wishlist.length > 0 ? { wishlist } : {}),
+					...(wishlist.length > 0
+						? {
+								wishlist: wishlist.map((item) => ({
+									...item,
+									...(item.comments && item.comments.length > 0
+										? {
+												comments: item.comments.map((c) => ({
+													...c,
+													addedAt: c.addedAt.toISOString(),
+												})),
+											}
+										: {}),
+								})),
+							}
+						: {}),
 					...(outOfStock.length > 0
 						? {
 								outOfStock: outOfStock.map((item) => ({
