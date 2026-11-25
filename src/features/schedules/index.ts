@@ -8,6 +8,11 @@ import {
 	MAX_ATTENDANCE_ANSWERS,
 } from "../../core/channel-posts.ts";
 import type { CommandOption, ResolvedChannel } from "../../core/command.ts";
+import {
+	checkMentionPermissions,
+	detectPostMentions,
+	type MentionPermissions,
+} from "../../core/mentions.ts";
 import { formatMinutes, parseDurationMinutes } from "../../core/duration.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
@@ -145,7 +150,8 @@ export const SCHEDULE_MESSAGES = {
 	cantPost:
 		"You can only schedule posts in channels where you can post yourself. Pick another channel.",
 	cantPoll: "You can't create polls in that channel yourself, so I won't schedule one there.",
-	cantPing: "You can't ping everyone in that channel yourself, so turn pings off.",
+	cantMentionEveryone:
+		"You can't use @everyone or @here in that channel yourself. Remove those mentions.",
 	emptyMessage: "The message can't be empty.",
 	emptyQuestion: "The question can't be empty.",
 	draftGone: "That draft has expired, so nothing was saved. Start again.",
@@ -280,7 +286,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		if (draft.kind === "message") {
 			const text = draft.text.trim();
 			if (text === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyMessage);
-			return { kind: "message", text, mentions: draft.mentions };
+			return { kind: "message", text };
 		}
 		const question = draft.question.trim();
 		if (question === "") throw new UserFacingError(SCHEDULE_MESSAGES.emptyQuestion);
@@ -326,8 +332,15 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		if (post.kind === "poll" && !channel.caller.canCreatePolls) {
 			throw new UserFacingError(SCHEDULE_MESSAGES.cantPoll);
 		}
-		if (post.kind === "message" && post.mentions && !channel.caller.canMentionEveryone) {
-			throw new UserFacingError(SCHEDULE_MESSAGES.cantPing);
+		// Check if the user can use the mentions they've typed
+		const detected = detectPostMentions(post);
+		const permissions: MentionPermissions = {
+			canPost: channel.caller.canPost,
+			canMentionEveryone: channel.caller.canMentionEveryone,
+		};
+		const mentionCheck = checkMentionPermissions(detected, permissions);
+		if (!mentionCheck.ok && mentionCheck.problem === "cant-mention-everyone") {
+			throw new UserFacingError(SCHEDULE_MESSAGES.cantMentionEveryone);
 		}
 		const check = await deps.posts.check(channel.id, post);
 		if (!check.ok) throw new UserFacingError(`I can't post there: ${check.problem}.`);
@@ -826,14 +839,6 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 						]
 					: []),
 			]);
-		} else if (draft.mentions || draft.channel?.caller.canMentionEveryone) {
-			// Only offered where the person could ping everyone themselves, or to turn it off.
-			rows.push([
-				button(`Pings: ${draft.mentions ? "on" : "off"}`, ACTIONS.toggle, {
-					draft: draft.id,
-					setting: "mentions",
-				}),
-			]);
 		}
 		rows.push([
 			button(saveLabel, ACTIONS.save, { draft: draft.id }, "success", !ready),
@@ -1250,14 +1255,13 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			(ctx) => {
 				const draft = drafts.create({
 					owner: actorRef(ctx.principal),
-					kind:
-						ctx.args.kind === "poll" || ctx.args.kind === "attendance" ? ctx.args.kind : "message",
-					when: "",
-					repeat: "once",
-					text: "",
-					mentions: false,
-					question: "",
-					answers: "",
+				kind:
+					ctx.args.kind === "poll" || ctx.args.kind === "attendance" ? ctx.args.kind : "message",
+				when: "",
+				repeat: "once",
+				text: "",
+				question: "",
+				answers: "",
 					closeMode: "duration",
 					durationHours: 24,
 					multiple: false,
@@ -1280,7 +1284,6 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				repeat: repeatOf(schedule.recurrence),
 				...(schedule.recurrence.kind === "weekly" ? { days: schedule.recurrence.days } : {}),
 				text: schedule.post.kind === "message" ? schedule.post.text : "",
-				mentions: schedule.post.kind === "message" && schedule.post.mentions,
 				question: schedule.post.kind === "message" ? "" : schedule.post.question,
 				answers: answersText(schedule.post),
 				closeMode:
@@ -1436,14 +1439,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					description: "Which setting",
 					type: "string",
 					required: true,
-					choices: ["mentions", "multiple"],
+					choices: ["multiple"],
 				},
 			],
 			async (ctx, draft) => {
-				const change =
-					ctx.args.setting === "mentions"
-						? { mentions: !draft.mentions }
-						: { multiple: !draft.multiple };
+				const change = { multiple: !draft.multiple };
 				return { reply: await draftPanel(drafts.update(draft, change)) };
 			},
 		),
@@ -1657,7 +1657,7 @@ function postSettings(draft: Draft): ChannelPost {
 		};
 	}
 	return draft.kind === "message"
-		? { kind: "message", text: draft.text, mentions: draft.mentions }
+		? { kind: "message", text: draft.text }
 		: {
 				kind: "poll",
 				question: draft.question,
@@ -1676,7 +1676,7 @@ function describeWhat(post: ChannelPost): string {
 		return `An attendance poll ${closing}${counted.length > 0 ? `, counting ${counted.join(" and ")} as coming` : ""}`;
 	}
 	return post.kind === "message"
-		? `A message, pings ${post.mentions ? "on" : "off"}`
+		? "A message"
 		: `A poll open for ${durationLabel(post.durationHours)}, ${post.multiple ? "several answers allowed" : "one answer each"}`;
 }
 

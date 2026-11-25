@@ -28,7 +28,6 @@ export type Draft = {
 	/** For weekly and fortnightly. Unset means the first post's weekday. */
 	days?: readonly Weekday[];
 	text: string;
-	mentions: boolean;
 	question: string;
 	/** As typed: one per line. */
 	answers: string;

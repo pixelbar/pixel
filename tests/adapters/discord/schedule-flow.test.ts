@@ -127,15 +127,55 @@ describe("callerAbilities", () => {
 });
 
 describe("the poster's Discord messages", () => {
-	it("send a message with pings off unless allowed", () => {
-		expect(toDiscordMessage({ kind: "message", text: "hi @everyone", mentions: false })).toEqual({
-			content: "hi @everyone",
+	it("send a message with mentions based on content and permissions", () => {
+		// No @everyone in content, permissions don't matter
+		expect(
+			toDiscordMessage(
+				{ kind: "message", text: "hi" },
+				{ canPost: true, canMentionEveryone: false },
+			),
+		).toEqual({
+			content: "hi",
 			allowedMentions: { parse: [], repliedUser: false },
 		});
+		// @everyone in content but no permission
 		expect(
-			toDiscordMessage({ kind: "message", text: "hi", mentions: true }).allowedMentions,
+			toDiscordMessage(
+				{ kind: "message", text: "hi @everyone" },
+				{ canPost: true, canMentionEveryone: false },
+			).allowedMentions,
 		).toEqual({
-			parse: ["everyone", "roles", "users"],
+			parse: [],
+			repliedUser: false,
+		});
+		// @everyone in content with permission
+		expect(
+			toDiscordMessage(
+				{ kind: "message", text: "hi @everyone" },
+				{ canPost: true, canMentionEveryone: true },
+			).allowedMentions,
+		).toEqual({
+			parse: ["everyone"],
+			repliedUser: false,
+		});
+		// User mention with canPost
+		expect(
+			toDiscordMessage(
+				{ kind: "message", text: "hi <@123456789>" },
+				{ canPost: true, canMentionEveryone: false },
+			).allowedMentions,
+		).toEqual({
+			parse: ["users"],
+			repliedUser: false,
+		});
+		// Role mention with canPost
+		expect(
+			toDiscordMessage(
+				{ kind: "message", text: "hi <@&987654321>" },
+				{ canPost: true, canMentionEveryone: false },
+			).allowedMentions,
+		).toEqual({
+			parse: ["roles"],
 			repliedUser: false,
 		});
 	});
@@ -143,7 +183,8 @@ describe("the poster's Discord messages", () => {
 	it("send a reply to a message in the channel, without pinging its author, even if it has gone", () => {
 		expect(
 			toDiscordMessage(
-				{ kind: "message", text: "So far 3", mentions: false },
+				{ kind: "message", text: "So far 3" },
+				{ canPost: true, canMentionEveryone: false },
 				{ replyTo: "100000000000000099" },
 			),
 		).toEqual({
@@ -155,13 +196,16 @@ describe("the poster's Discord messages", () => {
 
 	it("send a native poll", () => {
 		expect(
-			toDiscordMessage({
-				kind: "poll",
-				question: "Who?",
-				answers: ["Yes", "No"],
-				durationHours: 24,
-				multiple: true,
-			}),
+			toDiscordMessage(
+				{
+					kind: "poll",
+					question: "Who?",
+					answers: ["Yes", "No"],
+					durationHours: 24,
+					multiple: true,
+				},
+				{ canPost: true, canMentionEveryone: false },
+			),
 		).toEqual({
 			poll: {
 				question: { text: "Who?" },
@@ -174,11 +218,11 @@ describe("the poster's Discord messages", () => {
 	});
 
 	it("need sending, plus polls or pinging when the post does", () => {
-		expect(requiredPermissions({ kind: "message", text: "x", mentions: false })).toEqual([
+		expect(requiredPermissions({ kind: "message", text: "x" })).toEqual([
 			ViewChannel,
 			SendMessages,
 		]);
-		expect(requiredPermissions({ kind: "message", text: "x", mentions: true })).toContain(
+		expect(requiredPermissions({ kind: "message", text: "hi @everyone" })).toContain(
 			MentionEveryone,
 		);
 		expect(

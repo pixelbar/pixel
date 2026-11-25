@@ -413,7 +413,6 @@ describe("poll reminders", () => {
 				{
 					kind: "message",
 					text: "🗳️ Reminder: vote on **Who's \\*coming\\*?**: https://example.test/m/1",
-					mentions: false,
 				},
 			],
 		]);

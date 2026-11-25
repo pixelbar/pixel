@@ -7,6 +7,7 @@ import type {
 	PostOptions,
 } from "../../core/channel-posts.ts";
 import type { DoorbellMessage } from "../../core/doorbell.ts";
+import { allowedMentionsFor, detectPostMentions } from "../../core/mentions.ts";
 import { missingPermissions } from "./announce-channel.ts";
 import { attendanceComponents } from "./attendance-buttons.ts";
 import { doorbellComponents } from "./doorbell-buttons.ts";
@@ -23,12 +24,18 @@ export function requiredPermissions(post: ChannelPost): bigint[] {
 	const base = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
 	if (post.kind === "poll") return [...base, PermissionFlagsBits.SendPolls];
 	if (post.kind === "attendance") return base;
-	return post.mentions ? [...base, PermissionFlagsBits.MentionEveryone] : base;
+	// For messages, check if @everyone/@here is used
+	const detected = detectPostMentions(post);
+	return detected.everyone ? [...base, PermissionFlagsBits.MentionEveryone] : base;
 }
 
 /** The message Discord is sent for a post (the API's shape), as a reply if asked. */
-export function toDiscordMessage(post: ChannelPost, options: PostOptions = {}) {
-	return { ...messageBody(post), ...replyTo(options) };
+export function toDiscordMessage(
+	post: ChannelPost,
+	callerPermissions: { canMentionEveryone: boolean; canPost: boolean },
+	options: PostOptions = {},
+) {
+	return { ...messageBody(post, callerPermissions), ...replyTo(options) };
 }
 
 /**
@@ -39,20 +46,21 @@ function replyTo({ replyTo }: PostOptions) {
 	return replyTo ? { reply: { messageReference: replyTo, failIfNotExists: false } } : {};
 }
 
-function messageBody(post: ChannelPost) {
+function messageBody(
+	post: ChannelPost,
+	callerPermissions: { canMentionEveryone: boolean; canPost: boolean },
+) {
 	if (post.kind === "attendance") {
 		// Its message needs a poll ID for the buttons: that's `toAttendanceMessage`.
 		throw new Error("an attendance poll is posted with postAttendance");
 	}
+	const detected = detectPostMentions(post);
+	const allowedMentions = allowedMentionsFor(detected, callerPermissions);
+
 	if (post.kind === "message") {
 		return {
 			content: post.text,
-			allowedMentions: post.mentions
-				? {
-						parse: ["everyone" as const, "roles" as const, "users" as const],
-						repliedUser: false,
-					}
-				: { parse: [], repliedUser: false },
+			allowedMentions,
 		};
 	}
 	return {
@@ -62,7 +70,7 @@ function messageBody(post: ChannelPost) {
 			duration: post.durationHours,
 			allowMultiselect: post.multiple,
 		},
-		allowedMentions: { parse: [], repliedUser: false },
+		allowedMentions,
 	};
 }
 
@@ -95,7 +103,18 @@ const ATTENDANCE_CHECK: ChannelPost = {
 };
 
 export function createDiscordPoster(client: Client<true>, guildId: string): ChannelPoster {
-	async function open(channelId: string, post: ChannelPost) {
+	async function open(
+		channelId: string,
+		post: ChannelPost,
+		createdBy?: string,
+	): Promise<
+		| { ok: false; problem: string }
+		| {
+				ok: true;
+				channel: Exclude<Awaited<ReturnType<typeof client.channels.fetch>>, null>;
+				callerPermissions: { canMentionEveryone: boolean; canPost: boolean };
+		  }
+	> {
 		const channel = await client.channels.fetch(channelId).catch(() => null);
 		if (!channel)
 			return { ok: false as const, problem: "the channel doesn't exist or I can't see it" };
@@ -112,7 +131,33 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 				problem: `I'm missing these permissions there: ${missing.join(", ")}`,
 			};
 		}
-		return { ok: true as const, channel };
+
+		// Re-check the creator's permissions for mentions at post time
+		let callerPermissions = { canMentionEveryone: false, canPost: true };
+		if (createdBy?.startsWith("discord:")) {
+			const userId = createdBy.slice("discord:".length);
+			try {
+				const member = await channel.guild.members.fetch(userId).catch(() => null);
+				if (member) {
+					const permissions = channel.permissionsFor(member);
+					if (permissions) {
+						const hasViewChannel = permissions.has(PermissionFlagsBits.ViewChannel);
+						const hasSendMessages = permissions.has(PermissionFlagsBits.SendMessages);
+						const isAdmin = permissions.has(PermissionFlagsBits.Administrator);
+						callerPermissions = {
+							canPost: (hasViewChannel && hasSendMessages) || isAdmin,
+							canMentionEveryone:
+								((hasViewChannel && hasSendMessages) || isAdmin) &&
+								(permissions.has(PermissionFlagsBits.MentionEveryone) || isAdmin),
+						};
+					}
+				}
+			} catch {
+				// If we can't fetch the member, assume no mention permissions
+			}
+		}
+
+		return { ok: true as const, channel, callerPermissions };
 	}
 
 	return {
@@ -123,9 +168,11 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 				: opened;
 		},
 		async post(channelId, post, options) {
-			const opened = await open(channelId, post);
+			const opened = await open(channelId, post, options?.createdBy);
 			if (!opened.ok) throw new Error(`Can't post a scheduled post: ${opened.problem}`);
-			const sent = await opened.channel.send(toDiscordMessage(post, options));
+			const sent = await opened.channel.send(
+				toDiscordMessage(post, opened.callerPermissions, options),
+			);
 			return { url: sent.url, messageId: sent.id };
 		},
 		async postAttendance(channelId, message) {
