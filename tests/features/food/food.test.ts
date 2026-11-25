@@ -109,7 +109,7 @@ describe("/food", () => {
 		]);
 	});
 
-	it("shows admin controls", async () => {
+	it("shows a single Admin tools entry for admins", async () => {
 		const { run } = setup();
 		const reply = await run({}, admin);
 
@@ -117,13 +117,44 @@ describe("/food", () => {
 			"Add new item",
 			"Remove my request",
 			"Report out of stock",
-			"Remove any item",
-			"Clear from out of stock",
-			"Manage comments",
-			"Empty wishlist",
-			"Empty out-of-stock",
+			"Admin tools…",
 			"Refresh",
 		]);
+	});
+
+	it("stages admin tools behind Wishlist and Out of stock panels", async () => {
+		const { act } = setup();
+
+		const tools = await act("food.admin-tools", {}, admin);
+		if (!("reply" in tools)) throw new Error("Expected reply");
+		expect(labels(tools.reply)).toEqual(["Wishlist…", "Out of stock…", "Back"]);
+
+		const wishlist = await act("food.admin-wishlist", {}, admin);
+		if (!("reply" in wishlist)) throw new Error("Expected reply");
+		expect(labels(wishlist.reply)).toEqual([
+			"Remove an item…",
+			"Comments…",
+			"Empty the wishlist…",
+			"Back",
+		]);
+
+		const outOfStock = await act("food.admin-out-of-stock", {}, admin);
+		if (!("reply" in outOfStock)) throw new Error("Expected reply");
+		expect(labels(outOfStock.reply)).toEqual(["Clear an item…", "Empty the list…", "Back"]);
+	});
+
+	it("refuses admin tool panels for non-admins", async () => {
+		const { act } = setup();
+
+		await expect(async () => await act("food.admin-tools", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
+		await expect(async () => await act("food.admin-wishlist", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
+		await expect(async () => await act("food.admin-out-of-stock", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
 	});
 
 	it("hides out-of-stock section for members when empty", async () => {
@@ -897,7 +928,7 @@ describe("pick panels and edge cases", () => {
 			expect(main(result.reply)).toContain("Showing 25 of 30 comments");
 		});
 
-		it("shows comments inline in admin view", async () => {
+		it("shows a compact comment count on the home panel for admins", async () => {
 			const { run, wishlist } = setup();
 			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
 			wishlist.addComment(
@@ -908,8 +939,23 @@ describe("pick panels and edge cases", () => {
 			);
 
 			const result = await run({}, admin);
-			expect(wishlistSection(result)).toContain("💬");
-			expect(wishlistSection(result)).toContain("Important note");
+			expect(wishlistSection(result)).toContain("💬 1 comment");
+			expect(wishlistSection(result)).not.toContain("Important note");
+		});
+
+		it("hides comment counts from members", async () => {
+			const { run, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment(
+				"Club-Mate",
+				"Important note",
+				{ ref: actorRef(admin), name: "Admin" },
+				NOW,
+			);
+
+			const result = await run({}, alice);
+			expect(wishlistSection(result)).not.toContain("💬");
+			expect(wishlistSection(result)).not.toContain("Important note");
 		});
 
 		it("refuses comment edit with invalid item/index", async () => {

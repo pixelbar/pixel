@@ -59,6 +59,9 @@ const ACTIONS = {
 	outOfStock: "food.out-of-stock",
 	clearStockPick: "food.clear-stock-pick",
 	clearStock: "food.clear-stock",
+	adminTools: "food.admin-tools",
+	adminWishlist: "food.admin-wishlist",
+	adminOutOfStock: "food.admin-out-of-stock",
 	emptyWishlistConfirm: "food.empty-wishlist-confirm",
 	emptyWishlist: "food.empty-wishlist",
 	emptyOutOfStockConfirm: "food.empty-out-of-stock-confirm",
@@ -113,11 +116,7 @@ function formatRelativeTime(date: Date, now: Date): string {
 	return `${years} year${years === 1 ? "" : "s"} ago`;
 }
 
-function formatWishlistItems(
-	items: readonly WishlistItem[],
-	showComments: boolean,
-	now?: Date,
-): string {
+function formatWishlistItems(items: readonly WishlistItem[], showCommentCounts: boolean): string {
 	if (items.length === 0) return "No items on the wishlist yet.";
 
 	const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, "en"));
@@ -125,16 +124,12 @@ function formatWishlistItems(
 
 	for (const item of sorted) {
 		const requesters = item.requesters.map((r) => escapeMarkdown(r.name)).join(", ");
-		lines.push(`• **${escapeMarkdown(item.name)}** (requested by ${requesters})`);
-
-		if (showComments && item.comments && item.comments.length > 0) {
-			for (const comment of item.comments) {
-				const when = now ? formatRelativeTime(comment.addedAt, now) : "recently";
-				lines.push(
-					`  💬 "${escapeMarkdown(comment.text)}" — ${escapeMarkdown(comment.author.name)}, ${when}`,
-				);
-			}
-		}
+		const commentCount = item.comments?.length ?? 0;
+		const commentHint =
+			showCommentCounts && commentCount > 0
+				? ` · 💬 ${commentCount} comment${commentCount === 1 ? "" : "s"}`
+				: "";
+		lines.push(`• **${escapeMarkdown(item.name)}** (requested by ${requesters})${commentHint}`);
 	}
 
 	const maxLength = 4000;
@@ -308,7 +303,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			},
 			{
 				title: "Wishlist",
-				description: formatWishlistItems(wishlist, admin, now()),
+				description: formatWishlistItems(wishlist, admin),
 				accent: "neutral",
 			},
 		];
@@ -350,15 +345,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		]);
 
 		if (admin) {
-			controls.push([
-				button("Remove any item", ACTIONS.removeAdminPick, {}, "danger"),
-				button("Clear from out of stock", ACTIONS.clearStockPick),
-			]);
-			controls.push([
-				button("Manage comments", ACTIONS.commentsPick),
-				button("Empty wishlist", ACTIONS.emptyWishlistConfirm, {}, "danger"),
-				button("Empty out-of-stock", ACTIONS.emptyOutOfStockConfirm, {}, "danger"),
-			]);
+			controls.push([button("Admin tools…", ACTIONS.adminTools)]);
 		}
 
 		controls.push([button("Refresh", ACTIONS.home)]);
@@ -655,7 +642,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		}
 		const all = selectableWishlist(deps.wishlist.wishlist());
 		if (all.length === 0) {
-			return createPanel([notice ?? "The wishlist is empty."], principal);
+			return adminWishlistPanel(principal, notice ?? "The wishlist is empty.");
 		}
 		const { shown, current, pages } = pageSlice(all, page);
 		const controls: ControlRow[] = [
@@ -675,7 +662,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			],
 		];
 		if (pages > 1) controls.push(pagingRow(ACTIONS.removeAdminPick, current, pages));
-		controls.push([button("Back", ACTIONS.home)]);
+		controls.push([button("Back", ACTIONS.adminWishlist)]);
 
 		return {
 			embeds: [
@@ -740,7 +727,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		}
 		const all = selectableOutOfStock(deps.wishlist.outOfStock());
 		if (all.length === 0) {
-			return createPanel([notice ?? "Nothing is on the out-of-stock list."], principal);
+			return adminOutOfStockPanel(principal, notice ?? "Nothing is on the out-of-stock list.");
 		}
 		const { shown, current, pages } = pageSlice(all, page);
 		const controls: ControlRow[] = [
@@ -755,7 +742,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			],
 		];
 		if (pages > 1) controls.push(pagingRow(ACTIONS.clearStockPick, current, pages));
-		controls.push([button("Back", ACTIONS.home)]);
+		controls.push([button("Back", ACTIONS.adminOutOfStock)]);
 
 		return {
 			embeds: [
@@ -774,6 +761,106 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		};
 	}
 
+	function adminToolsPanel(principal: Principal): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can use these tools.");
+		}
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Admin tools",
+					description: "Choose what you want to manage.",
+					accent: "brand",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Wishlist…", ACTIONS.adminWishlist, {}, "primary"),
+					button("Out of stock…", ACTIONS.adminOutOfStock),
+				],
+				[button("Back", ACTIONS.home)],
+			],
+		};
+	}
+
+	function adminWishlistPanel(principal: Principal, notice?: string): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can use these tools.");
+		}
+
+		const items = deps.wishlist.wishlist();
+		const withComments = items.filter((item) => (item.comments?.length ?? 0) > 0).length;
+		const summary =
+			items.length === 0
+				? "The wishlist is empty."
+				: `${items.length} item${items.length === 1 ? "" : "s"} on the wishlist${
+						withComments > 0
+							? ` (${withComments} with comment${withComments === 1 ? "" : "s"})`
+							: ""
+					}.`;
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Wishlist tools",
+					description: [
+						...(notice ? [notice, ""] : []),
+						summary,
+						"",
+						"Remove an item, manage comments, or empty the whole list.",
+					].join("\n"),
+					accent: "brand",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Remove an item…", ACTIONS.removeAdminPick, {}, "danger"),
+					button("Comments…", ACTIONS.commentsPick),
+				],
+				[button("Empty the wishlist…", ACTIONS.emptyWishlistConfirm, {}, "danger")],
+				[button("Back", ACTIONS.adminTools)],
+			],
+		};
+	}
+
+	function adminOutOfStockPanel(principal: Principal, notice?: string): Reply {
+		if (!isAdmin(principal)) {
+			throw new UserFacingError("Only admins can use these tools.");
+		}
+
+		const items = deps.wishlist.outOfStock();
+		const summary =
+			items.length === 0
+				? "Nothing is on the out-of-stock list."
+				: `${items.length} item${items.length === 1 ? "" : "s"} on the out-of-stock list.`;
+
+		return {
+			embeds: [
+				{
+					title: "🛒 Out of stock tools",
+					description: [
+						...(notice ? [notice, ""] : []),
+						summary,
+						"",
+						"Clear a restocked item, or empty the whole list.",
+					].join("\n"),
+					accent: "brand",
+				},
+			],
+			private: true,
+			controls: [
+				[
+					button("Clear an item…", ACTIONS.clearStockPick),
+					button("Empty the list…", ACTIONS.emptyOutOfStockConfirm, {}, "danger"),
+				],
+				[button("Back", ACTIONS.adminTools)],
+			],
+		};
+	}
+
 	function emptyWishlistConfirmPanel(principal: Principal): Reply {
 		if (!isAdmin(principal)) {
 			throw new UserFacingError("Only admins can empty the wishlist.");
@@ -781,7 +868,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 		const count = deps.wishlist.wishlist().length;
 		if (count === 0) {
-			return createPanel(["The wishlist is already empty."], principal);
+			return adminWishlistPanel(principal, "The wishlist is already empty.");
 		}
 
 		return {
@@ -796,7 +883,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			controls: [
 				[
 					button("Yes, empty the wishlist", ACTIONS.emptyWishlist, {}, "danger"),
-					button("Cancel", ACTIONS.home),
+					button("Cancel", ACTIONS.adminWishlist),
 				],
 			],
 		};
@@ -809,7 +896,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 		const count = deps.wishlist.outOfStock().length;
 		if (count === 0) {
-			return createPanel(["The out-of-stock list is already empty."], principal);
+			return adminOutOfStockPanel(principal, "The out-of-stock list is already empty.");
 		}
 
 		return {
@@ -824,7 +911,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			controls: [
 				[
 					button("Yes, empty out-of-stock", ACTIONS.emptyOutOfStock, {}, "danger"),
-					button("Cancel", ACTIONS.home),
+					button("Cancel", ACTIONS.adminOutOfStock),
 				],
 			],
 		};
@@ -837,7 +924,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 		const all = selectableWishlist(deps.wishlist.wishlist());
 		if (all.length === 0) {
-			return createPanel([notice ?? "The wishlist is empty."], principal);
+			return adminWishlistPanel(principal, notice ?? "The wishlist is empty.");
 		}
 
 		const { shown, current, pages } = pageSlice(all, page);
@@ -861,12 +948,12 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			],
 		];
 		if (pages > 1) controls.push(pagingRow(ACTIONS.commentsPick, current, pages));
-		controls.push([button("Back", ACTIONS.home)]);
+		controls.push([button("Back", ACTIONS.adminWishlist)]);
 
 		return {
 			embeds: [
 				{
-					title: "🛒 Manage comments",
+					title: "🛒 Comments",
 					description: [
 						...(notice ? [notice, ""] : []),
 						"Pick an item to view or manage its comments.",
@@ -1013,6 +1100,18 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 	const actions: ActionDefinition[] = [
 		action(ACTIONS.home, [], (ctx) => ({
 			reply: createPanel([], ctx.principal),
+		})),
+
+		action(ACTIONS.adminTools, [], (ctx) => ({
+			reply: adminToolsPanel(ctx.principal),
+		})),
+
+		action(ACTIONS.adminWishlist, [], (ctx) => ({
+			reply: adminWishlistPanel(ctx.principal),
+		})),
+
+		action(ACTIONS.adminOutOfStock, [], (ctx) => ({
+			reply: adminOutOfStockPanel(ctx.principal),
 		})),
 
 		action(ACTIONS.addForm, [], () => ({ form: addForm })),
