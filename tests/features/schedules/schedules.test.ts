@@ -339,7 +339,7 @@ function add(store: ScheduleStore, over: Partial<Omit<Schedule, "id">> = {}): Sc
 		name: "Pizza",
 		channelId: CHANNEL,
 		channelName: "general",
-		post: { kind: "message", text: "Pizza night tonight!", mentions: false },
+		post: { kind: "message", text: "Pizza night tonight!" },
 		start: "2026-10-14T19:00",
 		recurrence: { kind: "once" },
 		paused: false,
@@ -1317,7 +1317,7 @@ describe("a schedule's panel", () => {
 	it("shows the owner what it will post next, with Edit, Pause and Delete", async () => {
 		const { panel, store } = setup();
 		const { id } = add(store, {
-			post: { kind: "message", text: "Pizza on {{date}}", mentions: false },
+			post: { kind: "message", text: "Pizza on {{date}}" },
 			recurrence: { kind: "weekly", everyWeeks: 1, days: ["wed"] },
 		});
 		const reply = replyOf(await panel(id));

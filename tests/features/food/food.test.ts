@@ -375,7 +375,6 @@ describe("food.out-of-stock", () => {
 		expect(poster.post).toHaveBeenCalledWith("123456789", {
 			kind: "message",
 			text: "**Club-Mate** has been reported out of stock by Alice.",
-			mentions: false,
 		});
 	});
 

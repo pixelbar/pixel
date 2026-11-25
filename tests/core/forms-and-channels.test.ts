@@ -461,7 +461,7 @@ describe("ChannelPosts", () => {
 		};
 		posts.use(poster);
 		expect(posts.ready).toBe(true);
-		const post = { kind: "message" as const, text: "hi", mentions: false };
+		const post = { kind: "message" as const, text: "hi" };
 		expect(await posts.check("1", post)).toEqual({ ok: true, name: "g" });
 		expect(await posts.post("1", post)).toEqual({
 			url: "https://example.test/m/1",
@@ -481,7 +481,7 @@ describe("ChannelPosts", () => {
 
 	it("says posting isn't available before then", () => {
 		const posts = new ChannelPosts();
-		const post = { kind: "message" as const, text: "hi", mentions: false };
+		const post = { kind: "message" as const, text: "hi" };
 		expect(() => posts.check("1", post)).toThrow(ChannelPostsUnavailableError);
 		expect(() => posts.post("1", post)).toThrow(POSTS_UNAVAILABLE);
 	});

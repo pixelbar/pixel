@@ -40,7 +40,7 @@ export class InterpolateError extends Error {
 }
 
 /** A well-formed `{{name}}`, with optional spaces around the name. */
-const TOKEN = /\{\{([^{}]*)\}\}/g;
+const TOKEN = /\{\{([^{ }]*)\}\}/g;
 
 /** Token names are simple identifiers so `{{date * 2}}` can never run. */
 const TOKEN_NAME = /^[A-Za-z][A-Za-z0-9]*$/;
@@ -91,7 +91,7 @@ export class Interpolator {
 	/**
 	 * Replaces each known `{{name}}` (or `{{name+2}}`) with that token's value
 	 * at `at` (or `now`). For `/schedule`, pass the scheduled occurrence, not
-	 * the clock when Pixel actually sends. Unknown tokens, empty `{{}}`, a
+	 * the clock when Pixel actually sends. Unknown tokens, empty `{{ }}`, a
 	 * bad offset, and anything that isn't a registered name stay as written.
 	 * `values` fill in tokens for this one post (no offsets). Never logs the
 	 * template or the result.

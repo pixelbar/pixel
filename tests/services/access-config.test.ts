@@ -468,7 +468,7 @@ describe("level capabilities", () => {
 		});
 		write(ADMINS, MEMBERS);
 		expect(loadAccessConfig(paths).tierCapabilities).toEqual({ friend: [], member: [] });
-		write(ADMINS, `tiers:\n  member: {}\n${members()}`);
+		write(ADMINS, `tiers:\n  member: { }\n${members()}`);
 		expect(loadAccessConfig(paths).tierCapabilities).toEqual({ friend: [], member: [] });
 	});
 

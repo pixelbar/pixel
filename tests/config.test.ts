@@ -429,7 +429,7 @@ describe("space state API settings", () => {
 	it.each([
 		"not json",
 		"[]",
-		"{}",
+		"{ }",
 		'"x"',
 		'{"X-A": 1}',
 		'{"X-A": ""}',

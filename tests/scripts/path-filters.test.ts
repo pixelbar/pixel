@@ -31,7 +31,7 @@ function globToRegExp(glob: string): RegExp {
 			out += "[^/]*";
 		} else if (c === "?") {
 			out += "[^/]";
-		} else if (/[.+^$()|[\]\\{}]/.test(c)) {
+		} else if (/[.+^$()|[\]\\{ }]/.test(c)) {
 			out += `\\${c}`;
 		} else {
 			out += c;

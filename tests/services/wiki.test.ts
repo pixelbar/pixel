@@ -181,7 +181,7 @@ describe("MediaWiki.search", () => {
 
 	it("refuses an answer that's too big, whether it says so or not", async () => {
 		const declared = vi.fn<Fetch>(
-			async () => new Response("{}", { headers: { "content-length": "999999" } }),
+			async () => new Response("{ }", { headers: { "content-length": "999999" } }),
 		);
 		expect((await thrown(wiki(declared).search("x", 1))).message).toBe("wiki response too large");
 		const big = json({ query: { pages: [page("x".repeat(500), 1)] } });

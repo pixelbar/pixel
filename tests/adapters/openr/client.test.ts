@@ -361,7 +361,7 @@ describe("reading answers", () => {
 	});
 
 	it("refuses an answer that says it's too large, without reading it", async () => {
-		const http = fakeFetch().raw("{}", { headers: { "content-length": "999999" } });
+		const http = fakeFetch().raw("{ }", { headers: { "content-length": "999999" } });
 		await expect(client(http.fn, { maxResponseBytes: 10 }).login(EMAIL, PASSWORD)).rejects.toThrow(
 			/too large/,
 		);

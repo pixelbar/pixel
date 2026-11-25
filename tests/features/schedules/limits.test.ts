@@ -16,7 +16,7 @@ const interpolator = createInterpolator({ timezone: AMS, now: () => NOW });
 const WED_19: LocalDateTime = { year: 2026, month: 10, day: 14, hour: 19, minute: 0 };
 const ONCE: Recurrence = { kind: "once" };
 
-const message = (text: string): ChannelPost => ({ kind: "message", text, mentions: false });
+const message = (text: string): ChannelPost => ({ kind: "message", text });
 const poll = (question: string, answers: string[]): ChannelPost => ({
 	kind: "poll",
 	question,

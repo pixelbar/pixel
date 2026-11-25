@@ -111,7 +111,10 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 		| { ok: false; problem: string }
 		| {
 				ok: true;
-				channel: Exclude<Awaited<ReturnType<typeof client.channels.fetch>>, null>;
+				channel: Extract<
+					Exclude<Awaited<ReturnType<typeof client.channels.fetch>>, null>,
+					{ send: unknown; messages: unknown }
+				>;
 				callerPermissions: { canMentionEveryone: boolean; canPost: boolean };
 		  }
 	> {

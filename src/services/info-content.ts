@@ -165,7 +165,7 @@ function parseTopic(
  * reply as literal text.
  */
 function fillPlaceholders(text: string, variables: InfoVariables, problems: string[]): string {
-	const PLACEHOLDER = /\{\{([^{}]*)\}\}/g;
+	const PLACEHOLDER = /\{\{([^{ }]*)\}\}/g;
 
 	// Once every well-formed {{…}} is out of the way, any brace pair left over is a typo.
 	if (/\{\{|\}\}/.test(text.replace(PLACEHOLDER, ""))) {

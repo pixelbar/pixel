@@ -69,8 +69,8 @@ describe("interpolate", () => {
 			"see {{unknown}} and {{spaceState}}",
 		);
 		expect(
-			fill.interpolate("{{}} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}"),
-		).toBe("{{}} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}");
+			fill.interpolate("{{ }} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}"),
+		).toBe("{{ }} {{date*2}} {{date+2.5}} {{date+}} {{constructor}} {{DATE}}");
 	});
 
 	it("shifts a known date token by whole calendar days", () => {
@@ -143,10 +143,8 @@ describe("interpolateChannelPost", () => {
 	it("fills a message body", () => {
 		const fill = interpolator();
 		expect(
-			interpolateChannelPost({ kind: "message", text: "Open {{day}}", mentions: false }, (t) =>
-				fill.interpolate(t),
-			),
-		).toEqual({ kind: "message", text: "Open Sunday", mentions: false });
+			interpolateChannelPost({ kind: "message", text: "Open {{day}}" }, (t) => fill.interpolate(t)),
+		).toEqual({ kind: "message", text: "Open Sunday" });
 	});
 
 	it("fills a poll question and every answer", () => {

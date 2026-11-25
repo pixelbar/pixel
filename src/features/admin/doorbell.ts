@@ -54,7 +54,6 @@ export function createDoorbellSubgroup(deps: DoorbellAdminDeps): SubgroupDefinit
 			const check = await deps.posts.check(channel.id, {
 				kind: "message",
 				text: ".",
-				mentions: false,
 			});
 			if (!check.ok)
 				throw new UserFacingError(`I can't post the doorbell there: ${check.problem}.`);

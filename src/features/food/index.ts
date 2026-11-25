@@ -897,7 +897,6 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 					await deps.poster.post(alertChannelId, {
 						kind: "message",
 						text: `**${escapeMarkdown(item.name)}** has been reported out of stock by ${escapeMarkdown(by.name)}.`,
-						mentions: false,
 					});
 				}
 			}

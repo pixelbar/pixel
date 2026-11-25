@@ -85,7 +85,7 @@ describe("HttpSpaceStateApi.set", () => {
 		await expect(api(respond(" SUCCESS\n")).set("open")).resolves.toBeUndefined();
 	});
 
-	it.each(["", "success", "FAILURE", "SUCCESS, but not really", "ERROR: bad token", "{}"])(
+	it.each(["", "success", "FAILURE", "SUCCESS, but not really", "ERROR: bad token", "{ }"])(
 		"says the change wasn't accepted for the body %j, without repeating it",
 		async (body) => {
 			const error = await thrown(api(respond(body, { status: 200 })).set("closed"));

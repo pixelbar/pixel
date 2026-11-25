@@ -384,7 +384,6 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const check = await deps.posts.check(channel.id, {
 			kind: "message",
 			text: ".",
-			mentions: false,
 		});
 		if (!check.ok) throw new UserFacingError(`I can't send reminders there: ${check.problem}.`);
 		return { channelId: channel.id, channelName: check.name, at: formatTimeOfDay(time) };
@@ -406,7 +405,6 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const check = await deps.posts.check(channel.id, {
 			kind: "message",
 			text: ".",
-			mentions: false,
 		});
 		if (!check.ok) throw new UserFacingError(`I can't post results there: ${check.problem}.`);
 		return {

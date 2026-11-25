@@ -15,7 +15,7 @@ const sample = (over: Partial<Omit<Schedule, "id">> = {}): Omit<Schedule, "id"> 
 	name: "Weekly",
 	channelId: "100000000000000050",
 	channelName: "general",
-	post: { kind: "message", text: "Hello", mentions: false },
+	post: { kind: "message", text: "Hello" },
 	start: "2026-10-14T19:00",
 	recurrence: { kind: "weekly", everyWeeks: 1, days: ["wed", "sat"] },
 	paused: false,
@@ -94,9 +94,7 @@ describe("runDue", () => {
 		const s = store.add(sample());
 		await run(plus(10_000));
 		await run(plus(40_000));
-		expect(posted).toEqual([
-			["100000000000000050", { kind: "message", text: "Hello", mentions: false }],
-		]);
+		expect(posted).toEqual([["100000000000000050", { kind: "message", text: "Hello" }]]);
 		expect(store.get(s.id)?.lastRunAt).toBe(WED_19.toISOString());
 		expect(reporter.breadcrumb).toHaveBeenCalledWith(
 			"schedule",
@@ -199,7 +197,7 @@ describe("runDue", () => {
 		const { store, posted, run } = setup();
 		const s = store.add(
 			sample({
-				post: { kind: "message", text: "Open {{day}} {{date}} ({{unknown}})", mentions: false },
+				post: { kind: "message", text: "Open {{day}} {{date}} ({{unknown}})" },
 			}),
 		);
 		await run(plus(10_000));
@@ -209,7 +207,6 @@ describe("runDue", () => {
 				{
 					kind: "message",
 					text: "Open Wednesday 14 October 2026 ({{unknown}})",
-					mentions: false,
 				},
 			],
 		]);
@@ -226,7 +223,6 @@ describe("runDue", () => {
 				post: {
 					kind: "message",
 					text: "{{day}} {{date}} → {{day+2}} {{date+2}}",
-					mentions: false,
 				},
 			}),
 		);
@@ -238,7 +234,6 @@ describe("runDue", () => {
 				{
 					kind: "message",
 					text: "Wednesday 14 October 2026 → Friday 16 October 2026",
-					mentions: false,
 				},
 			],
 		]);
@@ -275,10 +270,8 @@ describe("runDue", () => {
 	describe("reads each schedule fresh, so a change made while another posts counts", () => {
 		async function twoDue(change: (store: ScheduleStore, second: string) => void) {
 			const ctx = setup();
-			ctx.store.add(sample({ post: { kind: "message", text: "First", mentions: false } }));
-			const second = ctx.store.add(
-				sample({ post: { kind: "message", text: "Second", mentions: false } }),
-			);
+			ctx.store.add(sample({ post: { kind: "message", text: "First" } }));
+			const second = ctx.store.add(sample({ post: { kind: "message", text: "Second" } }));
 			ctx.posts.post.mockImplementationOnce(async (channelId: string, post: ChannelPost) => {
 				ctx.posted.push([channelId, post]);
 				change(ctx.store, second.id);
@@ -290,9 +283,7 @@ describe("runDue", () => {
 
 		it("doesn't post one deleted meanwhile", async () => {
 			const { posted, store } = await twoDue((store, id) => store.remove(id));
-			expect(posted.map(([, post]) => post)).toEqual([
-				{ kind: "message", text: "First", mentions: false },
-			]);
+			expect(posted.map(([, post]) => post)).toEqual([{ kind: "message", text: "First" }]);
 			expect(store.all()).toHaveLength(1);
 		});
 
@@ -306,11 +297,11 @@ describe("runDue", () => {
 
 		it("posts the edited text of one edited meanwhile", async () => {
 			const { posted } = await twoDue((store, id) =>
-				store.update(id, { post: { kind: "message", text: "Edited", mentions: false } }),
+				store.update(id, { post: { kind: "message", text: "Edited" } }),
 			);
 			expect(posted.map(([, post]) => post)).toEqual([
-				{ kind: "message", text: "First", mentions: false },
-				{ kind: "message", text: "Edited", mentions: false },
+				{ kind: "message", text: "First" },
+				{ kind: "message", text: "Edited" },
 			]);
 		});
 
@@ -342,9 +333,7 @@ describe("runDue", () => {
 	it("clips a post that tokens made too long instead of failing, and logs no text", async () => {
 		const { store, posted, run, warn, error } = setup();
 		// Stored before the create-time check existed: "{{date}}" (8) fills to 15 characters.
-		store.add(
-			sample({ post: { kind: "message", text: `${"x".repeat(1990)}{{date}}`, mentions: false } }),
-		);
+		store.add(sample({ post: { kind: "message", text: `${"x".repeat(1990)}{{date}}` } }));
 		await run(plus(10_000));
 		const sent = posted[0]?.[1];
 		expect(sent?.kind === "message" && [...sent.text].length).toBe(2000);
