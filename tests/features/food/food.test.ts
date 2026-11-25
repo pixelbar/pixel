@@ -918,7 +918,11 @@ describe("pick panels and edge cases", () => {
 
 			await expect(
 				async () =>
-					await act("food.comments-edit", { item: "Club-Mate", index: "invalid", text: "New" }, admin),
+					await act(
+						"food.comments-edit",
+						{ item: "Club-Mate", index: "invalid", text: "New" },
+						admin,
+					),
 			).rejects.toThrow("Invalid selection");
 		});
 
@@ -948,7 +952,8 @@ describe("pick panels and edge cases", () => {
 			wishlist.addComment("Club-Mate", "Original", { ref: actorRef(admin), name: "Admin" }, NOW);
 
 			await expect(
-				async () => await act("food.comments-edit", { item: "Club-Mate", index: "0", text: "" }, admin),
+				async () =>
+					await act("food.comments-edit", { item: "Club-Mate", index: "0", text: "" }, admin),
 			).rejects.toThrow("Please provide comment text");
 		});
 
@@ -980,6 +985,104 @@ describe("pick panels and edge cases", () => {
 			await expect(
 				async () => await act("food.comments-remove", { item: "Club-Mate", index: "bad" }, admin),
 			).rejects.toThrow("Invalid selection");
+		});
+
+		it("refuses edit form for nonexistent item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Unknown", index: "0" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("refuses edit form for nonexistent comment index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Comment", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Club-Mate", index: "5" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("shows picker panel when viewing with no item selected", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			const result = await act("food.comments-view", { item: "" }, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Please choose an item");
+			expect(main(result.reply)).toContain("Pick an item to view");
+		});
+
+		it("refuses add form for missing item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-add-form", { item: "" }, admin),
+			).rejects.toThrow("Please choose an item");
+		});
+
+		it("empty wishlist shows already empty message when empty", async () => {
+			const { act } = setup();
+
+			const result = await act("food.empty-wishlist-confirm", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("already empty");
+		});
+
+		it("empty out-of-stock shows already empty message when empty", async () => {
+			const { act } = setup();
+
+			const result = await act("food.empty-out-of-stock-confirm", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("already empty");
+		});
+
+		it("refuses comment add with text over 250 chars", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			const longText = "a".repeat(251);
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Club-Mate", text: longText }, admin),
+			).rejects.toThrow("cannot exceed 250 characters");
+		});
+
+		it("refuses comment add with empty text", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Club-Mate", text: "" }, admin),
+			).rejects.toThrow("Please provide comment text");
+		});
+
+		it("refuses comment add for nonexistent item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Unknown", text: "Note" }, admin),
+			).rejects.toThrow("not on the wishlist");
+		});
+
+		it("refuses edit form with invalid selection", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "", index: "bad" }, admin),
+			).rejects.toThrow("Invalid selection");
+		});
+
+		it("refuses edit form for out of bounds index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Comment", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Club-Mate", index: "-1" }, admin),
+			).rejects.toThrow("no longer exists");
 		});
 	});
 });
