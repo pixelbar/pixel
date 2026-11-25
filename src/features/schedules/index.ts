@@ -8,17 +8,17 @@ import {
 	MAX_ATTENDANCE_ANSWERS,
 } from "../../core/channel-posts.ts";
 import type { CommandOption, ResolvedChannel } from "../../core/command.ts";
-import {
-	checkMentionPermissions,
-	detectPostMentions,
-	type MentionPermissions,
-} from "../../core/mentions.ts";
 import { formatMinutes, parseDurationMinutes } from "../../core/duration.ts";
 import { UserFacingError } from "../../core/errors.ts";
 import type { Feature } from "../../core/feature.ts";
 import { escapeMarkdown } from "../../core/format.ts";
 import { type Interpolate, interpolateChannelPost } from "../../core/interpolate.ts";
 import type { Logger } from "../../core/logger.ts";
+import {
+	checkMentionPermissions,
+	detectPostMentions,
+	type MentionPermissions,
+} from "../../core/mentions.ts";
 import type { ErrorReporter } from "../../core/ports/error-reporter.ts";
 import {
 	formatLocal,
@@ -1255,13 +1255,13 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			(ctx) => {
 				const draft = drafts.create({
 					owner: actorRef(ctx.principal),
-				kind:
-					ctx.args.kind === "poll" || ctx.args.kind === "attendance" ? ctx.args.kind : "message",
-				when: "",
-				repeat: "once",
-				text: "",
-				question: "",
-				answers: "",
+					kind:
+						ctx.args.kind === "poll" || ctx.args.kind === "attendance" ? ctx.args.kind : "message",
+					when: "",
+					repeat: "once",
+					text: "",
+					question: "",
+					answers: "",
 					closeMode: "duration",
 					durationHours: 24,
 					multiple: false,
@@ -1442,7 +1442,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					choices: ["multiple"],
 				},
 			],
-			async (ctx, draft) => {
+			async (_ctx, draft) => {
 				const change = { multiple: !draft.multiple };
 				return { reply: await draftPanel(drafts.update(draft, change)) };
 			},

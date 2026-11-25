@@ -645,7 +645,7 @@ describe("making a message", () => {
 	});
 
 	it("allows user and role mentions for anyone who can post, refuses @everyone without permission", async () => {
-		const { draftMessage, store } = setup();
+		const { draftMessage } = setup();
 		// User mentions work without canMentionEveryone
 		const withUser = replyOf(await draftMessage({ text: "Hi <@123456789>" }));
 		expect(button(withUser, "Schedule")?.disabled).toBeUndefined();
