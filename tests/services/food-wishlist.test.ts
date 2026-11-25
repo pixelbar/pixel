@@ -382,8 +382,8 @@ describe("FoodWishlistStore", () => {
 
 			const item = store.find("Club-Mate");
 			expect(item?.comments).toHaveLength(2);
-			expect(item?.comments?.[0].text).toBe("First comment");
-			expect(item?.comments?.[1].text).toBe("Second comment");
+			expect(item?.comments?.[0]?.text).toBe("First comment");
+			expect(item?.comments?.[1]?.text).toBe("Second comment");
 		});
 
 		it("trims comment text", () => {
@@ -441,9 +441,9 @@ describe("FoodWishlistStore", () => {
 
 			expect(edited).toBe(true);
 			const item = store.find("Club-Mate");
-			expect(item?.comments?.[0].text).toBe("Updated text");
-			expect(item?.comments?.[0].author).toEqual(bob);
-			expect(item?.comments?.[0].addedAt).toEqual(NOW);
+			expect(item?.comments?.[0]?.text).toBe("Updated text");
+			expect(item?.comments?.[0]?.author).toEqual(bob);
+			expect(item?.comments?.[0]?.addedAt).toEqual(NOW);
 		});
 
 		it("edits the correct comment when multiple exist", () => {
@@ -456,9 +456,9 @@ describe("FoodWishlistStore", () => {
 			store.editComment("Club-Mate", 1, "Updated second");
 
 			const item = store.find("Club-Mate");
-			expect(item?.comments?.[0].text).toBe("First");
-			expect(item?.comments?.[1].text).toBe("Updated second");
-			expect(item?.comments?.[2].text).toBe("Third");
+			expect(item?.comments?.[0]?.text).toBe("First");
+			expect(item?.comments?.[1]?.text).toBe("Updated second");
+			expect(item?.comments?.[2]?.text).toBe("Third");
 		});
 
 		it("trims comment text", () => {
@@ -469,7 +469,7 @@ describe("FoodWishlistStore", () => {
 			store.editComment("Club-Mate", 0, "  trimmed  ");
 
 			const item = store.find("Club-Mate");
-			expect(item?.comments?.[0].text).toBe("trimmed");
+			expect(item?.comments?.[0]?.text).toBe("trimmed");
 		});
 
 		it("throws when comment text is empty", () => {
@@ -544,8 +544,8 @@ describe("FoodWishlistStore", () => {
 
 			const item = store.find("Club-Mate");
 			expect(item?.comments).toHaveLength(2);
-			expect(item?.comments?.[0].text).toBe("First");
-			expect(item?.comments?.[1].text).toBe("Third");
+			expect(item?.comments?.[0]?.text).toBe("First");
+			expect(item?.comments?.[1]?.text).toBe("Third");
 		});
 
 		it("removes comments field when last comment is removed", () => {

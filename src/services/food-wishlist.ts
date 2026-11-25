@@ -294,12 +294,7 @@ export class FoodWishlistStore {
 		if (trimmed.length > 250) throw new Error("comment text cannot exceed 250 characters");
 
 		const existing = this.find(itemName);
-		if (
-			!existing ||
-			!existing.comments ||
-			commentIndex < 0 ||
-			commentIndex >= existing.comments.length
-		) {
+		if (!existing?.comments || commentIndex < 0 || commentIndex >= existing.comments.length) {
 			return false;
 		}
 

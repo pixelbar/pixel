@@ -104,9 +104,11 @@ function formatRelativeTime(date: Date, now: Date): string {
 	const hours = Math.floor(minutes / 60);
 	if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
 	const days = Math.floor(hours / 24);
-	if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
-	const months = Math.floor(days / 30);
-	if (months < 12) return `${months} month${months === 1 ? "" : "s"} ago`;
+	if (days < 365) {
+		if (days < 30) return `${days} day${days === 1 ? "" : "s"} ago`;
+		const months = Math.floor(days / 30);
+		return `${months} month${months === 1 ? "" : "s"} ago`;
+	}
 	const years = Math.floor(days / 365);
 	return `${years} year${years === 1 ? "" : "s"} ago`;
 }
@@ -906,13 +908,15 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		];
 
 		if (comments.length > 0) {
+			// Limit to 25 options (Discord max per select)
+			const selectLimit = Math.min(comments.length, 25);
 			controls.push([
 				{
 					kind: "select",
 					placeholder: "Edit a comment…",
 					call: { action: ACTIONS.commentsEditForm, args: { item: itemName } },
 					arg: "index",
-					options: comments.map((c, i) => ({
+					options: comments.slice(0, selectLimit).map((c, i) => ({
 						label: `${i + 1}. ${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}`,
 						value: String(i),
 					})),
@@ -924,12 +928,15 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 					placeholder: "Remove a comment…",
 					call: { action: ACTIONS.commentsRemove, args: { item: itemName } },
 					arg: "index",
-					options: comments.map((c, i) => ({
+					options: comments.slice(0, selectLimit).map((c, i) => ({
 						label: `${i + 1}. ${c.text.slice(0, 90)}${c.text.length > 90 ? "…" : ""}`,
 						value: String(i),
 					})),
 				},
 			]);
+			if (comments.length > 25) {
+				lines.push(`\n_Showing ${selectLimit} of ${comments.length} comments in selects._`);
+			}
 		}
 
 		controls.push([button("Back to items", ACTIONS.commentsPick)]);
@@ -947,37 +954,42 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 		};
 	}
 
-	const commentsAddForm: Form = {
-		title: "Add comment",
-		submit: { action: ACTIONS.commentsAdd },
-		fields: [
-			{
-				kind: "text",
-				name: "text",
-				label: "Comment",
-				description: "At most 250 characters",
-				style: "paragraph",
-				maxLength: 250,
-				required: true,
-			},
-		],
-	};
+	function commentsAddForm(itemName: string): Form {
+		return {
+			title: "Add comment",
+			submit: { action: ACTIONS.commentsAdd, args: { item: itemName } },
+			fields: [
+				{
+					kind: "text",
+					name: "text",
+					label: "Comment",
+					description: "At most 250 characters",
+					style: "paragraph",
+					maxLength: 250,
+					required: true,
+				},
+			],
+		};
+	}
 
-	const commentsEditForm: Form = {
-		title: "Edit comment",
-		submit: { action: ACTIONS.commentsEdit },
-		fields: [
-			{
-				kind: "text",
-				name: "text",
-				label: "New text",
-				description: "At most 250 characters",
-				style: "paragraph",
-				maxLength: 250,
-				required: true,
-			},
-		],
-	};
+	function commentsEditForm(itemName: string, index: number, text: string): Form {
+		return {
+			title: "Edit comment",
+			submit: { action: ACTIONS.commentsEdit, args: { item: itemName, index: String(index) } },
+			fields: [
+				{
+					kind: "text",
+					name: "text",
+					label: "New text",
+					description: "At most 250 characters",
+					style: "paragraph",
+					maxLength: 250,
+					required: true,
+					value: text,
+				},
+			],
+		};
+	}
 
 	const food: PlainCommand = {
 		name: "food",
@@ -1294,7 +1306,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 			if (!itemName) {
 				throw new UserFacingError("Please choose an item.");
 			}
-			return { form: { ...commentsAddForm, prefill: { item: itemName } } };
+			return { form: commentsAddForm(itemName) };
 		}),
 
 		action(
@@ -1354,7 +1366,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 
 				usable();
 				const item = deps.wishlist.find(itemName);
-				if (!item || !item.comments || index < 0 || index >= item.comments.length) {
+				if (!item?.comments || index < 0 || index >= item.comments.length) {
 					throw new UserFacingError("That comment no longer exists.");
 				}
 
@@ -1363,14 +1375,7 @@ export function createFoodFeature(deps: FoodDeps): Feature {
 					throw new UserFacingError("That comment no longer exists.");
 				}
 
-				return {
-					form: {
-						...commentsEditForm,
-						prefill: {
-							text: comment.text,
-						},
-					},
-				};
+				return { form: commentsEditForm(itemName, index, comment.text) };
 			},
 		),
 
