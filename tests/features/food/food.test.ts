@@ -109,7 +109,7 @@ describe("/food", () => {
 		]);
 	});
 
-	it("shows admin controls", async () => {
+	it("shows a single Admin tools entry for admins", async () => {
 		const { run } = setup();
 		const reply = await run({}, admin);
 
@@ -117,10 +117,44 @@ describe("/food", () => {
 			"Add new item",
 			"Remove my request",
 			"Report out of stock",
-			"Remove any item",
-			"Clear from out of stock",
+			"Admin tools…",
 			"Refresh",
 		]);
+	});
+
+	it("stages admin tools behind Wishlist and Out of stock panels", async () => {
+		const { act } = setup();
+
+		const tools = await act("food.admin-tools", {}, admin);
+		if (!("reply" in tools)) throw new Error("Expected reply");
+		expect(labels(tools.reply)).toEqual(["Wishlist…", "Out of stock…", "Back"]);
+
+		const wishlist = await act("food.admin-wishlist", {}, admin);
+		if (!("reply" in wishlist)) throw new Error("Expected reply");
+		expect(labels(wishlist.reply)).toEqual([
+			"Remove an item…",
+			"Comments…",
+			"Empty the wishlist…",
+			"Back",
+		]);
+
+		const outOfStock = await act("food.admin-out-of-stock", {}, admin);
+		if (!("reply" in outOfStock)) throw new Error("Expected reply");
+		expect(labels(outOfStock.reply)).toEqual(["Clear an item…", "Empty the list…", "Back"]);
+	});
+
+	it("refuses admin tool panels for non-admins", async () => {
+		const { act } = setup();
+
+		await expect(async () => await act("food.admin-tools", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
+		await expect(async () => await act("food.admin-wishlist", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
+		await expect(async () => await act("food.admin-out-of-stock", {}, alice)).rejects.toThrow(
+			"Only admins",
+		);
 	});
 
 	it("hides out-of-stock section for members when empty", async () => {
@@ -740,5 +774,360 @@ describe("pick panels and edge cases", () => {
 				logger: silentLogger,
 			}),
 		).rejects.toThrow("unavailable right now");
+	});
+
+	describe("empty lists", () => {
+		it("empties the wishlist after confirmation", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.request("Stroopwafels", { ref: actorRef(bob), name: "Bob" });
+
+			const confirm = await act("food.empty-wishlist-confirm", {}, admin);
+			if (!("reply" in confirm)) throw new Error("Expected reply");
+			expect(main(confirm.reply)).toContain("remove all 2 items");
+			expect(main(confirm.reply)).toContain("cannot be undone");
+
+			const result = await act("food.empty-wishlist", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Emptied the wishlist");
+			expect(wishlist.wishlist()).toHaveLength(0);
+		});
+
+		it("empty wishlist refuses non-admins", async () => {
+			const { act } = setup();
+			await expect(async () => await act("food.empty-wishlist", {}, alice)).rejects.toThrow(
+				"Only admins",
+			);
+		});
+
+		it("empties the out-of-stock list after confirmation", async () => {
+			const { act, wishlist } = setup();
+			wishlist.reportOutOfStock("Club-Mate", { ref: actorRef(alice), name: "Alice" }, NOW);
+			wishlist.reportOutOfStock("Coke", { ref: actorRef(bob), name: "Bob" }, NOW);
+
+			const confirm = await act("food.empty-out-of-stock-confirm", {}, admin);
+			if (!("reply" in confirm)) throw new Error("Expected reply");
+			expect(main(confirm.reply)).toContain("remove all 2 items");
+
+			const result = await act("food.empty-out-of-stock", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Emptied the out-of-stock list");
+			expect(wishlist.outOfStock()).toHaveLength(0);
+		});
+
+		it("empty out-of-stock refuses non-admins", async () => {
+			const { act } = setup();
+			await expect(async () => await act("food.empty-out-of-stock", {}, alice)).rejects.toThrow(
+				"Only admins",
+			);
+		});
+	});
+
+	describe("comments", () => {
+		it("adds a comment to an item", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			const addForm = await act("food.comments-add-form", { item: "Club-Mate" }, admin);
+			if (!("form" in addForm)) throw new Error("Expected form");
+
+			const result = await act(
+				"food.comments-add",
+				{ item: "Club-Mate", text: "Only from supplier X" },
+				admin,
+			);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Comment added");
+
+			const item = wishlist.find("Club-Mate");
+			expect(item?.comments).toHaveLength(1);
+			expect(item?.comments?.[0]?.text).toBe("Only from supplier X");
+		});
+
+		it("comments refuse non-admins", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(async () => await act("food.comments-pick", {}, alice)).rejects.toThrow(
+				"Only admins",
+			);
+			await expect(
+				async () => await act("food.comments-add", { item: "Club-Mate", text: "test" }, alice),
+			).rejects.toThrow("Only admins");
+		});
+
+		it("edits a comment", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment(
+				"Club-Mate",
+				"Original text",
+				{ ref: actorRef(admin), name: "Admin" },
+				NOW,
+			);
+
+			const editForm = await act(
+				"food.comments-edit-form",
+				{ item: "Club-Mate", index: "0" },
+				admin,
+			);
+			if (!("form" in editForm)) throw new Error("Expected form");
+
+			const result = await act(
+				"food.comments-edit",
+				{ item: "Club-Mate", index: "0", text: "Updated text" },
+				admin,
+			);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Comment edited");
+
+			const item = wishlist.find("Club-Mate");
+			expect(item?.comments?.[0]?.text).toBe("Updated text");
+		});
+
+		it("removes a comment", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "To remove", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			const result = await act("food.comments-remove", { item: "Club-Mate", index: "0" }, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Comment removed");
+
+			const item = wishlist.find("Club-Mate");
+			expect(item?.comments).toBeUndefined();
+		});
+
+		it("shows comment count in picker", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Comment 1", { ref: actorRef(admin), name: "Admin" }, NOW);
+			wishlist.addComment("Club-Mate", "Comment 2", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			const result = await act("food.comments-pick", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			const chooseSelect = select(result.reply, "Choose an item…");
+			expect(chooseSelect.options[0]?.description).toBe("2 comments");
+		});
+
+		it("limits comment selects to 25 options", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			for (let i = 0; i < 30; i++) {
+				wishlist.addComment(
+					"Club-Mate",
+					`Comment ${i}`,
+					{ ref: actorRef(admin), name: "Admin" },
+					NOW,
+				);
+			}
+
+			const result = await act("food.comments-view", { item: "Club-Mate" }, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Showing 25 of 30 comments");
+		});
+
+		it("shows a compact comment count on the home panel for admins", async () => {
+			const { run, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment(
+				"Club-Mate",
+				"Important note",
+				{ ref: actorRef(admin), name: "Admin" },
+				NOW,
+			);
+
+			const result = await run({}, admin);
+			expect(wishlistSection(result)).toContain("💬 1 comment");
+			expect(wishlistSection(result)).not.toContain("Important note");
+		});
+
+		it("hides comment counts from members", async () => {
+			const { run, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment(
+				"Club-Mate",
+				"Important note",
+				{ ref: actorRef(admin), name: "Admin" },
+				NOW,
+			);
+
+			const result = await run({}, alice);
+			expect(wishlistSection(result)).not.toContain("💬");
+			expect(wishlistSection(result)).not.toContain("Important note");
+		});
+
+		it("refuses comment edit with invalid item/index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () =>
+					await act(
+						"food.comments-edit",
+						{ item: "Club-Mate", index: "invalid", text: "New" },
+						admin,
+					),
+			).rejects.toThrow("Invalid selection");
+		});
+
+		it("refuses comment remove for nonexistent item/index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-remove", { item: "Club-Mate", index: "0" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("refuses comment edit for nonexistent comment", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Original", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () =>
+					await act("food.comments-edit", { item: "Club-Mate", index: "5", text: "New" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("refuses comment edit with empty text", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Original", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () =>
+					await act("food.comments-edit", { item: "Club-Mate", index: "0", text: "" }, admin),
+			).rejects.toThrow("Please provide comment text");
+		});
+
+		it("refuses comment edit for non-admins", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Original", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () =>
+					await act("food.comments-edit", { item: "Club-Mate", index: "0", text: "New" }, alice),
+			).rejects.toThrow("Only admins");
+		});
+
+		it("refuses comment remove for non-admins", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Original", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () => await act("food.comments-remove", { item: "Club-Mate", index: "0" }, alice),
+			).rejects.toThrow("Only admins");
+		});
+
+		it("refuses comment remove with invalid index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-remove", { item: "Club-Mate", index: "bad" }, admin),
+			).rejects.toThrow("Invalid selection");
+		});
+
+		it("refuses edit form for nonexistent item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Unknown", index: "0" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("refuses edit form for nonexistent comment index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Comment", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Club-Mate", index: "5" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
+
+		it("shows picker panel when viewing with no item selected", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			const result = await act("food.comments-view", { item: "" }, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("Please choose an item");
+			expect(main(result.reply)).toContain("Pick an item to view");
+		});
+
+		it("refuses add form for missing item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-add-form", { item: "" }, admin),
+			).rejects.toThrow("Please choose an item");
+		});
+
+		it("empty wishlist shows already empty message when empty", async () => {
+			const { act } = setup();
+
+			const result = await act("food.empty-wishlist-confirm", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("already empty");
+		});
+
+		it("empty out-of-stock shows already empty message when empty", async () => {
+			const { act } = setup();
+
+			const result = await act("food.empty-out-of-stock-confirm", {}, admin);
+			if (!("reply" in result)) throw new Error("Expected reply");
+			expect(main(result.reply)).toContain("already empty");
+		});
+
+		it("refuses comment add with text over 250 chars", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			const longText = "a".repeat(251);
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Club-Mate", text: longText }, admin),
+			).rejects.toThrow("cannot exceed 250 characters");
+		});
+
+		it("refuses comment add with empty text", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Club-Mate", text: "" }, admin),
+			).rejects.toThrow("Please provide comment text");
+		});
+
+		it("refuses comment add for nonexistent item", async () => {
+			const { act } = setup();
+
+			await expect(
+				async () => await act("food.comments-add", { item: "Unknown", text: "Note" }, admin),
+			).rejects.toThrow("not on the wishlist");
+		});
+
+		it("refuses edit form with invalid selection", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "", index: "bad" }, admin),
+			).rejects.toThrow("Invalid selection");
+		});
+
+		it("refuses edit form for out of bounds index", async () => {
+			const { act, wishlist } = setup();
+			wishlist.request("Club-Mate", { ref: actorRef(alice), name: "Alice" });
+			wishlist.addComment("Club-Mate", "Comment", { ref: actorRef(admin), name: "Admin" }, NOW);
+
+			await expect(
+				async () => await act("food.comments-edit-form", { item: "Club-Mate", index: "-1" }, admin),
+			).rejects.toThrow("no longer exists");
+		});
 	});
 });
