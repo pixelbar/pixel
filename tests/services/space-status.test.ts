@@ -161,7 +161,7 @@ describe("SpaceApiStatus.checkNow", () => {
 			[
 				"oversized declared length",
 				(f: ReturnType<typeof fakeFetch>) =>
-					f.raw("{}", { headers: { "content-length": "999999999" } }),
+					f.raw("{ }", { headers: { "content-length": "999999999" } }),
 				/too large/,
 			],
 			[

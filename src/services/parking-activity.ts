@@ -130,7 +130,6 @@ export class ParkingActivity {
 			await this.#options.posts.post(channelId, {
 				kind: "message",
 				text: activityText(event, now, this.#options.timezone),
-				mentions: false,
 			});
 			return true;
 		} catch (error) {

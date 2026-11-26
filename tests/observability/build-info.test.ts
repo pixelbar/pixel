@@ -25,7 +25,7 @@ describe("loadBuildInfo", () => {
 			loadBuildInfo(config, { git: () => undefined, packageJson: join(dir, "nope") }).version,
 		).toBe("unknown");
 		const pkg = join(dir, "package.json");
-		writeFileSync(pkg, "{}");
+		writeFileSync(pkg, "{ }");
 		expect(loadBuildInfo(config, { git: () => undefined, packageJson: pkg }).version).toBe(
 			"unknown",
 		);

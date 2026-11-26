@@ -339,7 +339,7 @@ function add(store: ScheduleStore, over: Partial<Omit<Schedule, "id">> = {}): Sc
 		name: "Pizza",
 		channelId: CHANNEL,
 		channelName: "general",
-		post: { kind: "message", text: "Pizza night tonight!", mentions: false },
+		post: { kind: "message", text: "Pizza night tonight!" },
 		start: "2026-10-14T19:00",
 		recurrence: { kind: "once" },
 		paused: false,
@@ -532,7 +532,7 @@ describe("making a message", () => {
 			name: "On {{date}}",
 			channelId: CHANNEL,
 			channelName: "general",
-			post: { kind: "message", text: "On {{date}}", mentions: false },
+			post: { kind: "message", text: "On {{date}}" },
 			start: "2026-10-14T19:00",
 			recurrence: { kind: "once" },
 			createdBy: { ref: `discord:${IDS.member}`, name: "Ada" },
@@ -644,32 +644,40 @@ describe("making a message", () => {
 		});
 	});
 
-	it("only offers pings where the person could ping everyone, and saves them", async () => {
-		const { draftMessage, click, store } = setup();
-		expect(labels(replyOf(await draftMessage()))).not.toContain("Pings: off");
-		const reply = replyOf(await draftMessage({}, channel({ canMentionEveryone: true })));
-		expect(labels(reply)).toContain("Pings: off");
-		const on = replyOf(await click(reply, "Pings"));
-		expect(labels(on)).toContain("Pings: on");
-		expect(said(on.embeds?.[0])).toContain("pings on");
-		await click(on, "Schedule");
-		expect(store.all()[0]?.post).toMatchObject({ mentions: true });
+	it("allows user and role mentions for anyone who can post, refuses @everyone without permission", async () => {
+		const { draftMessage } = setup();
+		// User mentions work without canMentionEveryone
+		const withUser = replyOf(await draftMessage({ text: "Hi <@123456789>" }));
+		expect(button(withUser, "Schedule")?.disabled).toBeUndefined();
+		// @everyone without permission is refused
+		const withEveryone = replyOf(
+			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: false })),
+		);
+		expect(button(withEveryone, "Schedule")?.disabled).toBe(true);
+		expect(said(withEveryone.embeds?.[0])).toContain("can't use @everyone or @here");
+		// @everyone with permission works
+		const allowed = replyOf(
+			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: true })),
+		);
+		expect(button(allowed, "Schedule")?.disabled).toBeUndefined();
 	});
 
-	it("keeps the pings switch to turn them off if they're on where they're not allowed", async () => {
+	it("validates mentions even when the channel is changed", async () => {
 		const { draftMessage, click, submit } = setup();
-		const allowed = replyOf(await draftMessage({}, channel({ canMentionEveryone: true })));
-		const on = replyOf(await click(allowed, "Pings"));
+		const withEveryone = replyOf(
+			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: true })),
+		);
+		expect(button(withEveryone, "Schedule")?.disabled).toBeUndefined();
+		// Move to a channel where they can't mention everyone
 		const moved = replyOf(
-			await submit(formOf(await click(on, "Edit details")), {
+			await submit(formOf(await click(withEveryone, "Edit details")), {
 				when: "wed 19:00",
 				repeat: "once",
-				text: "x",
+				text: "Hi @everyone",
 			}),
 		);
-		expect(said(moved.embeds?.[0])).toContain(SCHEDULE_MESSAGES.cantPing);
-		expect(labels(moved)).toContain("Pings: on");
-		expect(button(replyOf(await click(moved, "Pings")), "Schedule")?.disabled).toBeUndefined();
+		expect(said(moved.embeds?.[0])).toContain(SCHEDULE_MESSAGES.cantMentionEveryone);
+		expect(button(moved, "Schedule")?.disabled).toBe(true);
 	});
 
 	it("is renamed with a form, and goes back to the text's start when the name is cleared", async () => {
@@ -1309,7 +1317,7 @@ describe("a schedule's panel", () => {
 	it("shows the owner what it will post next, with Edit, Pause and Delete", async () => {
 		const { panel, store } = setup();
 		const { id } = add(store, {
-			post: { kind: "message", text: "Pizza on {{date}}", mentions: false },
+			post: { kind: "message", text: "Pizza on {{date}}" },
 			recurrence: { kind: "weekly", everyWeeks: 1, days: ["wed"] },
 		});
 		const reply = replyOf(await panel(id));

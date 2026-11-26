@@ -99,7 +99,6 @@ const postSchema = z.discriminatedUnion("kind", [
 	z.strictObject({
 		kind: z.literal("message"),
 		text: z.string().min(1).max(MAX_MESSAGE_LENGTH),
-		mentions: z.boolean(),
 	}),
 	z.strictObject({
 		kind: z.literal("poll"),

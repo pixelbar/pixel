@@ -121,7 +121,10 @@ describe("the poll's message", () => {
 
 	it("is never sent as a plain post", () => {
 		expect(() =>
-			toDiscordMessage({ kind: "attendance", question: "Q", answers: [], durationHours: 1 }),
+			toDiscordMessage(
+				{ kind: "attendance", question: "Q", answers: [], durationHours: 1 },
+				{ canPost: true, canMentionEveryone: false },
+			),
 		).toThrow(/postAttendance/);
 	});
 });

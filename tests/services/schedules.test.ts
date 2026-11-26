@@ -22,7 +22,7 @@ const sample = (over: Partial<Omit<Schedule, "id">> = {}): Omit<Schedule, "id"> 
 	name: "Weekly poll",
 	channelId: "100000000000000050",
 	channelName: "general",
-	post: { kind: "message", text: "Hello", mentions: false },
+	post: { kind: "message", text: "Hello" },
 	start: "2026-10-14T19:00",
 	recurrence: { kind: "weekly", everyWeeks: 1, days: ["wed", "sat"] },
 	paused: false,
@@ -150,9 +150,7 @@ describe("ScheduleStore", () => {
 		mkdirSync(join(dir, "data"), { recursive: true });
 		const base =
 			"schedules:\n  - id: abc234\n    name: n\n    channelId: '100000000000000050'\n    channelName: g\n    start: 2026-10-14T19:00\n    recurrence: { kind: once }\n    paused: false\n    createdBy: { ref: 'discord:1', name: A }\n    createdAt: 2026-10-12T08:00:00.000Z\n    lastRunAt: null\n";
-		const post = extra.includes("post:")
-			? ""
-			: "    post: { kind: message, text: hi, mentions: false }\n";
+		const post = extra.includes("post:") ? "" : "    post: { kind: message, text: hi }\n";
 		writeFileSync(file, base + post + extra);
 		expect(new ScheduleStore({ file, logger: logs().logger }).problem).toBeDefined();
 	});
@@ -195,7 +193,7 @@ describe("ScheduleStore", () => {
 		["a bad schedule", "schedules:\n  - id: x\n"],
 		[
 			"a repeated id",
-			`schedules:\n${["a", "b"].map(() => "  - id: abc234\n    name: n\n    channelId: '100000000000000050'\n    channelName: g\n    post: { kind: message, text: hi, mentions: false }\n    start: 2026-10-14T19:00\n    recurrence: { kind: once }\n    paused: false\n    createdBy: { ref: 'discord:1', name: A }\n    createdAt: 2026-10-12T08:00:00.000Z\n    lastRunAt: null\n").join("")}`,
+			`schedules:\n${["a", "b"].map(() => "  - id: abc234\n    name: n\n    channelId: '100000000000000050'\n    channelName: g\n    post: { kind: message, text: hi }\n    start: 2026-10-14T19:00\n    recurrence: { kind: once }\n    paused: false\n    createdBy: { ref: 'discord:1', name: A }\n    createdAt: 2026-10-12T08:00:00.000Z\n    lastRunAt: null\n").join("")}`,
 		],
 	])(
 		"runs nothing and changes nothing when the file has %s, and never overwrites it",

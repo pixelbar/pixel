@@ -13,8 +13,6 @@ export type ChannelPost =
 	| {
 			kind: "message";
 			text: string;
-			/** Whether @everyone, @here and role mentions ping. Off unless the schedule allows it. */
-			mentions: boolean;
 	  }
 	| {
 			kind: "poll";
@@ -86,6 +84,11 @@ export type PostOptions = {
 	 * the post still goes out, just not as a reply.
 	 */
 	replyTo?: string;
+	/**
+	 * The creator's immutable platform ref (e.g. "discord:123456789"), used to
+	 * re-check their permissions for mentions at post time.
+	 */
+	createdBy?: string;
 };
 
 /** What the platform says about posting in a channel, or why Pixel can't. */

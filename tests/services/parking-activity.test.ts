@@ -101,7 +101,6 @@ describe("parking activity", () => {
 		expect(post).toHaveBeenCalledWith(CHANNEL, {
 			kind: "message",
 			text: '**Alice** left **"ours"**.',
-			mentions: false,
 		});
 		expect(count).toHaveBeenCalledWith("pixel.parking", { event: "left", spot: "ours" });
 	});

@@ -102,7 +102,6 @@ export function resultsPost(
 			chars.length > MAX_MESSAGE_LENGTH
 				? `${chars.slice(0, MAX_MESSAGE_LENGTH - 1).join("")}…`
 				: text,
-		mentions: false,
 	};
 }
 

@@ -64,7 +64,7 @@ describe("createAzureQueue", () => {
 				{
 					messageId: "m1",
 					popReceipt: "r1",
-					messageText: "{}",
+					messageText: "{ }",
 					dequeueCount: 1,
 					insertedOn: new Date(),
 				},
@@ -72,7 +72,7 @@ describe("createAzureQueue", () => {
 		});
 		const queue = createAzureQueue({ queueUrl: URL, clientId: CLIENT });
 		expect(await queue.receive(32)).toEqual([
-			{ messageId: "m1", popReceipt: "r1", messageText: "{}", dequeueCount: 1 },
+			{ messageId: "m1", popReceipt: "r1", messageText: "{ }", dequeueCount: 1 },
 		]);
 		expect(sdk.receiveMessages).toHaveBeenCalledWith({
 			numberOfMessages: 32,

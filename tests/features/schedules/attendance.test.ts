@@ -98,7 +98,6 @@ describe("totals", () => {
 		expect(resultsPost("{{count}} on {{day}}: {{names}}. {{link}}", voted, fill)).toEqual({
 			kind: "message",
 			text: "2 on Friday: Ada and Kim. https://discord.com/channels/1/2/3",
-			mentions: false,
 		});
 	});
 
@@ -554,7 +553,7 @@ describe("results", () => {
 		await t.run(new Date("2026-11-06T16:00:30.000Z"));
 		await t.run(new Date("2026-11-06T16:01:00.000Z"));
 		expect(t.posted).toEqual([
-			{ channelId: RESULTS, post: { kind: "message", text: "So far 1: Ada", mentions: false } },
+			{ channelId: RESULTS, post: { kind: "message", text: "So far 1: Ada" } },
 		]);
 		expect(t.store.get("0123456789ab")?.statusHandled).toBe(true);
 		expect(t.stillAllowed).toHaveBeenCalledWith(ADA);
@@ -576,7 +575,7 @@ describe("results", () => {
 		expect(t.posted).toEqual([
 			{
 				channelId: CHANNEL,
-				post: { kind: "message", text: "Closed: 1 coming on Friday", mentions: false },
+				post: { kind: "message", text: "Closed: 1 coming on Friday" },
 				options: { replyTo: "100000000000000099" },
 			},
 		]);
@@ -596,7 +595,7 @@ describe("results", () => {
 		expect(t.posted).toEqual([
 			{
 				channelId: CHANNEL,
-				post: { kind: "message", text: "So far 1: Ada", mentions: false },
+				post: { kind: "message", text: "So far 1: Ada" },
 				options: { replyTo: "100000000000000099" },
 			},
 		]);
@@ -615,7 +614,7 @@ describe("results", () => {
 		expect(t.posted).toEqual([
 			{
 				channelId: RESULTS,
-				post: { kind: "message", text: "Closed: 1 coming on Friday", mentions: false },
+				post: { kind: "message", text: "Closed: 1 coming on Friday" },
 			},
 		]);
 	});

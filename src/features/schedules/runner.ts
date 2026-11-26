@@ -117,7 +117,6 @@ export function reminderPost(poll: PostedPoll): ChannelPost {
 	return {
 		kind: "message",
 		text: `🗳️ Reminder: vote on **${escapeMarkdown(poll.question)}**: ${poll.url}`,
-		mentions: false,
 	};
 }
 
@@ -180,7 +179,9 @@ export async function runDue(deps: RunnerDeps, now: Date): Promise<void> {
 					if (!deps.attendance) throw new Error("attendance polls aren't set up");
 					polled = await deps.attendance.post(current, filled.post, due.at);
 				} else {
-					const sent = await deps.posts.post(current.channelId, filled.post);
+					const sent = await deps.posts.post(current.channelId, filled.post, {
+						createdBy: current.createdBy.ref,
+					});
 					if (filled.post.kind === "poll") {
 						polled = {
 							question: filled.post.question,
@@ -292,7 +293,9 @@ async function remindDue(deps: RunnerDeps, now: Date, log: Logger): Promise<void
 				const current = deps.store.get(schedule.id);
 				if (!current?.reminder || !current.lastPoll || current.paused) continue;
 				if (dueReminder(current, deps.timezone, now)?.at.getTime() !== due.at.getTime()) continue;
-				await deps.posts.post(current.reminder.channelId, reminderPost(current.lastPoll));
+				await deps.posts.post(current.reminder.channelId, reminderPost(current.lastPoll), {
+					createdBy: current.createdBy.ref,
+				});
 				log.info(
 					{ event: "schedule.reminded", ...fields, due: due.at.toISOString() },
 					"posted a poll reminder",

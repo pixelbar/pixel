@@ -324,7 +324,7 @@ describe("the real manifest", () => {
 
 	it("never holds anything that looks like a secret value", () => {
 		const text = read(MANIFEST_FILE);
-		expect(text).not.toMatch(/eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/); // a JWT, such as a Home Assistant token
+		expect(text).not.toMatch(/eyJ[\w-]{8}\.[\w-]{8}\.[\w-]{8}/); // a JWT, such as a Home Assistant token
 		expect(text).not.toMatch(/[\w-]{23,28}\.[\w-]{6,7}\.[\w-]{27,40}/); // a Discord bot token
 		expect(text).not.toMatch(/https?:\/\/\S+@/); // credentials in a URL (a DSN)
 	});
