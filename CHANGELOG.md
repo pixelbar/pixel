@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-11-26
+
 ### Added
 
 - Attendance polls can now close at a **fixed weekday and time** (e.g. Wednesday 23:59), as an alternative to the existing duration options (#234, Sentry PIXEL-28). The **Closing** button on the draft switches between duration mode (1 hour, 1 day, 1 week…) and day & time mode. In day & time mode, pick the weekday from the menu, then press **Closing** to set the time. For recurring schedules, the poll closes at the next occurrence of that day and time after each post. Duration mode still works exactly as before.
@@ -435,7 +437,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/pixelbar/pixel/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/pixelbar/pixel/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/pixelbar/pixel/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/pixelbar/pixel/compare/v0.25.2...v0.26.0
