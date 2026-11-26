@@ -9,6 +9,13 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- **Mentions in scheduled posts** (#239, #240). After 0.28.0, a schedules file with any message saved before it was refused as invalid (`post: Unrecognized key: "mentions"`), so no schedule ran and none could be made or changed. The old **Pings** setting is now read and dropped, and disappears from `data/schedules.yaml` the next time a schedule is saved; nothing needs fixing by hand.
+- Message drafts in `/schedule` have a **Mention someone…** button that adds a person's mention to the message. Typing `@name` in the form never worked: Discord leaves it as plain text there.
+- When the person who made a schedule can no longer use `@everyone` or `@here` in its channel, the people and roles it mentions are still pinged; before, nobody was.
+- Pixel's own posts (reminders, results, food and parking notices) never ping, even when a name in them looks like a mention, and no longer need Mention Everyone for it.
+
 ## [0.28.0] - 2026-11-26
 
 ### Added

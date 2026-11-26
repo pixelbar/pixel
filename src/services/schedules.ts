@@ -96,10 +96,18 @@ const snowflake = z.string().regex(/^\d{17,20}$/);
 export const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const postSchema = z.discriminatedUnion("kind", [
-	z.strictObject({
-		kind: z.literal("message"),
-		text: z.string().min(1).max(MAX_MESSAGE_LENGTH),
-	}),
+	z
+		.strictObject({
+			kind: z.literal("message"),
+			text: z.string().min(1).max(MAX_MESSAGE_LENGTH),
+			/**
+			 * The old "Pings: on/off" flag, written by 0.27 and earlier. Mentions now come from
+			 * the text, so it's read and dropped (and gone on the next save) rather than making
+			 * the whole file invalid.
+			 */
+			mentions: z.boolean().optional(),
+		})
+		.transform(({ mentions: _legacy, ...post }) => post),
 	z.strictObject({
 		kind: z.literal("poll"),
 		question: z.string().min(1).max(MAX_POLL_QUESTION),

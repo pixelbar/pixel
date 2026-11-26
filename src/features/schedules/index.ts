@@ -132,6 +132,8 @@ export const ACTIONS = {
 	resulted: "schedule.resulted",
 	rename: "schedule.rename",
 	renamed: "schedule.renamed",
+	mention: "schedule.mention",
+	mentioned: "schedule.mentioned",
 	save: "schedule.save",
 	cancel: "schedule.cancel",
 	pause: "schedule.pause",
@@ -153,6 +155,7 @@ export const SCHEDULE_MESSAGES = {
 	cantMentionEveryone:
 		"You can't use @everyone or @here in that channel yourself. Remove those mentions.",
 	emptyMessage: "The message can't be empty.",
+	mentionTooLong: `That mention would make the message longer than ${MAX_MESSAGE_LENGTH} characters.`,
 	emptyQuestion: "The question can't be empty.",
 	draftGone: "That draft has expired, so nothing was saved. Start again.",
 	saving: "That's already being saved.",
@@ -786,7 +789,10 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				},
 			]);
 		}
-		if (draft.kind !== "message") {
+		if (draft.kind === "message") {
+			// Typing @name in a form stays plain text, so people are picked here instead.
+			rows.push([button("Mention someone…", ACTIONS.mention, { draft: draft.id })]);
+		} else {
 			const closingButton =
 				draft.kind === "attendance"
 					? button(
@@ -1047,6 +1053,21 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 					placeholder: DEFAULT_CLOSED_TEXT,
 					required: false,
 					...(results?.closedText ? { value: results.closedText } : {}),
+				},
+			],
+		};
+	}
+
+	function mentionForm(draft: Draft): Form {
+		return {
+			title: "Mention someone",
+			submit: call(ACTIONS.mentioned, { draft: draft.id }),
+			fields: [
+				{
+					kind: "user",
+					name: "user",
+					label: "Who",
+					description: "Added to the end of the message. They're pinged when it's posted.",
 				},
 			],
 		};
@@ -1549,6 +1570,18 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				return { reply: await draftPanel(updated) };
 			},
 		),
+		onDraft(ACTIONS.mention, [], (_, draft) => ({ form: mentionForm(draft) })),
+		onDraft(
+			ACTIONS.mentioned,
+			[{ name: "user", description: "Who to mention", type: "user", required: true }],
+			async (ctx, draft) => {
+				const text = withMention(draft.text, String(ctx.args.user));
+				if ([...text].length > MAX_MESSAGE_LENGTH) {
+					throw new UserFacingError(SCHEDULE_MESSAGES.mentionTooLong);
+				}
+				return { reply: await draftPanel(drafts.update(draft, { text })) };
+			},
+		),
 		onDraft(ACTIONS.rename, [], (_, draft) => ({ form: renameForm(draft) })),
 		onDraft(
 			ACTIONS.renamed,
@@ -1637,6 +1670,12 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 }
 
 /** The settings part of a draft, as a post, for describing it. */
+/** The message with a mention of that person (by ID) added at the end. */
+export function withMention(text: string, userId: string): string {
+	const trimmed = text.trimEnd();
+	return trimmed === "" ? `<@${userId}>` : `${trimmed} <@${userId}>`;
+}
+
 function postSettings(draft: Draft): ChannelPost {
 	if (draft.kind === "attendance") {
 		if (draft.closeMode === "day-time" && draft.closeWeekday && draft.closeTime) {

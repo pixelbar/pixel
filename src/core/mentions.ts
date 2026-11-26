@@ -97,14 +97,14 @@ export function checkMentionPermissions(
 
 /**
  * Builds Discord's allowedMentions based on what's detected in the text and
- * what's permitted. If nothing is allowed, returns parse: [].
+ * what's permitted. Someone who can't post pings nobody; someone who can't
+ * mention everyone still pings the people and roles they wrote.
  */
 export function allowedMentionsFor(
 	detected: DetectedMentions,
 	permissions: MentionPermissions,
 ): { parse: ("everyone" | "roles" | "users")[]; repliedUser: boolean } {
-	const check = checkMentionPermissions(detected, permissions);
-	if (!check.ok) return { parse: [], repliedUser: false };
+	if (!permissions.canPost) return { parse: [], repliedUser: false };
 
 	const parse: ("everyone" | "roles" | "users")[] = [];
 	if (detected.everyone && permissions.canMentionEveryone) parse.push("everyone");

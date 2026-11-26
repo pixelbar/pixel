@@ -69,6 +69,59 @@ describe("ScheduleStore", () => {
 		expect(new ScheduleStore({ file, logger: silentLogger }).all()).toEqual(store.all());
 	});
 
+	it("reads a message saved with the old pings flag, and drops it on the next save", () => {
+		mkdirSync(join(dir, "data"), { recursive: true });
+		const legacy = (mentions: boolean, id: string) =>
+			`  - id: ${id}
+    name: Weekly
+    channelId: "100000000000000050"
+    channelName: general
+    post:
+      kind: message
+      text: Hello
+      mentions: ${mentions}
+    start: 2026-10-14T19:00
+    recurrence:
+      kind: once
+    paused: false
+    createdBy:
+      ref: discord:100000000000000002
+      name: Ada
+    createdAt: 2026-10-12T08:00:00.000Z
+    lastRunAt: null
+`;
+		writeFileSync(file, `schedules:\n${legacy(false, "abc234")}${legacy(true, "abc235")}`);
+		const store = new ScheduleStore({ file, logger: silentLogger });
+		expect(store.problem).toBeUndefined();
+		expect(store.all().map((s) => s.post)).toEqual([
+			{ kind: "message", text: "Hello" },
+			{ kind: "message", text: "Hello" },
+		]);
+		store.update("abc234", { paused: true });
+		expect(readFileSync(file, "utf8")).not.toContain("mentions");
+	});
+
+	it("still refuses a pings flag that isn't true or false", () => {
+		mkdirSync(join(dir, "data"), { recursive: true });
+		writeFileSync(
+			file,
+			`schedules:
+  - id: abc234
+    name: Weekly
+    channelId: "100000000000000050"
+    channelName: general
+    post: { kind: message, text: Hello, mentions: "yes" }
+    start: 2026-10-14T19:00
+    recurrence: { kind: once }
+    paused: false
+    createdBy: { ref: "discord:100000000000000002", name: Ada }
+    createdAt: 2026-10-12T08:00:00.000Z
+    lastRunAt: null
+`,
+		);
+		expect(new ScheduleStore({ file, logger: logs().logger }).problem).toMatch(/mentions/);
+	});
+
 	it("updates and removes, and says when something is gone", () => {
 		const store = new ScheduleStore({ file, logger: silentLogger });
 		const added = store.add(sample());

@@ -31,9 +31,15 @@ import {
 	SCHEDULE_CAPABILITY,
 	SCHEDULE_MESSAGES,
 	TICK_MS,
+	withMention,
 } from "../../../src/features/schedules/index.ts";
 import { AttendanceStore } from "../../../src/services/attendance.ts";
-import { MAX_SCHEDULES, type Schedule, ScheduleStore } from "../../../src/services/schedules.ts";
+import {
+	MAX_MESSAGE_LENGTH,
+	MAX_SCHEDULES,
+	type Schedule,
+	ScheduleStore,
+} from "../../../src/services/schedules.ts";
 import { actor, IDS } from "../../../src/testing/fixtures.ts";
 
 const AMS = "Europe/Amsterdam";
@@ -519,7 +525,13 @@ describe("making a message", () => {
 		expect(summary).toContain("Nothing is saved until you press **Schedule**.");
 		expect(summary).toContain("**#general** · first post **Wed 14 Oct 2026, 19:00**");
 		expect(summary).toContain("Name: Pizza on {{day}} {{date}} ({{unknown}})");
-		expect(labels(reply)).toEqual(["Schedule", "Edit details", "Rename", "Cancel"]);
+		expect(labels(reply)).toEqual([
+			"Mention someone…",
+			"Schedule",
+			"Edit details",
+			"Rename",
+			"Cancel",
+		]);
 		expect(button(reply, "Schedule")?.disabled).toBeUndefined();
 		expect(store.all()).toEqual([]);
 	});
@@ -712,6 +724,62 @@ describe("making a message", () => {
 			reply: { text: expect.stringContaining("Delete one first"), private: true },
 			problem: true,
 		});
+	});
+});
+
+describe("mentioning someone in a message", () => {
+	const PICKED = "100000000000000077";
+	const pick = (
+		ctx: ReturnType<typeof setup>,
+		form: Form,
+		user: { id: string; isBot?: boolean } = { id: PICKED },
+	) =>
+		ctx.dispatcher.act({
+			actor: actor({ userId: IDS.member, displayName: "Ada" }),
+			action: form.submit.action,
+			args: { ...(form.submit.args as Record<string, string>), user: user.id },
+			users: {
+				user: { id: user.id, displayName: "Bea", handle: "bea", isBot: user.isBot ?? false },
+			},
+		});
+
+	it("picks a person and adds their mention to the end of the message", async () => {
+		const ctx = setup();
+		const reply = replyOf(await ctx.draftMessage({ text: "Pizza night!  " }));
+		const form = formOf(await ctx.click(reply, "Mention someone…"));
+		expect(form.fields.map((f) => [f.kind, f.name])).toEqual([["user", "user"]]);
+		const updated = replyOf(await pick(ctx, form));
+		expect(updated.text).toBe(`Pizza night! <@${PICKED}>`);
+		await ctx.click(updated, "Schedule");
+		expect(ctx.store.all()[0]?.post).toEqual({
+			kind: "message",
+			text: `Pizza night! <@${PICKED}>`,
+		});
+	});
+
+	it("is only offered on a message, not a poll", async () => {
+		const ctx = setup();
+		expect(labels(replyOf(await ctx.draftMessage()))).toContain("Mention someone…");
+		expect(labels(replyOf(await ctx.draftPoll()))).not.toContain("Mention someone…");
+	});
+
+	it("refuses a bot, and a mention that won't fit", async () => {
+		const ctx = setup();
+		const form = formOf(await ctx.click(replyOf(await ctx.draftMessage()), "Mention someone…"));
+		expect(await pick(ctx, form, { id: PICKED, isBot: true })).toMatchObject({
+			kind: "refused",
+			reply: { text: expect.stringContaining("can't be a bot") },
+		});
+		const full = replyOf(await ctx.draftMessage({ text: "x".repeat(MAX_MESSAGE_LENGTH - 5) }));
+		expect(await pick(ctx, formOf(await ctx.click(full, "Mention someone…")))).toMatchObject({
+			kind: "refused",
+			reply: { text: SCHEDULE_MESSAGES.mentionTooLong },
+		});
+	});
+
+	it("puts the mention on its own when the message is empty", () => {
+		expect(withMention("", PICKED)).toBe(`<@${PICKED}>`);
+		expect(withMention("Hi\n", PICKED)).toBe(`Hi <@${PICKED}>`);
 	});
 });
 
