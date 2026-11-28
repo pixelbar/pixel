@@ -8,7 +8,7 @@ export type Repeat = (typeof REPEATS)[number];
 
 /**
  * A scheduled post being made or changed, before it's saved. Nothing in a draft
- * posts or reaches the schedules file until the person presses Schedule (or Save).
+ * posts or reaches the schedules file until the person presses Save.
  * Drafts live in memory: a restart drops them, like the controls that point at them.
  */
 export type Draft = {

@@ -186,14 +186,14 @@ Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exact
 <PxPanel
 	command="/schedule"
 	:content="['Pizza night tonight! Doors open at 19:00.']"
-	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Schedule**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message', inline: true }] }]"
-	:rows="[[{ select: 'Which days?' }], [{ label: 'Mention someone…' }], [{ label: 'Schedule', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
-	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Schedule to save it."
+	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Save**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message', inline: true }] }]"
+	:rows="[[{ select: 'Which days?' }], [{ label: 'Mention someone…' }], [{ label: 'Save', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
+	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Save to keep it."
 />
 
 **Mentions.** A message pings the people (`<@id>`) and roles (`<@&id>`) in it, and `@everyone` or `@here` if you could use those in that channel yourself. Typing `@name` in the form stays plain text, because Discord only turns it into a mention in the chat box, so use **Mention someone…** to pick a person: it adds their mention to the end of the message, and you can move it in **Edit details**. When the post goes out, Pixel checks again what you may ping there: if you can no longer post in that channel, or have left the server, nobody is pinged. A role only pings if it's set to be mentionable, or Pixel has Mention Everyone in that channel. Polls and attendance polls never ping.
 
-**Schedule** saves it and shows it. A schedule shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
+**Save** keeps it and shows it. A schedule shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save** again), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
 
 <PxPanel
 	command="/schedule"

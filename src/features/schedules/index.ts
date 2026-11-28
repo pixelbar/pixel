@@ -650,7 +650,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			problem = error.message;
 		}
 		const editing = draft.editing !== undefined;
-		const saveLabel = editing ? "Save changes" : "Schedule";
+		const saveLabel = "Save";
 		const what = WHAT[draft.kind];
 		const lines: string[] = [];
 		let preview: ChannelPost | undefined;
@@ -1183,7 +1183,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				"scheduled a post",
 			);
 			deps.reporter.breadcrumb("schedule", `created ${schedule.id}`, { id: schedule.id });
-			return detail(schedule, ctx.principal, "✅ **Scheduled.**");
+			return detail(schedule, ctx.principal, "✅ **Saved.**");
 		}
 		const schedule = ownSchedule({ ...ctx, args: { id: draft.editing } });
 		const updated = deps.store.update(schedule.id, {
