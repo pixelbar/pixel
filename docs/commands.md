@@ -176,17 +176,17 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 		{ label: 'Channel', hint: 'Where to post it. You need to be able to post there yourself.', kind: 'picker', value: '#general' },
 		{ label: 'When', hint: 'In Europe/Amsterdam. A day, a time or both.', kind: 'text', value: '19:00 · fri 8pm · 14th oct · tomorrow noon · in 2 hours' },
 		{ label: 'Repeat', kind: 'radio', choices: ['Once', 'Weekly', 'Every 2 weeks', 'Monthly', 'Every 2 months'], picked: 'Weekly' },
-		{ label: 'Message', kind: 'paragraph', value: 'What to post. Markdown works. {{date}} and {{date+2}} fill in when it\'s posted.' },
+		{ label: 'Message', hint: 'Stored as typed. The draft fills {{date}} and shows mentions; <@id> is a person.', kind: 'paragraph', value: 'What to post. Markdown works. {{date}} and {{date+2}} fill in when it\'s posted.' },
 	]"
 	caption="The form for a new message: the channel, when, how often, and the text."
 />
 
-Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders** (a link to the poll, never in its last 30 minutes); and, on a message, **Mention someone…**. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
+Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post (dates filled in; pings don't fire there). Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders** (a link to the poll, never in its last 30 minutes); and, on a message, **Mention someone…**. If something's wrong, the draft says what and still shows the filled preview, and **Edit details** opens the form again with what you typed.
 
 <PxPanel
 	command="/schedule"
 	:content="['Pizza night tonight! Doors open at 19:00.']"
-	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Save**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message', inline: true }] }]"
+	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Save**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday', 'Above is what it will post, with dates filled in. Pings don\'t fire here.'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message', inline: true }] }]"
 	:rows="[[{ select: 'Which days?' }], [{ label: 'Mention someone…' }], [{ label: 'Save', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
 	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Save to keep it."
 />

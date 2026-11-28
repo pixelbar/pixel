@@ -559,7 +559,11 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			: next
 				? `Next post: **${describeWhen(toLocal(next, zone))}** (${zone}).`
 				: "It has nothing left to post.";
+		const at = next ?? now();
 		const post = filledPost(schedule, deps.interpolator, zone, now());
+		// Title uses the same fill as the body so "{{date}}" in an auto-name doesn't look
+		// like a different message from the preview above (#242).
+		const titleName = deps.interpolator.interpolate(schedule.name, at);
 		const description = [
 			...(notice ? [notice, ""] : []),
 			status,
@@ -573,7 +577,7 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		].join("\n");
 		const times = schedule.paused ? [] : upcoming(schedule, zone, now(), 3);
 		const summary: Embed = {
-			title: `${icon(post)} ${escapeMarkdown(schedule.name)}`,
+			title: `${icon(post)} ${escapeMarkdown(titleName)}`,
 			description,
 			fields: [
 				{ name: "Channel", value: `#${escapeMarkdown(schedule.channelName)}`, inline: true },
@@ -653,10 +657,14 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 		const saveLabel = "Save";
 		const what = WHAT[draft.kind];
 		const lines: string[] = [];
+		// Always fill tokens for the preview slot — same language as the saved view and the
+		// real post. A raw template here (when evaluate failed) was easy to mistake for a
+		// different message after Edit details (#242).
+		let occurrence = now();
 		let preview: ChannelPost | undefined;
 		if (ready) {
 			const first = nextOccurrence(ready.start, ready.recurrence, zone, now()) as Date;
-			const occurrence = editing && !ready.retimed ? nextRunOf(draft, first) : first;
+			occurrence = editing && !ready.retimed ? nextRunOf(draft, first) : first;
 			preview = interpolateChannelPost(ready.post, (text) =>
 				deps.interpolator.interpolate(text, occurrence),
 			);
@@ -664,17 +672,42 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 				`Nothing is saved until you press **${saveLabel}**.`,
 				"",
 				`**#${escapeMarkdown(ready.channel.name)}** · ${editing ? "next" : "first"} post **${describeWhen(toLocal(occurrence, zone))}** (${zone}) · ${repeatLabel({ start: formatLocal(ready.start), recurrence: ready.recurrence })}`,
+				draft.kind === "message"
+					? "Above is what it will post, with dates filled in. Pings don't fire here."
+					: "Below is the poll it will post, with dates filled in.",
 			);
 		} else {
 			lines.push(`⚠️ ${problem}`, "", `Nothing is saved until you press **${saveLabel}**.`);
+			// Timing often still parses when the failure is later (channel, mentions, …).
+			// Use that occurrence so the filled preview matches what Save would show.
+			try {
+				const schedule = draft.editing ? deps.store.get(draft.editing) : undefined;
+				if (!(draft.editing && !schedule)) {
+					const timing = timingOf(draft, schedule);
+					const first = nextOccurrence(timing.start, timing.recurrence, zone, now());
+					if (first) {
+						occurrence = editing && !timing.retimed ? nextRunOf(draft, first) : first;
+					}
+				}
+			} catch {
+				// Keep occurrence as now() when when/repeat themselves are the problem.
+			}
+			// Same content slot as a ready draft: filled tokens, never the raw template.
+			if (draft.kind === "message" && draft.text.trim() !== "") {
+				preview = {
+					kind: "message",
+					text: deps.interpolator.interpolate(draft.text.trim(), occurrence),
+				};
+			}
 		}
 		const name =
 			draft.name ?? cleanName(draft.kind === "message" ? draft.text.trim() : draft.question.trim());
+		const titleName = deps.interpolator.interpolate(name, occurrence);
 		const summary: Embed = {
-			title: editing ? `Changes to ${escapeMarkdown(name)}` : `New ${what}`,
+			title: editing ? `Changes to ${escapeMarkdown(titleName)}` : `New ${what}`,
 			description: lines.join("\n"),
 			fields: [
-				{ name: "Name", value: escapeMarkdown(name), inline: true },
+				{ name: "Name", value: escapeMarkdown(titleName), inline: true },
 				{ name: "What", value: describeWhat(postSettings(draft)), inline: true },
 				...(draft.kind !== "message"
 					? [
@@ -859,9 +892,6 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			};
 		}
 		return {
-			...(draft.kind === "message" && draft.text.trim() !== ""
-				? { text: draft.text.trim().slice(0, 2000) }
-				: {}),
 			embeds: [summary, ...(preview ? [pollPreviewEmbed(preview)] : [])],
 			private: true,
 			controls: rows,
@@ -885,6 +915,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							kind: "text" as const,
 							name: "text",
 							label: "Message",
+							description:
+								"Stored as typed. The draft fills {{date}} and shows mentions; <@id> is a person.",
 							style: "paragraph" as const,
 							maxLength: MAX_MESSAGE_LENGTH,
 							placeholder:
@@ -1333,7 +1365,8 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 							},
 						}
 					: {}),
-				name: schedule.name,
+				// An auto-name from the old text refreshes when the text changes; a Rename sticks.
+				name: autoNameOf(schedule) ? undefined : schedule.name,
 				...(schedule.reminder
 					? {
 							reminder: {
@@ -1761,11 +1794,38 @@ export function parseAnswers(text: string): string[] {
 	return answers;
 }
 
-/** A name from free text: its first line, at most 60 characters. */
-function cleanName(text: string): string {
+/** First line, trimmed, at most 60 characters (the auto-name shape before mention stripping). */
+function firstLineName(text: string): string {
 	const line = text.split("\n")[0]?.trim() ?? "";
 	const name = [...line].length > 60 ? `${[...line].slice(0, 59).join("")}…` : line;
 	return name === "" ? "Scheduled post" : name;
+}
+
+/**
+ * A name from free text: its first line, at most 60 characters. Mention markup
+ * is dropped so an auto-name doesn't show raw `<@id>` next to a filled preview.
+ */
+function cleanName(text: string): string {
+	const withoutMentions = (text.split("\n")[0] ?? "")
+		.replace(/<@!?\d+>/g, "")
+		.replace(/<@&\d+>/g, "")
+		.replace(/@(?:everyone|here)\b/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	const name =
+		[...withoutMentions].length > 60
+			? `${[...withoutMentions].slice(0, 59).join("")}…`
+			: withoutMentions;
+	return name === "" ? "Scheduled post" : name;
+}
+
+/**
+ * Whether `schedule.name` is the auto-name from its post text (not a Rename).
+ * Accepts names made before mention markup was stripped from `cleanName`.
+ */
+function autoNameOf(schedule: Schedule): boolean {
+	const source = schedule.post.kind === "message" ? schedule.post.text : schedule.post.question;
+	return schedule.name === cleanName(source) || schedule.name === firstLineName(source);
 }
 
 /** `lastRunAt` for a schedule that should only post from `now` on (the stored one if later). */

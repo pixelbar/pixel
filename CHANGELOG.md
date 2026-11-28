@@ -13,6 +13,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 - **/schedule draft button says Save** (#243, Sentry PIXEL-2E). New and edited drafts both use **Save** (was **Schedule** for new, **Save changes** for edits), and creating one now confirms with **Saved.** like an edit, so the label isn't read as "show the schedule".
 
+### Fixed
+
+- **/schedule edit preview matches the saved view and the real post** (#242, Sentry PIXEL-2D). After editing a message, the draft no longer shows the raw stored template (`{{date}}`, `<@id>`) in the same place as the filled preview: that slot is always filled for the next post, like the schedule panel and what actually goes out. The panel title and Name field are filled the same way, auto-names refresh when the text changes (a Rename still sticks), and auto-names no longer keep raw mention markup.
+
 ## [0.28.1] - 2026-11-28
 
 ### Fixed

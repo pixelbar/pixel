@@ -524,7 +524,9 @@ describe("making a message", () => {
 		expect(summary).toContain("New message");
 		expect(summary).toContain("Nothing is saved until you press **Save**.");
 		expect(summary).toContain("**#general** · first post **Wed 14 Oct 2026, 19:00**");
-		expect(summary).toContain("Name: Pizza on {{day}} {{date}} ({{unknown}})");
+		// Name is filled like the preview so it doesn't look like a different message (#242).
+		expect(summary).toContain("Name: Pizza on Wednesday 14 October 2026 ({{unknown}})");
+		expect(summary).toContain("with dates filled in");
 		expect(labels(reply)).toEqual(["Mention someone…", "Save", "Edit details", "Rename", "Cancel"]);
 		expect(button(reply, "Save")?.disabled).toBeUndefined();
 		expect(store.all()).toEqual([]);
@@ -545,6 +547,8 @@ describe("making a message", () => {
 		});
 		expect(said(reply.embeds?.[0])).toContain("✅ **Saved.**");
 		expect(reply.text).toBe("On 14 October 2026");
+		// Title is filled like the body so it doesn't look like a second, different message (#242).
+		expect(reply.embeds?.[0]?.title).toBe("💬 On 14 October 2026");
 		expect(info).toHaveBeenCalledWith(
 			expect.objectContaining({ event: "schedule.created", kind: "message", recurrence: "once" }),
 			"scheduled a post",
@@ -1559,6 +1563,7 @@ describe("editing", () => {
 		const draft = replyOf(
 			await ctx.submit(form, { when: "14 oct 2026 19:00", repeat: "weekly", text: "New text" }),
 		);
+		// Custom name "Pizza" is kept; an auto-name would refresh from the new text (#242).
 		expect(draft.embeds?.[0]?.title).toBe("Changes to Pizza");
 		expect(said(draft.embeds?.[0])).toContain("Nothing is saved until you press **Save**.");
 		expect(said(draft.embeds?.[0])).toContain("next post **Wed 14 Oct 2026, 19:00**");
@@ -1574,6 +1579,52 @@ describe("editing", () => {
 			expect.objectContaining({ event: "schedule.edited", id }),
 			"edited a schedule",
 		);
+	});
+
+	it("refreshes an auto-name when the text changes, and keeps edit preview matching the saved view (#242)", async () => {
+		const ctx = setup();
+		const { id } = add(ctx.store, {
+			name: "On {{date}}",
+			post: { kind: "message", text: "On {{date}}" },
+		});
+		const form = await editForm(ctx, id);
+		const draft = replyOf(
+			await ctx.submit(form, {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				text: "Hello {{date}}",
+			}),
+		);
+		expect(draft.text).toBe("Hello 14 October 2026");
+		expect(draft.embeds?.[0]?.title).toBe("Changes to Hello 14 October 2026");
+		const saved = replyOf(await ctx.click(draft, "Save"));
+		expect(saved.text).toBe("Hello 14 October 2026");
+		expect(saved.embeds?.[0]?.title).toBe("💬 Hello 14 October 2026");
+		expect(ctx.store.get(id)).toMatchObject({
+			name: "Hello {{date}}",
+			post: { text: "Hello {{date}}" },
+		});
+	});
+
+	it("still treats a pre-strip auto-name with mention markup as auto (#242)", async () => {
+		const ctx = setup();
+		const picked = "100000000000000077";
+		const text = `Pizza <@${picked}>`;
+		// Name as cleanName made it before mention stripping landed.
+		const { id } = add(ctx.store, { name: text, post: { kind: "message", text } });
+		const form = await editForm(ctx, id);
+		const draft = replyOf(
+			await ctx.submit(form, {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				text: "Tacos tonight",
+			}),
+		);
+		await ctx.click(draft, "Save");
+		expect(ctx.store.get(id)).toMatchObject({
+			name: "Tacos tonight",
+			post: { text: "Tacos tonight" },
+		});
 	});
 
 	it("retimes from now when the time changes, and can move it to another channel", async () => {
