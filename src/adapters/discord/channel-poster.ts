@@ -15,19 +15,27 @@ import { doorbellComponents } from "./doorbell-buttons.ts";
 /**
  * Scheduled posts on Discord: a plain message, a native Discord poll, which
  * Discord counts and closes itself (and announces the result), or an attendance
- * poll, a message with Pixel's buttons that Pixel counts and edits itself. Pings only
- * fire when the schedule allows them; an attendance poll never pings.
+ * poll, a message with Pixel's buttons that Pixel counts and edits itself. Only a
+ * post someone scheduled (`PostOptions.createdBy`) can ping, and only what its
+ * creator could ping themselves when it goes out; Pixel's own posts and an
+ * attendance poll never ping.
  */
 
-/** What a post needs from the bot in the channel. */
-export function requiredPermissions(post: ChannelPost): bigint[] {
+/**
+ * What a post needs from the bot in the channel. A message that would ping
+ * @everyone or @here needs Mention Everyone; one that can't ping (Pixel's own) doesn't.
+ */
+export function requiredPermissions(post: ChannelPost, pings = true): bigint[] {
 	const base = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages];
 	if (post.kind === "poll") return [...base, PermissionFlagsBits.SendPolls];
 	if (post.kind === "attendance") return base;
-	// For messages, check if @everyone/@here is used
-	const detected = detectPostMentions(post);
-	return detected.everyone ? [...base, PermissionFlagsBits.MentionEveryone] : base;
+	return pings && detectPostMentions(post).everyone
+		? [...base, PermissionFlagsBits.MentionEveryone]
+		: base;
 }
+
+/** What someone may ping in a channel: nobody, unless we found them and they can post there. */
+export const NO_PINGS = { canMentionEveryone: false, canPost: false } as const;
 
 /** The message Discord is sent for a post (the API's shape), as a reply if asked. */
 export function toDiscordMessage(
@@ -107,6 +115,8 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 		channelId: string,
 		post: ChannelPost,
 		createdBy?: string,
+		/** False for a post that can't ping, so it doesn't need Mention Everyone. */
+		pings = true,
 	): Promise<
 		| { ok: false; problem: string }
 		| {
@@ -127,7 +137,10 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 		if (channel.guildId !== guildId)
 			return { ok: false as const, problem: "it's in a different server" };
 		const me = await channel.guild.members.fetchMe();
-		const missing = missingPermissions(channel.permissionsFor(me), requiredPermissions(post));
+		const missing = missingPermissions(
+			channel.permissionsFor(me),
+			requiredPermissions(post, pings),
+		);
 		if (missing.length > 0) {
 			return {
 				ok: false as const,
@@ -135,8 +148,9 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 			};
 		}
 
-		// Re-check the creator's permissions for mentions at post time
-		let callerPermissions = { canMentionEveryone: false, canPost: true };
+		// Re-check the creator's permissions for mentions at post time. Without a creator
+		// (Pixel's own posts) nothing pings, so a name with `<@…>` in it can't ping anyone.
+		let callerPermissions: { canMentionEveryone: boolean; canPost: boolean } = NO_PINGS;
 		if (createdBy?.startsWith("discord:")) {
 			const userId = createdBy.slice("discord:".length);
 			try {
@@ -171,7 +185,8 @@ export function createDiscordPoster(client: Client<true>, guildId: string): Chan
 				: opened;
 		},
 		async post(channelId, post, options) {
-			const opened = await open(channelId, post, options?.createdBy);
+			const createdBy = options?.createdBy;
+			const opened = await open(channelId, post, createdBy, createdBy !== undefined);
 			if (!opened.ok) throw new Error(`Can't post a scheduled post: ${opened.problem}`);
 			const sent = await opened.channel.send(
 				toDiscordMessage(post, opened.callerPermissions, options),

@@ -181,22 +181,24 @@ Every scheduled post is in the menu, soonest first, with its channel, its next p
 	caption="The form for a new message: the channel, when, how often, and the text."
 />
 
-Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders** (a link to the poll, never in its last 30 minutes); and **Pings**, only where you could ping everyone yourself. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
+Nothing is saved yet. Pixel shows a **draft**: the time it understood, and exactly what it will post. Settings that only sometimes apply are on the draft, and only when they do: the days for a weekly repeat; how long a poll stays open, whether it allows several answers and its daily **Reminders** (a link to the poll, never in its last 30 minutes); and, on a message, **Mention someone…**. If something's wrong, the draft says what and **Edit details** opens the form again with what you typed.
 
 <PxPanel
 	command="/schedule"
 	:content="['Pizza night tonight! Doors open at 19:00.']"
-	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Schedule**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message, pings off', inline: true }] }]"
-	:rows="[[{ select: 'Which days?' }], [{ label: 'Schedule', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
+	:embeds="[{ title: 'New message', lines: ['Nothing is saved until you press **Schedule**.', '', '**#general** · first post **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam) · weekly on Wednesday'], fields: [{ name: 'Name', value: 'Pizza night tonight! Doors open at 19:00.', inline: true }, { name: 'What', value: 'A message', inline: true }] }]"
+	:rows="[[{ select: 'Which days?' }], [{ label: 'Mention someone…' }], [{ label: 'Schedule', style: 'success' }, { label: 'Edit details' }, { label: 'Rename' }, { label: 'Cancel' }]]"
 	caption="A draft: the post as it will look, when it goes out, the days for a weekly repeat, and Schedule to save it."
 />
+
+**Mentions.** A message pings the people (`<@id>`) and roles (`<@&id>`) in it, and `@everyone` or `@here` if you could use those in that channel yourself. Typing `@name` in the form stays plain text, because Discord only turns it into a mention in the chat box, so use **Mention someone…** to pick a person: it adds their mention to the end of the message, and you can move it in **Edit details**. When the post goes out, Pixel checks again what you may ping there: if you can no longer post in that channel, or have left the server, nobody is pinged. A role only pings if it's set to be mentionable, or Pixel has Mention Everyone in that channel. Polls and attendance polls never ping.
 
 **Schedule** saves it and shows it. A schedule shows what it will post next and its next few times. If you made it, you can **Edit** it (the same form and draft, with **Save changes**), **Pause** or **Resume** it, and **Delete** it (Pixel asks first). Someone else's is read-only.
 
 <PxPanel
 	command="/schedule"
 	:content="['Pizza night tonight! Doors open at 19:00.']"
-	:embeds="[{ title: 'Pizza night tonight! Doors open at 19:00.', lines: ['Next post: **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam).', 'Made by you.', '', 'Above is what it will post next time, with dates filled in. Pings don\'t fire here.'], fields: [{ name: 'Channel', value: '#general', inline: true }, { name: 'Repeats', value: 'Weekly on Wednesday', inline: true }, { name: 'What', value: 'A message, pings off' }] }]"
+	:embeds="[{ title: 'Pizza night tonight! Doors open at 19:00.', lines: ['Next post: **Wed 14 Oct 2026, 19:00** (Europe/Amsterdam).', 'Made by you.', '', 'Above is what it will post next time, with dates filled in. Pings don\'t fire here.'], fields: [{ name: 'Channel', value: '#general', inline: true }, { name: 'Repeats', value: 'Weekly on Wednesday', inline: true }, { name: 'What', value: 'A message' }] }]"
 	:rows="[[{ label: 'Edit', style: 'primary' }, { label: 'Pause' }, { label: 'Delete', style: 'danger' }], [{ label: '← All schedules' }]]"
 	caption="One of your schedules: what it will post next, with Edit, Pause and Delete."
 />

@@ -86,7 +86,8 @@ export type PostOptions = {
 	replyTo?: string;
 	/**
 	 * The creator's immutable platform ref (e.g. "discord:123456789"), used to
-	 * re-check their permissions for mentions at post time.
+	 * re-check their permissions for mentions at post time. Only a post someone
+	 * scheduled has one; without it the post never pings anyone.
 	 */
 	createdBy?: string;
 };
