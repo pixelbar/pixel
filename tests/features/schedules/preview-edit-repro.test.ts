@@ -193,7 +193,7 @@ describe("preview vs saved vs posted after edit (#242)", () => {
 		const expected = `Hello 14 October 2026 <@${PICKED}>`;
 		expect(draft.text).toBe(expected);
 
-		const saved1 = replyOf(await ctx.click(draft, "Schedule"));
+		const saved1 = replyOf(await ctx.click(draft, "Save"));
 		expect(saved1.text).toBe(expected);
 		const created = ctx.store.all()[0];
 		expect(created?.post).toEqual({
@@ -218,7 +218,7 @@ describe("preview vs saved vs posted after edit (#242)", () => {
 		const expected2 = `Hello there 14 October 2026 <@${PICKED}>`;
 		expect(draft.text).toBe(expected2);
 
-		const saved2 = replyOf(await ctx.click(draft, "Save changes"));
+		const saved2 = replyOf(await ctx.click(draft, "Save"));
 		expect(saved2.text).toBe(expected2);
 		expect(ctx.store.get(id)?.post).toEqual({
 			kind: "message",
@@ -236,7 +236,7 @@ describe("preview vs saved vs posted after edit (#242)", () => {
 		);
 		const expected3 = `Hi 14 October 2026 <@${PICKED}>`;
 		expect(draft.text).toBe(expected3);
-		const saved3 = replyOf(await ctx.click(draft, "Save changes"));
+		const saved3 = replyOf(await ctx.click(draft, "Save"));
 		expect(saved3.text).toBe(expected3);
 
 		// Advance to post time and compare what actually posts

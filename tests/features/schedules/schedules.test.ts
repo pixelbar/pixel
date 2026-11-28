@@ -1597,7 +1597,7 @@ describe("editing", () => {
 		);
 		expect(draft.text).toBe("Hello 14 October 2026");
 		expect(draft.embeds?.[0]?.title).toBe("Changes to Hello 14 October 2026");
-		const saved = replyOf(await ctx.click(draft, "Save changes"));
+		const saved = replyOf(await ctx.click(draft, "Save"));
 		expect(saved.text).toBe("Hello 14 October 2026");
 		expect(saved.embeds?.[0]?.title).toBe("💬 Hello 14 October 2026");
 		expect(ctx.store.get(id)).toMatchObject({
@@ -1620,7 +1620,7 @@ describe("editing", () => {
 				text: "Tacos tonight",
 			}),
 		);
-		await ctx.click(draft, "Save changes");
+		await ctx.click(draft, "Save");
 		expect(ctx.store.get(id)).toMatchObject({
 			name: "Tacos tonight",
 			post: { text: "Tacos tonight" },
