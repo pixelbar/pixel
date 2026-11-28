@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Changed
+
+- **/schedule draft button says Save** (#243, Sentry PIXEL-2E). New and edited drafts both use **Save** (was **Schedule** for new, **Save changes** for edits), and creating one now confirms with **Saved.** like an edit, so the label isn't read as "show the schedule".
+
 ## [0.28.1] - 2026-11-28
 
 ### Fixed

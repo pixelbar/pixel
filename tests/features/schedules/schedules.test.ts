@@ -259,7 +259,7 @@ function setup(options: { check?: ChannelCheck } = {}) {
 
 	/** Makes and saves a message, returning the schedule's panel. */
 	const message = async (fields: Record<string, string> = {}, ch: ResolvedChannel = channel()) =>
-		click(replyOf(await draftMessage(fields, ch)), "Schedule");
+		click(replyOf(await draftMessage(fields, ch)), "Save");
 
 	/** A stored schedule's panel. */
 	const panel = async (id: string, userId: string = IDS.member) =>
@@ -522,21 +522,15 @@ describe("making a message", () => {
 		expect(reply.text).toBe("Pizza on Wednesday 14 October 2026 ({{unknown}})");
 		const summary = said(reply.embeds?.[0]);
 		expect(summary).toContain("New message");
-		expect(summary).toContain("Nothing is saved until you press **Schedule**.");
+		expect(summary).toContain("Nothing is saved until you press **Save**.");
 		expect(summary).toContain("**#general** · first post **Wed 14 Oct 2026, 19:00**");
 		expect(summary).toContain("Name: Pizza on {{day}} {{date}} ({{unknown}})");
-		expect(labels(reply)).toEqual([
-			"Mention someone…",
-			"Schedule",
-			"Edit details",
-			"Rename",
-			"Cancel",
-		]);
-		expect(button(reply, "Schedule")?.disabled).toBeUndefined();
+		expect(labels(reply)).toEqual(["Mention someone…", "Save", "Edit details", "Rename", "Cancel"]);
+		expect(button(reply, "Save")?.disabled).toBeUndefined();
 		expect(store.all()).toEqual([]);
 	});
 
-	it("saves on Schedule, keeps tokens in the store, and shows the schedule", async () => {
+	it("saves on Save, keeps tokens in the store, and shows the schedule", async () => {
 		const { message, store, info } = setup();
 		const reply = replyOf(await message({ text: "On {{date}}" }));
 		expect(store.all()).toHaveLength(1);
@@ -549,7 +543,7 @@ describe("making a message", () => {
 			recurrence: { kind: "once" },
 			createdBy: { ref: `discord:${IDS.member}`, name: "Ada" },
 		});
-		expect(said(reply.embeds?.[0])).toContain("✅ **Scheduled.**");
+		expect(said(reply.embeds?.[0])).toContain("✅ **Saved.**");
 		expect(reply.text).toBe("On 14 October 2026");
 		expect(info).toHaveBeenCalledWith(
 			expect.objectContaining({ event: "schedule.created", kind: "message", recurrence: "once" }),
@@ -568,10 +562,10 @@ describe("making a message", () => {
 		expect(said(reply.embeds?.[0])).toContain(`⚠️ `);
 		expect(said(reply.embeds?.[0])).toContain(problem);
 		expect(reply.embeds?.[0]?.accent).toBe("warning");
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 		expect(button(reply, "Edit details")?.style).toBe("primary");
 		// Even if the button is used anyway, nothing is saved.
-		expect(said(replyOf(await click(reply, "Schedule")).embeds?.[0])).toContain(problem);
+		expect(said(replyOf(await click(reply, "Save")).embeds?.[0])).toContain(problem);
 		expect(store.all()).toEqual([]);
 	});
 
@@ -586,7 +580,7 @@ describe("making a message", () => {
 		const { draftMessage } = setup();
 		const reply = replyOf(await draftMessage({ text: `${"x".repeat(1986)}{{date}}` }));
 		expect(said(reply.embeds?.[0])).toMatch(/2000-character limit/);
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 	});
 
 	it("reopens the form with what was typed, to fix it", async () => {
@@ -626,7 +620,7 @@ describe("making a message", () => {
 			}),
 		);
 		expect(said(fortnightly.embeds?.[0])).toContain("every 2 weeks on Wednesday");
-		await click(fortnightly, "Schedule");
+		await click(fortnightly, "Save");
 		expect(store.all()[0]?.recurrence).toEqual({ kind: "weekly", everyWeeks: 2, days: ["wed"] });
 	});
 
@@ -637,7 +631,7 @@ describe("making a message", () => {
 		const { draftMessage, click, panel, store } = setup();
 		const reply = replyOf(await draftMessage({ repeat }));
 		expect(said(reply.embeds?.[0])).toContain(shown);
-		await click(reply, "Schedule");
+		await click(reply, "Save");
 		const saved = store.all()[0] as Schedule;
 		expect(saved.recurrence).toEqual(recurrence);
 		const form = formOf(await click(replyOf(await panel(saved.id)), "Edit"));
@@ -660,18 +654,18 @@ describe("making a message", () => {
 		const { draftMessage } = setup();
 		// User mentions work without canMentionEveryone
 		const withUser = replyOf(await draftMessage({ text: "Hi <@123456789>" }));
-		expect(button(withUser, "Schedule")?.disabled).toBeUndefined();
+		expect(button(withUser, "Save")?.disabled).toBeUndefined();
 		// @everyone without permission is refused
 		const withEveryone = replyOf(
 			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: false })),
 		);
-		expect(button(withEveryone, "Schedule")?.disabled).toBe(true);
+		expect(button(withEveryone, "Save")?.disabled).toBe(true);
 		expect(said(withEveryone.embeds?.[0])).toContain("can't use @everyone or @here");
 		// @everyone with permission works
 		const allowed = replyOf(
 			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: true })),
 		);
-		expect(button(allowed, "Schedule")?.disabled).toBeUndefined();
+		expect(button(allowed, "Save")?.disabled).toBeUndefined();
 	});
 
 	it("validates mentions even when the channel is changed", async () => {
@@ -679,7 +673,7 @@ describe("making a message", () => {
 		const withEveryone = replyOf(
 			await draftMessage({ text: "Hi @everyone" }, channel({ canMentionEveryone: true })),
 		);
-		expect(button(withEveryone, "Schedule")?.disabled).toBeUndefined();
+		expect(button(withEveryone, "Save")?.disabled).toBeUndefined();
 		// Move to a channel where they can't mention everyone
 		const moved = replyOf(
 			await submit(formOf(await click(withEveryone, "Edit details")), {
@@ -689,7 +683,7 @@ describe("making a message", () => {
 			}),
 		);
 		expect(said(moved.embeds?.[0])).toContain(SCHEDULE_MESSAGES.cantMentionEveryone);
-		expect(button(moved, "Schedule")?.disabled).toBe(true);
+		expect(button(moved, "Save")?.disabled).toBe(true);
 	});
 
 	it("is renamed with a form, and goes back to the text's start when the name is cleared", async () => {
@@ -704,7 +698,7 @@ describe("making a message", () => {
 		expect(formOf(await click(named, "Rename")).fields[0]).toMatchObject({ value: "Pizza" });
 		const cleared = replyOf(await act(form.submit.action, form.submit.args as never));
 		expect(said(cleared.embeds?.[0])).toContain("Name: Pizza night tonight!");
-		await click(named, "Schedule");
+		await click(named, "Save");
 		expect(store.all()[0]?.name).toBe("Pizza night tonight!");
 	});
 
@@ -718,7 +712,7 @@ describe("making a message", () => {
 	it("says the store is full rather than failing", async () => {
 		const { draftMessage, click, store } = setup();
 		for (let i = 0; i < MAX_SCHEDULES; i++) add(store);
-		const outcome = await click(replyOf(await draftMessage()), "Schedule");
+		const outcome = await click(replyOf(await draftMessage()), "Save");
 		expect(outcome).toEqual({
 			kind: "refused",
 			reply: { text: expect.stringContaining("Delete one first"), private: true },
@@ -750,7 +744,7 @@ describe("mentioning someone in a message", () => {
 		expect(form.fields.map((f) => [f.kind, f.name])).toEqual([["user", "user"]]);
 		const updated = replyOf(await pick(ctx, form));
 		expect(updated.text).toBe(`Pizza night! <@${PICKED}>`);
-		await ctx.click(updated, "Schedule");
+		await ctx.click(updated, "Save");
 		expect(ctx.store.all()[0]?.post).toEqual({
 			kind: "message",
 			text: `Pizza night! <@${PICKED}>`,
@@ -809,7 +803,7 @@ describe("making a poll", () => {
 		const several = replyOf(await click(longer, "Several answers"));
 		expect(said(several.embeds?.[0])).toContain("A poll open for 3 days, several answers allowed");
 		expect(labels(several)).toContain("Several answers: on");
-		await click(several, "Schedule");
+		await click(several, "Save");
 		expect(store.all()[0]?.post).toEqual({
 			kind: "poll",
 			question: "Coming on {{date}}?",
@@ -828,7 +822,7 @@ describe("making a poll", () => {
 		const reply = replyOf(await draftPoll(fields, ch));
 		expect(said(reply.embeds?.[0])).toMatch(problem);
 		expect(reply.embeds).toHaveLength(1);
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 	});
 
 	it("fits every row Discord allows, even weekly", async () => {
@@ -892,7 +886,7 @@ describe("poll reminders", () => {
 			expect.objectContaining({ name: "remind-at", value: "6pm" }),
 			expect.objectContaining({ name: "remind-in", value: OTHER_CHANNEL }),
 		]);
-		const saved = replyOf(await ctx.click(set, "Schedule"));
+		const saved = replyOf(await ctx.click(set, "Save"));
 		expect(ctx.store.all()[0]?.reminder).toEqual({
 			channelId: OTHER_CHANNEL,
 			channelName: "general",
@@ -925,7 +919,7 @@ describe("poll reminders", () => {
 		const reply = replyOf(await remind(ctx, form, fields, ch));
 		expect(said(reply.embeds?.[0])).toContain(problem);
 		expect(said(reply.embeds?.[0])).toContain("Reminders: Not set up yet");
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 		if (fields["remind-at"] === "teatime")
 			expect(labels(reply)).toContain("Reminders: daily at teatime");
 	});
@@ -973,7 +967,7 @@ describe("poll reminders", () => {
 		);
 		expect(labels(draft)).toContain("Reminders: daily at 18:00");
 		// Unchanged, so the person isn't checked again; Pixel still is.
-		await ctx.click(draft, "Save changes");
+		await ctx.click(draft, "Save");
 		expect(ctx.store.get(id)?.reminder).toEqual({
 			channelId: OTHER_CHANNEL,
 			channelName: "general",
@@ -989,7 +983,7 @@ describe("poll reminders", () => {
 		);
 		const off = replyOf(await remind(ctx, await remindersOf(ctx, again), {}));
 		expect(labels(off)).toContain("Reminders: off");
-		await ctx.click(off, "Save changes");
+		await ctx.click(off, "Save");
 		expect(ctx.store.get(id)?.reminder).toBeUndefined();
 	});
 });
@@ -1075,7 +1069,7 @@ describe("attendance polls", () => {
 			expect.not.objectContaining({ value: expect.anything() }),
 			expect.not.objectContaining({ value: expect.anything() }),
 		]);
-		const saved = replyOf(await ctx.click(set, "Schedule"));
+		const saved = replyOf(await ctx.click(set, "Save"));
 		expect(said(saved.embeds?.[0])).toContain("Results: In #general: the totals so far at 17:00");
 		const [schedule] = ctx.store.all();
 		expect(schedule?.post).toEqual({
@@ -1110,7 +1104,7 @@ describe("attendance polls", () => {
 			),
 		);
 		expect(said(set.embeds?.[0])).toContain("Results: In #general, when it closes");
-		await ctx.click(set, "Schedule");
+		await ctx.click(set, "Save");
 		expect(ctx.store.all()[0]?.results).toEqual({
 			channelId: OTHER_CHANNEL,
 			channelName: "general",
@@ -1148,7 +1142,7 @@ describe("attendance polls", () => {
 		const reply = replyOf(await setResults(ctx, form, fields, ch));
 		expect(said(reply.embeds?.[0])).toContain(problem);
 		expect(said(reply.embeds?.[0])).toContain("Results: Not set up yet");
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 	});
 
 	it("say why Pixel itself can't post the results there", async () => {
@@ -1175,7 +1169,7 @@ describe("attendance polls", () => {
 		const reply = replyOf(await draftAttendance({ answers }));
 		expect(said(reply.embeds?.[0])).toMatch(problem);
 		expect(selectOf(reply, "Which answers count as coming?")).toBeUndefined();
-		expect(button(reply, "Schedule")?.disabled).toBe(true);
+		expect(button(reply, "Save")?.disabled).toBe(true);
 	});
 
 	it("allow a single answer, and don't need the person to be able to make platform polls", async () => {
@@ -1183,7 +1177,7 @@ describe("attendance polls", () => {
 		const reply = replyOf(
 			await draftAttendance({ answers: "I'm coming" }, channel({ canCreatePolls: false })),
 		);
-		await click(reply, "Schedule");
+		await click(reply, "Save");
 		expect(store.all()[0]?.post).toEqual(
 			expect.objectContaining({ answers: [{ label: "I'm coming", counts: true }] }),
 		);
@@ -1232,7 +1226,7 @@ describe("attendance polls", () => {
 				f.kind === "radio" ? f.options.find((o) => o.selected)?.value : undefined,
 			),
 		).toEqual(["green", "blue", "red"]);
-		await ctx.click(set, "Schedule");
+		await ctx.click(set, "Save");
 		expect(ctx.store.all()[0]?.post).toEqual(
 			expect.objectContaining({
 				answers: [
@@ -1260,7 +1254,7 @@ describe("attendance polls", () => {
 			}),
 		);
 		expect(labels(set)).toContain("Colours: grey, red");
-		await ctx.click(set, "Schedule");
+		await ctx.click(set, "Save");
 		expect(ctx.store.all()[0]?.post).toEqual(
 			expect.objectContaining({
 				answers: [
@@ -1294,7 +1288,7 @@ describe("attendance polls", () => {
 	it("post at their time with Pixel's buttons, and anyone may answer", async () => {
 		const ctx = setup();
 		const draft = replyOf(await ctx.draftAttendance());
-		await ctx.click(draft, "Schedule");
+		await ctx.click(draft, "Save");
 		ctx.clock.now = new Date("2026-10-14T17:00:10Z");
 		await ctx.tick();
 		expect(ctx.posted).toEqual([]);
@@ -1363,7 +1357,7 @@ describe("attendance polls", () => {
 		).toBe("1");
 		expect(labels(draft)).toContain("Results: in #events");
 		expect(labels(draft)).toContain("Colours: grey, green");
-		await ctx.click(draft, "Save changes");
+		await ctx.click(draft, "Save");
 		expect(ctx.store.get(id)?.post).toEqual(
 			expect.objectContaining({
 				answers: [
@@ -1566,10 +1560,10 @@ describe("editing", () => {
 			await ctx.submit(form, { when: "14 oct 2026 19:00", repeat: "weekly", text: "New text" }),
 		);
 		expect(draft.embeds?.[0]?.title).toBe("Changes to Pizza");
-		expect(said(draft.embeds?.[0])).toContain("Nothing is saved until you press **Save changes**.");
+		expect(said(draft.embeds?.[0])).toContain("Nothing is saved until you press **Save**.");
 		expect(said(draft.embeds?.[0])).toContain("next post **Wed 14 Oct 2026, 19:00**");
 		expect(ctx.store.get(id)?.post).toMatchObject({ text: "Pizza night tonight!" });
-		const saved = replyOf(await ctx.click(draft, "Save changes"));
+		const saved = replyOf(await ctx.click(draft, "Save"));
 		expect(said(saved.embeds?.[0])).toContain("✅ **Saved.**");
 		expect(ctx.store.get(id)).toMatchObject({
 			post: { text: "New text" },
@@ -1593,7 +1587,7 @@ describe("editing", () => {
 				{ channel: channel({}, OTHER_CHANNEL) },
 			),
 		);
-		await ctx.click(draft, "Save changes");
+		await ctx.click(draft, "Save");
 		expect(ctx.store.get(id)).toMatchObject({
 			name: "Kept",
 			start: "2026-10-16T20:00",
@@ -1613,7 +1607,7 @@ describe("editing", () => {
 			),
 		);
 		expect(said(draft.embeds?.[0])).toContain(SCHEDULE_MESSAGES.cantPost);
-		expect(button(draft, "Save changes")?.disabled).toBe(true);
+		expect(button(draft, "Save")?.disabled).toBe(true);
 	});
 
 	it("won't turn a repeat into a one-off whose time has passed", async () => {
@@ -1662,7 +1656,7 @@ describe("editing", () => {
 		);
 		expect(labels(draft)).toContain("Several answers: on");
 		const longer = replyOf(await ctx.click(draft, "How long can people vote?", ["1 week"]));
-		await ctx.click(longer, "Save changes");
+		await ctx.click(longer, "Save");
 		expect(ctx.store.get(id)?.post).toEqual({
 			kind: "poll",
 			question: "New?",
@@ -1716,7 +1710,7 @@ describe("drafts", () => {
 	it("belong to the person who started them", async () => {
 		const { draftMessage, act } = setup();
 		const reply = replyOf(await draftMessage());
-		const save = button(reply, "Schedule");
+		const save = button(reply, "Save");
 		const theirs = replyOf(
 			await act(ACTIONS.save, save?.call.args as Record<string, string>, { userId: OTHER_MEMBER }),
 		);
@@ -1727,7 +1721,7 @@ describe("drafts", () => {
 		const { draftMessage, click, clock, store } = setup();
 		const reply = replyOf(await draftMessage());
 		clock.now = new Date(NOW.getTime() + 31 * 60_000);
-		expect(said(replyOf(await click(reply, "Schedule")).embeds?.[0])).toContain(
+		expect(said(replyOf(await click(reply, "Save")).embeds?.[0])).toContain(
 			SCHEDULE_MESSAGES.draftGone,
 		);
 		expect(store.all()).toEqual([]);
@@ -1750,17 +1744,17 @@ describe("drafts", () => {
 		);
 	});
 
-	it("are saved once, even when Schedule is clicked twice while Pixel checks the channel", async () => {
+	it("are saved once, even when Save is clicked twice while Pixel checks the channel", async () => {
 		const { draftMessage, click, poster, store } = setup();
 		const reply = replyOf(await draftMessage());
 		let release: (check: ChannelCheck) => void = () => {};
 		poster.check.mockImplementationOnce(
 			() => new Promise<ChannelCheck>((resolve) => (release = resolve)),
 		);
-		const first = click(reply, "Schedule");
-		const second = await click(reply, "Schedule");
+		const first = click(reply, "Save");
+		const second = await click(reply, "Save");
 		release({ ok: true, name: "general" });
-		expect(said(replyOf(await first).embeds?.[0])).toContain("✅ **Scheduled.**");
+		expect(said(replyOf(await first).embeds?.[0])).toContain("✅ **Saved.**");
 		expect(second).toEqual({
 			kind: "refused",
 			reply: { text: SCHEDULE_MESSAGES.saving, private: true },
