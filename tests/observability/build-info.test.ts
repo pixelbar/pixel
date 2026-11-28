@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadBuildInfo } from "../../src/observability/build-info.ts";
+import { loadBuildInfo, packageVersion } from "../../src/observability/build-info.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -65,5 +65,24 @@ describe("loadBuildInfo", () => {
 
 	it("asks the real git without throwing, whatever is installed", () => {
 		expect(() => loadBuildInfo(config)).not.toThrow();
+	});
+});
+
+describe("packageVersion", () => {
+	it("reads the version from package.json", () => {
+		const file = join(dir, "package.json");
+		writeFileSync(file, JSON.stringify({ version: "0.28.1" }));
+		expect(packageVersion(file)).toBe("0.28.1");
+	});
+
+	it("says unknown when there is no file or no version", () => {
+		expect(packageVersion(join(dir, "missing.json"))).toBe("unknown");
+		const file = join(dir, "package.json");
+		writeFileSync(file, JSON.stringify({ name: "pixel" }));
+		expect(packageVersion(file)).toBe("unknown");
+	});
+
+	it("finds Pixel's own package.json by default", () => {
+		expect(packageVersion()).toMatch(/^\d+\.\d+\.\d+$/);
 	});
 });

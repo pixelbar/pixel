@@ -8,6 +8,7 @@ import { silentLogger } from "../../../src/core/logger.ts";
 import {
 	createReleaseAnnouncementFeature,
 	isReleasePublisher,
+	releaseVersion,
 } from "../../../src/features/release-announcement/index.ts";
 
 const CHANGELOG = `# Changelog
@@ -48,6 +49,17 @@ describe("isReleasePublisher", () => {
 		expect(isReleasePublisher("discord:release:111111111111111111")).toBe(true);
 		expect(isReleasePublisher("discord:bot-status")).toBe(false);
 		expect(isReleasePublisher("discord:live:111111111111111111")).toBe(false);
+	});
+});
+
+describe("releaseVersion", () => {
+	it("announces the package version, since image builds set PIXEL_VERSION to a git SHA", () => {
+		expect(releaseVersion("3f2a1bc", "0.28.1")).toBe("0.28.1");
+		expect(releaseVersion("3f2a1bc9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3", "0.28.1")).toBe("0.28.1");
+	});
+
+	it("stays dev when Pixel runs from a checkout without PIXEL_VERSION", () => {
+		expect(releaseVersion("dev", "0.28.1")).toBe("dev");
 	});
 });
 
@@ -230,6 +242,52 @@ describe("release announcement", () => {
 		stop?.();
 
 		expect(announced).toEqual([]);
+	});
+
+	it("skips when the package version couldn't be read", async () => {
+		const { feature, announced } = setup({ version: "unknown" });
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		stop?.();
+
+		expect(announced).toEqual([]);
+	});
+
+	it("finds the notes for the version an image build runs", async () => {
+		const { feature, announced } = setup({ version: releaseVersion("abc1234", "0.27.1") });
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		stop?.();
+
+		expect(announced).toHaveLength(1);
+		expect(announced[0]).toMatchObject({ kind: "release", version: "0.27.1" });
+		expect((announced[0] as { notes: string }).notes).toContain("Fixed bug X");
+	});
+
+	it("finds notes for the released version in the real CHANGELOG.md", async () => {
+		const version = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string })
+			.version;
+		const announced: Announcement[] = [];
+		const feature = createReleaseAnnouncementFeature({
+			announcer: {
+				announce: async (a, options) => {
+					announced.push(a);
+					return { failed: 0, ok: [...(options?.only ?? [])] };
+				},
+				publisherIds: ["discord:release"],
+			},
+			build: { ...build, version },
+			logger: silentLogger,
+			changelogFile: "CHANGELOG.md",
+			stateFile,
+			now: () => now,
+		});
+		const stop = feature.start?.();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		stop?.();
+
+		expect(announced).toHaveLength(1);
+		expect(announced[0]).toMatchObject({ kind: "release", version });
 	});
 
 	it("doesn't announce when the version has no changelog entry", async () => {

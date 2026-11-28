@@ -44,6 +44,8 @@ check:
   - "docs/infra.md"
 
 # What the Dockerfile copies. Tests live in tests/, outside src/, so they never reach the image.
+# Except CHANGELOG.md: only a release's dated section is posted, and the Release
+# workflow always builds its own image, so an [Unreleased] edit needs no rebuild.
 image:
   - "src/**"
   - "!src/testing/**"

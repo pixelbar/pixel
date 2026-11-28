@@ -31,7 +31,8 @@ export function loadBuildInfo(
 	};
 }
 
-function packageVersion(
+/** The `version` in package.json ("0.28.1"), or "unknown" when it can't be read. Never throws. */
+export function packageVersion(
 	path: string | URL = new URL("../../package.json", import.meta.url),
 ): string {
 	try {

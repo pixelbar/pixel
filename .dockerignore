@@ -12,3 +12,5 @@ data
 .claude
 docs
 *.md
+# Release notes Pixel posts when a new version comes online.
+!CHANGELOG.md

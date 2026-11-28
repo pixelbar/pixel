@@ -45,14 +45,17 @@ import { createInfoFeature } from "./info/index.ts";
 import { createOpenrFeature, type OpenrDoor, openrGate } from "./openr/index.ts";
 import { createParkingFeature } from "./parking/index.ts";
 import { createPingFeature } from "./ping/index.ts";
-import { createReleaseAnnouncementFeature } from "./release-announcement/index.ts";
+import { createReleaseAnnouncementFeature, releaseVersion } from "./release-announcement/index.ts";
 import { createSchedulesFeature } from "./schedules/index.ts";
 import { createStatusFeature } from "./status/index.ts";
 import { createWhoamiFeature } from "./whoami/index.ts";
 import { createWikiFeature } from "./wiki/index.ts";
 
 export type FeatureDeps = {
+	/** `PIXEL_VERSION`: "dev" outside an image build, else what the build passed (a git SHA). */
 	version: string;
+	/** The package.json version ("0.28.1"): what CHANGELOG headings and release tags name. */
+	packageVersion: string;
 	env: string;
 	commit: string | undefined;
 	branch: string | undefined;
@@ -161,7 +164,7 @@ export function buildFeatures(deps: FeatureDeps): Feature[] {
 		createReleaseAnnouncementFeature({
 			announcer: deps.announcer,
 			build: {
-				version: deps.version,
+				version: releaseVersion(deps.version, deps.packageVersion),
 				env: deps.env,
 				commit: deps.commit,
 				branch: deps.branch,

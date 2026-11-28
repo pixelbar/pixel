@@ -32,6 +32,7 @@ import { CAPABILITIES } from "./features/capabilities.ts";
 import { closingTimeMessage } from "./features/closing-time/index.ts";
 import { buildFeatures } from "./features/index.ts";
 import { SCHEDULE_CAPABILITY } from "./features/schedules/index.ts";
+import { packageVersion } from "./observability/build-info.ts";
 import { ConfigTierSource, StoreCapabilitySource } from "./services/access-config.ts";
 import { FileAccessStore } from "./services/access-store.ts";
 import { AnnouncementRouteStore } from "./services/announcement-routes.ts";
@@ -293,6 +294,7 @@ export function buildCore(
 	const registry = new CommandRegistry({ capabilities });
 	const features = buildFeatures({
 		version: config.version,
+		packageVersion: packageVersion(),
 		env: config.env,
 		commit: config.commit,
 		branch: config.branch,

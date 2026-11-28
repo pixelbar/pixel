@@ -28,6 +28,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 # Reviewed, public content (the /info topics) is baked into the image; changing it means a deploy.
 COPY content ./content
+# Release notes: Pixel posts the running version's section when it comes online.
+COPY CHANGELOG.md ./
 # Access lists are mounted at runtime (Key Vault secret volume); never baked in.
 # Runtime state goes in /app/data. Mount a persistent volume there: it holds
 # schedules.yaml (the scheduled posts, which are lost without one), plus small state

@@ -64,6 +64,7 @@ const spaceStatus: SpaceStatus = {
 
 const deps = () => ({
 	version: "1.0.0",
+	packageVersion: "1.0.0",
 	env: "local" as const,
 	commit: undefined,
 	branch: undefined,

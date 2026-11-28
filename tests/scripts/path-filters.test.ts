@@ -153,6 +153,14 @@ describe(FILTERS, () => {
 		expect(matchesFilter(stack, "justfile")).toBe(false);
 	});
 
+	/**
+	 * Copied into the image but deliberately not in `image`. Only a release's dated
+	 * CHANGELOG section is posted, and the Release workflow builds its image from the
+	 * bump commit whatever the filters say, so an [Unreleased] edit never changes what
+	 * a running Pixel posts. Keeping it out lets markdown-only PRs skip Docker.
+	 */
+	const COPIED_NOT_FILTERED = new Set(["CHANGELOG.md"]);
+
 	it("puts everything the Dockerfile copies from the repository in `image`", () => {
 		const image = filters().image ?? [];
 		const copies = read("Dockerfile")
@@ -162,11 +170,32 @@ describe(FILTERS, () => {
 		expect(copies.length).toBeGreaterThan(0);
 		const files = tracked();
 		for (const source of copies) {
+			if (COPIED_NOT_FILTERED.has(source)) continue;
 			const shipped = files.some(
 				(file) => (file === source || file.startsWith(`${source}/`)) && matchesFilter(image, file),
 			);
 			expect(shipped, `${source} is copied into the image but not in the image list`).toBe(true);
 		}
+	});
+
+	it("ships CHANGELOG.md in the image, so release notes can be posted", () => {
+		const copies = read("Dockerfile")
+			.split("\n")
+			.filter((line) => /^COPY\s/.test(line) && !line.includes("--from="))
+			.flatMap((line) => line.trim().split(/\s+/).slice(1, -1));
+		expect(copies).toContain("CHANGELOG.md");
+		// .dockerignore keeps markdown out of the build context; the last matching rule wins.
+		const rules = read(".dockerignore")
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line !== "" && !line.startsWith("#"));
+		const last = rules
+			.filter((rule) => {
+				const pattern = rule.startsWith("!") ? rule.slice(1) : rule;
+				return globToRegExp(pattern).test("CHANGELOG.md");
+			})
+			.at(-1);
+		expect(last).toBe("!CHANGELOG.md");
 	});
 
 	it.each([

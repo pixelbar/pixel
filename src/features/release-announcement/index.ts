@@ -32,6 +32,16 @@ type LastAnnounced = {
 const CHANGELOG_FILE = "CHANGELOG.md";
 const VERSION_HEADING = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}\s*$/;
 
+/**
+ * The version to announce. Changelog headings name the package.json version, but
+ * `PIXEL_VERSION` is a git SHA in every image build, so it can't be used to find
+ * the notes. It still says whether this is a build at all: "dev" (unset) means
+ * running from a checkout, which never announces.
+ */
+export function releaseVersion(pixelVersion: string, packageVersion: string): string {
+	return pixelVersion === "dev" ? "dev" : packageVersion;
+}
+
 /** Whether a publisher id is one that posts release notes. */
 export function isReleasePublisher(id: string): boolean {
 	return id === "discord:release" || id.startsWith("discord:release:");
@@ -83,6 +93,13 @@ export function createReleaseAnnouncementFeature(deps: ReleaseAnnouncementDeps):
 
 		if (currentVersion === "dev") {
 			log.debug({ event: "release.skipped", reason: "dev version" }, "not announcing dev version");
+			return;
+		}
+		if (currentVersion === "unknown") {
+			log.warn(
+				{ event: "release.skipped", reason: "unknown version" },
+				"couldn't read the package version; not announcing",
+			);
 			return;
 		}
 

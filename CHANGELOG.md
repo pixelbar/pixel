@@ -9,6 +9,10 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release notes are posted again when a new version comes online.** The image never contained `CHANGELOG.md`, and Pixel looked the notes up by the git SHA the image was built from instead of the `package.json` version, so every release channel stayed silent. The image now ships `CHANGELOG.md` and the notes are found by version. A version that was never announced is posted on the first start after this deploy.
+
 ## [0.28.1] - 2026-11-28
 
 ### Fixed
