@@ -32,10 +32,10 @@ const PICKED = "100000000000000077";
 const PEOPLE: Record<string, { tier: Tier; holds: string[] }> = {
 	[IDS.member]: { tier: "member", holds: [SCHEDULE_CAPABILITY.name] },
 };
-const channel = (): ResolvedChannel => ({
+const channel = (caller: Partial<ResolvedChannel["caller"]> = {}): ResolvedChannel => ({
 	id: CHANNEL,
 	name: "general",
-	caller: { canPost: true, canMentionEveryone: true, canCreatePolls: true },
+	caller: { canPost: true, canMentionEveryone: true, canCreatePolls: true, ...caller },
 });
 const controlsOf = (reply: Reply): Control[] => (reply.controls ?? []).flat();
 function replyOf(outcome: ActionOutcome): Reply {
@@ -115,14 +115,16 @@ function setup() {
 		if (!control || control.kind === "link") throw new Error(`no "${label}"`);
 		return act(control.call.action, { ...control.call.args } as Record<string, string | number>);
 	};
-	const submit = (form: Form, fields: Record<string, string>) => {
-		const picked = channel();
-		return act(
+	const submit = (
+		form: Form,
+		fields: Record<string, string>,
+		picked: ResolvedChannel = channel(),
+	) =>
+		act(
 			form.submit.action,
 			{ ...(form.submit.args as Record<string, string>), ...fields, channel: picked.id },
 			{ channels: { channel: picked } },
 		);
-	};
 	return { store, posted, poster, clock, act, click, submit, dispatcher, interpolator, posts };
 }
 
@@ -135,16 +137,26 @@ describe("preview vs saved vs posted after edit (#242)", () => {
 			args: {},
 		});
 		const newForm = formOf(await ctx.click(home.reply, "New message"));
-		const draft = replyOf(
+		// Bad when: timing itself fails, so fill uses now().
+		const badWhen = replyOf(
 			await ctx.submit(newForm, {
 				when: "someday",
 				repeat: "once",
 				text: "Hello {{date}}",
 			}),
 		);
-		expect(draft.embeds?.[0]?.description).toContain("⚠️");
-		// Content slot stays filled (not the raw "{{date}}") so it matches the saved view language.
-		expect(draft.text).toBe("Hello 12 October 2026");
+		expect(badWhen.embeds?.[0]?.description).toContain("⚠️");
+		expect(badWhen.text).toBe("Hello 12 October 2026");
+		// Channel refused after timing parsed: fill for the scheduled occurrence, not now().
+		const badChannel = replyOf(
+			await ctx.submit(
+				newForm,
+				{ when: "wed 19:00", repeat: "once", text: "Hello {{date}}" },
+				channel({ canPost: false }),
+			),
+		);
+		expect(badChannel.embeds?.[0]?.description).toContain("⚠️");
+		expect(badChannel.text).toBe("Hello 14 October 2026");
 		expect(ctx.store.all()).toEqual([]);
 	});
 

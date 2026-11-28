@@ -1606,6 +1606,27 @@ describe("editing", () => {
 		});
 	});
 
+	it("still treats a pre-strip auto-name with mention markup as auto (#242)", async () => {
+		const ctx = setup();
+		const picked = "100000000000000077";
+		const text = `Pizza <@${picked}>`;
+		// Name as cleanName made it before mention stripping landed.
+		const { id } = add(ctx.store, { name: text, post: { kind: "message", text } });
+		const form = await editForm(ctx, id);
+		const draft = replyOf(
+			await ctx.submit(form, {
+				when: "14 oct 2026 19:00",
+				repeat: "once",
+				text: "Tacos tonight",
+			}),
+		);
+		await ctx.click(draft, "Save changes");
+		expect(ctx.store.get(id)).toMatchObject({
+			name: "Tacos tonight",
+			post: { text: "Tacos tonight" },
+		});
+	});
+
 	it("retimes from now when the time changes, and can move it to another channel", async () => {
 		const ctx = setup();
 		const { id } = add(ctx.store, { name: "Kept" });

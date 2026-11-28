@@ -678,6 +678,20 @@ export function createSchedulesFeature(deps: SchedulesDeps): Feature {
 			);
 		} else {
 			lines.push(`⚠️ ${problem}`, "", `Nothing is saved until you press **${saveLabel}**.`);
+			// Timing often still parses when the failure is later (channel, mentions, …).
+			// Use that occurrence so the filled preview matches what Save would show.
+			try {
+				const schedule = draft.editing ? deps.store.get(draft.editing) : undefined;
+				if (!(draft.editing && !schedule)) {
+					const timing = timingOf(draft, schedule);
+					const first = nextOccurrence(timing.start, timing.recurrence, zone, now());
+					if (first) {
+						occurrence = editing && !timing.retimed ? nextRunOf(draft, first) : first;
+					}
+				}
+			} catch {
+				// Keep occurrence as now() when when/repeat themselves are the problem.
+			}
 			// Same content slot as a ready draft: filled tokens, never the raw template.
 			if (draft.kind === "message" && draft.text.trim() !== "") {
 				preview = {
@@ -1780,24 +1794,38 @@ export function parseAnswers(text: string): string[] {
 	return answers;
 }
 
+/** First line, trimmed, at most 60 characters (the auto-name shape before mention stripping). */
+function firstLineName(text: string): string {
+	const line = text.split("\n")[0]?.trim() ?? "";
+	const name = [...line].length > 60 ? `${[...line].slice(0, 59).join("")}…` : line;
+	return name === "" ? "Scheduled post" : name;
+}
+
 /**
  * A name from free text: its first line, at most 60 characters. Mention markup
  * is dropped so an auto-name doesn't show raw `<@id>` next to a filled preview.
  */
 function cleanName(text: string): string {
-	const withoutMentions = text
+	const withoutMentions = (text.split("\n")[0] ?? "")
 		.replace(/<@!?\d+>/g, "")
 		.replace(/<@&\d+>/g, "")
-		.replace(/@(?:everyone|here)\b/g, "");
-	const line = withoutMentions.split("\n")[0]?.trim().replace(/\s+/g, " ") ?? "";
-	const name = [...line].length > 60 ? `${[...line].slice(0, 59).join("")}…` : line;
+		.replace(/@(?:everyone|here)\b/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	const name =
+		[...withoutMentions].length > 60
+			? `${[...withoutMentions].slice(0, 59).join("")}…`
+			: withoutMentions;
 	return name === "" ? "Scheduled post" : name;
 }
 
-/** Whether `schedule.name` is the auto-name from its post text (not a Rename). */
+/**
+ * Whether `schedule.name` is the auto-name from its post text (not a Rename).
+ * Accepts names made before mention markup was stripped from `cleanName`.
+ */
 function autoNameOf(schedule: Schedule): boolean {
 	const source = schedule.post.kind === "message" ? schedule.post.text : schedule.post.question;
-	return schedule.name === cleanName(source);
+	return schedule.name === cleanName(source) || schedule.name === firstLineName(source);
 }
 
 /** `lastRunAt` for a schedule that should only post from `now` on (the stored one if later). */
