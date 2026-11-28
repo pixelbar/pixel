@@ -9,6 +9,8 @@ Until 1.0.0, releases stay on 0.x: `Added` bumps minor, `Fixed`/`Changed` (and t
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-11-28
+
 ### Fixed
 
 - **Mentions in scheduled posts** (#239, #240). After 0.28.0, a schedules file with any message saved before it was refused as invalid (`post: Unrecognized key: "mentions"`), so no schedule ran and none could be made or changed. The old **Pings** setting is now read and dropped, and disappears from `data/schedules.yaml` the next time a schedule is saved; nothing needs fixing by hand.
@@ -444,7 +446,8 @@ Phase 1 as shipped on `main` through 2026-10-09. Item dates are merge or commit 
 - Sentry traces, profiles, sessions and runtime metrics (2026-10-08, #69).
 - Infra overview with Azure and GitHub diagrams (2026-10-09, #75).
 
-[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.28.0...HEAD
+[Unreleased]: https://github.com/pixelbar/pixel/compare/v0.28.1...HEAD
+[0.28.1]: https://github.com/pixelbar/pixel/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/pixelbar/pixel/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/pixelbar/pixel/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/pixelbar/pixel/compare/v0.26.0...v0.27.0
